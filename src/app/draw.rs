@@ -117,12 +117,19 @@ impl App {
 		self.renderer = Some(renderer);
 	}
 
+	/// The selection in rows of the frame being drawn; it is kept in lines.
+	fn selection_rows(&self) -> Option<(CellPoint, CellPoint)> {
+		let history_base = self.frame.top_line - self.frame.first_row;
+		let selection = self.selection?.in_rows(history_base)?;
+		Some(selection.ordered())
+	}
+
 	/// Inputs besides the grid's content that change how it is drawn.
 	fn draw_key(&self) -> DrawKey {
 		DrawKey {
 			session: self.sessions[self.active].id,
 			focused: self.focused,
-			selection: self.selection.map(Selection::ordered),
+			selection: self.selection_rows(),
 			search_match: self
 				.search_matches
 				.get(self.search_match_index)
@@ -172,7 +179,7 @@ impl App {
 			link_color: self.theme.palette[4],
 			selection_colors: crate::theme::SELECTION_COLORS,
 			match_colors: (self.theme.bg, self.theme.palette[3]),
-			selection: self.selection.map(Selection::ordered),
+			selection: self.selection_rows(),
 			search_match: self
 				.search_matches
 				.get(self.search_match_index)

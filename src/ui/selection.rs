@@ -21,6 +21,27 @@ impl Selection {
 		}
 	}
 
+	/// Converts a selection in lines, which count every line since the
+	/// terminal started and so keep naming the same text while full history
+	/// evicts lines, into rows of the current scrollback and screen, ordered.
+	/// `None` once all of it was evicted; a partly evicted one starts at the
+	/// oldest row.
+	pub(crate) fn in_rows(self, history_base: usize) -> Option<Selection> {
+		let (start, end) = self.ordered();
+		let end = CellPoint {
+			row: end.row.checked_sub(history_base)?,
+			col: end.col,
+		};
+		let start = match start.row.checked_sub(history_base) {
+			Some(row) => CellPoint {
+				row,
+				col: start.col,
+			},
+			None => CellPoint { row: 0, col: 0 },
+		};
+		Some(Selection { start, end })
+	}
+
 	/// The selection while dragging from `anchor` to `point`, given the one
 	/// `shown` so far: nothing until the pointer leaves the pressed cell, so
 	/// a click selects nothing, but once shown it may shrink to one cell.

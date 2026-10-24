@@ -246,3 +246,131 @@ fn dragging_further_never_moves_the_end_back() {
 		previous = point;
 	}
 }
+
+fn term_with_history_limit(limit: usize) -> crate::term::Term {
+	use crate::theme::{Theme, ThemeKind};
+	let mut term = crate::term::Term::new(8, 2, Theme::from_kind(ThemeKind::Poop), "/".into());
+	term.scrollback_limit = limit;
+	term
+}
+
+fn feed(term: &mut crate::term::Term, bytes: &[u8]) {
+	crate::parser::Parser::new().advance(term, bytes);
+}
+
+/// The text a selection in lines covers on its first row, read now.
+fn selected_row(term: &crate::term::Term, selection: Selection) -> Option<String> {
+	let rows = selection.in_rows(term.history_base)?;
+	let cells = term.row_cells(rows.start.row)?;
+	Some(
+		cells
+			.iter()
+			.map(|cell| cell.ch)
+			.collect::<String>()
+			.trim_end()
+			.to_owned(),
+	)
+}
+
+#[test]
+fn a_selection_keeps_its_text_when_full_history_evicts_lines() {
+	// The reported bug: once history is full, new output used to slide the
+	// text out from under a selection made on the bottom rows.
+	let mut term = term_with_history_limit(3);
+	feed(&mut term, b"1\r\n2\r\n3\r\n4\r\ntarget");
+	assert_eq!(term.scrollback.len(), 3, "history is full");
+	let bottom = term.history_base + term.scrollback.len() + 1;
+	let selection = Selection {
+		start: at(bottom, 0),
+		end: at(bottom, 5),
+	};
+	assert_eq!(selected_row(&term, selection).as_deref(), Some("target"));
+	feed(&mut term, b"\r\nnext\r\nmore");
+	assert_eq!(term.scrollback.len(), 3, "still full: lines were evicted");
+	assert_eq!(selected_row(&term, selection).as_deref(), Some("target"));
+}
+
+#[test]
+fn a_selection_keeps_its_text_when_history_is_cleared() {
+	let mut term = term_with_history_limit(100);
+	feed(&mut term, b"a\r\nb\r\nc\r\nkeep");
+	let line = term.history_base + term.scrollback.len() + 1;
+	let selection = Selection {
+		start: at(line, 0),
+		end: at(line, 3),
+	};
+	feed(&mut term, b"\x1b[3J");
+	assert!(term.scrollback.is_empty());
+	assert_eq!(selected_row(&term, selection).as_deref(), Some("keep"));
+}
+
+#[test]
+fn lines_become_rows_by_subtracting_the_evicted_count() {
+	let selection = Selection {
+		start: at(12, 4),
+		end: at(10, 1),
+	};
+	let rows = selection.in_rows(10).unwrap();
+	assert_eq!((rows.start, rows.end), (at(0, 1), at(2, 4)), "and ordered");
+	assert_eq!(
+		selection.in_rows(0).unwrap().ordered(),
+		(at(10, 1), at(12, 4))
+	);
+}
+
+#[test]
+fn a_partly_evicted_selection_starts_at_the_oldest_row() {
+	let selection = Selection {
+		start: at(3, 6),
+		end: at(7, 2),
+	};
+	let rows = selection.in_rows(5).unwrap();
+	assert_eq!((rows.start, rows.end), (at(0, 0), at(2, 2)));
+	// Evicted up to the end's own line: only that line remains.
+	assert_eq!(
+		selection.in_rows(7).unwrap().ordered(),
+		(at(0, 0), at(0, 2))
+	);
+}
+
+#[test]
+fn a_fully_evicted_selection_is_gone() {
+	let selection = Selection {
+		start: at(3, 6),
+		end: at(7, 2),
+	};
+	assert!(selection.in_rows(8).is_none());
+	assert!(selection.in_rows(usize::MAX).is_none());
+}
+
+#[test]
+fn without_history_a_selection_follows_its_line_up_then_disappears() {
+	let mut term = term_with_history_limit(0);
+	feed(&mut term, b"a\r\ntarget");
+	let line = term.history_base + 1;
+	let selection = Selection {
+		start: at(line, 0),
+		end: at(line, 5),
+	};
+	feed(&mut term, b"\r\nnext");
+	assert_eq!(selection.in_rows(term.history_base).unwrap().start.row, 0);
+	assert_eq!(selected_row(&term, selection).as_deref(), Some("target"));
+	feed(&mut term, b"\r\nmore");
+	assert!(
+		selection.in_rows(term.history_base).is_none(),
+		"not moved onto `next`"
+	);
+}
+
+#[test]
+fn lowering_the_history_limit_keeps_the_selection_on_a_surviving_line() {
+	let mut term = term_with_history_limit(10);
+	feed(&mut term, b"1\r\n2\r\nkeep\r\n4\r\n5\r\nend");
+	let line = term.history_base + 2;
+	let selection = Selection {
+		start: at(line, 0),
+		end: at(line, 3),
+	};
+	term.set_scrollback_limit(3);
+	assert_eq!(selected_row(&term, selection).as_deref(), Some("keep"));
+}
