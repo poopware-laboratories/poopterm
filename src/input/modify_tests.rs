@@ -409,10 +409,12 @@ fn keypad_keys_follow_modify_keypad_keys() {
 		(3, text("/"), 0, "\x1bOo"),
 	];
 	for (level, k, bits, expected) in rows {
-		let modes = KeyModes {
+		let mut modes = KeyModes {
 			application_keypad: true,
 			..modes(KEYPAD_KEYS, level)
 		};
+		// Operators send SS3 only while ?1035 ignores NumLock.
+		modes.keyboard.numlock = false;
 		let got = String::from_utf8(encode_keypad(&k, mods(bits), modes).unwrap()).unwrap();
 		assert_eq!(got, expected, "{k:?} at {level}");
 	}

@@ -1,8 +1,11 @@
 //! The numeric keypad in application mode (DECKPAM), xterm's PC-style table.
 //!
-//! Operators, Enter and `=` send `SS3` sequences; digits and the period
-//! follow NumLock, as on xterm: with NumLock on they type themselves, with
-//! it off they are the cursor and editing keys they are labeled with.
+//! While NumLock is honored (`?1035` set, the default) the keypad types what
+//! it is labeled with even in application mode, so shells that send `smkx`
+//! at every prompt and bind no `SS3` keys still get `*`, `/` and Enter.
+//! With `?1035` reset, operators, Enter, Tab, Space, digits and the period
+//! send `SS3` sequences. Without NumLock the digit keys are the cursor and
+//! editing keys they are labeled with in either mode.
 use super::{
 	keys::{KeyModes, Modifiers},
 	modify::{CURSOR_KEYS, KEYPAD_KEYS, with_modifiers},
@@ -23,7 +26,7 @@ pub(crate) fn encode_keypad(key: &Key, mods: Modifiers, modes: KeyModes) -> Opti
 		let level = modes.options.modify[CURSOR_KEYS];
 		return Some(with_modifiers(level, None, param, 'E', plain.into()));
 	}
-	if !modes.application_keypad {
+	if !modes.application_keypad || modes.keyboard.numlock {
 		return None;
 	}
 	let letter = match key {
@@ -37,11 +40,8 @@ pub(crate) fn encode_keypad(key: &Key, mods: Modifiers, modes: KeyModes) -> Opti
 			"-" => 'm',
 			"/" => 'o',
 			"=" => 'X',
-			// With NumLock ignored (?1035 reset), digits are keypad keys too.
-			"." if !modes.keyboard.numlock => 'n',
-			digit @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
-				if !modes.keyboard.numlock =>
-			{
+			"." => 'n',
+			digit @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
 				char::from(b'p' + (digit.as_bytes()[0] - b'0'))
 			}
 			_ => return None,
@@ -86,8 +86,29 @@ mod tests {
 		encode_keypad(&key, Modifiers::default(), APPLICATION)
 	}
 
+	/// Application keypad with `?1035` reset: NumLock no longer types.
+	fn ignoring_numlock() -> KeyModes {
+		let mut modes = APPLICATION;
+		modes.keyboard.numlock = false;
+		modes
+	}
+
 	#[test]
-	fn operators_send_ss3_in_application_mode() {
+	fn numlock_operators_type_themselves_in_application_mode() {
+		// Shells such as Oh My Zsh send `smkx` (DECKPAM) at every prompt
+		// and bind no `SS3 j`; keypad `*` and `/` must still type.
+		for key in ["*", "+", ",", "-", "/", "="] {
+			assert_eq!(plain(text(key)), None, "keypad {key}");
+		}
+		let ctrl = Modifiers {
+			ctrl: true,
+			..Default::default()
+		};
+		assert_eq!(encode_keypad(&text("*"), ctrl, APPLICATION), None);
+	}
+
+	#[test]
+	fn operators_send_ss3_when_numlock_is_ignored() {
 		let expected: [(&str, &[u8]); 6] = [
 			("*", b"\x1bOj"),
 			("+", b"\x1bOk"),
@@ -97,15 +118,24 @@ mod tests {
 			("=", b"\x1bOX"),
 		];
 		for (key, bytes) in expected {
-			assert_eq!(plain(text(key)).as_deref(), Some(bytes), "keypad {key}");
+			let got = encode_keypad(&text(key), Modifiers::default(), ignoring_numlock());
+			assert_eq!(got.as_deref(), Some(bytes), "keypad {key}");
 		}
 	}
 
 	#[test]
-	fn enter_tab_and_space_send_ss3_in_application_mode() {
-		assert_eq!(plain(Key::Named(NamedKey::Enter)).unwrap(), b"\x1bOM");
-		assert_eq!(plain(Key::Named(NamedKey::Tab)).unwrap(), b"\x1bOI");
-		assert_eq!(plain(Key::Named(NamedKey::Space)).unwrap(), b"\x1bO ");
+	fn numlock_enter_tab_and_space_are_left_to_the_main_encoder() {
+		for named in [NamedKey::Enter, NamedKey::Tab, NamedKey::Space] {
+			assert_eq!(plain(Key::Named(named)), None, "{named:?}");
+		}
+	}
+
+	#[test]
+	fn enter_tab_and_space_send_ss3_when_numlock_is_ignored() {
+		let send = |named| encode_keypad(&Key::Named(named), Modifiers::default(), ignoring_numlock());
+		assert_eq!(send(NamedKey::Enter).unwrap(), b"\x1bOM");
+		assert_eq!(send(NamedKey::Tab).unwrap(), b"\x1bOI");
+		assert_eq!(send(NamedKey::Space).unwrap(), b"\x1bO ");
 	}
 
 	#[test]
@@ -147,11 +177,11 @@ mod tests {
 			..Default::default()
 		};
 		assert_eq!(
-			encode_keypad(&Key::Named(NamedKey::Enter), ctrl, APPLICATION).unwrap(),
+			encode_keypad(&Key::Named(NamedKey::Enter), ctrl, ignoring_numlock()).unwrap(),
 			b"\x1bO5M"
 		);
 		assert_eq!(
-			encode_keypad(&text("+"), shift_alt, APPLICATION).unwrap(),
+			encode_keypad(&text("+"), shift_alt, ignoring_numlock()).unwrap(),
 			b"\x1bO4k"
 		);
 	}
@@ -178,7 +208,13 @@ mod tests {
 
 	#[test]
 	fn other_characters_are_not_keypad_keys() {
-		assert_eq!(plain(text("a")), None);
-		assert_eq!(plain(text("++")), None);
+		assert_eq!(
+			encode_keypad(&text("a"), Modifiers::default(), ignoring_numlock()),
+			None
+		);
+		assert_eq!(
+			encode_keypad(&text("++"), Modifiers::default(), ignoring_numlock()),
+			None
+		);
 	}
 }
