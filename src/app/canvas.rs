@@ -3,7 +3,7 @@
 use crate::{
 	render::damage::{GridDamage, grid_damage},
 	term::Frame,
-	ui::selection::CellPoint,
+	ui::selection::Selection,
 };
 
 /// Drawing inputs besides the grid. Session, focus, and overlays need a full
@@ -12,8 +12,8 @@ use crate::{
 pub(super) struct DrawKey {
 	pub session: u64,
 	pub focused: bool,
-	pub selection: Option<(CellPoint, CellPoint)>,
-	pub search_match: Option<(CellPoint, CellPoint)>,
+	pub selection: Option<Selection>,
+	pub search_match: Option<Selection>,
 	/// Search box or command palette, which cover part of the grid.
 	pub overlay: bool,
 }
@@ -104,22 +104,8 @@ impl Canvas {
 }
 
 /// Inclusive highlighted columns of a visible row, clipped to the grid.
-fn coverage(
-	range: Option<(CellPoint, CellPoint)>,
-	row: usize,
-	cols: usize,
-) -> Option<(usize, usize)> {
-	let (start, end) = range?;
-	if row < start.row || row > end.row || cols == 0 {
-		return None;
-	}
-	let left = if row == start.row { start.col } else { 0 };
-	let right = if row == end.row {
-		end.col.min(cols - 1)
-	} else {
-		cols - 1
-	};
-	(left <= right).then_some((left, right))
+fn coverage(range: Option<Selection>, row: usize, cols: usize) -> Option<(usize, usize)> {
+	range?.span(row, cols)
 }
 
 /// Merges sorted, possibly adjacent pixel-row ranges.
@@ -157,6 +143,7 @@ pub(super) fn merge_bands(bands: &mut Vec<(usize, usize)>) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::ui::selection::CellPoint;
 	use crate::{
 		parser::Parser,
 		term::Term,
@@ -246,7 +233,11 @@ mod tests {
 		canvas.plan(&first, KEY, (10, 10), true);
 		canvas.remember(&mut first.clone(), KEY);
 		let selected = DrawKey {
-			selection: Some((CellPoint { row: 1, col: 0 }, CellPoint { row: 1, col: 1 })),
+			selection: Some(Selection {
+				start: CellPoint { row: 1, col: 0 },
+				end: CellPoint { row: 1, col: 1 },
+				block: false,
+			}),
 			..KEY
 		};
 		assert_eq!(
@@ -278,6 +269,29 @@ mod tests {
 				rows: vec![false, true]
 			})
 		);
+	}
+
+	#[test]
+	fn switching_to_a_block_damages_only_rows_whose_columns_change() {
+		let lines = frame("abcd\r\nefgh");
+		let select = |block| DrawKey {
+			selection: Some(Selection {
+				start: CellPoint { row: 0, col: 3 },
+				end: CellPoint { row: 1, col: 3 },
+				block,
+			}),
+			..KEY
+		};
+		let mut canvas = Canvas::new();
+		canvas.plan(&lines, select(false), (10, 10), true);
+		canvas.remember(&mut lines.clone(), select(false));
+		// Row 0 is column 3 alone either way; row 1 shrinks from 0..=3 to 3.
+		let plan = canvas.plan(&lines, select(true), (10, 10), true);
+		let expected = GridDamage {
+			scroll: 0,
+			rows: vec![false, true],
+		};
+		assert_eq!(plan, Plan::Partial(expected));
 	}
 
 	#[test]

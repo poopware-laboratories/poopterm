@@ -118,10 +118,9 @@ impl App {
 	}
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.
-	fn selection_rows(&self) -> Option<(CellPoint, CellPoint)> {
+	fn selection_rows(&self) -> Option<Selection> {
 		let history_base = self.frame.top_line - self.frame.first_row;
-		let selection = self.selection?.in_rows(history_base)?;
-		Some(selection.ordered())
+		self.selection?.in_rows(history_base)
 	}
 
 	/// Inputs besides the grid's content that change how it is drawn.
@@ -130,10 +129,7 @@ impl App {
 			session: self.sessions[self.active].id,
 			focused: self.focused,
 			selection: self.selection_rows(),
-			search_match: self
-				.search_matches
-				.get(self.search_match_index)
-				.map(|selection| selection.ordered()),
+			search_match: self.search_matches.get(self.search_match_index).copied(),
 			overlay: self.search_active || self.command_palette,
 		}
 	}
@@ -180,10 +176,7 @@ impl App {
 			selection_colors: crate::theme::SELECTION_COLORS,
 			match_colors: (self.theme.bg, self.theme.palette[3]),
 			selection: self.selection_rows(),
-			search_match: self
-				.search_matches
-				.get(self.search_match_index)
-				.map(|selection| selection.ordered()),
+			search_match: self.search_matches.get(self.search_match_index).copied(),
 			focused: self.focused,
 			padding: Some(self.padding_area(p.width, p.height)),
 		};

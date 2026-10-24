@@ -9,7 +9,7 @@ use crate::{
 	},
 	term::{Frame, Term},
 	theme::{Theme, ThemeKind},
-	ui::selection::CellPoint,
+	ui::selection::{CellPoint, Selection},
 };
 
 const KEY: DrawKey = DrawKey {
@@ -85,7 +85,13 @@ fn highlight_damage_and_scrolling_match_a_full_redraw_pixel_for_pixel() {
 	let mut parser = Parser::new();
 	let mut fonts = fonts();
 	let mut canvas = Canvas::new();
-	let range = |row, col| Some((CellPoint { row, col: 0 }, CellPoint { row, col }));
+	let range = |row, col| {
+		Some(Selection {
+			start: CellPoint { row, col: 0 },
+			end: CellPoint { row, col },
+			block: false,
+		})
+	};
 	for (input, selection, search_match) in [
 		("abc猫e\u{301}\r\ndef\r\nghi", None, None),
 		("", range(1, 2), None),
@@ -236,7 +242,11 @@ fn program_cursor_and_selection_colors_are_drawn_and_redraw_the_grid() {
 	let mut fonts = fonts();
 	let mut canvas = Canvas::new();
 	let key = DrawKey {
-		selection: Some((CellPoint { row: 1, col: 0 }, CellPoint { row: 1, col: 1 })),
+		selection: Some(Selection {
+			start: CellPoint { row: 1, col: 0 },
+			end: CellPoint { row: 1, col: 1 },
+			block: false,
+		}),
 		..KEY
 	};
 	for input in [
@@ -300,7 +310,11 @@ fn highlight_rendering_throughput() {
 		for index in 0..300 {
 			let row = index % 30 + frame.first_row;
 			let key = DrawKey {
-				selection: Some((CellPoint { row, col: 1 }, CellPoint { row, col: 5 })),
+				selection: Some(Selection {
+					start: CellPoint { row, col: 1 },
+					end: CellPoint { row, col: 5 },
+					block: false,
+				}),
 				..KEY
 			};
 			if full {
@@ -312,5 +326,80 @@ fn highlight_rendering_throughput() {
 			"highlight full={full}: {:?} for 300 frames",
 			start.elapsed()
 		);
+	}
+}
+
+#[cfg(test)]
+mod block_selection {
+	use super::*;
+
+	fn select(start: (usize, usize), end: (usize, usize), block: bool) -> DrawKey {
+		let point = |(row, col)| CellPoint { row, col };
+		DrawKey {
+			selection: Some(Selection {
+				start: point(start),
+				end: point(end),
+				block,
+			}),
+			..KEY
+		}
+	}
+
+	/// The selection background is drawn exactly in the cells `selected`
+	/// says, on a 6x4 grid of 10x20 cells with an empty theme background.
+	fn assert_highlight(key: DrawKey, selected: impl Fn(usize, usize) -> bool) {
+		let term = Term::new(6, 4, Theme::from_kind(ThemeKind::Poop), "/".into());
+		let mut frame = Frame::default();
+		term.snapshot(&mut frame);
+		let mut pixels = vec![0; 6 * 10 * 4 * 20];
+		draw(&mut pixels, &mut fonts(), &frame, key, None);
+		for row in 0..4 {
+			for col in 0..6 {
+				let pixel = pixels[(row * 20 + 10) * 60 + col * 10 + 5];
+				let highlighted = pixel == 0xffffff;
+				assert_eq!(
+					highlighted,
+					selected(row, col),
+					"cell ({row}, {col}): {pixel:06x}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn a_block_highlights_only_its_rectangle() {
+		assert_highlight(select((1, 4), (2, 2), true), |row, col| {
+			(1..=2).contains(&row) && (2..=4).contains(&col)
+		});
+	}
+
+	#[test]
+	fn the_same_drag_without_alt_highlights_the_text_between() {
+		assert_highlight(select((1, 4), (2, 2), false), |row, col| {
+			(row == 1 && col >= 4) || (row == 2 && col <= 2)
+		});
+	}
+
+	#[test]
+	fn switching_between_block_and_linear_redraws_like_a_full_frame() {
+		let mut term = Term::new(8, 4, Theme::from_kind(ThemeKind::Poop), "/".into());
+		Parser::new().advance(&mut term, b"one two\r\nthree\r\nfour five\r\nsix");
+		let mut fonts = fonts();
+		let mut canvas = Canvas::new();
+		for key in [
+			KEY,
+			select((0, 5), (2, 1), true),
+			select((0, 5), (2, 1), false),
+			select((0, 5), (3, 6), true),
+			select((1, 2), (1, 2), true),
+			KEY,
+		] {
+			let mut frame = Frame::default();
+			term.snapshot(&mut frame);
+			let mut expected = vec![0; 8 * 10 * 4 * 20];
+			draw(&mut expected, &mut fonts, &frame, key, None);
+			update(&mut canvas, &mut fonts, &mut frame, key);
+			assert!(canvas.pixels == expected, "key {key:?}");
+		}
 	}
 }

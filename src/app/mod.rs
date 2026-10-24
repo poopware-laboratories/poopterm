@@ -122,8 +122,9 @@ pub(crate) struct App {
 	full_redraw_only: bool,
 	/// In lines, which count evicted history, so it stays on its text.
 	selection: Option<Selection>,
-	/// Where the selection being dragged with the mouse started, in lines.
-	drag_anchor: Option<CellPoint>,
+	/// Where the selection being dragged with the mouse started, in lines,
+	/// and whether it is a block.
+	drag_anchor: Option<(CellPoint, bool)>,
 	search_active: bool,
 	search_dirty: bool,
 	search_query: String,

@@ -130,38 +130,38 @@ fn a_single_cell_grid_maps_everything_to_its_cell() {
 
 #[test]
 fn a_press_alone_selects_nothing() {
-	assert!(Selection::dragged(at(5, 3), at(5, 3), None).is_none());
+	assert!(Selection::dragged(at(5, 3), at(5, 3), None, false).is_none());
 }
 
 #[test]
 fn reaching_another_cell_selects_from_the_anchor() {
-	let selection = Selection::dragged(at(5, 3), at(6, 1), None).unwrap();
+	let selection = Selection::dragged(at(5, 3), at(6, 1), None, false).unwrap();
 	assert_eq!((selection.start, selection.end), (at(5, 3), at(6, 1)));
 	// The neighbouring cell on the same row is enough.
-	assert!(Selection::dragged(at(5, 3), at(5, 4), None).is_some());
+	assert!(Selection::dragged(at(5, 3), at(5, 4), None, false).is_some());
 }
 
 #[test]
 fn returning_to_the_anchor_keeps_a_one_cell_selection() {
 	// Once shown, coming back selects the pressed cell alone, so a single
 	// character can still be selected.
-	let shown = Selection::dragged(at(5, 3), at(5, 4), None);
-	let back = Selection::dragged(at(5, 3), at(5, 3), shown).unwrap();
+	let shown = Selection::dragged(at(5, 3), at(5, 4), None, false);
+	let back = Selection::dragged(at(5, 3), at(5, 3), shown, false).unwrap();
 	assert_eq!(back.ordered(), (at(5, 3), at(5, 3)));
 }
 
 #[test]
 fn the_anchor_stays_put_while_the_end_follows_the_pointer() {
-	let shown = Selection::dragged(at(5, 3), at(9, 9), None);
-	let next = Selection::dragged(at(5, 3), at(7, 0), shown).unwrap();
+	let shown = Selection::dragged(at(5, 3), at(9, 9), None, false);
+	let next = Selection::dragged(at(5, 3), at(7, 0), shown, false).unwrap();
 	assert_eq!((next.start, next.end), (at(5, 3), at(7, 0)));
 }
 
 #[test]
 fn dragging_backwards_orders_the_selection() {
-	let selection = Selection::dragged(at(5, 3), at(2, 7), None).unwrap();
+	let selection = Selection::dragged(at(5, 3), at(2, 7), None, false).unwrap();
 	assert_eq!(selection.ordered(), (at(2, 7), at(5, 3)));
-	let same_row = Selection::dragged(at(5, 3), at(5, 0), None).unwrap();
+	let same_row = Selection::dragged(at(5, 3), at(5, 0), None, false).unwrap();
 	assert_eq!(same_row.ordered(), (at(5, 0), at(5, 3)));
 }
 
@@ -283,6 +283,7 @@ fn a_selection_keeps_its_text_when_full_history_evicts_lines() {
 	let selection = Selection {
 		start: at(bottom, 0),
 		end: at(bottom, 5),
+		block: false,
 	};
 	assert_eq!(selected_row(&term, selection).as_deref(), Some("target"));
 	feed(&mut term, b"\r\nnext\r\nmore");
@@ -298,6 +299,7 @@ fn a_selection_keeps_its_text_when_history_is_cleared() {
 	let selection = Selection {
 		start: at(line, 0),
 		end: at(line, 3),
+		block: false,
 	};
 	feed(&mut term, b"\x1b[3J");
 	assert!(term.scrollback.is_empty());
@@ -309,6 +311,7 @@ fn lines_become_rows_by_subtracting_the_evicted_count() {
 	let selection = Selection {
 		start: at(12, 4),
 		end: at(10, 1),
+		block: false,
 	};
 	let rows = selection.in_rows(10).unwrap();
 	assert_eq!((rows.start, rows.end), (at(0, 1), at(2, 4)), "and ordered");
@@ -323,6 +326,7 @@ fn a_partly_evicted_selection_starts_at_the_oldest_row() {
 	let selection = Selection {
 		start: at(3, 6),
 		end: at(7, 2),
+		block: false,
 	};
 	let rows = selection.in_rows(5).unwrap();
 	assert_eq!((rows.start, rows.end), (at(0, 0), at(2, 2)));
@@ -338,6 +342,7 @@ fn a_fully_evicted_selection_is_gone() {
 	let selection = Selection {
 		start: at(3, 6),
 		end: at(7, 2),
+		block: false,
 	};
 	assert!(selection.in_rows(8).is_none());
 	assert!(selection.in_rows(usize::MAX).is_none());
@@ -351,6 +356,7 @@ fn without_history_a_selection_follows_its_line_up_then_disappears() {
 	let selection = Selection {
 		start: at(line, 0),
 		end: at(line, 5),
+		block: false,
 	};
 	feed(&mut term, b"\r\nnext");
 	assert_eq!(selection.in_rows(term.history_base).unwrap().start.row, 0);
@@ -370,7 +376,117 @@ fn lowering_the_history_limit_keeps_the_selection_on_a_surviving_line() {
 	let selection = Selection {
 		start: at(line, 0),
 		end: at(line, 3),
+		block: false,
 	};
 	term.set_scrollback_limit(3);
 	assert_eq!(selected_row(&term, selection).as_deref(), Some("keep"));
+}
+
+fn linear(start: CellPoint, end: CellPoint) -> Selection {
+	Selection {
+		start,
+		end,
+		block: false,
+	}
+}
+
+fn block(start: CellPoint, end: CellPoint) -> Selection {
+	Selection {
+		start,
+		end,
+		block: true,
+	}
+}
+
+#[test]
+fn a_linear_selection_runs_from_the_start_to_the_end_of_each_line() {
+	let selection = linear(at(2, 5), at(4, 3));
+	assert_eq!(selection.span(1, 10), None);
+	assert_eq!(selection.span(2, 10), Some((5, 9)));
+	assert_eq!(selection.span(3, 10), Some((0, 9)));
+	assert_eq!(selection.span(4, 10), Some((0, 3)));
+	assert_eq!(selection.span(5, 10), None);
+	assert_eq!(
+		linear(at(2, 8), at(2, 3)).span(2, 10),
+		Some((3, 8)),
+		"dragged backwards"
+	);
+}
+
+#[test]
+fn a_block_selection_takes_the_same_columns_on_every_row() {
+	let selection = block(at(2, 5), at(4, 3));
+	assert_eq!(selection.span(1, 10), None);
+	for row in 2..=4 {
+		assert_eq!(selection.span(row, 10), Some((3, 5)), "row {row}");
+	}
+	assert_eq!(selection.span(5, 10), None);
+}
+
+#[test]
+fn a_block_has_the_same_corners_whichever_way_it_was_dragged() {
+	let corners = (at(2, 3), at(4, 5));
+	for (from, to) in [
+		(at(2, 3), at(4, 5)),
+		(at(4, 5), at(2, 3)),
+		(at(2, 5), at(4, 3)),
+		(at(4, 3), at(2, 5)),
+	] {
+		assert_eq!(block(from, to).ordered(), corners, "{from:?} to {to:?}");
+	}
+	// A linear selection keeps the text order instead.
+	assert_eq!(linear(at(2, 5), at(4, 3)).ordered(), (at(2, 5), at(4, 3)));
+}
+
+#[test]
+fn spans_stop_at_the_last_column_and_an_empty_grid_has_none() {
+	assert_eq!(linear(at(0, 2), at(0, 40)).span(0, 10), Some((2, 9)));
+	assert_eq!(block(at(0, 2), at(3, 40)).span(1, 10), Some((2, 9)));
+	assert_eq!(
+		block(at(0, 12), at(3, 40)).span(1, 10),
+		None,
+		"right of the grid"
+	);
+	assert_eq!(linear(at(0, 0), at(0, 3)).span(0, 0), None);
+}
+
+#[test]
+fn contains_agrees_with_span() {
+	for selection in [linear(at(1, 6), at(3, 2)), block(at(1, 6), at(3, 2))] {
+		for row in 0..5 {
+			for col in 0..10 {
+				let inside = selection
+					.span(row, 10)
+					.is_some_and(|(l, r)| (l..=r).contains(&col));
+				assert_eq!(
+					selection.contains(at(row, col)),
+					inside,
+					"{selection:?} at ({row}, {col})"
+				);
+			}
+		}
+	}
+	assert!(!block(at(1, 6), at(3, 2)).contains(at(2, 1)));
+	assert!(linear(at(1, 6), at(3, 2)).contains(at(2, 1)));
+}
+
+#[test]
+fn an_alt_drag_makes_a_block_and_a_press_alone_still_selects_nothing() {
+	assert!(Selection::dragged(at(5, 3), at(5, 3), None, true).is_none());
+	let selection = Selection::dragged(at(5, 3), at(7, 1), None, true).unwrap();
+	assert!(selection.block);
+	assert_eq!(selection.span(6, 10), Some((1, 3)));
+	assert!(
+		!Selection::dragged(at(5, 3), at(7, 1), None, false)
+			.unwrap()
+			.block
+	);
+}
+
+#[test]
+fn a_partly_evicted_block_keeps_its_columns() {
+	let rows = block(at(3, 6), at(7, 2)).in_rows(5).unwrap();
+	assert!(rows.block);
+	assert_eq!(rows.ordered(), (at(0, 2), at(2, 6)));
+	assert!(block(at(3, 6), at(7, 2)).in_rows(8).is_none());
 }
