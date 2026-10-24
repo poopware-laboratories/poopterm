@@ -1,5 +1,17 @@
 # Changelog
 
+## 26.10.68 "Giga Fly" — 2026-10-24
+
+### Fixed
+
+- Let the keypad type its labels while numlock is honored (#94) (input).
+- Give the entry a description so tic stops warning (#93) (terminfo).
+- Percent-encode zsh hook bytes without the locale on musl (#95) (shell).
+
+### Maintenance
+
+- Update dependencies (#96) (deps).
+
 ## 26.10.67 "Giga Fly" — 2026-10-21
 
 ### Maintenance
