@@ -94,9 +94,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install libraries and nightly Rust
-        # No zsh yet: its hooks mis-encode non-ASCII bytes on musl.
+        # zsh, bash and fish: the shell integration tests run each of them.
         run: |
-          apk add --no-cache build-base pkgconf libx11-dev libxkbcommon-dev wayland-dev curl bash fish python3 binutils
+          apk add --no-cache build-base pkgconf libx11-dev libxkbcommon-dev wayland-dev curl bash fish zsh python3 binutils
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
           sh /tmp/rustup.sh -y --default-toolchain nightly --profile minimal
       - name: Run tests
