@@ -24,10 +24,18 @@ impl App {
 		self.grid_geometry().point_at(x, y)
 	}
 
+	/// `point`, a row of the current scrollback and screen, as a line that
+	/// keeps naming the same text when full history evicts lines.
+	fn to_line(&self, point: CellPoint) -> CellPoint {
+		CellPoint {
+			row: point.row + self.active_term().history_base,
+			col: point.col,
+		}
+	}
+
 	pub(super) fn selected_text(&self) -> Option<String> {
-		let selection = self.selection?;
-		let (start, end) = selection.ordered();
 		let term = self.active_term();
+		let (start, end) = self.selection?.in_rows(term.history_base)?.ordered();
 		let mut result = String::new();
 		for row in start.row..=end.row {
 			let Some(cells) = term.row_cells(row) else {
@@ -194,7 +202,7 @@ impl App {
 	/// pointer is dragged to another cell, so clicks leave no mark.
 	pub(super) fn begin_selection(&mut self, x: f64, y: f64) {
 		if let Some(point) = self.point_at(x, y) {
-			self.drag_anchor = Some(point);
+			self.drag_anchor = Some(self.to_line(point));
 			if self.selection.take().is_some() {
 				self.request_redraw();
 			}
@@ -229,7 +237,7 @@ impl App {
 		let Some(anchor) = self.drag_anchor else {
 			return;
 		};
-		let point = self.grid_geometry().nearest(x, y);
+		let point = self.to_line(self.grid_geometry().nearest(x, y));
 		let selection = Selection::dragged(anchor, point, self.selection);
 		if selection.map(Selection::ordered) != self.selection.map(Selection::ordered) {
 			self.selection = selection;

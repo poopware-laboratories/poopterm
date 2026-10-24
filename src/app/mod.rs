@@ -120,8 +120,9 @@ pub(crate) struct App {
 	canvas: canvas::Canvas,
 	/// `POOPTERM_FULL_REDRAW` set: never redraw partially (for visual checks).
 	full_redraw_only: bool,
+	/// In lines, which count evicted history, so it stays on its text.
 	selection: Option<Selection>,
-	/// Where the selection being dragged with the mouse started.
+	/// Where the selection being dragged with the mouse started, in lines.
 	drag_anchor: Option<CellPoint>,
 	search_active: bool,
 	search_dirty: bool,
