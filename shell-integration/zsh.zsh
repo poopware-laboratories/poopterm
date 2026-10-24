@@ -7,14 +7,17 @@ fi
 autoload -Uz add-zsh-hook add-zle-hook-widget
 
 # Percent-encodes every byte of $1 outside the URI-unreserved set into
-# REPLY, so control characters cannot end an OSC sequence early.
+# REPLY, so control characters cannot end an OSC sequence early. Bytes are
+# read as numbers, not through the locale: musl's C locale maps 0x80-0xFF
+# to U+DF80-U+DFFF, so printf "'c" turned é into %DFC3%DFA9 there.
 _poopterm_url_encode() {
+	setopt local_options no_multibyte
 	local LC_ALL=C char hex
 	REPLY=
 	for char in ${(s::)1}; do
 		case $char in
 			([a-zA-Z0-9/._~-]) REPLY+=$char ;;
-			(*) printf -v hex '%%%02X' "'$char"; REPLY+=$hex ;;
+			(*) printf -v hex '%%%02X' $(( #char & 255 )); REPLY+=$hex ;;
 		esac
 	done
 }
