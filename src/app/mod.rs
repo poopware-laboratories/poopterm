@@ -47,7 +47,7 @@ use crate::{
 	theme::{Theme, ThemeKind},
 	ui::{
 		search::find_matches,
-		selection::{CellPoint, Selection},
+		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
 			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
@@ -121,7 +121,8 @@ pub(crate) struct App {
 	/// `POOPTERM_FULL_REDRAW` set: never redraw partially (for visual checks).
 	full_redraw_only: bool,
 	selection: Option<Selection>,
-	selecting: bool,
+	/// Where the selection being dragged with the mouse started.
+	drag_anchor: Option<CellPoint>,
 	search_active: bool,
 	search_dirty: bool,
 	search_query: String,
@@ -352,7 +353,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		canvas: canvas::Canvas::new(),
 		full_redraw_only: std::env::var_os("POOPTERM_FULL_REDRAW").is_some(),
 		selection: None,
-		selecting: false,
+		drag_anchor: None,
 		search_active: false,
 		search_dirty: false,
 		search_query: String::new(),

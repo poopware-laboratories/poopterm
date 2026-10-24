@@ -2,6 +2,8 @@
 pub(crate) mod links;
 pub(crate) mod search;
 pub(crate) mod selection;
+#[cfg(test)]
+mod selection_tests;
 pub(crate) mod tabs;
 #[cfg(test)]
 mod tabs_horizontal_edge_tests;

@@ -6,22 +6,22 @@ use crate::ui::links::{LinkAction, link_action};
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
 impl App {
-	pub(super) fn point_at(&self, x: f64, y: f64) -> Option<CellPoint> {
+	/// Where the active terminal's grid sits in the window.
+	pub(super) fn grid_geometry(&self) -> GridGeometry {
 		let term = self.active_term();
-		let grid_left = self.grid_left();
-		if x < grid_left as f64
-			|| x >= (grid_left + term.cols * self.cw) as f64
-			|| y < self.top as f64
-			|| y >= (self.height as usize).saturating_sub(self.status_height + self.margin) as f64
-		{
-			return None;
+		GridGeometry {
+			left: self.grid_left(),
+			top: self.top,
+			bottom: (self.height as usize).saturating_sub(self.status_height + self.margin),
+			cell: (self.cw, self.ch),
+			cols: term.cols,
+			rows: term.rows,
+			first_row: term.scrollback.len().saturating_sub(term.scroll_offset),
 		}
-		let col = ((x as usize - grid_left) / self.cw.max(1)).min(term.cols - 1);
-		let row = ((y as usize - self.top) / self.ch.max(1)).min(term.rows - 1);
-		Some(CellPoint {
-			row: term.scrollback.len().saturating_sub(term.scroll_offset) + row,
-			col,
-		})
+	}
+
+	pub(super) fn point_at(&self, x: f64, y: f64) -> Option<CellPoint> {
+		self.grid_geometry().point_at(x, y)
 	}
 
 	pub(super) fn selected_text(&self) -> Option<String> {
@@ -190,15 +190,13 @@ impl App {
 		true
 	}
 
+	/// A press clears the old selection; a new one appears only once the
+	/// pointer is dragged to another cell, so clicks leave no mark.
 	pub(super) fn begin_selection(&mut self, x: f64, y: f64) {
 		if let Some(point) = self.point_at(x, y) {
-			self.selection = Some(Selection {
-				start: point,
-				end: point,
-			});
-			self.selecting = true;
-			if let Some(window) = &self.window {
-				window.request_redraw();
+			self.drag_anchor = Some(point);
+			if self.selection.take().is_some() {
+				self.request_redraw();
 			}
 		}
 	}
@@ -207,10 +205,7 @@ impl App {
 	/// when its prompt asked for that (OSC 133 `cl=`), or reaches the shell
 	/// as a mouse report (`click_events`).
 	fn move_cursor_to_click(&mut self, x: f64, y: f64) {
-		let dragged = self
-			.selection
-			.is_none_or(|selection| selection.start != selection.end);
-		if dragged || self.mods.ctrl || self.mods.shift || self.mods.alt || self.mods.super_key {
+		if self.mods.ctrl || self.mods.shift || self.mods.alt || self.mods.super_key {
 			return;
 		}
 		let Some(point) = self.point_at(x, y) else {
@@ -229,17 +224,16 @@ impl App {
 		}
 	}
 
+	/// Drags past the grid's edges keep selecting up to the nearest cell.
 	pub(super) fn extend_selection(&mut self, x: f64, y: f64) {
-		if !self.selecting {
+		let Some(anchor) = self.drag_anchor else {
 			return;
-		}
-		if let Some(point) = self.point_at(x, y) {
-			if let Some(selection) = &mut self.selection {
-				selection.end = point;
-			}
-			if let Some(window) = &self.window {
-				window.request_redraw();
-			}
+		};
+		let point = self.grid_geometry().nearest(x, y);
+		let selection = Selection::dragged(anchor, point, self.selection);
+		if selection.map(Selection::ordered) != self.selection.map(Selection::ordered) {
+			self.selection = selection;
+			self.request_redraw();
 		}
 	}
 }
@@ -307,7 +301,7 @@ impl App {
 		let previous = self.cursor_pos;
 		self.cursor_pos = (position.x, position.y);
 		self.update_hovered_link();
-		if self.selecting {
+		if self.drag_anchor.is_some() {
 			self.extend_selection(position.x, position.y);
 		} else {
 			let button = self.held_button.unwrap_or(MouseButtonCode::None);
@@ -412,10 +406,11 @@ impl App {
 				}
 			}
 			if state == ElementState::Released {
-				if button == MouseButton::Left && !handled && self.selecting {
+				// The press cleared the selection; none means no drag.
+				let clicked = self.drag_anchor.take().is_some() && self.selection.is_none();
+				if button == MouseButton::Left && !handled && clicked {
 					self.move_cursor_to_click(x, y);
 				}
-				self.selecting = false;
 			}
 		}
 	}
