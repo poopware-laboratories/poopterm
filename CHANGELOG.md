@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.69 "Giga Fly" — 2026-10-24
+
+### Fixed
+
+- Select nothing on a plain click and keep selecting past the edges (#97) (ui).
+
 ## 26.10.68 "Giga Fly" — 2026-10-24
 
 ### Fixed
