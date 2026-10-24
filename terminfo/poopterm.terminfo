@@ -3,7 +3,7 @@
 # poopterm implements; derived from xterm-256color minus unsupported
 # capabilities, plus truecolor, synchronized output, styled underlines,
 # focus events, title (status line) support, cursor color and overline.
-xterm-poopterm|poopterm,
+xterm-poopterm|poopterm|Poopterm terminal emulator,
 	am,
 	AX,
 	bce,
