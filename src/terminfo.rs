@@ -157,6 +157,35 @@ pub(super) mod tests {
 	}
 
 	#[test]
+	fn the_entry_compiles_without_warnings() {
+		if !have("tic") {
+			return;
+		}
+		let dir = TempDir::new("warnings");
+		let source = dir.0.join("poopterm.terminfo");
+		fs::write(&source, SOURCE).unwrap();
+		let output = Command::new("tic")
+			.arg("-x")
+			.arg("-o")
+			.arg(&dir.0)
+			.arg(&source)
+			.output()
+			.unwrap();
+		assert!(output.status.success());
+		// Every install runs tic, so anything it prints is seen by users.
+		assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+	}
+
+	#[test]
+	fn the_last_name_field_is_a_description_and_the_aliases_remain() {
+		let header = SOURCE.lines().find(|line| !line.starts_with('#')).unwrap();
+		let names: Vec<&str> = header.trim_end_matches(',').split('|').collect();
+		assert_eq!(&names[..2], ["xterm-poopterm", "poopterm"]);
+		let description = names.last().unwrap();
+		assert!(names.len() > 2 && description.contains(' '), "{header}");
+	}
+
+	#[test]
 	fn infocmp_escapes_are_decoded_in_every_notation() {
 		// ncurses 6 prints ^? and \E; macOS's ncurses 5.7 prints octal.
 		assert_eq!(decode("^?"), "\x7f");
