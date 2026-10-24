@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.70 "Giga Fly" — 2026-10-24
+
+### Fixed
+
+- Keep the selection on its text when full history evicts lines (#98) (ui).
+
 ## 26.10.69 "Giga Fly" — 2026-10-24
 
 ### Fixed
