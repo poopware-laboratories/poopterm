@@ -268,6 +268,10 @@ pub(super) mod tests {
 		}
 		use crate::input::keypad::encode_keypad;
 		let text = |s: &str| Key::Character(s.into());
+		// The keypad caps describe xterm's table, which applies once ?1035
+		// stops NumLock from making the keypad type its labels.
+		let mut keypad = app;
+		keypad.keyboard.numlock = false;
 		for (cap, key) in [
 			("kent", Key::Named(NamedKey::Enter)),
 			("kb2", Key::Named(NamedKey::Clear)),
@@ -278,7 +282,7 @@ pub(super) mod tests {
 			("kpDIV", text("/")),
 			("kpCMA", text(",")),
 		] {
-			let sent = encode_keypad(&key, none, app).unwrap();
+			let sent = encode_keypad(&key, none, keypad).unwrap();
 			assert_eq!(
 				caps.get(cap).map(String::as_bytes),
 				Some(sent.as_slice()),
