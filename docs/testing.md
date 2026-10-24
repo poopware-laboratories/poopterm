@@ -23,7 +23,7 @@ Benchmarks are ignored tests, run in release mode with `--ignored
 | `parser_throughput` (`src/bench`) | Parser and terminal on the benchmark corpus. |
 | `inflate_throughput` (`src/inflate/throughput_bench.rs`) | Our inflate against `miniz_oxide` on image-like and synthetic streams. |
 | `font_engine_speed`, `font_engine_stages` (`src/fonts/font_bench.rs`) | Our rasterizer against fontdue, whole and per stage. |
-| `highlight_rendering_throughput` (`src/app/canvas_pixels.rs`) | Full against partial redraws. |
+| `highlight_rendering_throughput` (`src/app/canvas_pixels_tests.rs`) | Full against partial redraws. |
 
 `installed_fonts_match_fontdue` is ignored too: it compares every font
 installed on the machine, which is slow and differs between machines.
@@ -43,7 +43,7 @@ of the module as `#[cfg(test)] mod name_tests;`. The larger suites:
 |-------|----------------|
 | `src/term/tests.rs` | Emulation: bytes in, grid/cursor/modes/replies out. Includes the randomized bounds test and the parser differential test. |
 | `src/term/kitty_tests.rs`, `src/term/kitty_animation_tests.rs` | Kitty graphics emulation: commands in, placements, stored images, frames, cursor and replies out. Their helpers (`terminal`, `send`, `replies`) give 10×20 pixel cells. |
-| `src/app/canvas_pixels.rs` | Pixel tests: partial redraws equal full redraws (highlights, scrolling, images, placeholders, animation frames), and image layering. |
+| `src/app/canvas_pixels_tests.rs` | Pixel tests: partial redraws equal full redraws (highlights, scrolling, images, placeholders, animation frames), and image layering. |
 | `src/input/*` | Exact byte sequences for keys, mouse reports, paste and scrolling. |
 | `src/app/settings.rs`, `src/ui/*` | Hit-testing and layout as pure functions. |
 | `src/pty/*` | Output queue backpressure and the non-blocking writer (real pipes and threads). |
@@ -109,7 +109,7 @@ only gather inputs and apply results.
 
 ## Visual checks
 
-`src/app/canvas_pixels.rs` checks that partial redraws match full redraws
+`src/app/canvas_pixels_tests.rs` checks that partial redraws match full redraws
 pixel for pixel, and a few exact pixels (image layering, placeholder
 fitting). It cannot judge whether something looks right, so when changing
 drawing code, also compare a fixed screen before and after:
@@ -134,7 +134,7 @@ Notes:
   redraws.
 - Where screenshots are unavailable (Wayland without X access), render the
   same bytes headlessly instead: a temporary ignored test that feeds them to
-  a `Term`, draws the `Frame` with the helpers in `canvas_pixels.rs` and
+  a `Term`, draws the `Frame` with the helpers in `canvas_pixels_tests.rs` and
   saves a PNG with `image::save_buffer`. Remove the test afterwards.
 - Debug builds panic if a thread locks a terminal it already holds, so run
   new UI code paths in a debug build at least once.

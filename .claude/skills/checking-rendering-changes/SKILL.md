@@ -11,7 +11,7 @@ Full process: `docs/testing.md#visual-checks`.
 
 ## 1. Pixel tests
 
-`src/app/canvas_pixels.rs` checks that partial redraws equal full redraws
+`src/app/canvas_pixels_tests.rs` checks that partial redraws equal full redraws
 pixel for pixel, and exact pixels for layering and placeholders. Add a case
 for what you changed (highlights, scrolling, images, animation frames).
 Drawing decisions belong in pure functions (`render::damage`, layout in
@@ -33,7 +33,7 @@ Drawing decisions belong in pure functions (`render::damage`, layout in
 
 No screen (cloud session, Wayland without X)? Use a temporary ignored test
 that feeds the bytes to a `Term`, draws the `Frame` with the helpers in
-`canvas_pixels.rs`, and saves a PNG with `image::save_buffer`. Look at the
+`canvas_pixels_tests.rs`, and saves a PNG with `image::save_buffer`. Look at the
 PNG, then remove the test.
 
 ## 3. Partial against full redraws

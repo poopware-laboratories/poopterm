@@ -289,5 +289,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "canvas_pixels.rs"]
+#[path = "canvas_pixels_tests.rs"]
 mod pixels;
