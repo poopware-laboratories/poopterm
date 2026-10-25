@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.89 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Keep the tab bar's border out of the padding above the grid (#123) (render).
+
 ## 26.10.88 "Giga Fly" — 2026-10-25
 
 ### Added
