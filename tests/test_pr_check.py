@@ -190,7 +190,9 @@ class Count(unittest.TestCase):
     }
 
     def count(self, added):
-        return pr_check.count(added, self.FILES.__getitem__)
+        tests, code, glue, problems = pr_check.count(added, self.FILES.__getitem__)
+        self.assertEqual((glue, problems), (0, []), 'no glue markers here')
+        return tests, code
 
     def test_lines_are_split_into_tests_and_code(self):
         self.assertEqual(self.count({'src/a.rs': [1, 4, 6, 7, 8, 9]}), (4, 2))
@@ -208,11 +210,11 @@ class Count(unittest.TestCase):
 
     def test_doc_comments_and_indented_comments_do_not_count(self):
         files = {'src/c.rs': '//! Module docs.\n/// Item docs.\n\t// note\nfn c() {} // trailing\n'}
-        self.assertEqual(pr_check.count({'src/c.rs': [1, 2, 3, 4]}, files.__getitem__), (0, 1))
+        self.assertEqual(pr_check.count({'src/c.rs': [1, 2, 3, 4]}, files.__getitem__)[:2], (0, 1))
 
     def test_python_docstrings_count_as_lines(self):
         files = {'scripts/d.py': '"""Docs."""\n    # note\nx = 1\n'}
-        self.assertEqual(pr_check.count({'scripts/d.py': [1, 2, 3]}, files.__getitem__), (0, 2))
+        self.assertEqual(pr_check.count({'scripts/d.py': [1, 2, 3]}, files.__getitem__)[:2], (0, 2))
 
     def test_each_file_is_read_once_and_only_if_it_has_additions(self):
         reads = []
@@ -243,6 +245,140 @@ class Ratio(unittest.TestCase):
     def test_the_ratio_scales_to_large_changes(self):
         self.assertIsNone(pr_check.ratio_problem(3000, 1000))
         self.assertIn('add 1 more', pr_check.ratio_problem(2999, 1000))
+
+class Glue(unittest.TestCase):
+    """Window glue: marked lines of src/app/ that run only with a real window,
+    so no test can reach them. They count for neither side, within limits."""
+
+    def region(self, body, reason='winit calls this when the scale changes'):
+        return f'fn a() {{}}\n\t// pr-check: window glue: {reason}\n{body}\t// pr-check: end window glue\nfn b() {{}}\n'
+
+    def check(self, path, text):
+        """((tests, code), (glue, problems)) with every line of `text` added."""
+        added = {path: list(range(1, len(text.splitlines()) + 1))}
+        tests, code, glue, problems = pr_check.count(added, {path: text}.__getitem__)
+        return (tests, code), (glue, problems)
+
+    def test_marked_lines_count_for_neither_side_and_are_reported(self):
+        text = self.region('\tself.apply_scale();\n\tself.resize(w, h);\n')
+        (tests, code), (lines, problems) = self.check('src/app/handler.rs', text)
+        self.assertEqual((tests, code), (0, 2), 'only fn a and fn b')
+        self.assertEqual((lines, problems), (2, []))
+
+    def test_without_markers_nothing_is_glue(self):
+        text = 'fn a() {}\nfn b() {}\n'
+        self.assertEqual(self.check('src/app/handler.rs', text), ((0, 2), (0, [])))
+
+    def test_a_region_needs_a_reason(self):
+        text = self.region('\tx();\n', reason='')
+        (_, code), (lines, problems) = self.check('src/app/a.rs', text)
+        self.assertEqual(lines, 0)
+        self.assertEqual(code, 3, 'without a reason the lines are code')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('src/app/a.rs:2', problems[0])
+        self.assertIn('reason', problems[0])
+
+    def test_glue_is_only_allowed_in_window_code(self):
+        text = self.region('\tx();\n')
+        for path in ['src/term/a.rs', 'src/ui/a.rs', 'scripts/a.py', 'src/appendix.rs']:
+            (_, code), (lines, problems) = self.check(path, text)
+            self.assertEqual(lines, 0, path)
+            self.assertIn('allowed only in src/app/', problems[0], path)
+
+    def test_regions_are_short(self):
+        body = ''.join(f'\tx{i}();\n' for i in range(pr_check.GLUE_LIMIT))
+        self.assertEqual(self.check('src/app/a.rs', self.region(body))[1], (pr_check.GLUE_LIMIT, []))
+        longer = body + '\ty();\n'
+        (_, code), (lines, problems) = self.check('src/app/a.rs', self.region(longer))
+        self.assertEqual(lines, 0, 'an oversized region exempts nothing')
+        self.assertEqual(code, pr_check.GLUE_LIMIT + 3)
+        self.assertIn(f'at most {pr_check.GLUE_LIMIT}', problems[0])
+
+    def test_blank_and_comment_lines_do_not_use_up_the_limit(self):
+        body = ''.join(f'\tx{i}();\n\n\t// why\n' for i in range(pr_check.GLUE_LIMIT))
+        self.assertEqual(self.check('src/app/a.rs', self.region(body))[1], (pr_check.GLUE_LIMIT, []))
+
+    def test_an_unterminated_region_is_refused(self):
+        text = 'fn a() {}\n// pr-check: window glue: reason\nx();\n'
+        (_, code), (lines, problems) = self.check('src/app/a.rs', text)
+        self.assertEqual((code, lines), (2, 0))
+        self.assertIn('never ends', problems[0])
+
+    def test_regions_do_not_nest_and_an_end_alone_is_refused(self):
+        text = '// pr-check: end window glue\nx();\n'
+        self.assertIn('without a start', self.check('src/app/a.rs', text)[1][1][0])
+        nested = self.region('\t// pr-check: window glue: again\n\tx();\n')
+        self.assertIn('inside another', self.check('src/app/a.rs', nested)[1][1][0])
+
+    def test_glue_in_test_code_is_not_needed_and_counts_as_tests(self):
+        text = '#[cfg(test)]\nmod tests {\n' + self.region('\tx();\n') + '}\n'
+        (tests, code), (lines, _) = self.check('src/app/a.rs', text)
+        self.assertEqual((code, lines), (0, 0))
+        self.assertEqual(tests, 6, 'the attribute, module, fn a, the call, fn b and the brace')
+
+    def test_only_added_glue_lines_are_counted(self):
+        text = self.region('\tx();\n\ty();\n')
+        read = {'src/app/a.rs': text}.__getitem__
+        self.assertEqual(pr_check.count({'src/app/a.rs': [4]}, read), (0, 0, 1, []))
+        self.assertEqual(pr_check.count({'src/app/a.rs': [1]}, read), (0, 1, 0, []))
+
+    def test_markers_in_test_code_are_ignored_even_unbalanced(self):
+        text = 'fn a() {}\n#[cfg(test)]\nmod tests {\n\t// pr-check: end window glue\n\tfn t() {}\n}\n'
+        (tests, code), (lines, problems) = self.check('src/app/a.rs', text)
+        self.assertEqual((tests, code, lines, problems), (4, 1, 0, []))
+
+    def test_a_region_of_only_comments_exempts_nothing_and_is_fine(self):
+        text = self.region('\t// a note\n\n')
+        self.assertEqual(self.check('src/app/a.rs', text), ((0, 2), (0, [])))
+
+    def test_the_oversized_problem_names_the_count_and_the_start(self):
+        body = ''.join(f'\tx{i}();\n' for i in range(pr_check.GLUE_LIMIT + 4))
+        problem = self.check('src/app/a.rs', self.region(body))[1][1][0]
+        self.assertTrue(problem.startswith('src/app/a.rs:2: window glue'), problem)
+        self.assertIn(f'holds {pr_check.GLUE_LIMIT + 4} lines', problem)
+
+    def test_agents_md_states_the_limit_the_check_enforces(self):
+        agents = (Path(__file__).parents[1] / 'AGENTS.md').read_text()
+        self.assertIn(f'A region holds at most {pr_check.GLUE_LIMIT} lines', agents)
+        self.assertIn('// pr-check: window glue: ', agents)
+        self.assertIn('// pr-check: end window glue', agents)
+        skill = (Path(__file__).parents[1] / '.claude/skills/meeting-the-test-ratio/SKILL.md').read_text()
+        self.assertIn(f'at most {pr_check.GLUE_LIMIT} lines', skill)
+
+    def test_directories_inside_the_window_code_are_window_code(self):
+        text = self.region('\tx();\n')
+        self.assertEqual(self.check('src/app/settings/view.rs', text)[1], (1, []))
+
+    def test_a_file_may_hold_several_regions(self):
+        text = self.region('\tx();\n') + self.region('\ty();\n\tz();\n')
+        self.assertEqual(self.check('src/app/a.rs', text), ((0, 4), (3, [])))
+
+    def test_markers_may_be_indented_and_the_end_may_have_trailing_blanks(self):
+        text = '\t\t// pr-check: window glue: deep in a match\n\t\tx();\n\t\t// pr-check: end window glue  \n'
+        self.assertEqual(self.check('src/app/a.rs', text), ((0, 0), (1, [])))
+
+    def test_an_end_marker_with_more_text_does_not_end_the_region(self):
+        text = '// pr-check: window glue: reason\nx();\n// pr-check: end window glue here\ny();\n'
+        (_, code), (lines, problems) = self.check('src/app/a.rs', text)
+        self.assertEqual((code, lines), (2, 0))
+        self.assertIn('never ends', problems[0])
+
+    def test_a_reason_of_only_blanks_is_no_reason(self):
+        text = self.region('\tx();\n', reason='   ')
+        self.assertIn('needs a reason', self.check('src/app/a.rs', text)[1][1][0])
+
+    def test_glue_and_problems_add_up_across_files(self):
+        files = {
+            'src/app/a.rs': self.region('\tx();\n'),
+            'src/app/b.rs': self.region('\ty();\n\tz();\n'),
+            'src/c.rs': self.region('\tw();\n'),
+        }
+        added = {path: list(range(1, 7)) for path in files}
+        tests, code, glue, problems = pr_check.count(added, files.__getitem__)
+        self.assertEqual((tests, glue), (0, 3))
+        self.assertEqual(code, 2 + 2 + 3, 'fn a and fn b in each, and the refused region')
+        self.assertEqual([p.split(':')[0] for p in problems], ['src/c.rs'])
+
 
 class Main(unittest.TestCase):
     def git(self, root, *args):
@@ -346,6 +482,45 @@ class Main(unittest.TestCase):
             stale = self.github_merge(root)
             self.assertEqual(self.run_check(root, 'docs: add readme', base=stale), 1)
             self.assertIn('0 test lines for 1 lines of code', self.errors)
+
+    def test_glue_is_reported_and_does_not_need_tests(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            (root / 'src/app').mkdir()
+            region = '// pr-check: window glue: winit only\nfn on_scale() {}\n// pr-check: end window glue\n'
+            (root / 'src/app/h.rs').write_text(region)
+            self.git(root, 'add', '.')
+            self.git(root, 'commit', '-qm', 'fix: handle scale changes')
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                code = pr_check.main(['--base', 'main', '--title', 'fix: handle scale changes'], cwd=root)
+            self.assertEqual(code, 0)
+            self.assertEqual(out.getvalue(), '0 test lines, 0 code lines, 1 window glue line\n')
+            (root / 'src/app/h.rs').write_text(region.replace('{}\n', '{}\nfn more() {}\n'))
+            self.git(root, 'commit', '-qam', 'fix: more')
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                pr_check.main(['--base', 'main', '--title', 'fix: more'], cwd=root)
+            self.assertEqual(out.getvalue(), '0 test lines, 0 code lines, 2 window glue lines\n')
+
+    def test_without_glue_the_summary_does_not_mention_it(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            (root / 'src/a.rs').write_text('fn a() {}\nfn b() {}\n')
+            self.git(root, 'commit', '-qam', 'feat: b')
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                pr_check.main(['--base', 'main', '--title', 'feat: b'], cwd=root)
+            self.assertEqual(out.getvalue(), '0 test lines, 1 code lines\n')
+
+    def test_bad_glue_fails_the_check(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            (root / 'src/b.rs').write_text('// pr-check: window glue: no\n// pr-check: end window glue\n')
+            self.git(root, 'add', '.')
+            self.git(root, 'commit', '-qm', 'fix: b')
+            self.assertEqual(self.run_check(root, 'fix: b'), 1)
+            self.assertIn('allowed only in src/app/', self.errors)
 
     def test_the_workflow_compares_with_the_merge_commits_first_parent(self):
         workflow = (Path(__file__).parents[1] / '.github/workflows/pr.yml').read_text()

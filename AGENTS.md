@@ -76,10 +76,24 @@ python3 scripts/pr_check.py --base origin/main --title "fix(render): close the a
   `#[cfg(test)] mod … { }` that closes a source file. Everything else in
   `.rs` and `.py` files is production code; other files are not counted.
 - Pull requests without production code (docs, CI, dependency bumps) pass.
-- There are no exemptions. Meet the ratio with tests that pin real
-  behavior: edge cases, bounds, failure paths, regressions, differential
-  cases. Never pad (duplicate assertions, filler, or loops that only add
-  lines); reviewers reject padding like any other bad test.
+- Meet the ratio with tests that pin real behavior: edge cases, bounds,
+  failure paths, regressions, differential cases. Never pad (duplicate
+  assertions, filler, or loops that only add lines); reviewers reject
+  padding like any other bad test.
+- The one exemption is **window glue**: lines in `src/app/` that only a
+  real window runs (a winit event arm, assigning sizes a pure function
+  computed), so no test can reach them. Mark them, with the reason:
+
+  ```rust
+  // pr-check: window glue: winit sends this when the output's scale changes
+  WindowEvent::ScaleFactorChanged { .. } => self.apply_scale(),
+  // pr-check: end window glue
+  ```
+
+  Marked lines count for neither side and `pr_check.py` reports how many
+  there are. A region holds at most 12 lines and must sit in `src/app/`.
+  Use it only after moving every decision into a tested pure function;
+  logic inside a glue region is rejected in review.
 - When a change cannot meet the ratio cheaply, that usually means it is too
   big or too hard to test. Split it, or make the logic pure and testable.
 
