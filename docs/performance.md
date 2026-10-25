@@ -149,37 +149,41 @@ Intel i3-N305 (8 E-cores, AVX2), Linux, plain release build (no PGO).
 **Headless** is `poopterm --benchmark --mib 16 --no-render` at 120×40,
 starting from a full scrollback, median of 3 runs: first at 26.10.3 plus
 the synchronized-output and combining-mark changes below (`d48ebd6`), then
-at 26.10.42 with our own inflate (#57). **End to end** is
+at 26.10.42 with our own inflate (#57), and at 26.10.93 (after the
+regression recovery, runtime CPU dispatch and the emoji work). **End to end** is
 `scripts/bench-throughput.py --mib 16 --repeat 3` in a poopterm window of
 100×30 cells (median MB/s), measured at `d48ebd6` and not yet repeated.
 
-| Workload | End to end (`d48ebd6`) | Headless (`d48ebd6`) | Headless (26.10.42) |
-|----------|-----------:|---------:|---------:|
-| log (plain ASCII) | 86 | 204 | 248 |
-| compiler (colors, hyperlinks) | 77 | 122 | 153 |
-| ls --color | 86 | 143 | 182 |
-| source (highlighted) | 105 | 131 | 139 |
-| unicode (accented, Greek, Cyrillic) | 83 | 92 | 138 |
-| cjk | 86 | 102 | 154 |
-| emoji (ZWJ, combining marks) | 63 | 69 | 120 |
-| tui (sync blocks, htop-like) | 161 | 175 | 204 |
-| editor (scroll regions) | 159 | 165 | 213 |
-| progress bars | 175 | 190 | 286 |
-| truecolor half blocks | 248 | 261 | 240 |
-| cursor motion | 119 | 123 | 144 |
-| shell prompts (OSC 133/7/0/8) | 90 | 115 | 142 |
-| sixel | 72 | 76 | 149 |
-| kitty-rgba | 301 | 1021 | 1023 |
-| kitty-png | 108 | 111 | 113 |
-| kitty-zlib | 224 | 233 | 246 |
-| **overall** | **108** | **133** | **175** |
+| Workload | End to end (`d48ebd6`) | Headless (`d48ebd6`) | Headless (26.10.42) | Headless (26.10.93) |
+|----------|-----------:|---------:|---------:|---------:|
+| log (plain ASCII) | 86 | 204 | 248 | 276 |
+| compiler (colors, hyperlinks) | 77 | 122 | 153 | 188 |
+| ls --color | 86 | 143 | 182 | 223 |
+| source (highlighted) | 105 | 131 | 139 | 175 |
+| unicode (accented, Greek, Cyrillic) | 83 | 92 | 138 | 154 |
+| cjk | 86 | 102 | 154 | 173 |
+| emoji (ZWJ, combining marks) | 63 | 69 | 120 | 135 |
+| tui (sync blocks, htop-like) | 161 | 175 | 204 | 241 |
+| editor (scroll regions) | 159 | 165 | 213 | 265 |
+| progress bars | 175 | 190 | 286 | 371 |
+| truecolor half blocks | 248 | 261 | 240 | 260 |
+| cursor motion | 119 | 123 | 144 | 186 |
+| shell prompts (OSC 133/7/0/8) | 90 | 115 | 142 | 153 |
+| sixel | 72 | 76 | 149 | 152 |
+| kitty-rgba | 301 | 1021 | 1023 | 1070 |
+| kitty-png | 108 | 111 | 113 | 116 |
+| kitty-zlib | 224 | 233 | 246 | 231 |
+| **overall** | **108** | **133** | **175** | **198** |
 
 End-to-end figures sit below headless ones where the PTY and the window
 cost more than parsing: at `d48ebd6` plain ASCII parsed at 204 MB/s but
 arrived at 86 MB/s, and raw kitty RGBA is limited by the PTY, not the
 decoder. Where parsing dominates (emoji, Unicode, tui) the two are close.
 Truecolor's headless figure has varied between 240 and 260 MB/s across
-builds without a code change behind it.
+builds without a code change behind it. At 26.10.93 the workloads still
+below 200 MB/s headless are emoji, sixel, shell, unicode, cjk, source,
+kitty-png, cursor and compiler; between runs the medians move by a few
+percent, so compare builds by alternating them (see above).
 
 ### Before 26.10
 
@@ -321,9 +325,9 @@ encoded input:
 
 | Workload | Before the kitty protocol | Now |
 |----------|-------------------------:|----:|
-| kitty-rgba | ignored | ~1020–1110 (~700) |
-| kitty-zlib | ignored | ~246 (~210) |
-| kitty-png | ignored | ~113 (~107) |
+| kitty-rgba | ignored | ~1020–1110 (~700) | 1070 |
+| kitty-zlib | ignored | ~246 (~210) | 231 |
+| kitty-png | ignored | ~113 (~107) | 116 |
 
 Before, APC strings were dropped unread, so those workloads only measured
 the scan for their end. Decoding base64 with SIMD took kitty-rgba from about

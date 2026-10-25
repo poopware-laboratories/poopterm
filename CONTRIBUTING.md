@@ -74,7 +74,9 @@ targets (`aarch64-apple-darwin`, `x86_64-unknown-freebsd`); see
   file past about 400 lines; put encoding, layout and state changes in plain
   functions that tests can call without a window.
 
-[`docs/architecture.md`](docs/architecture.md) is the map of the code.
+[`docs/architecture.md`](docs/architecture.md) is the map of the code;
+[`docs/UNSAFE.md`](docs/UNSAFE.md) lists every `unsafe` block and why it is
+sound.
 
 ## Commits and pull request titles
 
