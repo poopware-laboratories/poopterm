@@ -45,7 +45,7 @@ use crate::{
 	term::{Frame, Term, TermGuard},
 	theme::{Theme, ThemeKind},
 	ui::{
-		contrast::{selection_colors, tab_text_colors},
+		contrast::selection_colors,
 		layout::{Layout, layout},
 		scale::{chrome, chrome_factor, chrome_scale, font_px},
 		search::find_matches,
@@ -67,7 +67,7 @@ pub(crate) struct App {
 	/// The terminal font size in points: Settings' size, changed by zoom.
 	font_points: crate::ui::font_size::FontSize,
 	/// What the vertical tab sidebar last drew, for partial redraws.
-	sidebar_shown: Option<draw_vertical_tabs::SidebarView>,
+	sidebar_shown: Option<crate::ui::sidebar::SidebarState>,
 	wallpaper: Option<Wallpaper>,
 	wallpaper_strength: usize,
 	fonts: FontSet,

@@ -1,5 +1,9 @@
 //! Mouse handling for horizontal tab scrolling and the vertical tab sidebar.
 use super::*;
+use crate::{
+	render::header::Icon,
+	ui::sidebar::{SidebarTarget, sidebar_target},
+};
 use winit::event::{ElementState, MouseButton};
 
 impl App {
@@ -40,59 +44,18 @@ impl App {
 			return false;
 		}
 		if state == ElementState::Pressed && button == MouseButton::Left {
-			let inside = |(left, top, width, height): (usize, usize, usize, usize)| {
-				x >= left as f64
-					&& x < (left + width) as f64
-					&& y >= top as f64
-					&& y < (top + height) as f64
-			};
-			if self.preferences.show_settings_button
-				&& layout.settings_y.is_some_and(|y| {
-					inside((
-						layout.settings_x,
-						y,
-						layout.button_width,
-						layout.button_height,
-					))
-				}) {
-				self.open_settings_window(event_loop);
-			} else if self.preferences.show_new_tab_button
-				&& layout
-					.plus_y
-					.is_some_and(|y| inside((layout.plus_x, y, layout.button_width, layout.button_height)))
-			{
-				self.add_tab();
-			} else if y >= layout.tab_start_y as f64 {
-				for local in 0..layout.visible_count {
-					let index = layout.first_visible + local;
-					if index >= self.sessions.len() {
-						break;
-					}
-					let row_y = layout.row_y(index);
-					let row_h = layout
-						.row_height_for(index)
-						.saturating_sub(4 * layout.scale);
-					if y < row_y as f64 || y >= (row_y + row_h) as f64 {
-						continue;
-					}
-					let row_x = 6 * layout.scale;
-					let close_width = if layout.compact_rail {
-						18 * layout.scale
-					} else {
-						24 * layout.scale
-					};
-					if self.sessions.len() > 1
-						&& x >= (row_x + layout.tab_width.saturating_sub(close_width)) as f64
-					{
-						self.close_tab(index, event_loop);
-					} else {
-						self.activate_tab(index);
-					}
-					break;
+			// pr-check: window glue: routes a click to what the tested sidebar_target found
+			match sidebar_target(&layout, self.sessions.len(), (x, y)) {
+				Some(SidebarTarget::Button(Icon::Menu)) => self.open_settings_window(event_loop),
+				Some(SidebarTarget::Button(_)) => self.add_tab(),
+				Some(SidebarTarget::Tab { index, close: true }) => self.close_tab(index, event_loop),
+				Some(SidebarTarget::Tab { index, .. }) => self.activate_tab(index),
+				None if y < layout.tab_start_y as f64 => {
+					let _ = self.window.as_ref().map(|window| window.drag_window());
 				}
-			} else if let Some(window) = &self.window {
-				let _ = window.drag_window();
+				None => {}
 			}
+			// pr-check: end window glue
 			self.request_redraw();
 		}
 		true

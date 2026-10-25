@@ -60,6 +60,15 @@ pub(crate) struct HeaderTab<'a> {
 	pub close: Option<bool>,
 }
 
+/// What every part of the chrome is drawn with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Style {
+	pub scale: usize,
+	/// The text size.
+	pub px: f32,
+	pub colors: HeaderColors,
+}
+
 pub(crate) struct Header<'a> {
 	pub y: usize,
 	pub height: usize,
@@ -93,62 +102,97 @@ pub(crate) fn draw_header(p: &mut Painter, fonts: &mut FontSet, header: &Header)
 	let separator = (y + height).saturating_sub(scale);
 	p.rect(0, y, p.width, height, header.colors.bar);
 	p.rect(0, separator, p.width, scale, header.colors.separator);
+	let style = Style {
+		scale,
+		px: header.px,
+		colors: header.colors,
+	};
 	for tab in &header.tabs {
-		draw_tab(p, fonts, header, tab);
+		draw_tab(
+			p,
+			fonts,
+			style,
+			pill(tab.x, tab.width, (y, height), scale),
+			tab,
+		);
 	}
 	for button in &header.buttons {
-		draw_button(p, fonts, header, button);
+		draw_button(p, fonts, style, button);
 	}
 }
 
-fn draw_tab(p: &mut Painter, fonts: &mut FontSet, header: &Header, tab: &HeaderTab) {
-	let (scale, colors) = (header.scale, header.colors);
-	let bounds = (header.y, header.height);
-	let (x, y, width, height) = pill(tab.x, tab.width, bounds, scale);
+/// Draws `tab` on its surface `(x, y, width, height)`, its parts centered
+/// across it.
+pub(crate) fn draw_tab(
+	p: &mut Painter,
+	fonts: &mut FontSet,
+	style: Style,
+	rect: Rect,
+	tab: &HeaderTab,
+) {
+	let (scale, colors, px) = (style.scale, style.colors, style.px);
+	let (x, y, width, height) = rect;
 	let surface = tab.fill.unwrap_or(colors.bar);
 	if let Some(fill) = tab.fill {
 		p.round_rect(x, y, width, height, 6 * scale, fill);
 	}
 	let mut left = x + 12 * scale;
-	let (line_height, ascent) = line(fonts, header.px);
-	let top = header.y + header.height.saturating_sub(line_height) / 2;
+	let (line_height, ascent) = line(fonts, px);
+	let top = y + height.saturating_sub(line_height) / 2;
 	match tab.badge {
 		Some(Badge::Dot(color)) => {
 			let size = 6 * scale;
-			let dot_y = header.y + header.height.saturating_sub(size) / 2;
+			let dot_y = y + height.saturating_sub(size) / 2;
 			p.round_rect(left, dot_y, size, size, size / 2, color);
 			left += size + 8 * scale;
 		}
 		Some(Badge::Bell(color)) => {
-			p.text(fonts, left, top, "!", header.px, ascent, color);
-			left += fonts.advance('!', header.px) + 6 * scale;
+			p.text(fonts, left, top, "!", px, ascent, color);
+			left += fonts.advance('!', px) + 6 * scale;
 		}
 		None => {}
 	}
 	let right = if tab.close.is_some() { 28 } else { 12 } * scale;
 	let room = (x + width).saturating_sub(right).saturating_sub(left);
-	let font = (header.px, ascent);
+	let font = (px, ascent);
 	draw_label(p, fonts, &tab.label, top, font, (left, y, room, height));
 	if let Some(hovered) = tab.close {
-		let (cx, cy, size, _) = close_rect(tab.x, tab.width, bounds, scale);
+		let (cx, cy, size, _) = close_rect(x, width, (y, height), scale);
 		if hovered {
 			p.round_rect(cx, cy, size, size, size / 2, blend(surface, colors.fg, 40));
 		}
 		let center = (cx + size / 2, cy + size / 2);
-		centered_text(p, fonts, "×", center, header.px, colors.fg);
+		centered_text(p, fonts, "×", center, px, colors.fg);
 	}
-	if let Some((share, color)) = tab.progress {
-		let (left, track) = (x + 12 * scale, width.saturating_sub(24 * scale));
-		let row = (y + height).saturating_sub(3 * scale);
-		p.rect(left, row, track, 2 * scale, blend(surface, color, 60));
-		let done = share.map_or(track, |share| track * usize::from(share.min(100)) / 100);
-		let shade = if share.is_some() { 255 } else { 140 };
-		p.rect(left, row, done, 2 * scale, blend(surface, color, shade));
+	if let Some(progress) = tab.progress {
+		draw_progress(p, scale, rect, surface, progress);
 	}
 }
 
-fn draw_button(p: &mut Painter, fonts: &mut FontSet, header: &Header, button: &HeaderButton) {
-	let (scale, colors) = (header.scale, header.colors);
+/// Draws a progress bar of `share`, or a dimmer full one when the share is
+/// unknown, along the bottom of the tab surface `rect`.
+pub(crate) fn draw_progress(
+	p: &mut Painter,
+	scale: usize,
+	(x, y, width, height): Rect,
+	surface: u32,
+	(share, color): (Option<u8>, u32),
+) {
+	let (left, track) = (x + 12 * scale, width.saturating_sub(24 * scale));
+	let row = (y + height).saturating_sub(3 * scale);
+	p.rect(left, row, track, 2 * scale, blend(surface, color, 60));
+	let done = share.map_or(track, |share| track * usize::from(share.min(100)) / 100);
+	let shade = if share.is_some() { 255 } else { 140 };
+	p.rect(left, row, done, 2 * scale, blend(surface, color, shade));
+}
+
+pub(crate) fn draw_button(
+	p: &mut Painter,
+	fonts: &mut FontSet,
+	style: Style,
+	button: &HeaderButton,
+) {
+	let (scale, colors) = (style.scale, style.colors);
 	let (x, y, width, height) = button.rect;
 	if button.hovered && button.enabled {
 		p.round_rect(x, y, width, height, 6 * scale, colors.hover);
@@ -175,8 +219,8 @@ fn draw_button(p: &mut Painter, fonts: &mut FontSet, header: &Header, button: &H
 				bar(p, (cx - 7 * scale, row - stroke / 2), (14 * scale, stroke));
 			}
 		}
-		Icon::Left => centered_text(p, fonts, "‹", (cx, cy), header.px * 1.3, color),
-		Icon::Right => centered_text(p, fonts, "›", (cx, cy), header.px * 1.3, color),
+		Icon::Left => centered_text(p, fonts, "‹", (cx, cy), style.px * 1.3, color),
+		Icon::Right => centered_text(p, fonts, "›", (cx, cy), style.px * 1.3, color),
 	}
 }
 
@@ -190,7 +234,7 @@ fn line(fonts: &FontSet, px: f32) -> (usize, i32) {
 }
 
 /// Draws `text` with its advance and line centered on `(x, y)`.
-fn centered_text(
+pub(crate) fn centered_text(
 	p: &mut Painter,
 	fonts: &mut FontSet,
 	text: &str,

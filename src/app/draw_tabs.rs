@@ -16,12 +16,12 @@ pub(super) fn hit(cursor: (f64, f64), (x, y, w, h): (usize, usize, usize, usize)
 }
 
 impl App {
-	pub(super) fn draw_tab_bar(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
+	pub(super) fn draw_tab_bar(&mut self, p: &mut Painter, ui: UiFont) {
 		if !self.preferences.show_tabs {
 			return;
 		}
 		if self.preferences.vertical_tabs {
-			self.draw_vertical_tab_bar(p, scale, ui);
+			self.draw_vertical_tab_bar(p, ui);
 			return;
 		}
 		let layout = self.tab_layout();
@@ -48,7 +48,7 @@ impl App {
 }
 
 /// What the header shows of `session`.
-fn tab_info(session: &Session) -> TabInfo {
+pub(super) fn tab_info(session: &Session) -> TabInfo {
 	// pr-check: window glue: copies a live session's state, which needs a running shell
 	// The title locks the terminal itself, so it comes first.
 	let title = session.title();
