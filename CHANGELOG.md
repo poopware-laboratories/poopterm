@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.95 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Fix stale and broken docs and make them consistent (#131).
+
 ## 26.10.94 "Giga Fly" — 2026-10-25
 
 ### Maintenance
