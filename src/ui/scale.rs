@@ -22,6 +22,15 @@ pub(crate) fn chrome_scale(factor: f64) -> usize {
 	(usable(factor).round() as usize).max(1)
 }
 
+/// The font size the chrome is designed around: Settings' default.
+pub(crate) const UI_POINTS: usize = 18;
+
+/// The factor the chrome is drawn at: the display factor, grown with fonts
+/// larger than [`UI_POINTS`] so tab and status text get larger with them.
+pub(crate) fn chrome_factor(factor: f64, font_points: usize) -> f64 {
+	factor * (font_points as f64 / UI_POINTS as f64).max(1.0)
+}
+
 /// The terminal font size in pixels for a size in points at `factor`.
 pub(crate) fn font_px(points: usize, factor: f64) -> f32 {
 	points as f32 * usable(factor) as f32
@@ -185,5 +194,41 @@ mod tests {
 			assert_eq!(chrome(factor, false).tab_height, 44 * scale, "{factor}");
 			assert_eq!(chrome(factor, true).titlebar_height, 44 * scale, "{factor}");
 		}
+	}
+
+	#[test]
+	fn the_default_font_size_leaves_the_chrome_at_the_display_scale() {
+		for factor in [1.0, 1.25, 1.5, 2.0, 3.0] {
+			assert_eq!(chrome_factor(factor, UI_POINTS), factor);
+		}
+	}
+
+	#[test]
+	fn larger_fonts_grow_the_chrome_in_whole_steps() {
+		let scale = |factor, points| chrome_scale(chrome_factor(factor, points));
+		assert_eq!(scale(1.0, 26), 1, "1.44 rounds down");
+		assert_eq!(scale(1.0, 27), 2, "1.5 rounds up");
+		assert_eq!(scale(1.0, 32), 2);
+		assert_eq!(scale(1.0, 72), 4);
+		assert_eq!(scale(2.0, 32), 4);
+		assert_eq!(scale(1.25, 24), 2, "both factors count");
+	}
+
+	#[test]
+	fn smaller_fonts_never_shrink_the_chrome() {
+		assert_eq!(chrome_factor(1.0, 6), 1.0);
+		assert_eq!(chrome_factor(2.0, 10), 2.0);
+		assert_eq!(chrome_factor(1.5, 0), 1.5);
+	}
+
+	#[test]
+	fn the_chrome_scale_stays_bounded_at_any_font_size() {
+		assert_eq!(chrome_scale(chrome_factor(8.0, 72)), MAX_SCALE);
+		assert_eq!(
+			chrome_scale(chrome_factor(f64::NAN, 72)),
+			1,
+			"a broken factor"
+		);
+		assert_eq!(chrome_scale(chrome_factor(1.0, usize::MAX)), MAX_SCALE);
 	}
 }

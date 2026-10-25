@@ -48,7 +48,7 @@ use crate::{
 	ui::{
 		contrast::{selection_colors, tab_text_colors},
 		layout::{Layout, layout},
-		scale::{chrome, chrome_scale, font_px},
+		scale::{chrome, chrome_factor, chrome_scale, font_px},
 		search::find_matches,
 		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
@@ -192,7 +192,7 @@ impl App {
 	pub(super) fn apply_scale(&mut self) {
 		let factor = self.factor();
 		// pr-check: window glue: copies the sizes ui::scale computed into App
-		let chrome = chrome(factor, cfg!(target_os = "macos"));
+		let chrome = chrome(self.chrome_factor(), cfg!(target_os = "macos"));
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -203,7 +203,7 @@ impl App {
 
 	/// The grid's place in the window with the current chrome and settings.
 	pub(super) fn layout(&self) -> Layout {
-		let chrome = chrome(self.factor(), cfg!(target_os = "macos"));
+		let chrome = chrome(self.chrome_factor(), cfg!(target_os = "macos"));
 		layout(
 			&chrome,
 			self.scale(),

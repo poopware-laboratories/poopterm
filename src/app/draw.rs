@@ -44,7 +44,12 @@ pub(super) struct UiFont {
 impl App {
 	/// The whole-number scale the window chrome is drawn at.
 	pub(super) fn scale(&self) -> usize {
-		chrome_scale(self.factor())
+		chrome_scale(self.chrome_factor())
+	}
+
+	/// The display factor grown with large fonts, which the chrome follows.
+	pub(super) fn chrome_factor(&self) -> f64 {
+		chrome_factor(self.factor(), self.font_points)
 	}
 
 	/// The window's display scale factor.
