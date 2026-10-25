@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.76 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Zoom the terminal font with ctrl+= ctrl+- and ctrl+0 (#106) (input).
+
+### Fixed
+
+- Keep dimmed and accented tab text readable in every theme (#105) (ui).
+
 ## 26.10.75 "Giga Fly" — 2026-10-25
 
 ### Maintenance
