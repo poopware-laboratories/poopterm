@@ -48,6 +48,8 @@ pub(crate) struct QuadPipeline {
 	layout: RawPipelineLayout,
 	set_layout: RawDescriptorSetLayout,
 	sampler: RawSampler,
+	/// What it draws to.
+	pub(super) format: Format,
 	/// Dropped after the rest is destroyed, as it was made from it.
 	pub(super) device: Rc<Device>,
 }
@@ -73,6 +75,7 @@ impl QuadPipeline {
 			layout: 0,
 			set_layout: 0,
 			sampler: 0,
+			format,
 			device: device.clone(),
 		};
 		// Shaders fetch texels by index, so the sampler's settings matter

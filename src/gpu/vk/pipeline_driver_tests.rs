@@ -4,7 +4,7 @@
 //! hands out handles, and destroys them.
 use super::{
 	buffer_tests::GARBAGE,
-	descriptor_types::{DescriptorPoolSize, RawDescriptorPool},
+	descriptor_types::{DescriptorPoolSize, RawDescriptorPool, RawDescriptorSet},
 	driver_tests::{Driver, with},
 	pipeline_types::*,
 	types::*,
@@ -49,6 +49,9 @@ pub(super) struct Objects {
 	pub pools: Vec<(u32, Vec<DescriptorPoolSize>)>,
 	/// The pool and layout of each descriptor set.
 	pub sets: Vec<(RawDescriptorPool, RawDescriptorSetLayout)>,
+	/// Each descriptor written: its set and binding, and the buffer and
+	/// range, or the view and layout, it was written with.
+	pub writes: Vec<(RawDescriptorSet, u32, u64, u64)>,
 	/// The handles of every kind not destroyed yet, but sets, which go
 	/// with their pool.
 	pub live: Vec<u64>,
@@ -67,8 +70,8 @@ pub(super) const SCISSOR: i32 = 1;
 const MODULES: u64 = 0x60_0000;
 const SAMPLERS: u64 = 0x61_0000;
 pub(super) const SET_LAYOUTS: u64 = 0x62_0000;
-const PIPELINE_LAYOUTS: u64 = 0x63_0000;
-const PIPELINES: u64 = 0x64_0000;
+pub(super) const PIPELINE_LAYOUTS: u64 = 0x63_0000;
+pub(super) const PIPELINES: u64 = 0x64_0000;
 
 /// The fake's shader and pipeline function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
