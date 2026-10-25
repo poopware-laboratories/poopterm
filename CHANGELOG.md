@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.86 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Record that the 26.10.23 parser regression is recovered (#120) (todo).
+
 ## 26.10.85 "Giga Fly" — 2026-10-25
 
 ### Added
