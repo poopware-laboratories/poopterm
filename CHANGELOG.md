@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.121 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Add the quad shaders and their vulkan pipeline (#161) (gpu).
+
 ## 26.10.120 "Giga Fly" — 2026-10-25
 
 ### Added
