@@ -242,20 +242,33 @@ and position, and placeholder slices row by row.
 - `render::painter::Painter` wraps the frame buffer with clipped `rect`,
   `round_rect`, `button`, `text` and `glyph` operations.
 - `render::glyphs::FontSet` owns the primary and fallback fonts and caches
-  rasterized glyphs by `(char, size)` in an `FxHashMap`; the fallback font is
-  resolved only on a cache miss. When no loaded font has a character,
-  `fonts::fallback::SystemFallback` opens the font database (each face records
-  the Unicode pages its `cmap` maps) and loads matching installed fonts, at
-  most four per character and 32 in all.
-  Emoji-presentation characters prefer a font with a color bitmap
-  (`fonts::cbdt` reads `CBLC`/`CBDT`, `fonts::color` scales the PNG to the
-  font size); `Glyph::color` holds those pixels, which the painter blends
-  in their own colors, unslanted by italic.
+  rasterized glyphs by `(char, size, presentation)` in an `FxHashMap`; the
+  font is resolved only on a cache miss. The order is fixed: the primary
+  font, the configured fallbacks, then installed fonts. For those,
+  `fonts::fallback::SystemFallback` opens the font database on the first
+  missing character (each face records the Unicode pages its `cmap` maps),
+  ranks the faces that cover the character's page (memoized per page), and
+  returns the best ranked one that has it, loading candidates on the way: at
+  most four per character and 32 in all. A character's font therefore never
+  depends on what was drawn before (#127).
+- Emoji-presentation characters, and those with VS16, prefer a font with a
+  color bitmap; VS15 prefers an outline (`glyphs::Presentation`).
+  `fonts::cbdt` reads `CBLC`/`CBDT` and `fonts::color` scales the PNG to the
+  font size; `Glyph::color` holds those pixels, which the painter blends in
+  their own colors, unslanted by italic. sbix (#129) and COLR are not read
+  yet.
+- Emoji sequences inside one cell (ZWJ sequences, keycaps, tag flags) are
+  shaped by our own GSUB engine (`fonts::gsub`, `fonts::otl`) into the
+  font's ligature (`glyphs::clusters`, cached per cluster and size). Flags
+  from regional indicator pairs and skin-tone modifiers stay in separate
+  cells, as wcwidth counts them; `render::cell_joins` lets the first cell
+  draw the joined glyph across both, and the second only its background.
 - `render::grid::draw_grid` draws a `GridView`: cells right to left (so wide
   glyphs paint over their spacer), cursor, selection, search match, underline
   and strike styles, hyperlinks, combining marks and images.
 - `render::blend` blends glyph coverage four pixels at a time with
-  `portable_simd`.
+  `portable_simd`; the painter runs an x86-64-v3 copy of the glyph path
+  when the CPU has it (see [`UNSAFE.md`](UNSAFE.md)).
 - `app/draw.rs` composes a full frame: background or wallpaper, tab bar
   (`draw_tabs.rs`), terminal grid, search box, command palette, status bar.
   The Settings window is drawn by `app/settings_view.rs`.

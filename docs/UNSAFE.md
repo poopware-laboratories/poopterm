@@ -1,0 +1,187 @@
+# Unsafe code
+
+Poopterm is written in safe Rust except for a few small places where no safe
+API exists or where the safe one costs measurable throughput on a hot path.
+This file lists every one of them: what it does, why it is sound, why it is
+not safe code, and what tests it. Update it in the same pull request that
+adds, moves or removes an `unsafe` block.
+
+## The rules
+
+From [`AGENTS.md`](../AGENTS.md):
+
+- `unsafe` is allowed only where no safe API exists: SIMD intrinsics, `libc`
+  calls, and conversions proven valid on hot paths.
+- Keep it in the smallest block that needs it, behind a safe function.
+- Every block starts with a `// SAFETY:` comment that says why it is sound.
+
+The compiler enforces the comments: `Cargo.toml` denies clippy's
+`undocumented_unsafe_blocks` and rustc's `unsafe_op_in_unsafe_fn`. An
+`unsafe fn` must still wrap each unsafe operation inside it in its own
+commented block, and documents what callers must ensure under `# Safety`.
+
+These have no `unsafe`: the escape-sequence state machine's logic, the
+terminal model apart from the cell layout below, the font engine
+(`src/fonts`), our inflate (`src/inflate`), the kitty and Sixel decoders,
+input encoding and the UI. Dependencies have their own `unsafe` (winit,
+softbuffer, portable-pty, mimalloc, `image`); replacing them (see
+[`TODO.md`](../TODO.md)) moves that code here, under these rules.
+
+## Why there is any at all
+
+- **SIMD on the hot paths.** Throughput is a goal of the project (at least
+  200 MB/s on every payload). Portable SIMD (`std::simd`) is safe and is
+  used wherever it is fast enough. Where an x86 instruction has no portable
+  equivalent (non-temporal stores, `vpshufb` lookups in UTF-8 validation)
+  or the AVX2 build of a function is measurably faster, we call intrinsics
+  or compile a second copy of the function for the CPU's features. Both are
+  `unsafe` by language rule.
+- **Not checking twice.** Some data is already proven valid by an earlier
+  check on the same path: bytes validated as UTF-8, a character decoded by
+  SIMD from valid UTF-8. Checking again costs throughput for nothing, so
+  those few conversions skip the check.
+- **The operating system.** A few calls have no safe wrapper in `std`:
+  `getuid`, `gethostname`, POSIX shared memory, `mmap`, `madvise`, and one
+  Objective-C message on macOS. Since we write our own code instead of
+  adding crates, those calls are ours too.
+
+## Inventory
+
+Paths are relative to `src/`. Test-only blocks are listed at the end.
+
+### Functions compiled for x86-64-v3
+
+Hot functions are compiled twice: once for the baseline x86-64 target, and
+once with `#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]`.
+`crate::cpu::has_v3()` checks those features at runtime (the standard
+library caches the detection) and picks the copy. Calling a
+`target_feature` function is `unsafe`, because running it on a CPU without
+the features is undefined behavior.
+
+| Where | What |
+|-------|------|
+| `vt/mod.rs` `Parser::advance` → `advance_v3` | The tokenizer, the hottest loop. |
+| `parser/print.rs` `print_text` → `print_text_v3` | Writing text into cells. |
+| `render/painter.rs` `glyph` → `glyph_v3` | Blending glyph coverage into the frame. |
+| `term/mod.rs` `Cell::fill` → `term/fill.rs` `fill` (AVX2) | Filling runs of cells: erases, clears, new rows. |
+| `vt/utf8.rs` `is_valid` → `x86::is_valid` (AVX2) | UTF-8 validation of printable runs. |
+
+- **Sound because** each call site checks `has_v3()` (or AVX2 alone)
+  first, in the same function, and the `unsafe fn`s are private to their
+  module or crate.
+- **Tested** by differential tests that run both copies on the same input
+  and require identical results: `vt/tests.rs` (the tokenizer, also
+  against vte), `parser/dispatch_tests.rs` (parsing and printing),
+  `painter.rs` `both_variants` (glyph pixels), `term/fill_tests.rs` and
+  `vt/utf8_tests.rs` (every variant against `std::str::from_utf8`).
+- **Measured:** the v3 copies were kept only where they win (#125 for
+  glyph blending); a v3 base64 decoder measured slower and was dropped
+  (#36).
+
+### Intrinsics with raw pointers
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `term/fill.rs` | `_mm256_storeu_si256` (two cells) and `_mm_store_si128` (the last one) | The pointers come from `&mut [Cell]` chunks of exactly 32 and 16 bytes; `Cell` is 16-byte aligned. |
+| `term/scrollback.rs` `stream_copy` | `_mm_stream_si128` copies rows into history without pulling them into the cache | Cells are 16 bytes and 16-byte aligned; SSE2 is part of every x86-64 CPU. |
+| `term/scrollback.rs` `publish_streamed` | `_mm_sfence` after the streamed stores | Streaming stores are weakly ordered. The fence orders them before the unlock that publishes the rows to the render thread; without it the renderer could read stale cells. SSE is part of x86-64. |
+| `vt/utf8.rs` | `_mm_loadu_si128` and `_mm256_loadu_si256` loads | Each reads from an array or chunk of at least the loaded size; the tail is copied into a zero-padded block first. |
+
+There is no safe intrinsic for non-temporal stores, and the history copy
+is the largest `memmove` in text floods (see
+[`performance.md`](performance.md#where-the-time-goes-now)).
+
+### Reinterpreting cells
+
+`Cell` is `#[repr(C, align(16))]`: `ch` (4 bytes), `fg` (4), `bg` (4),
+`attrs` (1), `width` (1), `extra` (2). That is exactly 16 bytes with no
+padding, so every byte is initialized and the cell can be viewed as vector
+words. `term/tests.rs` asserts the size, and `transmute` refuses to compile
+if it changes.
+
+| Where | View |
+|-------|------|
+| `term/mod.rs` `Cell::bits` | The cell as one `u128` (equal exactly when the cells are). |
+| `term/mod.rs` `Cell::words` | The cell as `u32x4`, the character in lane 0. |
+| `term/mod.rs` `Cell::words_mut` | `&mut [Cell]` as `&mut [u32x4]`, to store whole cells with one vector store. |
+| `term/mod.rs` `Cell::fill` (portable path) | `&mut [Cell]` as `&mut [u64x2]`. |
+| `term/scrollback.rs` `trimmed_len` | `&[Cell]` as `&[u64]`, to find trailing blank cells four at a time. |
+
+The read-only views are always sound: any bit pattern is a valid integer.
+The mutable views can write any bits, but a `char` has invalid values
+(surrogates, above U+10FFFF), so writers must keep lane 0 a valid `char`:
+
+- `Cell::fill` writes copies of a real `Cell`, so this holds.
+- **Known gap:** `Cell::words_mut` is a safe `pub(crate)` function whose
+  callers must keep lane 0 valid. Its only caller, `parser/print.rs`,
+  stores characters decoded from validated UTF-8, so the code is sound
+  today. But a safe function should not carry a precondition. It should
+  become an `unsafe fn` with a `# Safety` section, or return a wrapper
+  that only accepts `Cell`s. A compile-time
+  `const _: () = assert!(size_of::<Cell>() == 16)` next to the struct
+  would also be better than the test assert.
+
+### Conversions proven valid earlier
+
+| Where | Conversion | Proven by |
+|-------|-----------|-----------|
+| `vt/mod.rs` `Handler::print_ascii` | `str::from_utf8_unchecked` | The tokenizer only passes `0x20..=0x7e` here, which is ASCII and so UTF-8. |
+| `vt/mod.rs` `text` (2 blocks) | `str::from_utf8_unchecked` | The run, or the prefix `from_utf8` reported valid, was validated just before. |
+| `vt/mod.rs` (character split across reads) | `str::from_utf8_unchecked` | `from_utf8` validated at least this character. |
+| `parser/narrow.rs` (2 blocks) | `char::from_u32_unchecked` | The SIMD decoder only reads lanes that end a character of input already validated as UTF-8, and valid UTF-8 never encodes a surrogate or anything above U+10FFFF. |
+
+The vt differential tests feed random and malformed bytes against vte, and
+`batched_printing_matches_per_character_printing` checks the narrow path
+against per-character printing, so a wrong proof shows up as a mismatch.
+
+### Moving rows
+
+`term/grid.rs` `rotate_left_one` rotates the row headers by one on every
+line feed in a full-screen scroll region. `slice::rotate_left(1)` copies
+through a buffer in three calls; this does one `ptr::read`, one
+`ptr::copy` and one `ptr::write`.
+
+- **Sound because** the first row is read out, the rest shift down inside
+  the slice, and the first is written into the slot that frees up. Every
+  row is owned exactly once again, and nothing in between can panic, so
+  no row is dropped twice or leaked.
+- **Called** only for non-empty slices.
+
+### Operating-system calls
+
+| Where | Call | Why it is sound |
+|-------|------|-----------------|
+| `dbus/mod.rs`, `notifier/freedesktop.rs` (2) | `libc::getuid` | Takes no arguments and cannot fail. Used for D-Bus `EXTERNAL` authentication and for a per-user icon directory, which is used only if it is ours and not group- or world-writable. |
+| `term/iterm.rs` | `libc::gethostname` | Writes into a buffer that is writable for the length passed. The result is checked, and the name is cut at the first NUL. |
+| `graphics/kitty/media.rs` | `shm_open`, `OwnedFd::from_raw_fd`, `shm_unlink` | The name is a valid C string. A non-negative result is a new descriptor that the `OwnedFd` then owns and closes. The object is unlinked straight away, as the kitty protocol requires, whatever happens next. |
+| `graphics/kitty/media.rs` (macOS) | `mmap`, `munmap` | macOS cannot `read` shared memory. The mapping is fresh, read-only and `offset + size` bytes, within the size the descriptor reports; the bytes are copied out and the mapping is removed before returning. |
+| `hugepages.rs` (Linux) | `madvise(MADV_HUGEPAGE)` | The range lies inside the buffer. The hint only changes how the kernel backs the pages, never their contents, and failures are ignored. |
+| `platform.rs` (macOS) | Objective-C `window`, then `setAlphaValue:` | `view` is the live `NSView` winit gave for the window; `window` returns its `NSWindow` or nil, checked before use, and both selectors take and return the types written. |
+
+The size and range checks (`range()` in `media.rs`, the kitty size limits)
+are safe code and are unit-tested. The calls themselves are covered where
+CI can run them: shared-memory transfers on Linux and macOS.
+
+### Test-only
+
+- `parser/dispatch_tests.rs`, `vt/tests.rs`, `render/painter.rs`
+  (`both_variants`): call the v3 copies directly, after checking
+  `has_v3()`, to compare them with the baseline.
+- `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
+  memory object the test owns, as a kitty client would.
+
+## Adding unsafe code
+
+1. Look for a safe way first: `std::simd`, a `std` API, or restructuring so
+   that the compiler can elide the check. Measure it; keep `unsafe` only for
+   a reproducible gain or when no safe API exists.
+2. Put it in the smallest block, inside a safe function whose signature
+   makes misuse impossible. If callers must ensure something, write an
+   `unsafe fn` with a `# Safety` section instead of a safe function with a
+   precondition.
+3. Write the `// SAFETY:` comment to prove soundness, not to restate the
+   code.
+4. Test it differentially against the safe path (or the oracle crate), and
+   run the tests in a debug build so overflow checks and debug assertions
+   are on.
+5. Add it to this file.

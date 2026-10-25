@@ -12,10 +12,12 @@ correct. The numbers below are minimums, not finish lines.
 CSI-heavy, cursor movement). 200 MB/s is the floor, not the ceiling: go
 higher wherever that stays safe (bounded memory, no skipped state, output
 identical to the slower path). Measured with `scripts/bench-throughput.py` in a real
-window. Headless on the i3-N305 (26.10.42) the workloads run at 113–1023
-MB/s (175 overall); emoji, Unicode, source, shell prompts, cursor motion,
-sixel, kitty PNG, compiler output, CJK and ls are still below the floor
-there, and end to end everything is lower. See [`docs/performance.md`](docs/performance.md).
+window. Headless on the i3-N305 (26.10.93, `--benchmark --mib 16
+--no-render`, median of 3) the workloads run at 116–1070 MB/s (198
+overall); emoji (135), sixel (152), shell prompts (153), Unicode (154),
+CJK (173), source (175), kitty PNG (116), cursor motion (186) and compiler
+output (188) are still below the floor there, and end to end everything is
+lower. See [`docs/performance.md`](docs/performance.md).
 
 **Images: as fast as possible** for Sixel and the kitty graphics protocol,
 from first byte to pixels on screen. There is no target to stop at; at least
@@ -25,10 +27,10 @@ match text throughput, within the explicit size limits on untrusted input.
   in the corpus, so `--benchmark` and `bench-throughput.py` cover them. Still
   missing: full-screen frames and animation, reported in frames per second.
 - **Sixel decoding.** Now decoded straight into one flat buffer of final
-  pixels (~150 MB/s headless); remaining candidates are SIMD band decoding
+  pixels (~152 MB/s headless); remaining candidates are SIMD band decoding
   and streaming decode instead of buffering the whole DCS.
 - **Kitty image decoding.** Raw RGBA parses at ~1 GB/s and zlib through our
-  own inflate at ~246 MB/s; PNG at ~113 MB/s spends ~60% inflating and ~20%
+  own inflate at ~231 MB/s; PNG at ~116 MB/s spends ~60% inflating and ~20%
   unfiltering inside the PNG crate. Our own PNG decoder (our inflate plus a
   SIMD unfilter) is the next step; the RGBA path could decode base64
   straight into pixels instead of through a byte buffer.
@@ -73,27 +75,29 @@ with a reproducible gain. The goal is heavily optimized binaries in **every
 release artifact** (deb, rpm, AppImage, macOS and whatever comes next). The
 packaging side of that is vgs499p's area.
 
-- **Profile-guided and post-link optimization**
-  - A staged PGO + BOLT pipeline producing the binary in every release
-    artifact ([#34](https://github.com/poopterm-labs/poopterm/issues/34)).
-  - Sample-based PGO (AutoFDO) from perf profiles of real use, with nightly
-    `-Zprofile-sample-use` ([#35](https://github.com/poopterm-labs/poopterm/issues/35)).
-- **Code generation**
-  - Runtime CPU dispatch (AVX2, AVX-512) for the SIMD hot paths, keeping a
-    baseline x86-64 binary ([#36](https://github.com/poopterm-labs/poopterm/issues/36)).
-  - `-Zbuild-std`, so LTO, PGO and `panic = "abort"` cover std too
-    ([#37](https://github.com/poopterm-labs/poopterm/issues/37)).
-  - Hot-function ordering and identical code folding at link time, which
-    also works on macOS ([#38](https://github.com/poopterm-labs/poopterm/issues/38)).
-- **Memory layout**
-  - Split `Term` into hot and cold state, with the per-byte parser state on
-    one or two cache lines ([#39](https://github.com/poopterm-labs/poopterm/issues/39)).
-  - Store grid and scrollback rows contiguously, not as one `Vec` per row
-    ([#40](https://github.com/poopterm-labs/poopterm/issues/40)).
-  - Shrink `Cell` below 16 bytes ([#41](https://github.com/poopterm-labs/poopterm/issues/41)).
-  - Cache-line alignment of the structures shared between threads, plus
-    prefetching where profiles show misses
-    ([#42](https://github.com/poopterm-labs/poopterm/issues/42)).
+Open:
+
+- A staged PGO + BOLT pipeline producing the binary in every release
+  artifact ([#34](https://github.com/poopterm-labs/poopterm/issues/34));
+  PGO (#32) and BOLT (#33) work for local builds already.
+- Sample-based PGO (AutoFDO) from perf profiles of real use, with nightly
+  `-Zprofile-sample-use` ([#35](https://github.com/poopterm-labs/poopterm/issues/35)).
+- Hot-function ordering and identical code folding at link time, which
+  also works on macOS ([#38](https://github.com/poopterm-labs/poopterm/issues/38)).
+- Shrink `Cell` below 16 bytes
+  ([#41](https://github.com/poopterm-labs/poopterm/issues/41)). Cache
+  misses during floods come from cell rows (`scroll_region_up`, frame
+  snapshots), so this is where layout work can still pay; packing
+  scrollback rows is the suggested first step.
+
+Done, or measured and dropped (the issues hold the numbers):
+
+- Done: runtime CPU dispatch to x86-64-v3 copies of the tokenizer,
+  printing, cell fills, UTF-8 validation and glyph blending (#36, #125);
+  scrollback as one contiguous ring instead of a `Vec` per row (#40).
+- Dropped: `-Zbuild-std` (#37: −0.9% overall, nothing hot runs in std);
+  splitting `Term` into hot and cold state (#39: within noise); prefetching
+  the next scrolled row and aligning shared structures (#42: −3.1%).
 - **The 26.10.23–26.10.27 regression is recovered.** That compatibility
   work cost 2–4% on tui, editor, cursor and progress and about 6% on
   unicode. Measured again at 26.10.83 (i3-N305, release, `--benchmark`
@@ -111,7 +115,7 @@ HiDPI sizes. It also takes memory bandwidth from the parser during floods,
 which is why floods are capped at 30 fps. Parse throughput stays CPU work.
 
 Tracked in [#30](https://github.com/poopterm-labs/poopterm/issues/30), with
-one issue per piece (#20–#29). All of it is claimed by @vx9k; ask on the
+one issue per piece (#21–#29; the renderer boundary, #20, is done). All of it is claimed by @vx9k; ask on the
 issue before starting a piece.
 
 - **Strict rule: no `wgpu`, WebGPU, OpenGL or binding crates.** Write our
@@ -137,9 +141,10 @@ issue before starting a piece.
   depending on window width. Repeated floods and clears do not raise it
   further, so no leak has been found; the memory is retained, not lost.
   Where it goes, worst first:
-  - *Fonts are read whole onto the heap.* Up to eight symbol fallback fonts
-    of up to 64 MB each (`fonts::load`) plus the main font are copied with
-    `fs::read`. macOS system fonts are large (PingFang, Hiragino, Apple
+  - *Fonts are read whole onto the heap.* The main font, the configured
+    fallbacks and up to 32 installed fallback fonts of up to 64 MB each
+    (loaded only when a character needs them, `fonts::fallback`) are copied
+    with `fs::read`. macOS system fonts are large (PingFang, Hiragino, Apple
     Color Emoji), which likely explains most of the macOS figure. Map font
     files read-only (`mmap`; `Font` already takes a `Cow<[u8]>`) so they
     cost shared, evictable page cache instead of private memory, and load
@@ -272,7 +277,10 @@ least as fast.
   through our own GSUB engine. So are flags from regional indicator pairs
   and skin-tone modifiers: the term keeps them in separate cells, as
   wcwidth counts them, and the renderer draws the font's joined glyph
-  across both (`render::cell_joins`). COLR and sbix remain.
+  across both (`render::cell_joins`). Installed fallback fonts are chosen
+  by rank, never by what loaded first (#127). Next: sbix
+  ([#129](https://github.com/poopterm-labs/poopterm/issues/129)), then
+  COLR v0 with CPAL, then COLR v1.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
