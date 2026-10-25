@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.110 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Draw the grid through a pen a gpu renderer can take (#148) (render).
+
 ## 26.10.109 "Giga Fly" — 2026-10-25
 
 ### Added
