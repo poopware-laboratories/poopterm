@@ -10,6 +10,9 @@ mod call_tests;
 pub(crate) mod choose;
 #[cfg(test)]
 mod choose_tests;
+pub(crate) mod commands;
+#[cfg(test)]
+mod commands_tests;
 pub(crate) mod device;
 #[cfg(test)]
 mod device_tests;
@@ -31,6 +34,9 @@ pub(crate) mod memory;
 mod memory_driver_tests;
 #[cfg(test)]
 mod memory_tests;
+pub(crate) mod submit_types;
+#[cfg(test)]
+mod submit_types_tests;
 pub(crate) mod timeline;
 #[cfg(test)]
 mod timeline_tests;
