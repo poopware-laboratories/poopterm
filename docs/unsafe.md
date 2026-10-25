@@ -155,17 +155,34 @@ through a buffer in three calls; this does one `ptr::read`, one
 | `graphics/kitty/media.rs` | `shm_open`, `OwnedFd::from_raw_fd`, `shm_unlink` | The name is a valid C string. A non-negative result is a new descriptor that the `OwnedFd` then owns and closes. The object is unlinked straight away, as the kitty protocol requires, whatever happens next. |
 | `graphics/kitty/media.rs` (macOS) | `mmap`, `munmap` | macOS cannot `read` shared memory. The mapping is fresh, read-only and `offset + size` bytes, within the size the descriptor reports; the bytes are copied out and the mapping is removed before returning. |
 | `hugepages.rs` (Linux) | `madvise(MADV_HUGEPAGE)` | The range lies inside the buffer. The hint only changes how the kernel backs the pages, never their contents, and failures are ignored. |
+| `gpu/vk/library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when the `Entry` that owns it drops, after the instance made from it is destroyed. |
 | `platform.rs` (macOS) | Objective-C `window`, then `setAlphaValue:` | `view` is the live `NSView` winit gave for the window; `window` returns its `NSWindow` or nil, checked before use, and both selectors take and return the types written. |
 
 The size and range checks (`range()` in `media.rs`, the kitty size limits)
 are safe code and are unit-tested. The calls themselves are covered where
 CI can run them: shared-memory transfers on Linux and macOS.
 
+### Vulkan
+
+Our own bindings in `gpu/vk` (Linux and FreeBSD) call the driver through
+function pointers the loader returns, which is `unsafe` by language rule.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `entry.rs` | `vkGetInstanceProcAddr` from `dlsym`, and `cast` | The specification gives each function name one type; `cast` turns the loader's `PFN_vkVoidFunction` into the type named with it, and checks at compile time that both are function pointers of one size. |
+| `entry.rs`, `instance.rs` | Calls into the driver | Every structure passed is `#[repr(C)]`, laid out as the specification declares it (tested field by field in `types_tests.rs`), and outlives the call; handles are live while their owner is; output pointers point to room for what the driver writes, which `call::enumerate` sizes from the count. Result codes become `Error`s, never panics. |
+| `instance.rs` | `vkDestroyInstance` on drop | The instance owns the handle, is not `Clone`, and owns nothing created from it yet. |
+
+The layouts and the enumeration logic are unit-tested without a driver;
+`loader_tests.rs` creates real instances, on Mesa's software driver in CI.
+
 ### Test-only
 
 - `parser/dispatch_tests.rs`, `vt/tests.rs`, `render/painter.rs`
   (`both_variants`): call the v3 copies directly, after checking
   `has_v3()`, to compare them with the baseline.
+- `gpu/vk/call_tests.rs`: fake drivers write items through the pointer
+  `enumerate` passes, within the count it gave.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 

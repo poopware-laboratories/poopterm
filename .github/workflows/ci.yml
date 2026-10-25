@@ -27,8 +27,10 @@ jobs:
 
       - name: Install Linux libraries
         if: runner.os == 'Linux'
-        # zsh and fish run the shell hooks' tests, which skip missing shells.
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish
+        # zsh and fish run the shell hooks' tests, which skip missing shells;
+        # Mesa's software Vulkan driver and the validation layer run the
+        # Vulkan tests.
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
 
       - name: Install nightly Rust
         run: rustup toolchain install nightly --profile minimal --component rustfmt --component clippy
@@ -41,6 +43,9 @@ jobs:
 
       - name: Run tests
         run: cargo +nightly test --locked
+        env:
+          # Fail, not skip, the Vulkan tests if the driver is missing.
+          POOPTERM_REQUIRE_VULKAN: ${{ runner.os == 'Linux' && '1' || '' }}
 
       - name: Run clippy
         run: cargo +nightly clippy --locked --all-targets -- -D warnings
