@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.108 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Pack color bitmaps into evictable atlas pages (#146) (gpu).
+
 ## 26.10.107 "Giga Fly" — 2026-10-25
 
 ### Added
