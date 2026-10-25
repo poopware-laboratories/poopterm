@@ -51,10 +51,8 @@ impl ApplicationHandler<UserEvent> for App {
 		// pr-check: window glue: runs once the real window exists
 		self.apply_scale();
 		// pr-check: end window glue
-		let size = PhysicalSize::new(
-			(self.cw * cols + self.grid_left() + self.margin) as u32,
-			(self.ch * rows + self.top + self.margin + self.status_height) as u32,
-		);
+		let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
+		let size = PhysicalSize::new(width as u32, height as u32);
 		let _ = self.window.as_ref().unwrap().request_inner_size(size);
 		self.update_window_title();
 		if let Some(millihertz) = window_refresh_millihertz(self.window.as_deref()) {
