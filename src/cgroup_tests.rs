@@ -309,13 +309,16 @@ fn the_worker_stops_on_hybrid_or_unmounted_hierarchies() {
 	}
 }
 
-/// Whether this machine runs a systemd user manager we may talk to.
+/// Whether this machine runs a systemd user manager that may move us: we
+/// must be in our user's slice, as in a login session, not in a system
+/// service such as a CI runner's, which only the system manager may move.
 fn user_systemd() -> bool {
 	let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
-	available(
-		&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default(),
-		true,
-	) && Path::new(&runtime).join("systemd/private").exists()
+	let ours = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+	let slice = format!("/user-{}.slice/", unsafe { libc::getuid() });
+	available(&ours, true)
+		&& ours.contains(&slice)
+		&& Path::new(&runtime).join("systemd/private").exists()
 		&& Path::new("/sys/fs/cgroup/cgroup.controllers").exists()
 }
 
