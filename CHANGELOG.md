@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.88 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Honor emoji and text variation selectors (#122) (render).
+
 ## 26.10.87 "Giga Fly" — 2026-10-25
 
 ### Added
