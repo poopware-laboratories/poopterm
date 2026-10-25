@@ -1,7 +1,8 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, entry::cast, instance::Instance, memory::MemoryType, submit_types::*, types::*,
+	call::Error, entry::cast, instance::Instance, memory::MemoryType, pipeline_types::*,
+	submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -35,6 +36,16 @@ pub(super) struct Functions {
 	pub barrier: CmdPipelineBarrier2,
 	pub upload: CmdCopyBufferToImage,
 	pub download: CmdCopyImageToBuffer,
+	pub create_module: CreateShaderModule,
+	pub destroy_module: DestroyShaderModule,
+	pub create_sampler: CreateSampler,
+	pub destroy_sampler: DestroySampler,
+	pub create_set_layout: CreateDescriptorSetLayout,
+	pub destroy_set_layout: DestroyDescriptorSetLayout,
+	pub create_pipeline_layout: CreatePipelineLayout,
+	pub destroy_pipeline_layout: DestroyPipelineLayout,
+	pub create_pipelines: CreateGraphicsPipelines,
+	pub destroy_pipeline: DestroyPipeline,
 }
 
 impl Functions {
@@ -72,6 +83,16 @@ impl Functions {
 				barrier: cast(function(c"vkCmdPipelineBarrier2")?),
 				upload: cast(function(c"vkCmdCopyBufferToImage")?),
 				download: cast(function(c"vkCmdCopyImageToBuffer")?),
+				create_module: cast(function(c"vkCreateShaderModule")?),
+				destroy_module: cast(function(c"vkDestroyShaderModule")?),
+				create_sampler: cast(function(c"vkCreateSampler")?),
+				destroy_sampler: cast(function(c"vkDestroySampler")?),
+				create_set_layout: cast(function(c"vkCreateDescriptorSetLayout")?),
+				destroy_set_layout: cast(function(c"vkDestroyDescriptorSetLayout")?),
+				create_pipeline_layout: cast(function(c"vkCreatePipelineLayout")?),
+				destroy_pipeline_layout: cast(function(c"vkDestroyPipelineLayout")?),
+				create_pipelines: cast(function(c"vkCreateGraphicsPipelines")?),
+				destroy_pipeline: cast(function(c"vkDestroyPipeline")?),
 			})
 		}
 	}

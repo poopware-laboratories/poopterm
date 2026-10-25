@@ -53,7 +53,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkCmdPipelineBarrier2" => transmute::<CmdPipelineBarrier2, VoidFunction>(barrier),
 			b"vkCmdCopyBufferToImage" => transmute::<CmdCopyBufferToImage, VoidFunction>(upload),
 			b"vkCmdCopyImageToBuffer" => transmute::<CmdCopyImageToBuffer, VoidFunction>(download),
-			_ => return None,
+			_ => return super::pipeline_driver_tests::function(name),
 		})
 	}
 }

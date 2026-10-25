@@ -13,6 +13,7 @@ use super::{
 	image_tests::{MadeImage, MadeView},
 	memory::MemoryType,
 	memory_driver_tests,
+	pipeline_driver_tests::Objects,
 	submit_types::RawCommandPool,
 	types::*,
 	version::api_version,
@@ -88,8 +89,9 @@ pub(super) struct Driver {
 	/// The layout each image was left in by the submissions so far, the
 	/// last one for an image counting.
 	pub image_layouts: Vec<(RawImage, i32)>,
-	/// Buffers, images, views, semaphores and pools destroyed and memory
-	/// freed, in order.
+	pub pipeline_objects: Objects,
+	/// Buffers, images, views, semaphores, pools, shader modules, samplers,
+	/// layouts and pipelines destroyed and memory freed, in order.
 	pub released: Vec<String>,
 	/// Valid usage rules the bindings broke.
 	pub invalid: Vec<String>,

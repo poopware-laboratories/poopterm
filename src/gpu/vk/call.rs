@@ -32,6 +32,8 @@ pub(crate) enum Error {
 	/// A copy outside its buffer or image, of nothing, between devices, or
 	/// with a buffer or image not made for it.
 	Copy,
+	/// A shader that is not SPIR-V Vulkan 1.3 takes.
+	Spirv,
 }
 
 impl fmt::Display for Error {
@@ -51,6 +53,7 @@ impl fmt::Display for Error {
 				"the Vulkan device cannot make a {width}×{height} image of {layers} layers"
 			),
 			Self::Copy => write!(f, "a Vulkan copy outside what it copies between"),
+			Self::Spirv => write!(f, "a shader is not SPIR-V for Vulkan 1.3"),
 		}
 	}
 }
