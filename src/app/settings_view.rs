@@ -96,7 +96,7 @@ const ABOUT_LINES: [(usize, &str); 6] = [
 		256,
 		"Free software with ABSOLUTELY NO WARRANTY; see LICENSE.",
 	),
-	(292, "Source: github.com/poopterm-labs/poopterm"),
+	(292, "Source: github.com/poopware-laboratories/poopterm"),
 	(328, "Built with Rust, winit, and softbuffer."),
 ];
 
@@ -436,7 +436,10 @@ mod tests {
 		assert!(text.contains("Copyright © 2026"), "{text}");
 		assert!(text.contains("NO WARRANTY"), "{text}");
 		assert!(text.contains("LICENSE"), "{text}");
-		assert!(text.contains("github.com/poopterm-labs/poopterm"), "{text}");
+		assert!(
+			text.contains("github.com/poopware-laboratories/poopterm"),
+			"{text}"
+		);
 	}
 
 	#[test]

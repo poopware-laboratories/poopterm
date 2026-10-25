@@ -247,7 +247,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: bash scripts/release.sh
       # Signs which run and commit built the packages; verify a download with
-      # `gh attestation verify <file> --repo poopterm-labs/poopterm`.
+      # `gh attestation verify <file> --repo poopware-laboratories/poopterm`.
       - name: Attest the released package
         if: hashFiles('dist/poopterm_*.deb') != ''
         uses: actions/attest-build-provenance@v4
