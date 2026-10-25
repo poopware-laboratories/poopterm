@@ -10,6 +10,8 @@ pub(crate) mod fit;
 pub(crate) mod fxhash;
 pub(crate) mod glyphs;
 pub(crate) mod grid;
+#[cfg(test)]
+pub(crate) mod grid_case_tests;
 pub(crate) mod header;
 #[cfg(test)]
 mod header_tests;
