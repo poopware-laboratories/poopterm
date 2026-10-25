@@ -90,7 +90,7 @@ pub(crate) fn color_font(chars: &[char], strikes: &[Strike]) -> Vec<u8> {
 	sfnt(&font_tables(chars, strikes))
 }
 
-fn font_tables(chars: &[char], strikes: &[Strike]) -> Vec<(&'static [u8; 4], Vec<u8>)> {
+pub(crate) fn font_tables(chars: &[char], strikes: &[Strike]) -> Vec<(&'static [u8; 4], Vec<u8>)> {
 	let (cblc, cbdt) = tables(strikes);
 	let mut head = vec![0; 54];
 	head[18..20].copy_from_slice(&2048u16.to_be_bytes());
@@ -120,7 +120,7 @@ fn font_tables(chars: &[char], strikes: &[Strike]) -> Vec<(&'static [u8; 4], Vec
 	]
 }
 
-fn sfnt(tables: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+pub(crate) fn sfnt(tables: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
 	let mut out = 0x0001_0000u32.to_be_bytes().to_vec();
 	out.extend((tables.len() as u16).to_be_bytes());
 	out.extend([0; 6]);

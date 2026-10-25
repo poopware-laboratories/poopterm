@@ -8,6 +8,8 @@ use super::{
 	cff::Cff,
 	cmap::Cmap,
 	glyf,
+	gsub::{Gsub, MAX_GLYPHS},
+	otl::Gdef,
 	read::Bytes,
 };
 
@@ -75,6 +77,8 @@ pub(crate) struct Face {
 	pub(crate) long_loca: bool,
 	cff: Option<Cff>,
 	cbdt: Option<Cbdt>,
+	gsub: Option<Gsub>,
+	gdef: Option<Gdef>,
 }
 
 /// Why a font could not be loaded.
@@ -161,6 +165,8 @@ impl Face {
 			long_loca: head.i16_at(50) == Some(1),
 			cff,
 			cbdt,
+			gsub: find(b"GSUB").and_then(|table| Gsub::parse(bytes, table)),
+			gdef: find(b"GDEF").and_then(|table| Gdef::parse(bytes, table)),
 			data: Cow::Borrowed(&[]),
 		};
 		Ok(Self { data, ..face })
@@ -182,6 +188,20 @@ impl Face {
 			.cmap
 			.map_or(0, |cmap| cmap.glyph(&self.data, ch as u32));
 		if glyph < self.glyphs { glyph } else { 0 }
+	}
+
+	/// The glyphs for a cluster of `chars`, after the substitutions of the
+	/// glyph composition and ligature features; at most [`MAX_GLYPHS`].
+	pub(crate) fn shape(&self, chars: &[char]) -> Vec<u16> {
+		let mut glyphs: Vec<u16> = chars
+			.iter()
+			.take(MAX_GLYPHS)
+			.map(|&ch| self.glyph_index(ch))
+			.collect();
+		if let Some(gsub) = &self.gsub {
+			gsub.apply(&self.data, self.gdef.as_ref(), &mut glyphs);
+		}
+		glyphs
 	}
 
 	/// Advance width of `glyph` in font units. Glyphs past the last metric

@@ -19,6 +19,11 @@ mod font_bench;
 #[cfg(test)]
 mod font_tests;
 mod glyf;
+mod gsub;
+#[cfg(test)]
+pub(crate) use gsub::tests as gsub_tests;
+mod gsub_context;
+mod otl;
 mod raster;
 mod read;
 mod sfnt;

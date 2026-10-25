@@ -71,14 +71,33 @@ impl Font {
 	}
 
 	pub(crate) fn metrics(&self, ch: char, px: f32) -> Metrics {
-		self.outline(ch, px).0
+		self.outline(self.face.glyph_index(ch), px).0
 	}
 
 	/// `ch` as color pixels (`0xAARRGGBB`, straight alpha), for fonts that
 	/// store it as a color bitmap.
 	pub(crate) fn rasterize_color(&self, ch: char, px: f32) -> Option<(Metrics, Vec<u32>)> {
-		let bitmap = self.face.color_bitmap(self.face.glyph_index(ch))?;
-		super::color::render(&bitmap, px)
+		self.rasterize_color_glyph(self.face.glyph_index(ch), px)
+	}
+
+	/// [`Self::rasterize_color`] for a glyph by its index.
+	pub(crate) fn rasterize_color_glyph(&self, glyph: u16, px: f32) -> Option<(Metrics, Vec<u32>)> {
+		super::color::render(&self.face.color_bitmap(glyph)?, px)
+	}
+
+	/// The one glyph this font forms from a cluster of several `chars`, such
+	/// as an emoji ZWJ sequence or a keycap, through its ligatures; tried
+	/// again without emoji variation selectors, which sequences may leave
+	/// out. `None` when the font draws them as separate glyphs.
+	pub(crate) fn ligature(&self, chars: &[char]) -> Option<u16> {
+		let one = |chars: &[char]| match self.face.shape(chars)[..] {
+			[glyph] if glyph != 0 && chars.len() > 1 => Some(glyph),
+			_ => None,
+		};
+		one(chars).or_else(|| {
+			let plain: Vec<char> = chars.iter().copied().filter(|&c| c != '\u{fe0f}').collect();
+			(plain.len() < chars.len()).then(|| one(&plain)).flatten()
+		})
 	}
 
 	#[cfg(test)]
@@ -92,7 +111,12 @@ impl Font {
 	}
 
 	pub(crate) fn rasterize(&self, ch: char, px: f32) -> (Metrics, Vec<u8>) {
-		let (metrics, path) = self.outline(ch, px);
+		self.rasterize_glyph(self.face.glyph_index(ch), px)
+	}
+
+	/// [`Self::rasterize`] for a glyph by its index.
+	pub(crate) fn rasterize_glyph(&self, glyph: u16, px: f32) -> (Metrics, Vec<u8>) {
+		let (metrics, path) = self.outline(glyph, px);
 		let mut raster = Raster::new(metrics.width, metrics.height);
 		let top = (metrics.ymin + metrics.height as i32) as f32;
 		raster.draw(&path, self.scale(px), metrics.xmin as f32, top);
@@ -101,8 +125,8 @@ impl Font {
 
 	/// The glyph's outline and its pixel box: the bounds scaled and
 	/// rounded outward.
-	fn outline(&self, ch: char, px: f32) -> (Metrics, Path) {
-		let (glyph, scale) = (self.face.glyph_index(ch), self.scale(px));
+	fn outline(&self, glyph: u16, px: f32) -> (Metrics, Path) {
+		let scale = self.scale(px);
 		let mut path = Path::default();
 		let advance_width = f32::from(self.face.advance(glyph)) * scale;
 		let outlined = self.face.outline(glyph, &mut path);
