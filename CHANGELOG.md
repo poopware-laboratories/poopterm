@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.91 "Giga Fly" — 2026-10-25
+
+### Performance
+
+- Blend glyphs with the x86-64-v3 variant when the cpu has it (#125) (render).
+
 ## 26.10.90 "Giga Fly" — 2026-10-25
 
 ### Added
