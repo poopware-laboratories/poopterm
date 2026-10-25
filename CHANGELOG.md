@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.87 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Lay out a delegated cgroup subtree per tab (#121) (cgroup).
+
 ## 26.10.86 "Giga Fly" — 2026-10-25
 
 ### Maintenance
