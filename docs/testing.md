@@ -53,7 +53,9 @@ of the module as `#[cfg(test)] mod name_tests;`. The larger suites:
 | `src/term/scrollback_tests.rs`, `history_tests.rs`, `fill_tests.rs`, `width_tests.rs` | The scrollback ring; how trimmed history rows are shown, searched and copied; AVX2 fills against the portable fill; widths. |
 | `src/sixel_tests.rs`, `src/sixel_reference_tests.rs` | Sixel decoding and limits, and the flat decoder against the original per-row decoder kept as its oracle. |
 | `src/inflate/*_tests.rs` | Inflate against `miniz_oxide`: round trips, every length and distance, malformed and damaged streams, limits. |
-| `src/fonts/*_tests.rs` | Font parsing and rasterizing against fontdue; malformed fonts. |
+| `src/fonts/*_tests.rs` | Font parsing and rasterizing against fontdue; malformed fonts; GSUB ligatures (`gsub*_tests.rs`, with real Noto fonts when installed); CBDT color bitmaps; which installed fonts are candidates, in what order, and the limits on loading them (`fallback_tests.rs`). |
+| `src/render/glyph_clusters*_tests.rs`, `cell_joins*_tests.rs`, `glyphs_fallback_tests.rs` | Emoji sequences drawn as one glyph, inside one cell and across two (flags, skin tones); which font draws a character, whatever was drawn before. |
+| `src/parser/dispatch_tests.rs` | The x86-64-v3 copies of the tokenizer and printer against the baseline ones. |
 | `src/dbus/*_tests.rs` | The D-Bus wire format and a private `dbus-daemon`. |
 
 ## Oracles and mutation checks
@@ -119,9 +121,15 @@ drawing code, also compare a fixed screen before and after:
 2. Launch both builds with it, using a temporary config so your own settings
    and sessions are untouched:
    `POOPTERM_CONFIG=/tmp/cfg/config.toml SHELL=/path/fake-shell.sh target/release/poopterm`
-3. Screenshot both windows (on X11, `import -window <id> out.png`) and compare
-   with ImageMagick: `compare -metric AE before.png after.png diff.png`.
+3. Screenshot both windows at the same size and compare them with
+   ImageMagick: `magick compare -metric AE before.png after.png diff.png`.
    Zero differing pixels means the change is visually neutral.
+   - On X11: `import -window <id> out.png`.
+   - On wlroots compositors (sway, river, Hyprland): `grim -g "<x>,<y> <w>x<h>" out.png`
+     with the window's rectangle. On sway, make the window floating at a fixed
+     size first (`swaymsg '[pid=<pid>] floating enable, resize set 800 517'`),
+     since tiling sizes it by the layout, and read the rectangle from
+     `swaymsg -t get_tree`.
 
 Notes:
 
@@ -132,7 +140,8 @@ Notes:
   redraws, make the fake shell print in steps (scrolling, cursor moves), screenshot the same build with and without
   `POOPTERM_FULL_REDRAW=1`, and compare. That variable disables partial
   redraws.
-- Where screenshots are unavailable (Wayland without X access), render the
+- Where screenshots are unavailable (a compositor without a screenshot tool,
+  CI, a cloud session), render the
   same bytes headlessly instead: a temporary ignored test that feeds them to
   a `Term`, draws the `Frame` with the helpers in `canvas_pixels_tests.rs` and
   saves a PNG with `image::save_buffer`. Remove the test afterwards.

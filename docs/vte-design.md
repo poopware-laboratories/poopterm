@@ -382,9 +382,9 @@ cost does not regress echo.
   splits; the former is the plan.
 - **AVX-512 value**: may not pay off for terminal-sized runs; keep only
   with measurements. Runtime dispatch adds a check or an indirect call per
-  scan, which must be cheaper than the work it saves. The UTF-8 validator
-  and cell fills already choose AVX2 at runtime this way; issue #36 tracks
-  doing it for the remaining kernels.
+  scan, which must be cheaper than the work it saves. Done since (#36): the
+  tokenizer, printing, UTF-8 validation, cell fills and glyph blending
+  choose an x86-64-v3 copy at runtime (see [`unsafe.md`](unsafe.md)).
 - **Where the time really goes**: once parsing is faster, `Term` mutation
   (row writes, scrolling, line feeds on ASCII) may dominate; 200 MB/s may
   need Term work that is out of scope here.

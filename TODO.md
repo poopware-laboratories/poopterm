@@ -78,14 +78,14 @@ packaging side of that is vgs499p's area.
 Open:
 
 - A staged PGO + BOLT pipeline producing the binary in every release
-  artifact ([#34](https://github.com/poopterm-labs/poopterm/issues/34));
+  artifact ([#34](https://github.com/poopware-laboratories/poopterm/issues/34));
   PGO (#32) and BOLT (#33) work for local builds already.
 - Sample-based PGO (AutoFDO) from perf profiles of real use, with nightly
-  `-Zprofile-sample-use` ([#35](https://github.com/poopterm-labs/poopterm/issues/35)).
+  `-Zprofile-sample-use` ([#35](https://github.com/poopware-laboratories/poopterm/issues/35)).
 - Hot-function ordering and identical code folding at link time, which
-  also works on macOS ([#38](https://github.com/poopterm-labs/poopterm/issues/38)).
+  also works on macOS ([#38](https://github.com/poopware-laboratories/poopterm/issues/38)).
 - Shrink `Cell` below 16 bytes
-  ([#41](https://github.com/poopterm-labs/poopterm/issues/41)). Cache
+  ([#41](https://github.com/poopware-laboratories/poopterm/issues/41)). Cache
   misses during floods come from cell rows (`scroll_region_up`, frame
   snapshots), so this is where layout work can still pay; packing
   scrollback rows is the suggested first step.
@@ -114,7 +114,7 @@ latency cost: a full redraw takes 25.6 ms at 1000×600, and much longer at
 HiDPI sizes. It also takes memory bandwidth from the parser during floods,
 which is why floods are capped at 30 fps. Parse throughput stays CPU work.
 
-Tracked in [#30](https://github.com/poopterm-labs/poopterm/issues/30), with
+Tracked in [#30](https://github.com/poopware-laboratories/poopterm/issues/30), with
 one issue per piece (#21–#29; the renderer boundary, #20, is done). All of it is claimed by @vx9k; ask on the
 issue before starting a piece.
 
@@ -279,7 +279,7 @@ least as fast.
   wcwidth counts them, and the renderer draws the font's joined glyph
   across both (`render::cell_joins`). Installed fallback fonts are chosen
   by rank, never by what loaded first (#127). Next: sbix
-  ([#129](https://github.com/poopterm-labs/poopterm/issues/129)), then
+  ([#129](https://github.com/poopware-laboratories/poopterm/issues/129)), then
   COLR v0 with CPAL, then COLR v1.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback

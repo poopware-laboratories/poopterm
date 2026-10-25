@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Good requests start from the problem, not the solution. For open-ended ideas, [Discussions](https://github.com/poopterm-labs/poopterm/discussions) are a better place to start.
+        Good requests start from the problem, not the solution. For open-ended ideas, [Discussions](https://github.com/poopware-laboratories/poopterm/discussions) are a better place to start.
 
         Poopterm writes its own code from specifications instead of adding dependencies, so a request for "use library X" will become "implement what X does".
 
@@ -14,7 +14,7 @@ body:
     attributes:
       label: Before you request
       options:
-        - label: I searched the [existing issues](https://github.com/poopterm-labs/poopterm/issues?q=is%3Aissue) and [TODO.md](https://github.com/poopterm-labs/poopterm/blob/main/TODO.md), and this is not already planned or requested.
+        - label: I searched the [existing issues](https://github.com/poopware-laboratories/poopterm/issues?q=is%3Aissue) and [TODO.md](https://github.com/poopware-laboratories/poopterm/blob/main/TODO.md), and this is not already planned or requested.
           required: true
 
   - type: dropdown

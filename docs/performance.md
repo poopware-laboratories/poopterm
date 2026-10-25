@@ -48,7 +48,7 @@ The script uses `target/release/poopterm` when present, otherwise it finds
 The terminal is named by its XTVERSION reply (`CSI > q`), not `TERM_PROGRAM`,
 which a terminal launched from another one inherits. Every write, including
 the warm-up, ends on a whole escape sequence and UTF-8 character: a DA1
-query that lands inside an unfinished `CSI` is answered by poopterm and
+query that lands inside an unfinished `CSI` is answered by Poopterm and
 xterm, but dropped by kitty, which used to abort the run.
 
 **Parser only**, without rendering: `cargo test --release -- --ignored
@@ -151,7 +151,7 @@ starting from a full scrollback, median of 3 runs: first at 26.10.3 plus
 the synchronized-output and combining-mark changes below (`d48ebd6`), then
 at 26.10.42 with our own inflate (#57), and at 26.10.93 (after the
 regression recovery, runtime CPU dispatch and the emoji work). **End to end** is
-`scripts/bench-throughput.py --mib 16 --repeat 3` in a poopterm window of
+`scripts/bench-throughput.py --mib 16 --repeat 3` in a Poopterm window of
 100×30 cells (median MB/s), measured at `d48ebd6` and not yet repeated.
 
 | Workload | End to end (`d48ebd6`) | Headless (`d48ebd6`) | Headless (26.10.42) | Headless (26.10.93) |

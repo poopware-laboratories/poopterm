@@ -80,7 +80,7 @@ deadlock, so debug builds track held locks and panic instead.
 
 ## Tokenizing (`src/vt`)
 
-`vt::Parser` is poopterm's own escape-sequence tokenizer: the DEC/ECMA-48
+`vt::Parser` is Poopterm's own escape-sequence tokenizer: the DEC/ECMA-48
 state machine, written from the specifications, with SIMD scans
 (`vt/simd.rs`, `u8x32`) that find where bulk work ends. It calls a
 `vt::Handler`:
@@ -268,7 +268,7 @@ and position, and placeholder slices row by row.
   and strike styles, hyperlinks, combining marks and images.
 - `render::blend` blends glyph coverage four pixels at a time with
   `portable_simd`; the painter runs an x86-64-v3 copy of the glyph path
-  when the CPU has it (see [`UNSAFE.md`](UNSAFE.md)).
+  when the CPU has it (see [`unsafe.md`](unsafe.md)).
 - `app/draw.rs` composes a full frame: background or wallpaper, tab bar
   (`draw_tabs.rs`), terminal grid, search box, command palette, status bar.
   The Settings window is drawn by `app/settings_view.rs`.

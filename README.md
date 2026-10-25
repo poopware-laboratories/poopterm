@@ -18,19 +18,19 @@ Poopterm is a lightweight, high-throughput terminal emulator written in Rust: it
 - Opens HTTP(S) links, OSC 8 hyperlinks, and local `file://` links with a modifier-click; modifier-clicking a displayed path copies it.
 - Uses a compact tab bar and a status bar showing directory, grid size, and theme.
 - Supports bracketed paste and common SGR mouse reporting modes.
-- Supports the initial Kitty keyboard protocol (`CSI u`) key encoding for applications that opt in.
+- Supports the initial kitty keyboard protocol (`CSI u`) key encoding for applications that opt in.
 - Resizes the shell along with the window.
 - Batches synchronized terminal updates (`?2026`) to avoid partial frames.
 - Displays Sixel images and the kitty graphics protocol (including animation
   and Unicode placeholders) within explicit memory limits, and tracks OSC 133
   shell markers.
-- Supports semicolon/colon TrueColor, DEC line drawing, and additional text styles.
+- Supports semicolon/colon truecolor, DEC line drawing, and additional text styles.
 - Includes Dark Mode, Light Mode, Nord, all three Rosé Pine variants, all four Catppuccin flavors, Bark, AMOLED Black, signature Poop, and a configurable Custom theme.
 - Includes an **About poopterm** page in Settings.
 - Supports PNG, JPEG, and WebP terminal wallpapers with adjustable strength in Settings.
 - Lets macOS users adjust main-window opacity from Settings.
 - Includes a desktop launcher and icon for Linux and FreeBSD.
-- On Linux with systemd, runs each tab's shell in its own cgroup scope, so a runaway program in one tab is throttled before it can starve the terminal or the other tabs.
+- On Linux, runs each tab's shell in its own cgroup (a delegated systemd scope, or the terminal's own cgroup without systemd), with the terminal weighted above the tabs and each tab's memory capped below the machine's, so a runaway program in one tab cannot starve the terminal or the other tabs.
 - **Fast output:** a background PTY reader with backpressure, redraws paced to the display, an O(columns) row-based grid with 16-byte cells, a portable-SIMD fast path for plain text, and synchronized updates that cost one screen copy however long the scrollback is. Run `scripts/bench-throughput.py` in any terminal to compare.
 
 ## Build and run
@@ -57,18 +57,18 @@ See [`docs/performance.md`](docs/performance.md#profile-guided-optimization).
 The Homebrew formula is available from the Poopterm tap. Install it with:
 
 ```sh
-brew tap poopterm-labs/poopterm https://github.com/poopterm-labs/poopterm.git
-brew install poopterm-labs/poopterm/poopterm
+brew tap poopware-laboratories/poopterm https://github.com/poopware-laboratories/poopterm.git
+brew install poopware-laboratories/poopterm/poopterm
 ```
 
 ### Debian
 
 Poopterm packages for 64-bit Debian are published through the [pooplabs APT
-repository](https://github.com/poopterm-labs/pooplabs-apt-repo). Add the
+repository](https://github.com/poopware-laboratories/pooplabs-apt-repo). Add the
 repository, refresh APT, and install the package:
 
 ```sh
-echo 'deb [trusted=yes] https://poopterm-labs.github.io/pooplabs-apt-repo/ ./' \
+echo 'deb [trusted=yes] https://poopware-laboratories.github.io/pooplabs-apt-repo/ ./' \
   | sudo tee /etc/apt/sources.list.d/pooplabs.list
 sudo apt update
 sudo apt install poopterm
@@ -82,12 +82,12 @@ built for `amd64` and requires Debian 12 or newer.
 
 ### Fedora
 
-Each [release](https://github.com/poopterm-labs/poopterm/releases) also
+Each [release](https://github.com/poopware-laboratories/poopterm/releases) also
 carries an RPM package for 64-bit Fedora and related distributions. Download
 it and install it with DNF, which pulls in the display libraries it needs:
 
 ```sh
-sudo dnf install ./poopterm-26.10.60-1.x86_64.rpm
+sudo dnf install ./poopterm-26.10.93-1.x86_64.rpm
 ```
 
 It ships the same profile-guided build, desktop launcher, icons and terminfo
@@ -100,17 +100,17 @@ The repository carries a PKGBUILD that builds the latest release from source
 with the nightly toolchain, which it installs inside the build directory:
 
 ```sh
-curl -LO https://raw.githubusercontent.com/poopterm-labs/poopterm/main/packaging/arch/PKGBUILD
+curl -LO https://raw.githubusercontent.com/poopware-laboratories/poopterm/main/packaging/arch/PKGBUILD
 makepkg -si
 ```
 
-Each package attached to a [release](https://github.com/poopterm-labs/poopterm/releases)
+Each package attached to a [release](https://github.com/poopware-laboratories/poopterm/releases)
 carries a signed build provenance attestation, which proves that the release
 workflow built it from the tagged commit. Check a downloaded package with the
 GitHub CLI:
 
 ```sh
-gh attestation verify poopterm_26.10.24-1_amd64.deb --repo poopterm-labs/poopterm
+gh attestation verify poopterm_26.10.93-1_amd64.deb --repo poopware-laboratories/poopterm
 ```
 
 On macOS, Homebrew builds both the `poopterm` command and a `Poopterm.app`
@@ -185,7 +185,7 @@ tabs. In vertical mode it collapses the sidebar into a narrow icon rail. Click
 
 ```toml
 theme = "catppuccin-mocha"
-font_size = 18           # Logical pixels, 10–32; fractions such as 13.5 work
+font_size = 18          # Points, 10–32; fractions such as 13.5 work
 scrollback_lines = 5000 # 0–100000; 0 disables history
 restore_sessions = true
 opacity = 100           # macOS main window opacity, 60–100
@@ -206,9 +206,10 @@ shortcut_search = "super+f"
 shortcut_close_tab = "super+w"
 ```
 
-`renderer = "auto"` prefers a supported GPU backend. Both `auto` and an
-explicit `gpu` request fall back to software rendering when GPU startup fails;
-`software` skips GPU probing.
+`renderer` accepts `auto` (the default), `gpu` and `software`. There is no GPU
+backend yet ([#30](https://github.com/poopware-laboratories/poopterm/issues/30)),
+so all three draw in software today; `auto` and `gpu` will fall back to software
+when GPU startup fails.
 
 `theme` accepts `darkmode`, `light-mode`, `nord`, `rose-pine` (or the legacy
 `rosepine` alias), `rose-pine-moon`, `rose-pine-dawn`, `catppuccin-latte`,
@@ -256,8 +257,7 @@ comments are preserved when Settings saves. Toolbar text keeps its own size.
 On macOS, use the **Window opacity** controls in Settings and save to make the
 main window translucent. This applies to the entire terminal window; the separate
 Settings window stays opaque. The default is 100%. This setting currently works
-on macOS only; blur is not implemented. Catppuccin palette attribution and license terms are included in
-`THIRD_PARTY_NOTICES` and in packaged app resources.
+on macOS only; blur is not implemented.
 
 Set `POOPTERM_CONFIG` to use a config file at another path. `POOPTERM_THEME`
 can override the saved setting for a single launch, for example:
@@ -297,7 +297,7 @@ POOPTERM_THEME=catppuccin-latte poopterm
   Linux, they remain in the separate tab row.
 - Click the gear button in the tab bar to open Settings. Click a tab's
   **×** to close it.
-- **Cmd+C / Cmd+V** on macOS, or **Ctrl+Shift+C / Ctrl+Shift+V** on Linux:
+- **Cmd+C / Cmd+V** on macOS, or **Ctrl+Shift+C / Ctrl+Shift+V** elsewhere:
   copy a selection or paste clipboard text.
 - Drag with the left mouse button to select text. The mouse wheel scrolls
   scrollback unless the running app has enabled mouse reporting.
@@ -340,7 +340,7 @@ and the first available login profile before installing hooks, or `.bashrc`
 when no login profile exists. Bash ignores `--rcfile` with `-l`, so this shell
 is interactive but does not set bash's `login_shell` flag. Set `shell_integration = "off"` in `config.toml` to disable
 this. The hooks also make `ssh` connect with `TERM=xterm-256color`, since
-remote hosts rarely have poopterm's terminfo entry; set
+remote hosts rarely have Poopterm's terminfo entry; set
 `POOPTERM_SSH_KEEP_TERM=1` to keep it. fish 4 marks its prompts itself
 (its `mark-prompt` feature), so there the fish hook only reports the
 directory.
@@ -369,7 +369,8 @@ ssh, is not used for new tabs; the status bar names that host instead.
 Close the window to save its tabs; reopening starts fresh login shells in the
 saved directories. Running programs and terminal output are not restored.
 Closing a tab removes it from the saved list, including the last tab.
-State is stored in `sessions.txt` next to the config file, with a limit of 12
+State is stored in `sessions.txt` in the state directory (`$XDG_STATE_HOME/poopterm`,
+or `~/Library/Application Support/poopterm` on macOS), with a limit of 12
 restored tabs. Missing directories fall back to the home directory.
 
 A dot marks unseen background output; `!` marks a terminal bell. Switching to a
@@ -430,8 +431,9 @@ the [DejaVu font license](https://dejavu-fonts.github.io/License.html). A custom
 font falls back to the bundled font for missing glyphs; Poopterm also searches
 common system font directories for up to eight TTF fonts with Nerd Font, Symbol,
 or Awesome in their filenames. Characters none of those fonts have (CJK, math,
-rare scripts) are drawn from any installed font that has them, found through
-the font cache. For the broadest htop icon coverage, set `font_path` to a Nerd
+rare scripts) are drawn from an installed font that has them, found through
+the font cache and always the same one: monospace before proportional, upright
+regular weights first, then smaller files. For the broadest htop icon coverage, set `font_path` to a Nerd
 Font Mono file.
 
 Poopterm is free software: you can redistribute it and/or modify it under the
@@ -463,8 +465,8 @@ license, above.
   in the prompt reach the shell as SGR mouse reports instead, as fish 4 asks.
   kitty's `cmdline=` and `cmdline_url=` on `C` name the running command. Poopterm
   retains the latest 256 markers and shows the running command or exit status
-  in the status bar. Optional hooks are available for zsh, Bash, and fish;
-  install them explicitly with the instructions below. The hooks also emit
+  in the status bar. Poopterm's own hooks for zsh, bash and fish load
+  automatically (see [Shell integration](#shell-integration)). The hooks also emit
   OSC 7 so BSD shells can report their working directory. Bash 4.4 or later
   reports the running command from its history, so commands history skips
   (`ignorespace`, `ignoredups`) show none.
@@ -493,7 +495,7 @@ license, above.
   - tab colors (OSC 6;1;bg) and OSC 21337 session status: an indicator
     dot and a colored status after the tab title.
 
-  Commands that need features poopterm lacks (profiles, the Touch Bar,
+  Commands that need features Poopterm lacks (profiles, the Touch Bar,
   annotations, blocks, buttons, custom sequences) or the user's
   confirmation (background image files, `OpenURL`) are ignored.
 - **Clipboard:** OSC 52 writes the clipboard (`c`, `s`, `s0`) and the
@@ -547,7 +549,7 @@ license, above.
 ## Terminfo
 
 Shells run with `TERM=xterm-poopterm`, an entry that advertises only what
-poopterm supports (truecolor, styled underlines, synchronized output, focus
+Poopterm supports (truecolor, styled underlines, synchronized output, focus
 events, …), when it is installed system-wide; otherwise they get
 `TERM=xterm-256color`. A per-user copy (`~/.terminfo`) is not used, because
 `sudo` cannot see it and programs such as `sudo dmesg` would lose their
@@ -558,7 +560,7 @@ colors. `make install` installs the entry system-wide, or run
 ## Accessibility
 
 [`ACCESSIBILITY.md`](ACCESSIBILITY.md) describes what works today (keyboard
-shortcuts for every action, font sizes up to 32 px, custom high-contrast
+shortcuts for every action, font sizes up to 32 points (72 with zoom), custom high-contrast
 colors, no blinking), the known gaps such as screen reader support, and how
 to report an accessibility problem.
 
@@ -575,7 +577,7 @@ cargo build --release --locked
 Development is test-driven. Start with [`AGENTS.md`](AGENTS.md) (for humans
 and AI coding agents alike), then see [architecture](docs/architecture.md),
 [testing](docs/testing.md), [performance](docs/performance.md) and
-[unsafe code](docs/UNSAFE.md).
+[unsafe code](docs/unsafe.md).
 CI builds and checks macOS, Linux, and a real FreeBSD VM.
 
 Want to help? Read [CONTRIBUTING.md](CONTRIBUTING.md) and our
