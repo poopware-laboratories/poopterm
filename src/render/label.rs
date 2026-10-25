@@ -1,6 +1,6 @@
 //! Tab labels: a title, then a status after a two-space gap, fitted into a
 //! box by their measured widths.
-use super::{glyphs::FontSet, painter::Painter};
+use super::{glyphs::FontSet, scene::Scene};
 use crate::ui::ui_font::{fit_label, text_width};
 
 pub(crate) struct Label<'a> {
@@ -13,7 +13,7 @@ pub(crate) struct Label<'a> {
 /// Draws `label` from the left of `clip = (x, y, width, height)`, its text
 /// rows starting at `y`, with `font = (px, ascent)`, fitted into the box.
 pub(crate) fn draw_label(
-	p: &mut Painter,
+	p: &mut Scene,
 	fonts: &mut FontSet,
 	label: &Label,
 	y: usize,

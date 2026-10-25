@@ -3,7 +3,7 @@
 use super::{
 	glyphs::FontSet,
 	header::{Rect, Style, line},
-	painter::Painter,
+	scene::Scene,
 };
 use crate::ui::ui_font::{ellipsize_start_to_width, ellipsize_to_width, text_width};
 
@@ -34,7 +34,7 @@ pub(crate) struct Popover<'a> {
 /// Inside a field or row, the room left of the text.
 const PADDING: usize = 12;
 
-pub(crate) fn draw_popover(p: &mut Painter, fonts: &mut FontSet, popover: &Popover) {
+pub(crate) fn draw_popover(p: &mut Scene, fonts: &mut FontSet, popover: &Popover) {
 	let (x, y, width, height) = popover.rect;
 	let (scale, colors) = (popover.style.scale, popover.style.colors);
 	let radius = 10 * scale;
@@ -66,21 +66,14 @@ pub(crate) fn draw_popover(p: &mut Painter, fonts: &mut FontSet, popover: &Popov
 }
 
 /// Draws `text` across a row, cut to fit inside its padding.
-fn row_text(
-	p: &mut Painter,
-	fonts: &mut FontSet,
-	style: Style,
-	rect: Rect,
-	text: &str,
-	color: u32,
-) {
+fn row_text(p: &mut Scene, fonts: &mut FontSet, style: Style, rect: Rect, text: &str, color: u32) {
 	let room = rect.2.saturating_sub(2 * PADDING * style.scale);
 	let text = ellipsize_to_width(text, room, |ch| fonts.advance(ch, style.px));
 	let x = rect.0 + PADDING * style.scale;
 	text_line(p, fonts, style, (x, rect), &text, color);
 }
 
-fn draw_field(p: &mut Painter, fonts: &mut FontSet, style: Style, field: &Field) {
+fn draw_field(p: &mut Scene, fonts: &mut FontSet, style: Style, field: &Field) {
 	let (scale, px, colors) = (style.scale, style.px, style.colors);
 	let (x, y, width, height) = field.rect;
 	p.round_rect(x, y, width, height, 6 * scale, colors.hover);
@@ -120,7 +113,7 @@ fn draw_field(p: &mut Painter, fonts: &mut FontSet, style: Style, field: &Field)
 
 /// Draws `text` from `x`, centered down `rect`.
 fn text_line(
-	p: &mut Painter,
+	p: &mut Scene,
 	fonts: &mut FontSet,
 	style: Style,
 	(x, (_, y, _, height)): (usize, Rect),

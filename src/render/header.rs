@@ -4,7 +4,7 @@ use super::{
 	blend::blend,
 	glyphs::FontSet,
 	label::{Label, draw_label},
-	painter::Painter,
+	scene::Scene,
 };
 use crate::ui::ui_font::text_width;
 
@@ -97,7 +97,7 @@ pub(crate) fn close_rect(
 	(left, y + height.saturating_sub(size) / 2, size, size)
 }
 
-pub(crate) fn draw_header(p: &mut Painter, fonts: &mut FontSet, header: &Header) {
+pub(crate) fn draw_header(p: &mut Scene, fonts: &mut FontSet, header: &Header) {
 	let (y, height, scale) = (header.y, header.height, header.scale);
 	let separator = (y + height).saturating_sub(scale);
 	p.rect(0, y, p.width, height, header.colors.bar);
@@ -124,7 +124,7 @@ pub(crate) fn draw_header(p: &mut Painter, fonts: &mut FontSet, header: &Header)
 /// Draws `tab` on its surface `(x, y, width, height)`, its parts centered
 /// across it.
 pub(crate) fn draw_tab(
-	p: &mut Painter,
+	p: &mut Scene,
 	fonts: &mut FontSet,
 	style: Style,
 	rect: Rect,
@@ -172,7 +172,7 @@ pub(crate) fn draw_tab(
 /// Draws a progress bar of `share`, or a dimmer full one when the share is
 /// unknown, along the bottom of the tab surface `rect`.
 pub(crate) fn draw_progress(
-	p: &mut Painter,
+	p: &mut Scene,
 	scale: usize,
 	(x, y, width, height): Rect,
 	surface: u32,
@@ -186,12 +186,7 @@ pub(crate) fn draw_progress(
 	p.rect(left, row, done, 2 * scale, blend(surface, color, shade));
 }
 
-pub(crate) fn draw_button(
-	p: &mut Painter,
-	fonts: &mut FontSet,
-	style: Style,
-	button: &HeaderButton,
-) {
+pub(crate) fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, button: &HeaderButton) {
 	let (scale, colors) = (style.scale, style.colors);
 	let (x, y, width, height) = button.rect;
 	if button.hovered && button.enabled {
@@ -205,7 +200,7 @@ pub(crate) fn draw_button(
 	let (cx, cy) = (x + width / 2, y + height / 2);
 	// Strokes 2 pixels wide at 1x, 3 at 2x.
 	let stroke = scale + scale.div_ceil(2);
-	let bar = |p: &mut Painter, (x, y): (usize, usize), (w, h): (usize, usize)| {
+	let bar = |p: &mut Scene, (x, y): (usize, usize), (w, h): (usize, usize)| {
 		p.rect(x, y, w, h, color);
 	};
 	match button.icon {
@@ -235,7 +230,7 @@ pub(crate) fn line(fonts: &FontSet, px: f32) -> (usize, i32) {
 
 /// Draws `text` with its advance and line centered on `(x, y)`.
 pub(crate) fn centered_text(
-	p: &mut Painter,
+	p: &mut Scene,
 	fonts: &mut FontSet,
 	text: &str,
 	(x, y): (usize, usize),

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
 	fonts::{BUNDLED, Font},
-	render::painter::Painter,
+	render::{painter::Painter, scene::paint},
 };
 
 const WIDTH: usize = 400;
@@ -70,11 +70,10 @@ impl Drawn {
 fn draw(bar: &StatusBar) -> Drawn {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pixels = vec![BACKGROUND; WIDTH * HEIGHT];
-	draw_status_bar(
-		&mut Painter::new(&mut pixels, WIDTH, HEIGHT),
-		&mut fonts,
-		bar,
-	);
+	let p = &mut Painter::new(&mut pixels, WIDTH, HEIGHT);
+	paint(p, &mut fonts, |scene, fonts| {
+		draw_status_bar(scene, fonts, bar)
+	});
 	Drawn(pixels)
 }
 

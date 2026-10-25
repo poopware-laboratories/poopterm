@@ -9,6 +9,7 @@ use crate::{
 		grid::{GridView, draw_grid},
 		painter::{ButtonStyle, Painter},
 		popover::draw_popover,
+		scene::paint,
 		status_bar::draw_status_bar,
 	},
 	ui::{
@@ -187,7 +188,9 @@ impl App {
 		let found = (self.search_matches.len(), self.search_match_index);
 		let query = (self.search_query.as_str(), found.0, found.1);
 		let popover = search_box(place, query, ui.px * 0.86, &self.theme);
-		draw_popover(p, &mut self.ui_fonts, &popover);
+		paint(p, &mut self.ui_fonts, |scene, fonts| {
+			draw_popover(scene, fonts, &popover)
+		});
 		// pr-check: end window glue
 	}
 
@@ -196,7 +199,9 @@ impl App {
 		// pr-check: window glue: hands the palette state to the tested palette model
 		let query = (self.command_query.as_str(), self.renaming_tab);
 		let popover = command_palette(place, query, ui.px * 0.86, &self.theme);
-		draw_popover(p, &mut self.ui_fonts, &popover);
+		paint(p, &mut self.ui_fonts, |scene, fonts| {
+			draw_popover(scene, fonts, &popover)
+		});
 		// pr-check: end window glue
 	}
 
@@ -224,7 +229,9 @@ impl App {
 		let rect = (0, y, p.width, self.status_height);
 		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);
 		drop(term);
-		draw_status_bar(p, &mut self.ui_fonts, &bar);
+		paint(p, &mut self.ui_fonts, |scene, fonts| {
+			draw_status_bar(scene, fonts, &bar)
+		});
 		// pr-check: end window glue
 	}
 }

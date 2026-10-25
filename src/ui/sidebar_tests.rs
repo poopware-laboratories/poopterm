@@ -12,6 +12,7 @@ use crate::{
 		glyphs::FontSet,
 		header::{Badge, HeaderTab, Icon, Rect, close_rect},
 		painter::Painter,
+		scene::paint,
 		sidebar::{draw_sidebar, rail_close_rect},
 	},
 	term::status::{Progress, ProgressState},
@@ -692,7 +693,9 @@ fn drawn(layout: &VerticalTabLayout, state: &SidebarState, theme: &Theme) -> Vec
 		px: 12.0 * layout.scale as f32,
 		..input(layout, state, theme)
 	};
-	draw_sidebar(&mut painter, &mut fonts, &sidebar(&input));
+	paint(&mut painter, &mut fonts, |scene, fonts| {
+		draw_sidebar(scene, fonts, &sidebar(&input))
+	});
 	pixels
 }
 

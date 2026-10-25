@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
 	fonts::{BUNDLED, Font},
-	render::painter::Painter,
+	render::{painter::Painter, scene::paint},
 };
 
 const WIDTH: usize = 400;
@@ -81,11 +81,10 @@ impl Drawn {
 fn draw(header: &Header) -> Drawn {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pixels = vec![0; WIDTH * HEIGHT];
-	draw_header(
-		&mut Painter::new(&mut pixels, WIDTH, HEIGHT),
-		&mut fonts,
-		header,
-	);
+	let p = &mut Painter::new(&mut pixels, WIDTH, HEIGHT);
+	paint(p, &mut fonts, |scene, fonts| {
+		draw_header(scene, fonts, header)
+	});
 	Drawn(pixels)
 }
 

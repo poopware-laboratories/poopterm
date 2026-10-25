@@ -1,9 +1,6 @@
 //! Drawing recorded as data: window chrome records a scene, which the
 //! software renderer replays into pixels and a GPU renderer can draw.
-use super::{
-	glyphs::FontSet,
-	painter::{ButtonStyle, Painter},
-};
+use super::{glyphs::FontSet, painter::Painter};
 
 /// A rectangle in physical pixels: x, y, width, height.
 pub(crate) type Rect = (usize, usize, usize, usize);
@@ -11,10 +8,8 @@ pub(crate) type Rect = (usize, usize, usize, usize);
 /// One recorded drawing operation, in physical pixels.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Command {
-	Fill(u32),
 	Rect(Rect, u32),
 	RoundRect(Rect, usize, u32),
-	Button(Rect, ButtonStyle, bool),
 	/// A line of text whose top edge is `at.1` and baseline `ascent` below
 	/// it, clipped to `clip`.
 	Text {
@@ -36,10 +31,18 @@ pub(crate) struct Scene {
 	pub commands: Vec<Command>,
 }
 
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "window chrome records scenes next (#30)")
-)]
+/// Records what `draw` draws into a scene the size of `p`, then replays it
+/// into `p`.
+pub(crate) fn paint(
+	p: &mut Painter,
+	fonts: &mut FontSet,
+	draw: impl FnOnce(&mut Scene, &mut FontSet),
+) {
+	let mut scene = Scene::new(p.width, p.height);
+	draw(&mut scene, fonts);
+	scene.replay(p, fonts);
+}
+
 impl Scene {
 	pub(crate) fn new(width: usize, height: usize) -> Self {
 		Self {
@@ -47,10 +50,6 @@ impl Scene {
 			height,
 			commands: Vec::new(),
 		}
-	}
-
-	pub(crate) fn fill(&mut self, color: u32) {
-		self.commands.push(Command::Fill(color));
 	}
 
 	pub(crate) fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
@@ -69,10 +68,6 @@ impl Scene {
 		self
 			.commands
 			.push(Command::RoundRect((x, y, w, h), r, color));
-	}
-
-	pub(crate) fn button(&mut self, rect: Rect, style: ButtonStyle, hovered: bool) {
-		self.commands.push(Command::Button(rect, style, hovered));
 	}
 
 	/// A line of text whose top edge is `y`; `ascent` is the baseline offset.
@@ -120,10 +115,8 @@ impl Scene {
 	pub(crate) fn replay(&self, p: &mut Painter, fonts: &mut FontSet) {
 		for command in &self.commands {
 			match *command {
-				Command::Fill(color) => p.fill(color),
 				Command::Rect((x, y, w, h), color) => p.rect(x, y, w, h, color),
 				Command::RoundRect((x, y, w, h), r, color) => p.round_rect(x, y, w, h, r, color),
-				Command::Button(rect, style, hovered) => p.button(rect, style, hovered),
 				Command::Text {
 					at,
 					ref text,

@@ -9,7 +9,10 @@ use super::{
 };
 use crate::{
 	fonts::{BUNDLED, Font},
-	render::painter::Painter,
+	render::{
+		painter::Painter,
+		scene::{Scene, paint},
+	},
 };
 
 const WIDTH: usize = 220;
@@ -95,11 +98,10 @@ impl Drawn {
 
 fn draw(sidebar: &Sidebar) -> Drawn {
 	let mut pixels = vec![BACKGROUND; WIDTH * HEIGHT];
-	draw_sidebar(
-		&mut Painter::new(&mut pixels, WIDTH, HEIGHT),
-		&mut fonts(),
-		sidebar,
-	);
+	let p = &mut Painter::new(&mut pixels, WIDTH, HEIGHT);
+	paint(p, &mut fonts(), |scene, fonts| {
+		draw_sidebar(scene, fonts, sidebar)
+	});
 	Drawn(pixels)
 }
 
@@ -144,12 +146,13 @@ fn full_rows_are_drawn_exactly_as_header_tabs_on_their_surface() {
 	let drawn = draw(&sidebar);
 	let mut want = vec![BACKGROUND; WIDTH * HEIGHT];
 	let mut fonts = fonts();
-	let mut p = Painter::new(&mut want, WIDTH, HEIGHT);
+	let mut p = Scene::new(WIDTH, HEIGHT);
 	p.rect(10, 10, 160, 180, COLORS.bar);
 	p.rect(169, 10, 1, 180, COLORS.separator);
 	for row in &sidebar.rows {
 		draw_tab(&mut p, &mut fonts, style(1), row.rect, &row.tab);
 	}
+	p.replay(&mut Painter::new(&mut want, WIDTH, HEIGHT), &mut fonts);
 	assert!(drawn.0 == want, "rows differ from header tabs");
 }
 
