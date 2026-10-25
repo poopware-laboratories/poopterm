@@ -12,6 +12,8 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod app;
 mod bench;
+#[cfg(target_os = "linux")]
+mod cgroup;
 mod clipboard;
 #[cfg(test)]
 #[path = "../build/codename.rs"]

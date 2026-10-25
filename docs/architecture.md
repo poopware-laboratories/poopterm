@@ -158,7 +158,7 @@ scrolls and copies alone. While `Term::has_multicells` is set, printing
 takes the general path, which applies the protocol's overwriting rules,
 and erasing, inserting and deleting erase the blocks they would cut.
 
-## Desktop integration (`src/dbus`, `src/notifier`)
+## Desktop integration (`src/dbus`, `src/notifier`, `src/cgroup.rs`)
 
 - `dbus` is a D-Bus client written from the specification: the wire format
   (`wire.rs`) in either byte order with the specification's limits, messages,
@@ -167,6 +167,11 @@ and erasing, inserting and deleting erase the blocks they would cut.
 - `notifier` delivers notifications through the freedesktop.org service, or
   `osascript` on macOS; it rate limits each session (`rate.rs`) and maps
   desktop notification ids back to the program that asked (`routes.rs`).
+- `cgroup` (Linux) asks systemd on the session bus for a transient scope per
+  shell (`StartTransientUnit`, sent without awaiting a reply), with memory and
+  task accounting and `MemoryHigh` at 7/8 of RAM. A worker thread checks once
+  for the unified cgroup2 hierarchy; without it, a bus or systemd, nothing
+  changes.
 
 ## Images (`src/graphics`, `src/sixel.rs`, `src/term/kitty*.rs`)
 
