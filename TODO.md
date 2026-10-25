@@ -94,10 +94,14 @@ packaging side of that is vgs499p's area.
   - Cache-line alignment of the structures shared between threads, plus
     prefetching where profiles show misses
     ([#42](https://github.com/poopterm-labs/poopterm/issues/42)).
-- **Regression to fix first.** The compatibility work from 26.10.23 to
-  26.10.27 cost 2–4% on escape-sequence-heavy workloads in the parser
-  benchmark (tui, editor, cursor, progress) and about 6% on unicode. Profile
-  and recover it before or alongside the items above.
+- **The 26.10.23–26.10.27 regression is recovered.** That compatibility
+  work cost 2–4% on tui, editor, cursor and progress and about 6% on
+  unicode. Measured again at 26.10.83 (i3-N305, release, `--benchmark`
+  parse MB/s, pinned to one core, 4 alternating runs each, medians):
+  log 208→277, unicode 89→152, tui 180→219, editor 161→261, progress
+  189→365, cursor 118→182 against 26.10.22. What it added on the hot path
+  (one LNM branch per line feed, a few CSI arms, new `Term` fields) is
+  layout cost that #39 covers.
 
 ## Hardware-accelerated rendering
 
