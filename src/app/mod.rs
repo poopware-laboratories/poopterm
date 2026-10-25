@@ -36,7 +36,6 @@ use crate::{
 	config::{
 		self, Preferences, config_path, quote_config_string, read_config_value, save_config_theme,
 	},
-	fonts::load_fonts,
 	input::{
 		keys::Modifiers, mouse::MouseButtonCode, scroll::ScrollAccumulator, shortcuts::Shortcuts,
 	},
@@ -277,8 +276,6 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 	let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
 	let proxy = event_loop.create_proxy();
 
-	let (font, fallback_fonts) = load_fonts();
-
 	let theme = Theme::load();
 	let settings_editor = SettingsEditor::load();
 	let preferences = settings_editor.preferences;
@@ -318,7 +315,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		sidebar_shown: None,
 		wallpaper,
 		wallpaper_strength,
-		fonts: FontSet::new(font, fallback_fonts),
+		fonts: FontSet::load(),
 		px: 18.0,
 		cw: 10,
 		ch: 20,

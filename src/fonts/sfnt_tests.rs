@@ -408,3 +408,129 @@ fn monospace_fonts_must_map_latin_letters_and_digits() {
 	cut.truncate(30);
 	assert!(!monospace(&fixed_with(Some(cut))));
 }
+
+/// A font named "Glyphs" with `cmap` and, if given, an outline table.
+fn covering(cmap: Option<Vec<u8>>, outline: Option<&'static [u8; 4]>) -> FaceInfo {
+	let mut tables = vec![(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")]))];
+	tables.extend(cmap.map(|table| (b"cmap", table)));
+	tables.extend(outline.map(|tag| (tag, vec![0; 4])));
+	faces(&sfnt(&tables, 0)).unwrap().remove(0)
+}
+
+#[test]
+fn faces_record_the_pages_their_cmap_maps() {
+	let bmp = cmap(
+		3,
+		1,
+		format4(&[(0x20, 0x7e), (0x2500, 0x257f), (0x4e00, 0x9fff)]),
+	);
+	assert_eq!(
+		covering(Some(bmp), None).pages,
+		[(0, 0), (0x25, 0x25), (0x4e, 0x9f)]
+	);
+	let full = cmap(3, 10, format12(&[(0x20, 0x7e), (0x1f600, 0x1f64f)]));
+	assert_eq!(covering(Some(full), None).pages, [(0, 0), (0x1f6, 0x1f6)]);
+	assert_eq!(covering(None, None).pages, []);
+}
+
+#[test]
+fn the_format4_end_marker_is_not_coverage() {
+	// Every format 4 table ends with a 0xFFFF segment; it maps nothing.
+	let face = covering(Some(cmap(3, 1, format4(&[(0x41, 0x5a)]))), None);
+	assert_eq!(face.pages, [(0, 0)]);
+	// A real segment reaching 0xFFFF still counts.
+	let face = covering(Some(cmap(3, 1, format4(&[(0xff00, 0xffef)]))), None);
+	assert_eq!(face.pages, [(0xff, 0xff)]);
+}
+
+#[test]
+fn the_full_repertoire_subtable_wins_over_the_bmp_one() {
+	let mut table = Vec::new();
+	for value in [0, 2, 3, 1, 0, 20, 3, 10] {
+		table.extend(u16::to_be_bytes(value));
+	}
+	let bmp = format4(&[(0x20, 0x7e)]);
+	table.extend((20 + bmp.len() as u32).to_be_bytes());
+	table.extend(bmp);
+	table.extend(format12(&[(0x20, 0x7e), (0x1f300, 0x1f3ff)]));
+	assert_eq!(covering(Some(table), None).pages, [(0, 0), (0x1f3, 0x1f3)]);
+}
+
+#[test]
+fn unreadable_cmaps_leave_the_face_without_pages() {
+	let mut cut = cmap(3, 1, format4(&[(0x20, 0x7e), (0x400, 0x4ff)]));
+	cut.truncate(24);
+	let face = covering(Some(cut), None);
+	assert_eq!((face.family.as_str(), face.pages.len()), ("Glyphs", 0));
+	// A segment count larger than the table is not read past its end.
+	let mut lying = cmap(3, 1, format4(&[(0x20, 0x7e)]));
+	lying[12 + 6..12 + 8].copy_from_slice(&400u16.to_be_bytes());
+	assert_eq!(covering(Some(lying), None).pages, []);
+	// So is a format 12 group count.
+	let mut groups = cmap(3, 10, format12(&[(0x20, 0x7e)]));
+	groups[12 + 12..12 + 16].copy_from_slice(&u32::MAX.to_be_bytes());
+	assert_eq!(covering(Some(groups), None).pages, [(0, 0)]);
+	// Formats without ranges give none.
+	let mut format6 = vec![0; 12];
+	format6[1] = 6;
+	assert_eq!(covering(Some(cmap(3, 1, format6)), None).pages, []);
+}
+
+#[test]
+fn outline_tables_mark_fonts_that_can_be_drawn() {
+	for tag in [b"glyf", b"CFF ", b"CFF2"] {
+		assert!(covering(None, Some(tag)).outlines, "{tag:?}");
+	}
+	// Color bitmap fonts like Noto Color Emoji have only CBDT.
+	assert!(!covering(None, Some(b"CBDT")).outlines);
+	assert!(!covering(None, None).outlines);
+}
+
+#[test]
+fn the_bundled_font_covers_latin_box_drawing_and_powerline() {
+	let face = &faces(BUNDLED).unwrap()[0];
+	assert!(face.outlines);
+	let covers = |ch| super::coverage::covers(&face.pages, ch);
+	assert!(['a', 'é', '─', '\u{e0b0}'].into_iter().all(covers));
+	assert!(!covers('漢') && !covers('😀'));
+}
+
+#[test]
+fn each_face_of_a_collection_has_its_own_pages() {
+	let face = |ranges: &'static [(u16, u16)]| {
+		move |base| {
+			let tables = [
+				(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])),
+				(b"cmap", cmap(3, 1, format4(ranges))),
+			];
+			sfnt(&tables, base)
+		}
+	};
+	let (latin, han) = (face(&[(0x20, 0x7e)]), face(&[(0x4e00, 0x9fff)]));
+	let found = faces(&collection(&[&latin, &han])).unwrap();
+	assert_eq!(found[0].pages, [(0, 0)]);
+	assert_eq!(found[1].pages, [(0x4e, 0x9f)]);
+}
+
+#[test]
+fn reversed_format4_segments_add_no_pages() {
+	// A malformed segment whose start is after its end maps nothing.
+	let face = covering(
+		Some(cmap(3, 1, format4(&[(0x500, 0x400), (0x20, 0x7e)]))),
+		None,
+	);
+	assert_eq!(face.pages, [(0, 0)]);
+}
+
+#[test]
+fn monospace_detection_still_reads_latin_from_a_long_format12_table() {
+	// Hundreds of groups, on every other page; ASCII stays in the first.
+	let mut groups = vec![(0x20, 0x7e)];
+	groups.extend((0..300).map(|i| (0x1_0000 + 0x200 * i, 0x1_0010 + 0x200 * i)));
+	let face = faces(&fixed_with(Some(cmap(3, 10, format12(&groups)))))
+		.unwrap()
+		.remove(0);
+	assert!(face.monospace);
+	assert_eq!(face.pages.len(), 301);
+	assert_eq!(face.pages.last(), Some(&(0x356, 0x356)));
+}

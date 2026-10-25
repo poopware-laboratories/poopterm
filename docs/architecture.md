@@ -237,7 +237,10 @@ and position, and placeholder slices row by row.
   `round_rect`, `button`, `text` and `glyph` operations.
 - `render::glyphs::FontSet` owns the primary and fallback fonts and caches
   rasterized glyphs by `(char, size)` in an `FxHashMap`; the fallback font is
-  resolved only on a cache miss.
+  resolved only on a cache miss. When no loaded font has a character,
+  `fonts::fallback::SystemFallback` opens the font database (each face records
+  the Unicode pages its `cmap` maps) and loads matching installed fonts, at
+  most four per character and 32 in all.
 - `render::grid::draw_grid` draws a `GridView`: cells right to left (so wide
   glyphs paint over their spacer), cursor, selection, search match, underline
   and strike styles, hyperlinks, combining marks and images.

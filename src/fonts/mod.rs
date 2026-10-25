@@ -1,10 +1,14 @@
 //! Terminal font loading with bundled and system symbol-font fallbacks.
 mod cff;
 mod cmap;
+pub(crate) mod coverage;
 pub(crate) mod db;
 #[cfg(test)]
 mod db_tests;
 mod face;
+pub(crate) mod fallback;
+#[cfg(test)]
+pub(crate) mod fallback_tests;
 mod font;
 #[cfg(test)]
 mod font_bench;

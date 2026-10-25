@@ -15,7 +15,10 @@ use std::{
 	time::UNIX_EPOCH,
 };
 
-use super::sfnt::{FaceInfo, read_faces};
+use super::{
+	coverage,
+	sfnt::{FaceInfo, read_faces},
+};
 
 /// Bounds on what a scan visits; real systems stay far below them.
 const MAX_DEPTH: usize = 8;
@@ -26,7 +29,7 @@ const MAX_CACHE_FILE: u64 = 64 << 20;
 /// Paths with their stamps.
 type Stamped = Vec<(PathBuf, Stamp)>;
 /// Bumped when face data changes meaning, so old caches are rebuilt.
-const HEADER: &str = "poopterm-fonts 2";
+const HEADER: &str = "poopterm-fonts 3";
 
 /// Modification time in nanoseconds and size. A missing path has the
 /// default stamp.
@@ -290,11 +293,13 @@ pub(crate) fn encode(cache: &Cache) -> String {
 		);
 		for face in faces {
 			out += &format!(
-				"f\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+				"f\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
 				face.index,
 				face.weight,
 				u8::from(face.italic),
 				u8::from(face.monospace),
+				u8::from(face.outlines),
+				coverage::encode(&face.pages),
 				escape(&face.family),
 				escape(&face.style),
 				escape(&face.full_name),
@@ -337,6 +342,8 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 				weight,
 				italic,
 				monospace,
+				outlines,
+				pages,
 				family,
 				style,
 				full_name,
@@ -347,6 +354,8 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 					weight: weight.parse().ok()?,
 					italic: *italic == "1",
 					monospace: *monospace == "1",
+					outlines: *outlines == "1",
+					pages: coverage::decode(pages)?,
 					family: unescape(family)?,
 					style: unescape(style)?,
 					full_name: unescape(full_name)?,

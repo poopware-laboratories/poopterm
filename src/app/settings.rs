@@ -227,8 +227,7 @@ impl App {
 			term.set_scrollback_limit(preferences.scrollback_lines);
 		}
 		if font_changed {
-			let (font, fallbacks) = crate::fonts::load_fonts();
-			self.fonts = crate::render::glyphs::FontSet::new(font, fallbacks);
+			self.fonts = crate::render::glyphs::FontSet::load();
 		}
 		self.apply_scale();
 		self.selection = None;
