@@ -107,7 +107,8 @@ HiDPI sizes. It also takes memory bandwidth from the parser during floods,
 which is why floods are capped at 30 fps. Parse throughput stays CPU work.
 
 Tracked in [#30](https://github.com/poopterm-labs/poopterm/issues/30), with
-one issue per piece (#20–#29); claim one there.
+one issue per piece (#20–#29). All of it is claimed by @vx9k; ask on the
+issue before starting a piece.
 
 - **Strict rule: no `wgpu`, WebGPU, OpenGL or binding crates.** Write our
   own renderers on our own thin FFI: Vulkan on Linux and FreeBSD (loaded
