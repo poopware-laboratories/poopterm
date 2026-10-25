@@ -7,6 +7,7 @@ terminfo. Settings (the gear button in the tab bar) edits the same file.
 - [Config file](#config-file)
 - [Themes](#themes)
 - [Fonts](#fonts)
+- [Layout and window](#layout-and-window)
 - [Environment variables](#environment-variables)
 - [Shortcuts](#shortcuts)
 - [Shell integration](#shell-integration)
@@ -28,7 +29,9 @@ warm gold accents.
 
 The default config path is `~/Library/Application Support/poopterm/config.toml`
 on macOS and `~/.config/poopterm/config.toml` on Linux and FreeBSD (or
-`$XDG_CONFIG_HOME/poopterm/config.toml` when `XDG_CONFIG_HOME` is set). Create
+`$XDG_CONFIG_HOME/poopterm/config.toml` when `XDG_CONFIG_HOME` is set). Open
+tabs are kept in `$XDG_STATE_HOME/poopterm` and generated files in
+`$XDG_DATA_HOME/poopterm`. Create
 the file or open **Settings** from the gear button in the tab bar. Settings
 opens in a separate window with a theme picker, wallpaper chooser and strength
 control, font-size and scrollback controls, session restore, tab visibility and
@@ -72,7 +75,8 @@ when GPU startup fails.
 `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `bark`,
 `amoled-black`, `poop`, or `custom`. The custom theme starts from the Poop
 palette and accepts optional six-digit RGB overrides. Color keys can also
-override a built-in theme; AMOLED Black keeps its pure black background:
+override a built-in theme; AMOLED Black keeps its pure black background. The older `macos-dark` and
+`macos-light` values remain accepted for existing configs.
 
 ```toml
 theme = "custom"
@@ -103,10 +107,16 @@ bundled DejaVu Sans Mono for Powerline font. Emoji draw in color from an install
 Font icon coverage, choose a Nerd Font Mono family or file. Use a monospaced
 font for predictable cell alignment.
 
+Poopterm also searches common system font directories for up to eight TTF
+fonts with Nerd Font, Symbol, or Awesome in their filenames. Characters none
+of those fonts have (CJK, math, rare scripts) are drawn from an installed font
+that has them, found through the font cache and always the same one:
+monospace before proportional, upright regular weights first, then smaller
+files.
+
 ## Layout and window
 
-The older `macos-dark` and `macos-light` theme values remain accepted for
-existing configs. The grid fills the window by default; `padding` (also on the Settings Layout
+The grid fills the window by default; `padding` (also on the Settings Layout
 page) adds space around it. Whatever the padding, the space left over where the
 window is not a whole number of cells takes the colors of the cells at the
 grid's edges, so full-screen programs' backgrounds reach the window edge.
@@ -201,7 +211,6 @@ restored tabs. Missing directories fall back to the home directory.
 A dot marks unseen background output; `!` marks a terminal bell. Switching to a
 tab clears its indicator.
 
-
 ## Login shell
 
 Poopterm launches the shell from `$SHELL` (falling back to `/bin/sh`) as a login
@@ -220,8 +229,6 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 For Intel Macs, use `/usr/local/bin/brew` instead. Commands such as `hyfetch`
 must be installed and available on the PATH in that login shell.
 
-  `/dev` (except `/dev/shm`). See the [protocol specification](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
-
 ## Terminfo
 
 Shells run with `TERM=xterm-poopterm`, an entry that advertises only what
@@ -231,3 +238,4 @@ events, …), when it is installed system-wide; otherwise they get
 `sudo` cannot see it and programs such as `sudo dmesg` would lose their
 colors. `make install` installs the entry system-wide, or run
 `poopterm --print-terminfo | sudo tic -x -`. Set `term = "xterm-256color"`
+(or any name) in `config.toml` to override.

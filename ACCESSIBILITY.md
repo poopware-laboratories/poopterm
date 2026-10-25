@@ -26,7 +26,7 @@ to fix, not a design decision.
 - **Keyboard.** Tabs, search, prompt jumps, copy and paste, themes, the
   command palette and Settings all have shortcuts. Settings → Shortcuts and
   the `shortcut_*` keys in `config.toml` rebind them (see the
-  [README](README.md#tabs-and-keyboard-shortcuts)). In Settings, Enter or
+  [README](README.md#keyboard-shortcuts)). In Settings, Enter or
   Ctrl+S / Cmd+S saves, Esc goes back or closes, and the arrow keys change
   the theme and the font.
 - **Text size.** `font_size` goes from 10 to 32 points, in steps as
@@ -38,7 +38,7 @@ to fix, not a design decision.
 - **Contrast and color.** Every built-in theme's default text foreground and
   background meet WCAG AA contrast (4.5:1). AMOLED Black uses pure black,
   and the `custom` theme or color keys override any color, so you can build
-  a high-contrast palette (see [Themes](README.md#themes)). Programs can also
+  a high-contrast palette (see [Themes](docs/configuration.md#themes)). Programs can also
   change the palette through OSC 4, 10, 11 and 12.
 - **No blinking.** Blinking cursor shapes (DECSCUSR) and blinking text
   (SGR 5) are drawn steady.

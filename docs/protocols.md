@@ -33,7 +33,7 @@ with `font_path` or `POOPTERM_FONT`.
   kitty's `cmdline=` and `cmdline_url=` on `C` name the running command. Poopterm
   retains the latest 256 markers and shows the running command or exit status
   in the status bar. Poopterm's own hooks for zsh, bash and fish load
-  automatically (see [Shell integration](#shell-integration)). The hooks also emit
+  automatically (see [Shell integration](configuration.md#shell-integration)). The hooks also emit
   OSC 7 so BSD shells can report their working directory. Bash 4.4 or later
   reports the running command from its history, so commands history skips
   (`ignorespace`, `ignoredups`) show none.
@@ -111,3 +111,4 @@ with `font_path` or `POOPTERM_FONT`.
   of decoded images and 4,096 images per terminal (least recently used,
   off-screen images are evicted first), 65,536 frames per image. File
   transmissions accept only absolute paths outside `/proc`, `/sys` and
+  `/dev` (except `/dev/shm`). See the [protocol specification](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
