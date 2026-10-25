@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.100 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw the tab sidebar like the header bar (#138) (ui).
+
 ## 26.10.99 "Giga Fly" — 2026-10-25
 
 ### Added
