@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.119 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Record vulkan commands and submit them to raise a timeline (#159) (gpu).
+
 ## 26.10.118 "Giga Fly" — 2026-10-25
 
 ### Added
