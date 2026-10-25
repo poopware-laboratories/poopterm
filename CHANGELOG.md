@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.98 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw a flat header bar in a proportional ui font (#136) (ui).
+
 ## 26.10.97 "Giga Fly" — 2026-10-25
 
 ### Fixed
