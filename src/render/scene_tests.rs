@@ -90,12 +90,13 @@ fn unclipped_text_is_recorded_clipped_to_the_whole_target() {
 }
 
 #[test]
-fn recorded_text_owns_a_copy_of_multibyte_and_empty_strings() {
+fn recorded_text_owns_a_verbatim_copy_of_multibyte_empty_and_spaced_strings() {
 	let mut scene = Scene::new(64, 20);
 	let fonts = &mut fonts();
 	let mut title = String::from("héllo 🐱 世界");
 	scene.text(fonts, 0, 0, &title, 12.0, 9, 1);
 	scene.text(fonts, 0, 0, "", 12.0, 9, 1);
+	scene.text(fonts, 0, 0, "  spaced out ", 12.0, 9, 1);
 	title.clear();
 	let texts: Vec<_> = scene
 		.commands
@@ -105,7 +106,7 @@ fn recorded_text_owns_a_copy_of_multibyte_and_empty_strings() {
 			other => panic!("{other:?}"),
 		})
 		.collect();
-	assert_eq!(texts, ["héllo 🐱 世界", ""]);
+	assert_eq!(texts, ["héllo 🐱 世界", "", "  spaced out "]);
 }
 
 #[test]

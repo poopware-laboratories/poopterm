@@ -3,7 +3,7 @@
 //! text as text a renderer can shape.
 use super::{
 	glyphs::FontSet,
-	header::draw_header,
+	header::{draw_header, line},
 	label::{Label, draw_label},
 	popover::draw_popover,
 	scene::{Command, Rect, Scene},
@@ -20,6 +20,7 @@ use crate::{
 		sidebar::{SidebarInput, SidebarState, sidebar},
 		status_bar::{StatusInput, status_bar},
 		tabs::{TabStripOptions, VerticalTabOptions, tab_layout_with_compaction, vertical_tab_layout},
+		ui_font::text_width,
 	},
 };
 
@@ -49,19 +50,28 @@ fn inside((x, y, w, h): Rect, (bx, by, bw, bh): Rect) -> bool {
 	w == 0 || h == 0 || (x >= bx && y >= by && x + w <= bx + bw && y + h <= by + bh)
 }
 
-/// Checks that no shape in `scene` reaches outside `bounds`, and that all
-/// text starts inside it and is clipped inside it when clipped at all.
+/// Checks that nothing in `scene` reaches outside `bounds`: shapes by
+/// their rectangle, clipped text by its clip, and other text by its advance
+/// and line height.
 fn assert_inside(scene: &Scene, bounds: Rect, what: &str) {
+	let fonts = &mut fonts();
 	let whole = (0, 0, scene.width, scene.height);
 	assert!(!scene.commands.is_empty(), "{what}: nothing recorded");
 	for command in &scene.commands {
-		let fits = match *command {
-			Command::Rect(rect, _) | Command::RoundRect(rect, ..) => inside(rect, bounds),
-			Command::Text { at, clip, .. } => {
-				inside((at.0, at.1, 1, 1), bounds) && (clip == whole || inside(clip, bounds))
+		let reach = match *command {
+			Command::Rect(rect, _) | Command::RoundRect(rect, ..) => rect,
+			Command::Text { clip, .. } if clip != whole => clip,
+			Command::Text {
+				at, ref text, px, ..
+			} => {
+				let width = text_width(text, |ch| fonts.advance(ch, px));
+				(at.0, at.1, width.max(1), line(fonts, px).0.max(1))
 			}
 		};
-		assert!(fits, "{what}: {command:?} leaves {bounds:?}");
+		assert!(
+			inside(reach, bounds),
+			"{what}: {command:?} leaves {bounds:?}"
+		);
 	}
 }
 
