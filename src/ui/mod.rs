@@ -16,3 +16,4 @@ mod tabs_horizontal_tests;
 mod tabs_vertical_edge_tests;
 #[cfg(test)]
 mod tabs_vertical_tests;
+pub(crate) mod zoom;

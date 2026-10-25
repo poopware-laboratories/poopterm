@@ -176,6 +176,12 @@ impl App {
 			self.cycle_theme();
 			return;
 		}
+		if let Some(zoom) = zoom_action(&self.shortcuts, &event.logical_key, self.mods) {
+			self.font_points = zoomed(self.font_points, self.preferences.font_size, zoom);
+			self.apply_scale();
+			self.resize(self.width, self.height);
+			return;
+		}
 		let prompt_jump = [
 			(&self.shortcuts.previous_prompt, -1),
 			(&self.shortcuts.next_prompt, 1),

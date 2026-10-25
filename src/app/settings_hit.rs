@@ -167,8 +167,8 @@ pub(super) fn settings_target(
 }
 
 /// [`SHORTCUT_ROWS`] as click targets.
-const SHORTCUT_TARGETS: [(usize, SettingsTarget); 7] = {
-	let mut targets = [(0, SettingsTarget::Save); 7];
+const SHORTCUT_TARGETS: [(usize, SettingsTarget); 10] = {
+	let mut targets = [(0, SettingsTarget::Save); 10];
 	let mut i = 0;
 	while i < SHORTCUT_ROWS.len() {
 		targets[i] = (
@@ -273,6 +273,32 @@ mod tests {
 		assert_eq!(
 			target(600, 164),
 			Some(SettingsTarget::SetShortcut(ShortcutAction::CommandPalette))
+		);
+	}
+
+	#[test]
+	fn all_ten_shortcuts_are_clickable_above_the_footer() {
+		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Shortcuts);
+		for (i, action) in ShortcutAction::ALL.into_iter().enumerate() {
+			let top = 104 + 44 * i;
+			assert_eq!(
+				target(600, top + 1),
+				Some(SettingsTarget::SetShortcut(action))
+			);
+			assert_eq!(
+				target(600, top + ROW_HEIGHT + 2),
+				None,
+				"gap below {action:?}"
+			);
+		}
+		let (_, last) = SHORTCUT_ROWS[SHORTCUT_ROWS.len() - 1];
+		assert!(
+			last + ROW_HEIGHT <= MIN_SIZE.1 - 52,
+			"clear of the Save button"
+		);
+		assert_eq!(
+			target(600, 510),
+			Some(SettingsTarget::SetShortcut(ShortcutAction::ZoomReset))
 		);
 	}
 

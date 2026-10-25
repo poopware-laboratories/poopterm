@@ -202,6 +202,9 @@ impl App {
 	}
 
 	fn apply_saved_settings(&mut self, preferences: Preferences, font_changed: bool) {
+		if preferences.font_size != self.preferences.font_size {
+			self.font_points = preferences.font_size;
+		}
 		self.preferences = preferences;
 		self.theme = Theme::load();
 		self.shortcuts = Shortcuts::load();

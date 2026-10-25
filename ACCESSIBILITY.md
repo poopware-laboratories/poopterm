@@ -31,7 +31,9 @@ to fix, not a design decision.
   the theme and the font.
 - **Text size.** `font_size` goes from 10 to 32 logical pixels and follows
   the display scale factor, so HiDPI and desktop scaling enlarge it further.
-  Any installed font can be chosen in Settings → Fonts.
+  Any installed font can be chosen in Settings → Fonts. Ctrl+= / Ctrl+- /
+  Ctrl+0 (Cmd on macOS) zoom the font from 6 to 72 points for the session,
+  and can be rebound like the other shortcuts.
 - **Contrast and color.** Every built-in theme's default text foreground and
   background meet WCAG AA contrast (4.5:1). AMOLED Black uses pure black,
   and the `custom` theme or color keys override any color, so you can build
@@ -49,7 +51,6 @@ to fix, not a design decision.
 | Screen readers cannot read the window: Poopterm exposes no accessibility tree yet. | Use a terminal or console your screen reader already supports until then; within Poopterm, output can be copied to another app with the selection and clipboard shortcuts. |
 | Input method preedit (the text you compose before committing) is not drawn in the window. | Most input methods show their candidate window; compose there. |
 | Some Settings controls (toggles, font size, scrollback, wallpaper) need a mouse. | Every one is also a `config.toml` key; edit the file and restart. |
-| There is no shortcut to zoom the font in or out. | Change `font_size` in Settings or `config.toml`. |
 | Kitty graphics animations play with no way to pause them, and there is no reduced-motion setting. | They only play when a program sends them; avoid such programs or disable their images. |
 
 ## Supported environments

@@ -281,6 +281,10 @@ POOPTERM_THEME=catppuccin-latte poopterm
   The usual paste shortcut can paste a search query.
 - **Cmd+Up/Down** on macOS or **Ctrl+Shift+Up/Down** elsewhere: jump to the
   previous or next shell prompt (needs shell integration).
+- **Cmd+= / Cmd+- / Cmd+0** on macOS, or **Ctrl+= / Ctrl+- / Ctrl+0**
+  elsewhere: make the terminal font larger or smaller (6 to 72 points), or put
+  it back to the size in Settings. Zoom lasts for the session; Settings keeps
+  the saved size.
 - **Cmd-click** / **Ctrl-click** an HTTP(S) URL to open it in your browser, or
   a displayed path containing `/` to copy it. Links to executables and
   launcher files (`.desktop`, `.command`, …) are copied, never opened; the
@@ -305,14 +309,16 @@ POOPTERM_THEME=catppuccin-latte poopterm
   lists each action's current binding.
 
 The `shortcut_new_tab`, `shortcut_command_palette`, `shortcut_cycle_theme`,
-`shortcut_search`, `shortcut_close_tab`, `shortcut_previous_prompt`, and
-`shortcut_next_prompt` config keys accept `ctrl`, `shift`, `alt`, and `super`
+`shortcut_search`, `shortcut_close_tab`, `shortcut_previous_prompt`,
+`shortcut_next_prompt`, `shortcut_zoom_in`, `shortcut_zoom_out`, and
+`shortcut_zoom_reset` config keys accept `ctrl`, `shift`, `alt`, and `super`
 plus a character key or one of `up`, `down`, `left`, `right`, `pageup`,
 `pagedown`, `home`, `end`, `tab`, `enter`, `space`, or `plus`. Defaults use the platform's common
 shortcuts shown above: **Cmd+T** / **Ctrl+Shift+N** opens a tab, **Ctrl+Shift+P**
 opens the command palette, **Ctrl+Shift+T** cycles themes, **Cmd+F** /
 **Ctrl+Shift+F** searches, **Cmd+W** / **Ctrl+Shift+W** closes a tab, and
-**Cmd+Up/Down** / **Ctrl+Shift+Up/Down** jumps between prompts. The sample values
+**Cmd+Up/Down** / **Ctrl+Shift+Up/Down** jumps between prompts, and **Cmd** /
+**Ctrl** with **=**, **-** or **0** zooms. The sample values
 above are for macOS. Tab cycling, direct tab selection, and clipboard shortcuts
 are fixed bindings.
 
