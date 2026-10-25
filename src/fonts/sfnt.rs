@@ -3,10 +3,13 @@
 //!
 //! Written from the OpenType specification. Only the table directory and the
 //! small `name`, `OS/2`, `post`, `head` and `hhea` tables are read, by
-//! seeking, plus `hmtx` for fonts whose flags do not say monospace, so
+//! seeking, plus `cmap` and, for fonts whose flags do not say monospace,
+//! `hmtx`, so
 //! listing a 20 MB CJK font costs a few kilobytes of I/O. Font files are
 //! untrusted: every count and offset is bounds-checked and reads are capped.
 use std::io::{self, Read, Seek, SeekFrom};
+
+use super::coverage::{Pages, pages};
 
 /// What the database needs to know about one face of a font file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +27,10 @@ pub(crate) struct FaceInfo {
 	/// A fixed-pitch text font: every glyph has one width and ASCII letters
 	/// and digits are mapped, which rules out emoji and symbol fonts.
 	pub monospace: bool,
+	/// Has glyph outlines (`glyf`, `CFF ` or `CFF2`), not only bitmaps.
+	pub outlines: bool,
+	/// The Unicode pages its `cmap` maps.
+	pub pages: Pages,
 }
 
 /// More faces than any real collection has.
@@ -31,6 +38,8 @@ const MAX_FACES: u32 = 256;
 const MAX_TABLES: u16 = 512;
 /// Name tables of large CJK families reach a few hundred kilobytes.
 const MAX_NAME_TABLE: u32 = 1 << 20;
+/// More `cmap` groups than any real font has.
+const MAX_GROUPS: usize = 1 << 17;
 
 /// Lists the faces in a font file. A collection skips faces it cannot read;
 /// a single font that cannot be read is an error. Faces without a family
@@ -122,11 +131,17 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 			_ => false,
 		};
 	// Emoji and symbol fonts are fixed pitch too; a terminal font needs text.
-	let monospace = fixed_width
-		&& find(b"cmap")
-			.is_some_and(|(offset, length)| covers_latin(file, offset, length).unwrap_or(false));
+	let (latin, pages) = find(b"cmap").map_or_else(Default::default, |(offset, length)| {
+		read_cmap(file, offset, length).unwrap_or_default()
+	});
+	let monospace = fixed_width && latin;
+	let outlines = [b"glyf", b"CFF ", b"CFF2"]
+		.into_iter()
+		.any(|tag| find(tag).is_some());
 	Ok(Some(FaceInfo {
 		index,
+		outlines,
+		pages,
 		postscript: names.get(6).unwrap_or_default(),
 		family,
 		style,
@@ -216,8 +231,9 @@ fn latin() -> impl Iterator<Item = u32> {
 }
 
 /// Whether the `cmap` table at `offset` maps every [`latin`] character to
-/// a glyph, using its best Unicode subtable (format 12 or format 4).
-fn covers_latin<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Result<bool> {
+/// a glyph, and the pages it maps, from its best Unicode subtable (format
+/// 12 or format 4).
+fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Result<(bool, Pages)> {
 	let header = read_at(file, offset, 4)?;
 	let count = usize::from(be16(&header, 2)).min(256);
 	let records = read_at(file, offset + 4, 8 * count)?;
@@ -236,7 +252,7 @@ fn covers_latin<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::R
 		.filter(|&(_, at)| at < length)
 		.min();
 	let Some((_, at)) = best else {
-		return Ok(false);
+		return Ok((false, Vec::new()));
 	};
 	let start = offset + u64::from(at);
 	let head = read_at(file, start, 4)?;
@@ -244,22 +260,36 @@ fn covers_latin<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::R
 		4 => {
 			let size = usize::from(be16(&head, 2)).min((length - at) as usize);
 			let table = read_at(file, start, size)?;
-			latin().all(|ch| format4_glyph(&table, ch).is_some_and(|glyph| glyph != 0))
+			let get = |at: usize| Some(u32::from(be16(table.get(at..at + 2)?, 0)));
+			let segments = get(6).map_or(0, |count| count as usize / 2);
+			// The last segment, 0xFFFF alone, only ends the table.
+			let ranges = (0..segments)
+				.map_while(|i| Some((get(16 + 2 * segments + 2 * i)?, get(14 + 2 * i)?)))
+				.filter(|&(first, _)| first != 0xffff);
+			(
+				latin().all(|ch| format4_glyph(&table, ch).is_some_and(|glyph| glyph != 0)),
+				pages(ranges),
+			)
 		}
 		12 => {
 			let head = read_at(file, start, 16)?;
-			// Groups are sorted, so ASCII is in the first few.
-			let groups = (be32(&head, 12) as usize).min(64);
+			let groups = (be32(&head, 12) as usize)
+				.min(MAX_GROUPS)
+				.min(((length - at) as usize).saturating_sub(16) / 12);
 			let groups = read_at(file, start + 16, 12 * groups)?;
 			let groups = groups.as_chunks::<12>().0;
-			latin().all(|ch| {
+			let latin = latin().all(|ch| {
 				groups.iter().any(|group| {
 					let (first, last) = (be32(group, 0), be32(group, 4));
 					(first..=last).contains(&ch) && be32(group, 8).wrapping_add(ch - first) != 0
 				})
-			})
+			});
+			(
+				latin,
+				pages(groups.iter().map(|group| (be32(group, 0), be32(group, 4)))),
+			)
 		}
-		_ => false,
+		_ => (false, Vec::new()),
 	})
 }
 

@@ -428,8 +428,10 @@ distributed under the Bitstream Vera license, with public-domain changes. See
 the [DejaVu font license](https://dejavu-fonts.github.io/License.html). A custom
 font falls back to the bundled font for missing glyphs; Poopterm also searches
 common system font directories for up to eight TTF fonts with Nerd Font, Symbol,
-or Awesome in their filenames. For the broadest htop icon coverage, set
-`font_path` to a Nerd Font Mono file.
+or Awesome in their filenames. Characters none of those fonts have (CJK, math,
+rare scripts) are drawn from any installed font that has them, found through
+the font cache. For the broadest htop icon coverage, set `font_path` to a Nerd
+Font Mono file.
 
 Poopterm is free software: you can redistribute it and/or modify it under the
 terms of the [GNU Affero General Public License](LICENSE) as published by the
