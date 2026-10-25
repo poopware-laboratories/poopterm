@@ -2,6 +2,8 @@
 //! 1.5, …); window chrome is drawn at one whole-number scale, so every part
 //! of it agrees and its one-pixel lines stay crisp.
 
+use super::font_size::FontSize;
+
 /// The largest scale honored; beyond it a factor is taken as broken.
 pub(crate) const MAX_SCALE: usize = 8;
 /// The smallest factor honored; smaller ones would shrink the font to nothing.
@@ -23,17 +25,18 @@ pub(crate) fn chrome_scale(factor: f64) -> usize {
 }
 
 /// The font size the chrome is designed around: Settings' default.
-pub(crate) const UI_POINTS: usize = 18;
+pub(crate) const UI_POINTS: FontSize = FontSize::points(18);
 
 /// The factor the chrome is drawn at: the display factor, grown with fonts
 /// larger than [`UI_POINTS`] so tab and status text get larger with them.
-pub(crate) fn chrome_factor(factor: f64, font_points: usize) -> f64 {
-	factor * (font_points as f64 / UI_POINTS as f64).max(1.0)
+pub(crate) fn chrome_factor(factor: f64, font_points: FontSize) -> f64 {
+	factor * (font_points.as_f64() / UI_POINTS.as_f64()).max(1.0)
 }
 
-/// The terminal font size in pixels for a size in points at `factor`.
-pub(crate) fn font_px(points: usize, factor: f64) -> f32 {
-	points as f32 * usable(factor) as f32
+/// The terminal font size in pixels for a size in points at `factor`,
+/// fractional sizes included.
+pub(crate) fn font_px(points: FontSize, factor: f64) -> f32 {
+	(points.as_f64() * usable(factor)) as f32
 }
 
 /// Window chrome sizes, in physical pixels.
@@ -61,6 +64,10 @@ pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn pt(points: u32) -> FontSize {
+		FontSize::points(points)
+	}
 
 	#[test]
 	fn whole_factors_are_used_as_they_are() {
@@ -98,13 +105,13 @@ mod tests {
 
 	#[test]
 	fn text_follows_the_exact_factor() {
-		assert_eq!(font_px(14, 1.0), 14.0);
-		assert_eq!(font_px(14, 1.25), 17.5);
-		assert_eq!(font_px(14, 1.5), 21.0);
-		assert_eq!(font_px(12, 2.0), 24.0);
-		assert_eq!(font_px(14, f64::NAN), 14.0, "broken factors draw at 1x");
-		assert_eq!(font_px(14, 0.0), 14.0);
-		assert_eq!(font_px(14, 1e9), 14.0 * MAX_SCALE as f32);
+		assert_eq!(font_px(pt(14), 1.0), 14.0);
+		assert_eq!(font_px(pt(14), 1.25), 17.5);
+		assert_eq!(font_px(pt(14), 1.5), 21.0);
+		assert_eq!(font_px(pt(12), 2.0), 24.0);
+		assert_eq!(font_px(pt(14), f64::NAN), 14.0, "broken factors draw at 1x");
+		assert_eq!(font_px(pt(14), 0.0), 14.0);
+		assert_eq!(font_px(pt(14), 1e9), 14.0 * MAX_SCALE as f32);
 	}
 
 	#[test]
@@ -164,17 +171,17 @@ mod tests {
 	#[test]
 	fn tiny_factors_are_raised_to_the_smallest_scale() {
 		// A factor that rounds the font to nothing would leave no cells.
-		assert_eq!(font_px(14, 1e-300), 14.0 * MIN_FACTOR as f32);
-		assert_eq!(font_px(14, 0.01), 14.0 * MIN_FACTOR as f32);
-		assert_eq!(font_px(16, 0.5), 8.0, "small real factors are kept");
+		assert_eq!(font_px(pt(14), 1e-300), 14.0 * MIN_FACTOR as f32);
+		assert_eq!(font_px(pt(14), 0.01), 14.0 * MIN_FACTOR as f32);
+		assert_eq!(font_px(pt(16), 0.5), 8.0, "small real factors are kept");
 		assert_eq!(chrome(1e-300, false).border, 2);
 	}
 
 	#[test]
 	fn factors_inside_the_bounds_are_not_clamped() {
-		assert_eq!(font_px(10, 7.5), 75.0);
+		assert_eq!(font_px(pt(10), 7.5), 75.0);
 		assert_eq!(
-			font_px(10, MIN_FACTOR + 0.25),
+			font_px(pt(10), MIN_FACTOR + 0.25),
 			10.0 * (MIN_FACTOR + 0.25) as f32
 		);
 		assert_eq!(chrome_scale(7.4), 7);
@@ -190,7 +197,7 @@ mod tests {
 			(2.25, 2, 31.5),
 			(2.5, 3, 35.0),
 		] {
-			assert_eq!(font_px(14, factor), font, "{factor}");
+			assert_eq!(font_px(pt(14), factor), font, "{factor}");
 			assert_eq!(chrome(factor, false).tab_height, 44 * scale, "{factor}");
 			assert_eq!(chrome(factor, true).titlebar_height, 44 * scale, "{factor}");
 		}
@@ -205,7 +212,7 @@ mod tests {
 
 	#[test]
 	fn larger_fonts_grow_the_chrome_in_whole_steps() {
-		let scale = |factor, points| chrome_scale(chrome_factor(factor, points));
+		let scale = |factor, points| chrome_scale(chrome_factor(factor, pt(points)));
 		assert_eq!(scale(1.0, 26), 1, "1.44 rounds down");
 		assert_eq!(scale(1.0, 27), 2, "1.5 rounds up");
 		assert_eq!(scale(1.0, 32), 2);
@@ -216,19 +223,40 @@ mod tests {
 
 	#[test]
 	fn smaller_fonts_never_shrink_the_chrome() {
-		assert_eq!(chrome_factor(1.0, 6), 1.0);
-		assert_eq!(chrome_factor(2.0, 10), 2.0);
-		assert_eq!(chrome_factor(1.5, 0), 1.5);
+		assert_eq!(chrome_factor(1.0, pt(6)), 1.0);
+		assert_eq!(chrome_factor(2.0, pt(10)), 2.0);
+		assert_eq!(chrome_factor(1.5, pt(0)), 1.5);
 	}
 
 	#[test]
 	fn the_chrome_scale_stays_bounded_at_any_font_size() {
-		assert_eq!(chrome_scale(chrome_factor(8.0, 72)), MAX_SCALE);
+		assert_eq!(chrome_scale(chrome_factor(8.0, pt(72))), MAX_SCALE);
 		assert_eq!(
-			chrome_scale(chrome_factor(f64::NAN, 72)),
+			chrome_scale(chrome_factor(f64::NAN, pt(72))),
 			1,
 			"a broken factor"
 		);
-		assert_eq!(chrome_scale(chrome_factor(1.0, usize::MAX)), MAX_SCALE);
+		assert_eq!(
+			chrome_scale(chrome_factor(1.0, FontSize::hundredths(u32::MAX))),
+			MAX_SCALE
+		);
+	}
+
+	#[test]
+	fn fractional_font_sizes_scale_exactly() {
+		let size = |text| FontSize::parse(text).unwrap();
+		assert_eq!(font_px(size("13.5"), 1.0), 13.5);
+		assert_eq!(font_px(size("13.5"), 1.5), 20.25);
+		assert_eq!(font_px(size("12.25"), 2.0), 24.5);
+		assert_eq!(font_px(size("10.5"), 1e9), 10.5 * MAX_SCALE as f32);
+		// The chrome grows from the exact size: 26.99 / 18 rounds down, 27 up.
+		assert_eq!(chrome_factor(1.0, size("22.5")), 1.25);
+		assert_eq!(chrome_scale(chrome_factor(1.0, size("26.99"))), 1);
+		assert_eq!(chrome_scale(chrome_factor(1.0, size("27"))), 2);
+		assert_eq!(
+			chrome_factor(2.0, size("17.5")),
+			2.0,
+			"smaller never shrinks"
+		);
 	}
 }

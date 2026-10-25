@@ -6,6 +6,7 @@ use super::{
 	*,
 };
 use crate::input::shortcuts::{ShortcutAction, Shortcuts};
+use crate::ui::font_size::{SETTINGS_MAX, SETTINGS_MIN, SETTINGS_STEP};
 use winit::{dpi::LogicalSize, event::MouseScrollDelta};
 
 /// Unsaved preference edits shown in the Settings window.
@@ -66,11 +67,9 @@ impl SettingsEditor {
 		let prefs = &mut self.preferences;
 		match row {
 			FONT_ROW => {
-				prefs.font_size = if up {
-					(prefs.font_size + 1).min(32)
-				} else {
-					prefs.font_size.saturating_sub(1).max(10)
-				}
+				prefs.font_size = prefs
+					.font_size
+					.stepped(SETTINGS_STEP, up, SETTINGS_MIN, SETTINGS_MAX)
 			}
 			SCROLLBACK_ROW => {
 				prefs.scrollback_lines = if up {

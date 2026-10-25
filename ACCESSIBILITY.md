@@ -29,8 +29,9 @@ to fix, not a design decision.
   [README](README.md#tabs-and-keyboard-shortcuts)). In Settings, Enter or
   Ctrl+S / Cmd+S saves, Esc goes back or closes, and the arrow keys change
   the theme and the font.
-- **Text size.** `font_size` goes from 10 to 32 logical pixels and follows
-  the display scale factor, so HiDPI and desktop scaling enlarge it further.
+- **Text size.** `font_size` goes from 10 to 32 logical pixels, in steps as
+  fine as 0.01 (Settings steps by 0.5), and follows the display scale
+  factor, so HiDPI and desktop scaling enlarge it further.
   Any installed font can be chosen in Settings → Fonts. Ctrl+= / Ctrl+- /
   Ctrl+0 (Cmd on macOS) zoom the font from 6 to 72 points for the session,
   and can be rebound like the other shortcuts.

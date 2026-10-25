@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::theme::ThemeKind;
+use crate::ui::font_size::{FontSize, SETTINGS_MAX, SETTINGS_MIN};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum RendererPreference {
@@ -28,7 +29,7 @@ impl RendererPreference {
 
 #[derive(Clone, Copy)]
 pub struct Preferences {
-	pub font_size: usize,
+	pub(crate) font_size: FontSize,
 	pub scrollback_lines: usize,
 	pub restore_sessions: bool,
 	pub opacity: usize,
@@ -48,7 +49,7 @@ pub struct Preferences {
 impl Default for Preferences {
 	fn default() -> Self {
 		Self {
-			font_size: 18,
+			font_size: FontSize::points(18),
 			scrollback_lines: 5000,
 			restore_sessions: true,
 			opacity: 100,
@@ -70,9 +71,9 @@ impl Preferences {
 		let defaults = Self::default();
 		Self {
 			font_size: value(text, "font_size")
-				.and_then(|s| s.parse().ok())
+				.and_then(|s| FontSize::parse(&s))
 				.unwrap_or(defaults.font_size)
-				.clamp(10, 32),
+				.clamp(SETTINGS_MIN, SETTINGS_MAX),
 			scrollback_lines: value(text, "scrollback_lines")
 				.and_then(|s| s.parse().ok())
 				.unwrap_or(defaults.scrollback_lines)
@@ -273,12 +274,27 @@ mod tests {
 	fn comments_quotes_duplicates_and_unknown_keys() {
 		let text = "# User config\nfont_size = 12\nfont_size = 20 # comment\ncustom = \"a#b\"\n";
 		assert_eq!(value(text, "custom").as_deref(), Some("a#b"));
-		assert_eq!(Preferences::parse(text).font_size, 20);
+		assert_eq!(Preferences::parse(text).font_size, FontSize::points(20));
 		let result = updated(text, &[("font_size", "24".into())]);
 		assert_eq!(result.matches("font_size").count(), 1);
 		assert!(result.contains("custom = \"a#b\""));
 		assert!(result.starts_with("# User config\n"));
 		assert_eq!(updated(&result, &[("font_size", "24".into())]), result);
+	}
+	#[test]
+	fn fractional_font_sizes_are_kept_bounded_and_saved_as_written() {
+		let size = |text: &str| Preferences::parse(text).font_size;
+		assert_eq!(size("font_size = 13.5"), FontSize::hundredths(1350));
+		assert_eq!(size("font_size = \"12.25\""), FontSize::hundredths(1225));
+		assert_eq!(size("font_size = 9.5"), FontSize::points(10));
+		assert_eq!(size("font_size = 32.25"), FontSize::points(32));
+		assert_eq!(size("font_size = nan"), FontSize::points(18));
+		let saved = updated(
+			"font_size = 18\n",
+			&[("font_size", size("font_size = 13.5").to_string())],
+		);
+		assert_eq!(saved, "font_size = 13.5\n");
+		assert_eq!(size(&saved), FontSize::hundredths(1350));
 	}
 	#[test]
 	fn headers_stacked_by_old_releases_collapse_to_one() {
@@ -310,11 +326,14 @@ mod tests {
 		let p = Preferences::parse(
 			"font_size = 999\nscrollback_lines = 999999999\nrestore_sessions = nonsense\nopacity = 120",
 		);
-		assert_eq!(p.font_size, 32);
+		assert_eq!(p.font_size, FontSize::points(32));
 		assert_eq!(p.scrollback_lines, 100_000);
 		assert!(p.restore_sessions);
 		assert_eq!(p.opacity, 100);
-		assert_eq!(Preferences::parse("font_size = -1").font_size, 18);
+		assert_eq!(
+			Preferences::parse("font_size = -1").font_size,
+			FontSize::points(18)
+		);
 		assert_eq!(Preferences::parse("opacity = 25").opacity, 60);
 	}
 	#[test]
@@ -388,7 +407,7 @@ mod tests {
 			"renderer = \"software\"\nfont_size = 22\nrenderer = \"gpu\"\npadding = 7",
 		);
 		assert_eq!(preferences.renderer, RendererPreference::Gpu);
-		assert_eq!(preferences.font_size, 22);
+		assert_eq!(preferences.font_size, FontSize::points(22));
 		assert_eq!(preferences.padding, 7);
 		assert!(preferences.show_tabs);
 	}
