@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.109 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Store banded glyph records in a paged curve buffer (#147) (gpu).
+
 ## 26.10.108 "Giga Fly" — 2026-10-25
 
 ### Added
