@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.101 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw the status bar in the header's colors (#139) (ui).
+
 ## 26.10.100 "Giga Fly" — 2026-10-25
 
 ### Added
