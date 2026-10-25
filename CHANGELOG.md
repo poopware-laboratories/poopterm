@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.92 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw flags and skin tones that span two cells as one emoji (#126) (render).
+
 ## 26.10.91 "Giga Fly" — 2026-10-25
 
 ### Performance
