@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.115 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Choose vulkan memory types by what the memory is for (#155) (gpu).
+
 ## 26.10.114 "Giga Fly" — 2026-10-25
 
 ### Added
