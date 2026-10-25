@@ -351,26 +351,34 @@ fn first_ink(drawn: &Drawn) -> usize {
 
 #[test]
 fn a_bell_badge_moves_the_title_right_past_its_mark() {
-	let plain = draw(&header(1, vec![tab(10, 200, "Hg")], Vec::new()));
-	let mut ringing = tab(10, 200, "Hg");
-	ringing.badge = Some(Badge::Bell(0xff0000));
-	let rung = draw(&header(1, vec![ringing], Vec::new()));
-	// The mark's advance and a 6-pixel gap.
-	assert!(
-		first_ink(&rung) >= first_ink(&plain) + 8,
-		"{} against {}",
-		first_ink(&rung),
-		first_ink(&plain)
-	);
+	for scale in [1, 2] {
+		let px = 15.0 * scale as f32;
+		let plain = draw(&header(scale, vec![tab(10, 200, "Hg")], Vec::new()));
+		let mut ringing = tab(10, 200, "Hg");
+		ringing.badge = Some(Badge::Bell(0xff0000));
+		let rung = draw(&header(scale, vec![ringing], Vec::new()));
+		// The mark's advance and a 6-pixel gap.
+		let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
+		let shift = fonts.advance('!', px) + 6 * scale;
+		assert_eq!(first_ink(&rung), first_ink(&plain) + shift, "{scale}x");
+	}
 }
 
 #[test]
 fn without_a_close_button_the_title_runs_to_the_padding() {
 	let long = "cargo build --release --all-targets";
-	let drawn = draw(&header(1, vec![tab(10, 120, long)], Vec::new()));
-	// Into the room a close button would take, never into the last 12.
-	assert!(drawn.inked((10 + 120 - 28, 10, 16, 32)));
-	assert!(!drawn.inked((10 + 120 - 12, 4, 12, 44)));
+	for scale in [1, 2] {
+		let (width, height) = (180 * scale, 44 * scale);
+		let drawn = draw(&header(scale, vec![tab(10, width, long)], Vec::new()));
+		let end = 10 + width;
+		// Into the room a close button would take, never into the last 12.
+		let close_room = (end - 28 * scale, 4, 16 * scale, height);
+		assert!(drawn.inked(close_room), "{scale}x");
+		assert!(
+			!drawn.inked((end - 12 * scale, 4, 12 * scale, height)),
+			"{scale}x"
+		);
+	}
 }
 
 #[test]
@@ -431,6 +439,8 @@ fn icons_double_at_twice_the_scale_and_their_strokes_grow_by_half() {
 	let length = (300..372).filter(|&x| drawn.at(x, cy) == COLORS.fg).count();
 	assert_eq!((thickness, length), (3, 24));
 	let drawn = draw(&header(2, Vec::new(), vec![big_button(Icon::Menu)]));
+	let width = (300..372).filter(|&x| drawn.at(x, cy) == COLORS.fg).count();
+	assert_eq!(width, 28, "the menu's bars");
 	let rows: Vec<_> = (10..74).filter(|&y| drawn.at(cx, y) == COLORS.fg).collect();
 	assert_eq!(
 		rows,
@@ -543,6 +553,73 @@ fn the_close_mark_is_centered_in_its_button() {
 		assert!(
 			above.abs_diff(below) <= 3 * scale,
 			"{above} and {below} at {scale}x"
+		);
+	}
+}
+
+#[test]
+fn progress_doubles_at_twice_the_scale() {
+	let mut busy = tab(10, 300, "");
+	busy.fill = Some(COLORS.raised);
+	busy.progress = Some((Some(50), 0x0000ff));
+	let drawn = draw(&header(2, vec![busy], Vec::new()));
+	let (x, y, w, h) = pill(10, 300, (4, 88), 2);
+	let rows_of = |column, color| {
+		let rows = (y..y + h).filter(|&row| drawn.at(column, row) == color);
+		rows.collect::<Vec<_>>()
+	};
+	let bar = [y + h - 6, y + h - 5, y + h - 4, y + h - 3];
+	assert_eq!(rows_of(x + 30, 0x0000ff), bar, "the share done");
+	let track = blend(COLORS.raised, 0x0000ff, 60);
+	assert_eq!(rows_of(x + w - 30, track), bar, "the rest of the track");
+	let row = y + h - 6;
+	let columns: Vec<_> = (x..x + w)
+		.filter(|&column| [0x0000ff, track].contains(&drawn.at(column, row)))
+		.collect();
+	assert_eq!((columns[0], *columns.last().unwrap()), (x + 24, x + w - 25));
+}
+
+#[test]
+fn corners_round_twice_as_wide_at_twice_the_scale() {
+	// Two pixels in from a corner lies inside a 6-pixel arc but outside a
+	// 12-pixel one.
+	for (scale, inside) in [(1, true), (2, false)] {
+		let mut raised = tab(20, 160 * scale, "");
+		raised.fill = Some(COLORS.raised);
+		let drawn = draw(&header(scale, vec![raised], Vec::new()));
+		let (x, y, ..) = pill(20, 160 * scale, (4, 44 * scale), scale);
+		assert_eq!(
+			drawn.at(x + 2, y + 2) == COLORS.raised,
+			inside,
+			"tab at {scale}x"
+		);
+		let hovered = HeaderButton {
+			rect: (300, 10, 36 * scale, 32 * scale),
+			icon: Icon::Plus,
+			hovered: true,
+			enabled: true,
+		};
+		let drawn = draw(&header(scale, Vec::new(), vec![hovered]));
+		assert_eq!(
+			drawn.at(302, 12) == COLORS.hover,
+			inside,
+			"button at {scale}x"
+		);
+	}
+}
+
+#[test]
+fn arrows_are_drawn_larger_than_the_tab_text() {
+	for (icon, glyph) in [(Icon::Left, "‹"), (Icon::Right, "›")] {
+		let arrow = draw(&header(1, Vec::new(), vec![button(icon, false, true)]));
+		let (top, bottom) = arrow.ink_rows((300, 10, 36, 32));
+		let title = draw(&header(1, vec![tab(10, 200, glyph)], Vec::new()));
+		let (title_top, title_bottom) = title.ink_rows((10, 4, 200, 44));
+		assert!(
+			bottom - top > title_bottom - title_top,
+			"{icon:?}: {} against {}",
+			bottom - top,
+			title_bottom - title_top
 		);
 	}
 }
