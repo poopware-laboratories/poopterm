@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.102 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw the search box and command palette as flat popovers (#140) (ui).
+
 ## 26.10.101 "Giga Fly" — 2026-10-25
 
 ### Added
