@@ -1,5 +1,6 @@
 //! The Vulkan types the renderer passes to the driver, laid out as the
 //! specification's C declarations, and the types of its functions.
+use super::memory::MemoryType;
 use std::ffi::{c_char, c_void};
 
 /// A `VkInstance`.
@@ -97,6 +98,24 @@ pub(crate) struct ExtensionProperties {
 	pub spec_version: u32,
 }
 
+/// `VkMemoryHeap`.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MemoryHeap {
+	pub size: u64,
+	pub flags: u32,
+}
+
+/// `VkPhysicalDeviceMemoryProperties`.
+#[repr(C)]
+#[derive(Default)]
+pub(crate) struct MemoryProperties {
+	pub type_count: u32,
+	pub types: [MemoryType; 32],
+	pub heap_count: u32,
+	pub heaps: [MemoryHeap; 16],
+}
+
 /// `VkPhysicalDeviceFeatures2`, with the 1.0 features as their 55
 /// `VkBool32`s in declaration order.
 #[repr(C)]
@@ -172,6 +191,8 @@ pub(crate) type EnumerateDeviceExtensionProperties = unsafe extern "system" fn(
 	*mut u32,
 	*mut ExtensionProperties,
 ) -> i32;
+pub(crate) type GetPhysicalDeviceMemoryProperties =
+	unsafe extern "system" fn(RawPhysicalDevice, *mut MemoryProperties);
 pub(crate) type GetPhysicalDeviceFeatures2 =
 	unsafe extern "system" fn(RawPhysicalDevice, *mut PhysicalDeviceFeatures2);
 pub(crate) type CreateDevice = unsafe extern "system" fn(

@@ -8,6 +8,8 @@ use super::{
 	device_tests::{self, Made},
 	entry::Entry,
 	features::Flag,
+	memory::MemoryType,
+	memory_driver_tests,
 	types::*,
 	version::api_version,
 };
@@ -37,6 +39,8 @@ pub(super) struct Driver {
 	created: Vec<Created>,
 	pub live: Vec<RawInstance>,
 	pub destroyed: Vec<RawInstance>,
+	/// The memory types of every device.
+	pub memory: Vec<MemoryType>,
 	/// Features the devices lack; they have every other one.
 	pub lacked: Vec<Flag>,
 	pub made: Vec<Made>,
@@ -174,6 +178,10 @@ unsafe extern "system" fn get_instance_proc_addr(
 				b"vkEnumerateDeviceExtensionProperties" => {
 					transmute::<EnumerateDeviceExtensionProperties, VoidFunction>(extensions)
 				}
+				b"vkGetPhysicalDeviceMemoryProperties" => transmute::<
+					GetPhysicalDeviceMemoryProperties,
+					VoidFunction,
+				>(memory_driver_tests::memory_properties),
 				b"vkGetPhysicalDeviceFeatures2" => {
 					transmute::<GetPhysicalDeviceFeatures2, VoidFunction>(device_tests::features2)
 				}
@@ -518,6 +526,7 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 		(handle, "vkGetPhysicalDeviceProperties"),
 		(handle, "vkGetPhysicalDeviceQueueFamilyProperties"),
 		(handle, "vkEnumerateDeviceExtensionProperties"),
+		(handle, "vkGetPhysicalDeviceMemoryProperties"),
 		(handle, "vkGetPhysicalDeviceFeatures2"),
 		(handle, "vkCreateDevice"),
 		(handle, "vkGetDeviceProcAddr"),
@@ -548,6 +557,7 @@ fn a_function_the_loader_lacks_is_missing_and_the_instance_is_not_kept() {
 		c"vkGetPhysicalDeviceProperties",
 		c"vkGetPhysicalDeviceQueueFamilyProperties",
 		c"vkEnumerateDeviceExtensionProperties",
+		c"vkGetPhysicalDeviceMemoryProperties",
 		c"vkGetPhysicalDeviceFeatures2",
 		c"vkCreateDevice",
 		c"vkGetDeviceProcAddr",

@@ -185,9 +185,9 @@ The layouts and the enumeration logic are unit-tested without a driver;
   `has_v3()`, to compare them with the baseline.
 - `gpu/vk/call_tests.rs`: fake drivers write items through the pointer
   `enumerate` passes, within the count it gave.
-- `gpu/vk/driver_tests.rs`, `device_tests.rs`: the fake driver reads the
-  structures and `pNext` chains the bindings pass, and writes through
-  their output pointers, as a real driver would.
+- `gpu/vk/driver_tests.rs`, `device_tests.rs`, `memory_driver_tests.rs`:
+  the fake driver reads the structures and `pNext` chains the bindings
+  pass, and writes through their output pointers, as a real driver would.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 

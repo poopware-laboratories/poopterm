@@ -12,6 +12,7 @@ use super::{
 	entry::Entry,
 	instance::Instance,
 	library::Library,
+	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
 	version::major_minor,
 };
 use std::{env, process::Command, ptr, rc::Rc};
@@ -233,4 +234,26 @@ fn a_device_is_made_with_the_needed_features_and_a_queue_that_draws() {
 	assert_eq!(again.family(), device.family());
 	drop(device);
 	assert!(!again.queue().is_null());
+}
+
+#[test]
+fn every_device_has_memory_for_each_use() {
+	let Some(entry) = entry() else { return };
+	let instance = entry.create_instance(c"poopterm tests").expect("instance");
+	for device in instance.physical_devices().expect("devices") {
+		let types = instance.memory_types(device);
+		// The specification promises a device-local type and a host-visible
+		// coherent one.
+		let has = |bits| types.iter().any(|kind| kind.flags & bits == bits);
+		assert!(has(DEVICE_LOCAL), "{types:?}");
+		assert!(has(HOST_VISIBLE | HOST_COHERENT), "{types:?}");
+		assert!(types.len() <= 32);
+		for usage in [Usage::Upload, Usage::Device, Usage::Readback] {
+			let chosen = choose_memory(&types, u32::MAX, usage);
+			assert!(
+				chosen.is_some_and(|index| (index as usize) < types.len()),
+				"{usage:?} {types:?}"
+			);
+		}
+	}
 }

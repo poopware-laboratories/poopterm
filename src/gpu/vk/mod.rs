@@ -20,6 +20,11 @@ pub(crate) mod instance;
 pub(crate) mod library;
 #[cfg(test)]
 mod loader_tests;
+pub(crate) mod memory;
+#[cfg(test)]
+mod memory_driver_tests;
+#[cfg(test)]
+mod memory_tests;
 pub(crate) mod types;
 #[cfg(test)]
 mod types_tests;
