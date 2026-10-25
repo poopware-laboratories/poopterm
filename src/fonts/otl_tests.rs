@@ -275,3 +275,6 @@ fn a_gdef_of_another_major_version_is_refused() {
 		"a skipped glyph is kept"
 	);
 }
+
+#[path = "otl_gdef_tests.rs"]
+mod gdef_edges;
