@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.97 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Make Cell::words_mut an unsafe fn (#135) (term).
+
 ## 26.10.96 "Giga Fly" — 2026-10-25
 
 ### Fixed
