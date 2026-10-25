@@ -634,3 +634,6 @@ mod edge;
 
 #[path = "gsub_font_tests.rs"]
 mod font;
+
+#[path = "gsub_noto_tests.rs"]
+mod noto_sequences;
