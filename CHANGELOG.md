@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.72 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Select a rectangle by holding alt while dragging (#100) (ui).
+
 ## 26.10.71 "Giga Fly" — 2026-10-25
 
 ### Maintenance
