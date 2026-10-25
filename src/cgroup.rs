@@ -1,20 +1,29 @@
-//! Each shell in its own cgroup (Linux): systemd makes a transient scope
-//! per shell on the session bus, so one tab's runaway program is
+//! Each shell in its own cgroup (Linux), so one tab's runaway program is
 //! accounted and throttled apart from the terminal and the other tabs.
-//! The terminal gets a scope too, beside them and with a higher CPU
-//! weight, so a flooding tab cannot slow its UI and parser threads.
-//! Without cgroup2, a session bus or systemd, shells run as before.
+//! systemd delegates a scope to the terminal over the session bus, which
+//! `cgroup_tree` lays out as a `terminal` leaf with a higher CPU weight,
+//! so a flooding tab cannot slow its UI and parser threads, and one leaf
+//! per tab. Without systemd, our own cgroup is used when it is delegated
+//! and ours alone; a shell no leaf can take gets a systemd scope of its
+//! own. Without cgroup2, shells run as before.
 use std::{
 	fs, io,
-	path::Path,
+	path::{Path, PathBuf},
 	sync::{OnceLock, mpsc},
 	thread,
 };
 
-use crate::dbus::{Connection, message::Message, wire::Value};
+use crate::{
+	cgroup_tree::{Tree, delegated},
+	dbus::{Connection, message::Message, wire::Value},
+};
 
-/// The terminal's CPU weight, against the default 100 of each shell.
-const TERMINAL_CPU_WEIGHT: u64 = 400;
+/// Where the delegated tree is looked for, and how many times, 10 ms
+/// apart, to look for systemd having moved the terminal into its scope.
+struct Delegation {
+	mount: PathBuf,
+	attempts: usize,
+}
 
 /// Message flags: the bus sends no reply, and starts no service for it.
 const NO_REPLY_EXPECTED: u8 = 1;
@@ -29,6 +38,10 @@ pub(crate) fn place(pid: u32) {
 			|path| Path::new(path).exists(),
 			Connection::session,
 			std::process::id(),
+			Delegation {
+				mount: "/sys/fs/cgroup".into(),
+				attempts: 200,
+			},
 		)
 	});
 	let _ = worker.send(pid);
@@ -36,12 +49,13 @@ pub(crate) fn place(pid: u32) {
 
 /// Starts the worker thread, which reads the system's cgroup and memory
 /// files with `read` and `exists` before connecting with `connect`, and
-/// moves the `terminal` process first.
+/// lays out the `terminal` process's cgroup first, per `delegation`.
 fn start(
 	read: impl Fn(&str) -> String + Send + 'static,
 	exists: impl Fn(&str) -> bool + Send + 'static,
 	connect: impl FnOnce() -> io::Result<Connection> + Send + 'static,
 	terminal: u32,
+	delegation: Delegation,
 ) -> mpsc::Sender<u32> {
 	let (pids, receiver) = mpsc::channel();
 	let _ = thread::Builder::new()
@@ -51,36 +65,56 @@ fn start(
 				&read("/proc/self/cgroup"),
 				exists("/sys/fs/cgroup/cgroup.controllers"),
 			);
+			let memory_high = memory_high(&read("/proc/meminfo"));
+			let scope = terminal_scope_name(terminal);
 			run(
 				receiver,
 				cgroups,
 				connect,
-				memory_high(&read("/proc/meminfo")),
+				memory_high,
 				Some(terminal),
+				|asked| {
+					let scope = asked.then_some(scope.as_str());
+					let Delegation { mount, attempts } = delegation;
+					delegated(&read, &mount, terminal, memory_high, scope, attempts)
+				},
 			)
 		});
 	pids
 }
 
-/// Asks systemd for a scope for the `terminal` process, then for each
-/// shell from `pids`, until they stop; returns at once, dropping them,
-/// when cgroups or the bus are missing.
+/// Asks systemd for a delegated scope for the `terminal` process and gets
+/// its tree from `delegate`, told whether systemd was asked; then moves
+/// each shell from `pids` into a leaf of the tree, or else asks systemd
+/// for a scope for it, until they stop. Returns at once, dropping them,
+/// when cgroups are missing, or both the tree and the bus are.
 fn run(
 	pids: mpsc::Receiver<u32>,
 	available: bool,
 	connect: impl FnOnce() -> io::Result<Connection>,
 	memory_high: Option<u64>,
 	terminal: Option<u32>,
+	delegate: impl FnOnce(bool) -> Option<Tree>,
 ) {
-	let Some(connection) = available.then(connect).and_then(Result::ok) else {
+	if !available {
 		return;
+	}
+	let mut bus = connect().ok().map(Connection::split);
+	let asked = match (&mut bus, terminal) {
+		(Some((sender, _)), Some(pid)) => sender.send(terminal_scope(pid)).is_ok(),
+		_ => false,
 	};
-	let (mut sender, _replies) = connection.split();
-	if let Some(pid) = terminal {
-		let _ = sender.send(terminal_scope(pid));
+	let tree = terminal.and_then(|_| delegate(asked));
+	if bus.is_none() && tree.is_none() {
+		return;
 	}
 	for pid in pids {
-		let _ = sender.send(start_scope(pid, memory_high));
+		if tree.as_ref().is_some_and(|tree| tree.place(pid)) {
+			continue;
+		}
+		if let Some((sender, _)) = &mut bus {
+			let _ = sender.send(start_scope(pid, memory_high));
+		}
 	}
 }
 
@@ -124,15 +158,15 @@ fn start_scope(pid: u32, memory_high: Option<u64>) -> Message {
 	)
 }
 
-/// The scope for the terminal process `pid`, with the higher CPU weight.
+/// The scope for the terminal process `pid`, delegated to us so that
+/// `cgroup_tree` can lay it out.
 fn terminal_scope(pid: u32) -> Message {
-	let weight = ("CPUWeight", Value::U64(TERMINAL_CPU_WEIGHT));
-	scope(
-		format!("app-poopterm-terminal-{pid}.scope"),
-		"Poopterm",
-		pid,
-		vec![weight],
-	)
+	let delegate = ("Delegate", Value::Bool(true));
+	scope(terminal_scope_name(pid), "Poopterm", pid, vec![delegate])
+}
+
+fn terminal_scope_name(pid: u32) -> String {
+	format!("app-poopterm-terminal-{pid}.scope")
 }
 
 /// The `StartTransientUnit` call making the scope `name` for `pid`, with

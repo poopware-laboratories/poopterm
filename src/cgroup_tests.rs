@@ -4,9 +4,10 @@
 use std::{io, path::Path, sync::mpsc, thread, time::Duration};
 
 use super::{
-	NO_AUTO_START, NO_REPLY_EXPECTED, available, memory_high, place, run, start, start_scope,
-	terminal_scope, unified,
+	Delegation, NO_AUTO_START, NO_REPLY_EXPECTED, available, memory_high, place, run, start,
+	start_scope, terminal_scope, unified,
 };
+use crate::cgroup_tree::Tree;
 use crate::dbus::{
 	Connection,
 	message::{Kind, Message},
@@ -179,6 +180,7 @@ fn each_shell_reaches_systemd_in_order() {
 			|| Connection::connect(&address, None),
 			Some(4096),
 			None,
+			|_| None,
 		)
 	});
 	pids.send(100).unwrap();
@@ -208,6 +210,7 @@ fn without_systemd_on_the_bus_the_worker_carries_on() {
 			|| Connection::connect(&address, None),
 			None,
 			None,
+			|_| None,
 		)
 	});
 	// Nobody owns the name: the bus drops the calls without an error reply.
@@ -234,6 +237,7 @@ fn without_cgroup2_the_bus_is_never_opened() {
 			|| -> io::Result<Connection> { panic!("connected") },
 			None,
 			Some(1),
+			|_| None,
 		)
 	});
 	worker.join().unwrap();
@@ -251,6 +255,7 @@ fn without_a_bus_shells_are_dropped_quietly() {
 			|| Err(io::ErrorKind::NotFound.into()),
 			None,
 			Some(1),
+			|_| None,
 		)
 	});
 	worker.join().unwrap();
@@ -278,6 +283,7 @@ fn the_worker_reads_the_system_files_then_places_shells() {
 		|path| path == "/sys/fs/cgroup/cgroup.controllers",
 		move || Connection::connect(&address, None),
 		77,
+		nowhere(),
 	);
 	pids.send(55).unwrap();
 	let terminal = next_unit(&mut systemd);
@@ -299,6 +305,7 @@ fn the_worker_stops_on_hybrid_or_unmounted_hierarchies() {
 			move |_| mounted,
 			|| -> io::Result<Connection> { panic!("connected") },
 			1,
+			nowhere(),
 		);
 		// The worker drops its end once it gives up.
 		let gone = (0..500).any(|_| {
@@ -323,36 +330,65 @@ fn user_systemd() -> bool {
 		&& Path::new("/sys/fs/cgroup/cgroup.controllers").exists()
 }
 
+/// Waits until `pid` is in a cgroup ending with `suffix`.
+fn moved(pid: u32, suffix: &str) -> bool {
+	let path = format!("/proc/{pid}/cgroup");
+	(0..300).any(|_| {
+		thread::sleep(Duration::from_millis(10));
+		std::fs::read_to_string(&path).is_ok_and(|text| text.trim_end().ends_with(suffix))
+	})
+}
+
 #[test]
-fn a_real_user_systemd_moves_the_shell_into_its_scope() {
+fn a_real_user_systemd_delegates_a_scope_laid_out_per_tab() {
 	if !user_systemd() {
 		return;
 	}
-	let mut child = std::process::Command::new("sleep")
-		.arg("30")
-		.spawn()
-		.unwrap();
-	place(child.id());
-	let scope = format!("app-poopterm-{}.scope", child.id());
-	let path = format!("/proc/{}/cgroup", child.id());
-	let moved = (0..300).any(|_| {
+	let sleep = || {
+		std::process::Command::new("sleep")
+			.arg("30")
+			.spawn()
+			.unwrap()
+	};
+	// Started before the terminal moved: it cannot join the delegated
+	// tree, so it gets a scope of its own instead, or its leaf if the
+	// terminal won the race.
+	let mut early = sleep();
+	place(early.id());
+	let scope = format!("app-poopterm-{}.scope", early.id());
+	let leaf = format!("/tab-{}", early.id());
+	let path = format!("/proc/{}/cgroup", early.id());
+	let placed = (0..300).any(|_| {
 		thread::sleep(Duration::from_millis(10));
-		std::fs::read_to_string(&path).is_ok_and(|text| text.trim_end().ends_with(&scope))
+		std::fs::read_to_string(&path)
+			.is_ok_and(|text| text.trim_end().ends_with(&scope) || text.trim_end().ends_with(&leaf))
 	});
-	let _ = child.kill();
-	let _ = child.wait();
-	assert!(moved, "{scope} not in {path}");
-	// The terminal, here the test process, went first into its own scope,
-	// beside the shell's, with the higher CPU weight.
-	let ours = std::fs::read_to_string("/proc/self/cgroup").unwrap();
-	let terminal = format!("app-poopterm-terminal-{}.scope", std::process::id());
-	assert!(ours.trim_end().ends_with(&terminal), "{ours}");
-	let dir = format!(
-		"/sys/fs/cgroup{}",
-		ours.trim_end().trim_start_matches("0::")
+	// The terminal, here the test process, sits in the `terminal` leaf of
+	// its delegated scope.
+	let terminal = format!(
+		"app-poopterm-terminal-{}.scope/terminal",
+		std::process::id()
 	);
-	let weight = std::fs::read_to_string(format!("{dir}/cpu.weight")).unwrap();
-	assert_eq!(weight.trim(), "400");
+	let ours = moved(std::process::id(), &terminal);
+	// Started now, inside the tree: it moves into a leaf of its own.
+	let mut late = sleep();
+	place(late.id());
+	let late_leaf = moved(late.id(), &format!("/tab-{}", late.id()));
+	for child in [&mut early, &mut late] {
+		let _ = child.kill();
+		let _ = child.wait();
+	}
+	assert!(placed, "{path}");
+	assert!(ours, "not in {terminal}");
+	assert!(late_leaf, "the late shell is not in its leaf");
+	let own = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+	let dir = format!("/sys/fs/cgroup{}", own.trim_end().trim_start_matches("0::"));
+	let scope_dir = Path::new(&dir).parent().unwrap();
+	let control = std::fs::read_to_string(scope_dir.join("cgroup.subtree_control")).unwrap();
+	if control.split_whitespace().any(|name| name == "cpu") {
+		let weight = std::fs::read_to_string(format!("{dir}/cpu.weight")).unwrap();
+		assert_eq!(weight.trim(), "400");
+	}
 }
 
 #[test]
@@ -402,6 +438,7 @@ fn a_bus_that_goes_away_drops_later_shells_quietly() {
 			|| Connection::connect(&address, None),
 			None,
 			None,
+			|_| None,
 		)
 	});
 	pids.send(1).unwrap();
@@ -423,20 +460,20 @@ fn a_blank_or_indented_line_is_not_the_unified_hierarchy() {
 }
 
 #[test]
-fn the_terminal_scope_weighs_more_than_a_shell() {
+fn the_terminal_scope_is_delegated_to_us() {
 	let message = terminal_scope(77);
 	let body = &message.body;
 	assert_eq!(body[0], Value::Str("app-poopterm-terminal-77.scope".into()));
 	assert_eq!(message.flags, NO_REPLY_EXPECTED | NO_AUTO_START);
 	let names: Vec<String> = properties(body).into_iter().map(|(name, _)| name).collect();
-	assert_eq!(names, ["Description", "PIDs", "CollectMode", "CPUWeight"]);
+	assert_eq!(names, ["Description", "PIDs", "CollectMode", "Delegate"]);
 	let pids = Value::Array("u".into(), vec![Value::U32(77)]);
 	assert_eq!(property(body, "PIDs"), Some(pids));
-	// Four times the default weight of 100 that each shell's scope keeps.
-	assert_eq!(property(body, "CPUWeight"), Some(Value::U64(400)));
-	assert_eq!(property(&start_scope(9, None).body, "CPUWeight"), None);
-	// Not throttled by memory, unlike the shells.
+	// We lay out its cgroup ourselves, so its weights are set inside it.
+	assert_eq!(property(body, "Delegate"), Some(Value::Bool(true)));
+	assert_eq!(property(body, "CPUWeight"), None);
 	assert_eq!(property(body, "MemoryHigh"), None);
+	assert_eq!(property(&start_scope(9, None).body, "Delegate"), None);
 	let mut sent = message.clone();
 	sent.serial = 1;
 	assert_eq!(Message::decode(&sent.encode()), Ok(sent));
@@ -457,6 +494,7 @@ fn the_worker_moves_the_terminal_before_any_shell() {
 			|| Connection::connect(&address, None),
 			None,
 			Some(9),
+			|_| None,
 		)
 	});
 	pids.send(10).unwrap();
@@ -489,6 +527,7 @@ fn the_terminal_moves_once_however_many_shells_follow() {
 			|| Connection::connect(&address, None),
 			None,
 			Some(9),
+			|_| None,
 		)
 	});
 	for pid in 10..14 {
@@ -524,6 +563,7 @@ fn a_lost_terminal_request_does_not_hold_back_the_shells() {
 			|| Connection::connect(&address, None),
 			None,
 			Some(9),
+			|_| None,
 		)
 	});
 	// The terminal's request goes out with nobody owning the name.
@@ -535,4 +575,222 @@ fn a_lost_terminal_request_does_not_hold_back_the_shells() {
 	while next_unit(&mut systemd).body[0] != two {}
 	drop(pids);
 	worker.join().unwrap();
+}
+
+/// A delegation that never finds a cgroup: the mount does not exist.
+fn nowhere() -> Delegation {
+	Delegation {
+		mount: std::env::temp_dir().join("poopterm-cgroup-no-mount"),
+		attempts: 1,
+	}
+}
+
+/// A fake delegated cgroup holding only `pid`, laid out as a tree.
+fn fake_tree(name: &str, pid: u32) -> (std::path::PathBuf, Tree) {
+	let dir = std::env::temp_dir().join(format!("poopterm-worker-{}-{name}", std::process::id()));
+	let _ = std::fs::remove_dir_all(&dir);
+	std::fs::create_dir_all(&dir).unwrap();
+	std::fs::write(dir.join("cgroup.procs"), pid.to_string()).unwrap();
+	let tree = Tree::adopt(&dir, pid, true, None).unwrap();
+	(dir, tree)
+}
+
+#[test]
+fn with_a_delegated_tree_shells_go_into_leaves_not_scopes() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let mut systemd = fake_systemd(&bus);
+	let (dir, tree) = fake_tree("leaves", 9);
+	let (pids, receiver) = mpsc::channel();
+	let address = bus.address.clone();
+	let (asked, told) = mpsc::channel();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			Some(9),
+			move |sent| {
+				asked.send(sent).unwrap();
+				Some(tree)
+			},
+		)
+	});
+	pids.send(10).unwrap();
+	drop(pids);
+	worker.join().unwrap();
+	assert_eq!(told.recv(), Ok(true), "told that systemd was asked");
+	let terminal = next_unit(&mut systemd);
+	let name = Value::Str("app-poopterm-terminal-9.scope".into());
+	assert_eq!(terminal.body[0], name);
+	assert_eq!(
+		std::fs::read_to_string(dir.join("tab-10/cgroup.procs")).unwrap(),
+		"10"
+	);
+	// No scope of its own was asked for.
+	systemd.set_timeout(Duration::from_millis(100));
+	assert!(systemd.receive().is_err());
+}
+
+#[test]
+fn a_shell_the_tree_cannot_take_gets_a_scope_of_its_own() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let mut systemd = fake_systemd(&bus);
+	let (dir, tree) = fake_tree("fallback", 9);
+	// The tree's cgroup is gone, so no leaf can be made in it.
+	std::fs::remove_dir_all(&dir).unwrap();
+	let (pids, receiver) = mpsc::channel();
+	let address = bus.address.clone();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			Some(4096),
+			Some(9),
+			move |_| Some(tree),
+		)
+	});
+	pids.send(10).unwrap();
+	drop(pids);
+	worker.join().unwrap();
+	next_unit(&mut systemd);
+	let shell = next_unit(&mut systemd);
+	assert_eq!(shell.body[0], Value::Str("app-poopterm-10.scope".into()));
+	assert_eq!(property(&shell.body, "MemoryHigh"), Some(Value::U64(4096)));
+}
+
+#[test]
+fn without_a_bus_a_delegated_tree_still_places_shells() {
+	let (dir, tree) = fake_tree("no-bus", 9);
+	let (pids, receiver) = mpsc::channel();
+	let (asked, told) = mpsc::channel();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Err(io::ErrorKind::NotFound.into()),
+			None,
+			Some(9),
+			move |sent| {
+				asked.send(sent).unwrap();
+				Some(tree)
+			},
+		)
+	});
+	pids.send(10).unwrap();
+	pids.send(11).unwrap();
+	drop(pids);
+	worker.join().unwrap();
+	assert_eq!(told.recv(), Ok(false), "nobody was asked for a scope");
+	for pid in [10, 11] {
+		let procs = std::fs::read_to_string(dir.join(format!("tab-{pid}/cgroup.procs")));
+		assert_eq!(procs.unwrap(), pid.to_string());
+	}
+}
+
+#[test]
+fn without_a_terminal_there_is_no_tree_to_ask_for() {
+	let (pids, receiver) = mpsc::channel::<u32>();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Err(io::ErrorKind::NotFound.into()),
+			None,
+			None,
+			|_| -> Option<Tree> { panic!("asked for a tree") },
+		)
+	});
+	worker.join().unwrap();
+	assert!(pids.send(1).is_err());
+}
+
+/// A fake cgroup2 mount holding `name` with `procs`, and the
+/// `/proc/self/cgroup` and `/proc/meminfo` that put us in it.
+fn fake_mount(
+	name: &str,
+	procs: &str,
+	meminfo: &'static str,
+) -> (std::path::PathBuf, impl Fn(&str) -> String + Send + 'static) {
+	let mount = std::env::temp_dir().join(format!("poopterm-mount-{}-{name}", std::process::id()));
+	let _ = std::fs::remove_dir_all(&mount);
+	let dir = mount.join(name);
+	std::fs::create_dir_all(&dir).unwrap();
+	std::fs::write(dir.join("cgroup.procs"), procs).unwrap();
+	std::fs::write(dir.join("cgroup.controllers"), "memory\n").unwrap();
+	let cgroup = format!("0::/{name}\n");
+	(mount, move |path: &str| match path {
+		"/proc/self/cgroup" => cgroup.clone(),
+		"/proc/meminfo" => meminfo.into(),
+		other => panic!("read {other}"),
+	})
+}
+
+/// Waits until the fake leaf `tab-<pid>` under `dir` lists the shell.
+fn leaf_written(dir: &Path, pid: u32) -> bool {
+	let procs = dir.join(format!("tab-{pid}/cgroup.procs"));
+	(0..300).any(|_| {
+		thread::sleep(Duration::from_millis(10));
+		std::fs::read_to_string(&procs).is_ok_and(|text| text == pid.to_string())
+	})
+}
+
+#[test]
+fn without_a_bus_the_worker_lays_out_our_own_cgroup_with_the_memory_limit() {
+	let (mount, read) = fake_mount("own", "77\n", "MemTotal: 8 kB\n");
+	let pids = start(
+		read,
+		|_| true,
+		|| Err(io::ErrorKind::NotFound.into()),
+		77,
+		Delegation {
+			mount: mount.clone(),
+			attempts: 1,
+		},
+	);
+	pids.send(55).unwrap();
+	let dir = mount.join("own");
+	assert!(leaf_written(&dir, 55));
+	assert_eq!(
+		std::fs::read_to_string(dir.join("tab-55/memory.high")).unwrap(),
+		"7168"
+	);
+	assert_eq!(
+		std::fs::read_to_string(dir.join("terminal/cgroup.procs")).unwrap(),
+		"77"
+	);
+}
+
+#[test]
+fn the_worker_lays_out_the_scope_systemd_made_even_with_shells_in_it() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let _systemd = fake_systemd(&bus);
+	// Already moved, with a shell that was forked into the scope's root.
+	let name = "app-poopterm-terminal-77.scope";
+	let (mount, read) = fake_mount(name, "77\n12\n", "");
+	let address = bus.address.clone();
+	let pids = start(
+		read,
+		|_| true,
+		move || Connection::connect(&address, None),
+		77,
+		Delegation {
+			mount: mount.clone(),
+			attempts: 1,
+		},
+	);
+	pids.send(56).unwrap();
+	let dir = mount.join(name);
+	assert!(leaf_written(&dir, 56));
+	assert_eq!(
+		std::fs::read_to_string(dir.join("terminal/cgroup.procs")).unwrap(),
+		"12"
+	);
 }
