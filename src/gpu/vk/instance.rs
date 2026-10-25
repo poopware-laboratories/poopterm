@@ -5,6 +5,7 @@ use super::{
 	choose::{Device, Kind, QueueFamily},
 	entry::{Entry, cast},
 	features::Features,
+	memory::MemoryType,
 	types::*,
 	version::major_minor,
 };
@@ -16,6 +17,7 @@ struct Functions {
 	properties: GetPhysicalDeviceProperties,
 	queue_families: GetPhysicalDeviceQueueFamilyProperties,
 	extensions: EnumerateDeviceExtensionProperties,
+	memory: GetPhysicalDeviceMemoryProperties,
 	features: GetPhysicalDeviceFeatures2,
 	create_device: CreateDevice,
 	device_function: GetDeviceProcAddr,
@@ -32,6 +34,7 @@ impl Functions {
 				properties: cast(function(c"vkGetPhysicalDeviceProperties")?),
 				queue_families: cast(function(c"vkGetPhysicalDeviceQueueFamilyProperties")?),
 				extensions: cast(function(c"vkEnumerateDeviceExtensionProperties")?),
+				memory: cast(function(c"vkGetPhysicalDeviceMemoryProperties")?),
 				features: cast(function(c"vkGetPhysicalDeviceFeatures2")?),
 				create_device: cast(function(c"vkCreateDevice")?),
 				device_function: cast(function(c"vkGetDeviceProcAddr")?),
@@ -116,9 +119,7 @@ impl Instance {
 				.any(|extension| fixed_string(&extension.extension_name) == "VK_KHR_swapchain"),
 		})
 	}
-}
 
-impl Instance {
 	fn properties(&self, device: RawPhysicalDevice) -> PhysicalDeviceProperties {
 		let mut properties = PhysicalDeviceProperties::default();
 		// SAFETY: the device is one of this live instance's, and `properties`
@@ -184,6 +185,20 @@ impl Instance {
 		// SAFETY: the driver's own function, given a live device and a C
 		// string.
 		unsafe { (self.functions.device_function)(device, name.as_ptr()) }.ok_or(Error::Missing(name))
+	}
+
+	/// The memory types of `device`, one of [`Self::physical_devices`], in
+	/// the driver's order, which [`choose_memory`] picks from by index.
+	///
+	/// [`choose_memory`]: super::memory::choose_memory
+	pub(crate) fn memory_types(&self, device: RawPhysicalDevice) -> Vec<MemoryType> {
+		let mut memory = MemoryProperties::default();
+		// SAFETY: the device is one of this live instance's, and `memory` is
+		// writable.
+		unsafe { (self.functions.memory)(device, &mut memory) };
+		// A broken driver may claim more than there is room for.
+		let count = (memory.type_count as usize).min(memory.types.len());
+		memory.types[..count].to_vec()
 	}
 }
 

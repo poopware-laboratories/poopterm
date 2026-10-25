@@ -1,9 +1,12 @@
 //! The layouts of our Vulkan structures against the specification's C
 //! declarations on 64-bit targets: size, alignment and every field's offset.
-use super::types::{
-	ApplicationInfo, DeviceCreateInfo, DeviceQueueCreateInfo, ExtensionProperties,
-	InstanceCreateInfo, PhysicalDeviceFeatures2, PhysicalDeviceProperties, QueueFamilyProperties,
-	Vulkan12Features, Vulkan13Features,
+use super::{
+	memory::MemoryType,
+	types::{
+		ApplicationInfo, DeviceCreateInfo, DeviceQueueCreateInfo, ExtensionProperties,
+		InstanceCreateInfo, MemoryHeap, MemoryProperties, PhysicalDeviceFeatures2,
+		PhysicalDeviceProperties, QueueFamilyProperties, Vulkan12Features, Vulkan13Features,
+	},
 };
 use std::mem::{align_of, offset_of, size_of, size_of_val};
 
@@ -179,4 +182,31 @@ fn feature_structures_are_laid_out_as_vulkan_declares_them() {
 		offset_of!(Vulkan13Features, flags),
 	];
 	assert_eq!(offsets, [8, 16, 8, 16, 8, 16]);
+}
+
+#[test]
+fn memory_properties_are_laid_out_as_vk_physical_device_memory_properties() {
+	// 32 VkMemoryTypes of two u32s, then 16 VkMemoryHeaps of a u64 size and
+	// u32 flags, padded to 16 and starting 8-aligned at 264.
+	assert_eq!((size_of::<MemoryType>(), align_of::<MemoryType>()), (8, 4));
+	assert_eq!(
+		(offset_of!(MemoryType, flags), offset_of!(MemoryType, heap)),
+		(0, 4)
+	);
+	assert_eq!((size_of::<MemoryHeap>(), align_of::<MemoryHeap>()), (16, 8));
+	assert_eq!(offset_of!(MemoryHeap, flags), 8);
+	assert_eq!(
+		(
+			size_of::<MemoryProperties>(),
+			align_of::<MemoryProperties>()
+		),
+		(520, 8)
+	);
+	let offsets = [
+		offset_of!(MemoryProperties, type_count),
+		offset_of!(MemoryProperties, types),
+		offset_of!(MemoryProperties, heap_count),
+		offset_of!(MemoryProperties, heaps),
+	];
+	assert_eq!(offsets, [0, 4, 260, 264]);
 }
