@@ -13,17 +13,28 @@ const BUNDLED: &[u8] = include_bytes!("../../assets/font.ttf");
 
 /// The bundled font with a `cmap` mapping only `ch`, to the glyph of 'A'.
 pub(crate) fn font_with_only(ch: char) -> Vec<u8> {
-	let glyph = u32::from(
-		Font::from_bytes(BUNDLED, 0)
-			.unwrap()
-			.lookup_glyph_index('A'),
-	);
+	font_mapping(&[(ch, 'A')])
+}
+
+/// The bundled font with a `cmap` mapping only the first character of each
+/// pair to the bundled glyph of the second.
+pub(crate) fn font_mapping(pairs: &[(char, char)]) -> Vec<u8> {
+	let bundled = Font::from_bytes(BUNDLED, 0).unwrap();
+	let mut pairs = pairs.to_vec();
+	pairs.sort_unstable();
 	let mut cmap = Vec::new();
 	for value in [0u16, 1, 3, 10, 0, 12, 12, 0] {
 		cmap.extend(value.to_be_bytes());
 	}
-	for value in [28u32, 0, 1, u32::from(ch), u32::from(ch), glyph] {
+	let groups = pairs.len() as u32;
+	for value in [16 + 12 * groups, 0, groups] {
 		cmap.extend(value.to_be_bytes());
+	}
+	for (ch, like) in pairs {
+		let glyph = u32::from(bundled.lookup_glyph_index(like));
+		for value in [u32::from(ch), u32::from(ch), glyph] {
+			cmap.extend(value.to_be_bytes());
+		}
 	}
 	let be = |at: usize, len: usize| {
 		BUNDLED[at..at + len]
@@ -93,7 +104,7 @@ fn cache(files: Vec<FontFile>) -> Cache {
 }
 
 /// A directory for one test, holding `fonts` written to `0.ttf`, `1.ttf`, ….
-fn installed(name: &str, fonts: &[Vec<u8>], ranges: &[(u32, u32)]) -> (PathBuf, Cache) {
+pub(crate) fn installed(name: &str, fonts: &[Vec<u8>], ranges: &[(u32, u32)]) -> (PathBuf, Cache) {
 	let dir = std::env::temp_dir().join(format!("poopterm-fallback-{}-{name}", std::process::id()));
 	let _ = fs::remove_dir_all(&dir);
 	fs::create_dir_all(&dir).unwrap();
@@ -113,7 +124,7 @@ fn installed(name: &str, fonts: &[Vec<u8>], ranges: &[(u32, u32)]) -> (PathBuf, 
 	(dir, cache(files))
 }
 
-const HAN: (u32, u32) = (0x4e00, 0x9fff);
+pub(crate) const HAN: (u32, u32) = (0x4e00, 0x9fff);
 
 #[test]
 fn only_drawable_faces_covering_the_character_are_candidates() {
@@ -217,8 +228,8 @@ fn a_covering_font_is_loaded_and_returned() {
 	assert_eq!(system.find('漢', false, &mut loaded), Some(1));
 	assert_eq!(loaded.len(), 2);
 	assert_ne!(loaded[1].lookup_glyph_index('漢'), 0);
-	// Loaded once: the caller finds it in its own list from now on.
-	assert_eq!(system.find('漢', false, &mut loaded), None);
+	// Loaded once: asked again, it is found among the loaded fonts.
+	assert_eq!(system.find('漢', false, &mut loaded), Some(1));
 	assert_eq!(loaded.len(), 2);
 	fs::remove_dir_all(dir).unwrap();
 }
@@ -475,4 +486,99 @@ fn has_checks_the_glyph_or_its_color_bitmap() {
 	assert!(has(&outline, '😀', false) && !has(&outline, '😀', true));
 	assert!(has(&color, '😀', false) && has(&color, '😀', true));
 	assert!(!has(&color, '😁', false) && !has(&color, '😁', true));
+}
+
+pub(crate) const KANA: (u32, u32) = (0x3000, 0x30ff);
+
+#[test]
+fn the_best_ranked_font_wins_over_one_loaded_earlier() {
+	// 0.ttf, the smaller, ranks first for 漢; 1.ttf also has ア, which
+	// loads it first.
+	let (dir, mut fonts) = installed(
+		"ranked",
+		&[
+			font_mapping(&[('漢', 'A')]),
+			font_mapping(&[('ア', 'B'), ('漢', 'C')]),
+		],
+		&[HAN],
+	);
+	fonts.files[1].faces[0].pages = pages([KANA, HAN]);
+	let mut system = SystemFallback::new(move || fonts);
+	let mut loaded = Vec::new();
+	assert_eq!(
+		system.find('ア', false, &mut loaded),
+		Some(0),
+		"only 1.ttf covers kana"
+	);
+	assert_eq!(
+		system.find('漢', false, &mut loaded),
+		Some(1),
+		"0.ttf, newly loaded"
+	);
+	assert_eq!(loaded[1].lookup_glyph_index('ア'), 0);
+	assert_eq!(system.find('漢', false, &mut loaded), Some(1), "and again");
+	assert_eq!(system.find('ア', false, &mut loaded), Some(0));
+	assert_eq!(loaded.len(), 2);
+	fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn ranked_lists_are_shared_by_the_characters_of_a_page() {
+	// Every character of a page has the same candidates: a font that
+	// lacks one is still asked about the next.
+	let (dir, fonts) = installed(
+		"pages",
+		&[
+			font_mapping(&[('丁', 'A')]),
+			font_mapping(&[('七', 'B'), ('丁', 'C')]),
+		],
+		&[HAN],
+	);
+	let mut system = SystemFallback::new(move || fonts);
+	let mut loaded = Vec::new();
+	assert_eq!(system.find('七', false, &mut loaded), Some(1));
+	assert_eq!(system.find('丁', false, &mut loaded), Some(0));
+	assert_eq!(system.find('七', false, &mut loaded), Some(1));
+	assert_eq!(loaded.len(), 2);
+	fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn loaded_fonts_still_serve_once_no_more_may_load() {
+	// 32 fonts fill the limit; the 33rd, best ranked for 字, never loads,
+	// and a loaded font that has 字 is found instead.
+	let mut bytes: Vec<_> = (0..32)
+		.map(|i| font_mapping(&[(char::from_u32(0x4e00 + i).unwrap(), 'A'), ('字', 'B')]))
+		.collect();
+	bytes.insert(0, font_with_only('字'));
+	let (dir, mut fonts) = installed("full", &bytes, &[HAN]);
+	fonts.files[0].stamp.size = 0;
+	fonts.files[0].faces[0].pages = pages([(0x5b00, 0x5bff)]);
+	let mut system = SystemFallback::new(move || fonts);
+	let mut loaded = Vec::new();
+	for ch in (0x4e00..0x4e20).map(|c| char::from_u32(c).unwrap()) {
+		system.find(ch, false, &mut loaded);
+	}
+	assert_eq!(loaded.len(), 32);
+	let found = system
+		.find('字', false, &mut loaded)
+		.expect("a loaded font");
+	assert_eq!(loaded.len(), 32, "nothing more loads");
+	assert_ne!(loaded[found].lookup_glyph_index('字'), 0);
+	fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn ranked_lists_are_kept_for_at_most_512_pages() {
+	let mut system = SystemFallback::new(Cache::default);
+	let mut loaded = Vec::new();
+	let pages = (0x100..).step_by(0x100).filter_map(char::from_u32);
+	for (count, ch) in pages.take(512).enumerate() {
+		system.find(ch, false, &mut loaded);
+		assert_eq!(system.ranked_pages(), count + 1);
+	}
+	system.find('\u{10ff00}', false, &mut loaded);
+	assert_eq!(system.ranked_pages(), 1, "reset, then the new page");
+	system.find('\u{10ff00}', true, &mut loaded);
+	assert_eq!(system.ranked_pages(), 2, "color has its own list");
 }

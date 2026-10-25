@@ -53,7 +53,10 @@ impl Presentation {
 /// only on a cache miss, so drawing a cell costs a single hash lookup.
 pub(crate) struct FontSet {
 	primary: Font,
+	/// The configured fallbacks, then the installed fonts loaded so far.
 	fallbacks: Vec<Font>,
+	/// How many of `fallbacks` are configured.
+	configured: usize,
 	/// Installed fonts, searched when no font above has a character.
 	system: Option<SystemFallback>,
 	cache: FxHashMap<(char, u32, Presentation), Glyph>,
@@ -70,6 +73,7 @@ impl FontSet {
 	pub(crate) fn new(primary: Font, fallbacks: Vec<Font>) -> Self {
 		Self {
 			primary,
+			configured: fallbacks.len(),
 			fallbacks,
 			system: None,
 			cache: FxHashMap::default(),
@@ -124,10 +128,13 @@ impl FontSet {
 				} else {
 					None
 				};
+				// Installed fonts in their ranked order, not in the order they
+				// happened to load, so a character's font is always the same.
 				let mut find = |color| {
-					(self.fallbacks.iter())
-						.position(|font| has(font, ch, color))
+					let has_it = |font: &Font| has(font, ch, color);
+					(self.fallbacks[..self.configured].iter().position(has_it))
 						.or_else(|| self.system.as_mut()?.find(ch, color, &mut self.fallbacks))
+						.or_else(|| self.fallbacks.iter().position(has_it))
 				};
 				let found = text_font
 					.or_else(|| emoji.then(|| find(true)).flatten())
@@ -199,10 +206,14 @@ pub(crate) fn emoji_presentation(ch: char) -> bool {
 }
 
 #[cfg(test)]
+#[path = "glyphs_fallback_tests.rs"]
+mod fallback_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 
-	fn bundled() -> Font {
+	pub(super) fn bundled() -> Font {
 		Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap()
 	}
 
@@ -224,88 +235,6 @@ mod tests {
 		}
 		fonts.trim();
 		assert_eq!(fonts.cached(), 0);
-	}
-
-	/// A system fallback whose only installed font has `ch`, counting how
-	/// often the font database is opened.
-	fn system_with(ch: char, name: &str) -> (SystemFallback, std::rc::Rc<std::cell::Cell<u32>>) {
-		use crate::fonts::{coverage::pages, db, fallback_tests::font_with_only};
-		let dir = std::env::temp_dir().join(format!("poopterm-glyphs-{}-{name}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		std::fs::write(dir.join("only.ttf"), font_with_only(ch)).unwrap();
-		let (mut cache, _) = db::refresh(&[dir], None);
-		cache.files[0].faces[0].pages = pages([(0, 0x10ffff)]);
-		let opened = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter = opened.clone();
-		let system = SystemFallback::new(move || {
-			counter.set(counter.get() + 1);
-			cache
-		});
-		(system, opened)
-	}
-
-	#[test]
-	fn characters_no_font_has_are_drawn_from_an_installed_font() {
-		let (system, opened) = system_with('漢', "found");
-		let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
-		let letter_a = bundled().rasterize('A', 16.0);
-		let han = fonts.glyph('漢', 16.0);
-		assert_eq!((han.metrics, &han.coverage), (letter_a.0, &letter_a.1));
-		assert_eq!(opened.get(), 1);
-	}
-
-	#[test]
-	fn the_installed_fonts_are_not_opened_for_characters_the_fonts_have() {
-		let (system, opened) = system_with('漢', "present");
-		let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
-		for ch in ['a', '─', '\u{e0b0}'] {
-			fonts.glyph(ch, 16.0);
-		}
-		assert_eq!(opened.get(), 0);
-	}
-
-	#[test]
-	fn a_character_no_font_anywhere_has_falls_back_to_the_primary_font() {
-		let (system, _) = system_with('漢', "nowhere");
-		let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
-		let tofu = bundled().rasterize('字', 16.0);
-		let glyph = fonts.glyph('字', 16.0);
-		assert_eq!((glyph.metrics, &glyph.coverage), (tofu.0, &tofu.1));
-		// The installed font that was loaded still serves its own character.
-		let letter_a = bundled().rasterize('A', 16.0);
-		assert_eq!(fonts.glyph('漢', 16.0).coverage, letter_a.1);
-	}
-
-	#[test]
-	fn without_a_system_fallback_missing_characters_use_the_primary_font() {
-		let mut fonts = FontSet::new(bundled(), Vec::new());
-		let tofu = bundled().rasterize('漢', 16.0);
-		assert_eq!(fonts.glyph('漢', 16.0).coverage, tofu.1);
-	}
-
-	#[test]
-	fn a_found_font_serves_every_size_and_survives_clearing_the_cache() {
-		let (system, opened) = system_with('漢', "sizes");
-		let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
-		let small = fonts.glyph('漢', 12.0).metrics;
-		let large = fonts.glyph('漢', 24.0).metrics;
-		assert!(large.height > small.height);
-		fonts.clear();
-		let again = fonts.glyph('漢', 12.0).metrics;
-		assert_eq!(again, small);
-		assert_eq!(opened.get(), 1, "the database is read once");
-	}
-
-	#[test]
-	fn the_primary_font_wins_over_installed_fonts_that_also_have_a_character() {
-		// The installed font draws 'a' as an 'A'; the primary has its own 'a'.
-		let (system, opened) = system_with('a', "primary");
-		let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
-		assert_eq!(
-			fonts.glyph('a', 16.0).coverage,
-			bundled().rasterize('a', 16.0).1
-		);
-		assert_eq!(opened.get(), 0);
 	}
 
 	/// A color font with a red 4×4 bitmap for each of `chars`.
