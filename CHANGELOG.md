@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.77 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Hold kitty animations still with reduce_motion (#107) (term).
+
+### Fixed
+
+- Show the selection clearly on light themes (#108) (ui).
+- Grow the tab and status bars with large fonts (#109) (ui).
+
 ## 26.10.76 "Giga Fly" — 2026-10-25
 
 ### Added
