@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.107 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Sort glyph curves into horizontal bands (#145) (gpu).
+
 ## 26.10.106 "Giga Fly" — 2026-10-25
 
 ### Added
