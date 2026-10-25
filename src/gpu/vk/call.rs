@@ -22,6 +22,8 @@ pub(crate) enum Error {
 	TooOld(u32),
 	/// A call returned this `VkResult`.
 	Failed(i32),
+	/// The device lacks this feature, which the renderer needs.
+	Lacks(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -34,6 +36,7 @@ impl fmt::Display for Error {
 				write!(f, "Vulkan {major}.{minor} is older than 1.3")
 			}
 			Self::Failed(code) => write!(f, "VkResult {code}"),
+			Self::Lacks(feature) => write!(f, "the Vulkan device lacks {feature}"),
 		}
 	}
 }

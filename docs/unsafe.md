@@ -170,8 +170,10 @@ function pointers the loader returns, which is `unsafe` by language rule.
 | Where | What | Why it is sound |
 |-------|------|-----------------|
 | `entry.rs` | `vkGetInstanceProcAddr` from `dlsym`, and `cast` | The specification gives each function name one type; `cast` turns the loader's `PFN_vkVoidFunction` into the type named with it, and checks at compile time that both are function pointers of one size. |
-| `entry.rs`, `instance.rs` | Calls into the driver | Every structure passed is `#[repr(C)]`, laid out as the specification declares it (tested field by field in `types_tests.rs`), and outlives the call; handles are live while their owner is; output pointers point to room for what the driver writes, which `call::enumerate` sizes from the count. Result codes become `Error`s, never panics. |
-| `instance.rs` | `vkDestroyInstance` on drop | The instance owns the handle, is not `Clone`, and owns nothing created from it yet. |
+| `entry.rs`, `instance.rs`, `device.rs` | Calls into the driver | Every structure passed is `#[repr(C)]`, laid out as the specification declares it (tested field by field in `types_tests.rs`), and outlives the call; handles are live while their owner is; output pointers point to room for what the driver writes, which `call::enumerate` sizes from the count. Result codes become `Error`s, never panics. |
+| `instance.rs` | `vkDestroyInstance` on drop | The instance owns the handle and is not `Clone`; each device holds an `Rc` of it, so it is destroyed only after its last device. |
+| `features.rs`, `instance.rs` | The feature chain | `Features` is boxed before its structures are linked, so the `pNext` pointers stay valid while it lives, and the create info points to it only during the call. |
+| `device.rs` | `vkDestroyDevice` on drop | The device owns the handle, is not `Clone`, and owns nothing created from it yet. |
 
 The layouts and the enumeration logic are unit-tested without a driver;
 `loader_tests.rs` creates real instances, on Mesa's software driver in CI.
@@ -183,6 +185,9 @@ The layouts and the enumeration logic are unit-tested without a driver;
   `has_v3()`, to compare them with the baseline.
 - `gpu/vk/call_tests.rs`: fake drivers write items through the pointer
   `enumerate` passes, within the count it gave.
+- `gpu/vk/driver_tests.rs`, `device_tests.rs`: the fake driver reads the
+  structures and `pNext` chains the bindings pass, and writes through
+  their output pointers, as a real driver would.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 
