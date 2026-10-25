@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.79 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw color emoji from CBDT bitmap fonts (#111) (fonts).
+
 ## 26.10.78 "Giga Fly" — 2026-10-25
 
 ### Added
