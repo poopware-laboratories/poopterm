@@ -4,7 +4,8 @@
 use std::{io, path::Path, sync::mpsc, thread, time::Duration};
 
 use super::{
-	NO_AUTO_START, NO_REPLY_EXPECTED, available, memory_high, place, run, start, start_scope, unified,
+	NO_AUTO_START, NO_REPLY_EXPECTED, available, memory_high, place, run, start, start_scope,
+	terminal_scope, unified,
 };
 use crate::dbus::{
 	Connection,
@@ -177,6 +178,7 @@ fn each_shell_reaches_systemd_in_order() {
 			true,
 			|| Connection::connect(&address, None),
 			Some(4096),
+			None,
 		)
 	});
 	pids.send(100).unwrap();
@@ -199,8 +201,15 @@ fn without_systemd_on_the_bus_the_worker_carries_on() {
 	};
 	let (pids, receiver) = mpsc::channel();
 	let address = bus.address.clone();
-	let worker =
-		thread::spawn(move || run(receiver, true, || Connection::connect(&address, None), None));
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			None,
+		)
+	});
 	// Nobody owns the name: the bus drops the calls without an error reply.
 	pids.send(1).unwrap();
 	pids.send(2).unwrap();
@@ -224,6 +233,7 @@ fn without_cgroup2_the_bus_is_never_opened() {
 			false,
 			|| -> io::Result<Connection> { panic!("connected") },
 			None,
+			Some(1),
 		)
 	});
 	worker.join().unwrap();
@@ -234,8 +244,15 @@ fn without_cgroup2_the_bus_is_never_opened() {
 #[test]
 fn without_a_bus_shells_are_dropped_quietly() {
 	let (pids, receiver) = mpsc::channel();
-	let worker =
-		thread::spawn(move || run(receiver, true, || Err(io::ErrorKind::NotFound.into()), None));
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Err(io::ErrorKind::NotFound.into()),
+			None,
+			Some(1),
+		)
+	});
 	worker.join().unwrap();
 	assert!(pids.send(1).is_err());
 }
@@ -260,8 +277,12 @@ fn the_worker_reads_the_system_files_then_places_shells() {
 		system("0::/user.slice\n", "MemTotal: 8 kB\n"),
 		|path| path == "/sys/fs/cgroup/cgroup.controllers",
 		move || Connection::connect(&address, None),
+		77,
 	);
 	pids.send(55).unwrap();
+	let terminal = next_unit(&mut systemd);
+	let name = Value::Str("app-poopterm-terminal-77.scope".into());
+	assert_eq!(terminal.body[0], name, "the terminal first");
 	let message = next_unit(&mut systemd);
 	assert_eq!(message.body[0], Value::Str("app-poopterm-55.scope".into()));
 	assert_eq!(
@@ -277,6 +298,7 @@ fn the_worker_stops_on_hybrid_or_unmounted_hierarchies() {
 			system(cgroup, ""),
 			move |_| mounted,
 			|| -> io::Result<Connection> { panic!("connected") },
+			1,
 		);
 		// The worker drops its end once it gives up.
 		let gone = (0..500).any(|_| {
@@ -316,6 +338,17 @@ fn a_real_user_systemd_moves_the_shell_into_its_scope() {
 	let _ = child.kill();
 	let _ = child.wait();
 	assert!(moved, "{scope} not in {path}");
+	// The terminal, here the test process, went first into its own scope,
+	// beside the shell's, with the higher CPU weight.
+	let ours = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+	let terminal = format!("app-poopterm-terminal-{}.scope", std::process::id());
+	assert!(ours.trim_end().ends_with(&terminal), "{ours}");
+	let dir = format!(
+		"/sys/fs/cgroup{}",
+		ours.trim_end().trim_start_matches("0::")
+	);
+	let weight = std::fs::read_to_string(format!("{dir}/cpu.weight")).unwrap();
+	assert_eq!(weight.trim(), "400");
 }
 
 #[test]
@@ -358,8 +391,15 @@ fn a_bus_that_goes_away_drops_later_shells_quietly() {
 	let mut systemd = fake_systemd(&bus);
 	let (pids, receiver) = mpsc::channel();
 	let address = bus.address.clone();
-	let worker =
-		thread::spawn(move || run(receiver, true, || Connection::connect(&address, None), None));
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			None,
+		)
+	});
 	pids.send(1).unwrap();
 	next_unit(&mut systemd);
 	drop((systemd, bus));
@@ -376,4 +416,119 @@ fn a_blank_or_indented_line_is_not_the_unified_hierarchy() {
 	assert!(!unified("\n0::/\n"));
 	assert!(!unified(" 0::/\n"));
 	assert!(unified("0::/\n"));
+}
+
+#[test]
+fn the_terminal_scope_weighs_more_than_a_shell() {
+	let message = terminal_scope(77);
+	let body = &message.body;
+	assert_eq!(body[0], Value::Str("app-poopterm-terminal-77.scope".into()));
+	assert_eq!(message.flags, NO_REPLY_EXPECTED | NO_AUTO_START);
+	let names: Vec<String> = properties(body).into_iter().map(|(name, _)| name).collect();
+	assert_eq!(names, ["Description", "PIDs", "CollectMode", "CPUWeight"]);
+	let pids = Value::Array("u".into(), vec![Value::U32(77)]);
+	assert_eq!(property(body, "PIDs"), Some(pids));
+	// Four times the default weight of 100 that each shell's scope keeps.
+	assert_eq!(property(body, "CPUWeight"), Some(Value::U64(400)));
+	assert_eq!(property(&start_scope(9, None).body, "CPUWeight"), None);
+	// Not throttled by memory, unlike the shells.
+	assert_eq!(property(body, "MemoryHigh"), None);
+	let mut sent = message.clone();
+	sent.serial = 1;
+	assert_eq!(Message::decode(&sent.encode()), Ok(sent));
+}
+
+#[test]
+fn the_worker_moves_the_terminal_before_any_shell() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let mut systemd = fake_systemd(&bus);
+	let (pids, receiver) = mpsc::channel();
+	let address = bus.address.clone();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			Some(9),
+		)
+	});
+	pids.send(10).unwrap();
+	let names: Vec<Value> = (0..2)
+		.map(|_| next_unit(&mut systemd).body[0].clone())
+		.collect();
+	assert_eq!(
+		names,
+		[
+			Value::Str("app-poopterm-terminal-9.scope".into()),
+			Value::Str("app-poopterm-10.scope".into())
+		]
+	);
+	drop(pids);
+	worker.join().unwrap();
+}
+
+#[test]
+fn the_terminal_moves_once_however_many_shells_follow() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let mut systemd = fake_systemd(&bus);
+	let (pids, receiver) = mpsc::channel();
+	let address = bus.address.clone();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			Some(9),
+		)
+	});
+	for pid in 10..14 {
+		pids.send(pid).unwrap();
+	}
+	drop(pids);
+	worker.join().unwrap();
+	let names: Vec<String> = (0..5)
+		.map(|_| next_unit(&mut systemd).body[0].as_str().unwrap().to_owned())
+		.collect();
+	let terminal = names
+		.iter()
+		.filter(|name| name.contains("terminal"))
+		.count();
+	assert_eq!(terminal, 1, "{names:?}");
+	assert_eq!(names[4], "app-poopterm-13.scope");
+	// Nothing else was sent: the next read times out.
+	systemd.set_timeout(Duration::from_millis(100));
+	assert!(systemd.receive().is_err());
+}
+
+#[test]
+fn a_lost_terminal_request_does_not_hold_back_the_shells() {
+	let Some(bus) = TestBus::start() else {
+		return;
+	};
+	let (pids, receiver) = mpsc::channel();
+	let address = bus.address.clone();
+	let worker = thread::spawn(move || {
+		run(
+			receiver,
+			true,
+			|| Connection::connect(&address, None),
+			None,
+			Some(9),
+		)
+	});
+	// The terminal's request goes out with nobody owning the name.
+	pids.send(1).unwrap();
+	thread::sleep(Duration::from_millis(200));
+	let mut systemd = fake_systemd(&bus);
+	pids.send(2).unwrap();
+	let two = Value::Str("app-poopterm-2.scope".into());
+	while next_unit(&mut systemd).body[0] != two {}
+	drop(pids);
+	worker.join().unwrap();
 }
