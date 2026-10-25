@@ -328,8 +328,8 @@ fn every_size_doubles_at_twice_the_scale() {
 	assert_eq!(drawn.at(170, 4 + 11), COLORS.bar);
 	assert_eq!(drawn.at(0, 4 + 86), COLORS.separator);
 	assert_eq!(drawn.at(0, 4 + 85), COLORS.bar);
-	// The dot doubles too: 12 pixels 24 in (the aliased circle inks the 10
-	// inside), and the title 16 after it.
+	// The dot doubles too: 12 pixels 24 in (solid in the 10 inside, blended
+	// at its edge), and the title 16 after it.
 	let mut dotted = tab(20, 300, "Hg");
 	dotted.badge = Some(Badge::Dot(0x00ff00));
 	let drawn = draw(&header(2, vec![dotted], Vec::new()));
