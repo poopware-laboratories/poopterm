@@ -1,6 +1,6 @@
 //! Text and widgets shared by the Settings window's pages.
 use super::settings_view::ROW_HEIGHT;
-use crate::render::painter::{ButtonStyle, Painter};
+use crate::render::{painter::ButtonStyle, scene::Scene};
 
 /// Text drawing for one Settings frame; every label shares the base ascent.
 pub(super) struct Pen<'a> {
@@ -13,7 +13,7 @@ pub(super) struct Pen<'a> {
 
 impl Pen<'_> {
 	/// Draws `text` at logical `(x, y)` scaled by `size` relative to the base px.
-	pub(super) fn text(&mut self, p: &mut Painter, x: usize, y: usize, text: &str, size: f32) {
+	pub(super) fn text(&mut self, p: &mut Scene, x: usize, y: usize, text: &str, size: f32) {
 		p.text(
 			self.fonts,
 			x,
@@ -28,7 +28,7 @@ impl Pen<'_> {
 	/// Draws `text` centered in the physical rectangle `rect`.
 	pub(super) fn centered(
 		&mut self,
-		p: &mut Painter,
+		p: &mut Scene,
 		rect: (usize, usize, usize, usize),
 		text: &str,
 		size: f32,
@@ -46,7 +46,7 @@ impl Pen<'_> {
 	/// The "Settings" button that leads back to the main page.
 	pub(super) fn back_button(
 		&mut self,
-		p: &mut Painter,
+		p: &mut Scene,
 		style: ButtonStyle,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
@@ -63,7 +63,7 @@ impl Pen<'_> {
 	/// A wide button at the right of `row` labelled `label`.
 	pub(super) fn wide_button(
 		&mut self,
-		p: &mut Painter,
+		p: &mut Scene,
 		style: ButtonStyle,
 		row: usize,
 		label: &str,
@@ -78,7 +78,7 @@ impl Pen<'_> {
 	}
 
 	/// `−` and `+` buttons at the right of `row` with `value` between them.
-	pub(super) fn stepper(&mut self, p: &mut Painter, style: ButtonStyle, row: usize, value: &str) {
+	pub(super) fn stepper(&mut self, p: &mut Scene, style: ButtonStyle, row: usize, value: &str) {
 		let s = self.scale;
 		for (offset, sign) in [(240, "−"), (72, "+")] {
 			let x = p.width.saturating_sub(offset * s);
@@ -89,7 +89,7 @@ impl Pen<'_> {
 	}
 
 	/// An Enabled/Disabled toggle at the right of `row`.
-	pub(super) fn toggle(&mut self, p: &mut Painter, style: ButtonStyle, row: usize, enabled: bool) {
+	pub(super) fn toggle(&mut self, p: &mut Scene, style: ButtonStyle, row: usize, enabled: bool) {
 		let s = self.scale;
 		let x = p.width.saturating_sub(240 * s);
 		p.button((x, row * s, 216 * s, ROW_HEIGHT * s), style, enabled);
@@ -100,7 +100,7 @@ impl Pen<'_> {
 	/// The Save button and the status line at the bottom of every page.
 	pub(super) fn footer(
 		&mut self,
-		p: &mut Painter,
+		p: &mut Scene,
 		style: ButtonStyle,
 		status: &str,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,

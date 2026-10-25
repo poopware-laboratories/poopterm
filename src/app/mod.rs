@@ -18,6 +18,8 @@ mod settings_fonts;
 mod settings_hit;
 mod settings_keys;
 mod settings_pen;
+#[cfg(test)]
+mod settings_pen_tests;
 mod settings_view;
 mod tabs;
 

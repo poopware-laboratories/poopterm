@@ -7,7 +7,10 @@ use super::{
 	settings_pen::Pen,
 };
 use crate::input::shortcuts::ShortcutAction;
-use crate::render::painter::{ButtonStyle, Painter};
+use crate::render::{
+	painter::{ButtonStyle, Painter},
+	scene::Scene,
+};
 
 pub(super) const THEME_ROW: usize = 138;
 pub(super) const WALLPAPER_ROW: usize = 228;
@@ -116,14 +119,20 @@ impl App {
 		};
 		if let Ok(mut buffer) = surface.buffer_mut() {
 			let (width, height) = (self.settings_width as usize, self.settings_height as usize);
-			let mut painter = Painter::new(&mut buffer, width, height);
-			self.compose_settings(&mut painter, scale);
+			// pr-check: window glue: draws the settings window's buffer, which needs its surface
+			let mut scene = Scene::new(width, height);
+			self.compose_settings(&mut scene, scale);
+			scene.replay(
+				&mut Painter::new(&mut buffer, width, height),
+				&mut self.ui_fonts,
+			);
+			// pr-check: end window glue
 			let _ = buffer.present();
 		}
 		self.settings_surface = Some(surface);
 	}
 
-	fn compose_settings(&mut self, p: &mut Painter, scale: usize) {
+	fn compose_settings(&mut self, p: &mut Scene, scale: usize) {
 		let (width, height) = (p.width, p.height);
 		p.fill(self.theme.border);
 		p.rect(
@@ -261,7 +270,7 @@ impl App {
 fn compose_main_settings(
 	editor: &SettingsEditor,
 	style: ButtonStyle,
-	p: &mut Painter,
+	p: &mut Scene,
 	pen: &mut Pen,
 	hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 ) {

@@ -31,7 +31,7 @@ pub(crate) fn fill_rect(
 }
 
 /// Colors for a bordered, rounded button.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ButtonStyle {
 	pub scale: usize,
 	pub background: u32,
@@ -105,7 +105,10 @@ impl<'a> Painter<'a> {
 		);
 	}
 
-	/// Draws a line of text whose top edge is `y`; `ascent` is the baseline offset.
+	/// Draws a line of text whose top edge is `y`; `ascent` is the baseline
+	/// offset. Window chrome records text in a scene instead; tests draw
+	/// directly to compare.
+	#[cfg(test)]
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn text(
 		&mut self,

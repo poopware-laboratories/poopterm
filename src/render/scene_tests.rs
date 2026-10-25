@@ -2,12 +2,21 @@
 //! replaying it paints exactly what drawing directly paints.
 use super::{
 	glyphs::FontSet,
-	painter::Painter,
+	painter::{ButtonStyle, Painter},
 	scene::{Command, Scene},
 };
 use crate::fonts::{BUNDLED, Font};
 
 const BACKGROUND: u32 = 0x123456;
+
+fn style(scale: usize) -> ButtonStyle {
+	ButtonStyle {
+		scale,
+		background: 0x101010,
+		border: 0x808080,
+		accent: 0x3060ff,
+	}
+}
 
 fn fonts() -> FontSet {
 	FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new())
@@ -59,14 +68,18 @@ fn a_new_scene_is_empty_and_keeps_its_size() {
 fn a_scene_records_each_operation_in_order() {
 	let mut scene = Scene::new(40, 30);
 	let fonts = &mut fonts();
+	scene.fill(1);
 	scene.rect(1, 2, 3, 4, 5);
 	scene.round_rect(6, 7, 8, 9, 2, 10);
+	scene.button((2, 3, 30, 12), style(2), true);
 	scene.text_clipped(fonts, 3, 4, "hi", 12.0, 9, 11, (1, 1, 20, 20));
 	assert_eq!(
 		scene.commands,
 		[
+			Command::Fill(1),
 			Command::Rect((1, 2, 3, 4), 5),
 			Command::RoundRect((6, 7, 8, 9), 2, 10),
+			Command::Button((2, 3, 30, 12), style(2), true),
 			Command::Text {
 				at: (3, 4),
 				text: "hi".to_owned(),
@@ -112,6 +125,9 @@ fn recorded_text_owns_a_verbatim_copy_of_multibyte_empty_and_spaced_strings() {
 #[test]
 fn replayed_primitives_paint_what_direct_drawing_paints() {
 	assert_replays!((120, 50), |p, fonts| {
+		p.fill(0x0a0a0a);
+		p.button((75, 4, 40, 22), style(1), true);
+		p.button((75, 26, 40, 22), style(1), false);
 		p.rect(5, 5, 30, 10, 0xff0000);
 		p.round_rect(40, 4, 30, 20, 6, 0x00ff00);
 		p.text(fonts, 4, 22, "Hxg poop", 13.0, 10, 0xffffff);
@@ -126,6 +142,32 @@ fn replayed_primitives_paint_what_direct_drawing_paints() {
 			(4, 34, 30, 12),
 		);
 	});
+}
+
+#[test]
+fn replayed_buttons_match_at_every_scale_hovered_or_not_and_too_small() {
+	for scale in 1..=3 {
+		for hovered in [false, true] {
+			assert_replays!((60 * scale, 40 * scale), |p, _fonts| {
+				p.button((2, 2, 50 * scale, 24 * scale), style(scale), hovered);
+				p.button((2, 30 * scale, 3, 1), style(scale), hovered);
+			});
+		}
+	}
+}
+
+#[test]
+fn a_fill_replays_over_everything_before_it_and_under_everything_after() {
+	let mut buffer = vec![BACKGROUND; 8 * 4];
+	let mut scene = Scene::new(8, 4);
+	scene.rect(0, 0, 8, 4, 0xff0000);
+	scene.fill(0x00ff00);
+	scene.rect(0, 0, 2, 2, 0x0000ff);
+	scene.replay(&mut Painter::new(&mut buffer, 8, 4), &mut fonts());
+	assert_eq!(
+		[buffer[0], buffer[2], buffer[31]],
+		[0x0000ff, 0x00ff00, 0x00ff00]
+	);
 }
 
 #[test]
@@ -196,10 +238,11 @@ fn random_overlapping_operations_replay_like_direct_drawing() {
 		assert_replays!((48, 32), |p, fonts| {
 			for &[kind, x, y, w, h, color] in &ops {
 				let (x, y, w, h, color) = (x % 56, y % 40, w % 40, h % 30, color as u32 & 0xffffff);
-				match kind % 4 {
+				match kind % 5 {
 					0 => p.rect(x, y, w, h, color),
 					1 => p.round_rect(x, y, w, h, color as usize % 20, color),
-					2 => p.text(fonts, x, y, "Ag 🐱", 9.0 + (w % 12) as f32, 8, color),
+					2 => p.button((x, y, w, h), style(1 + kind % 3), kind % 2 == 0),
+					3 => p.text(fonts, x, y, "Ag 🐱", 9.0 + (w % 12) as f32, 8, color),
 					_ => p.text_clipped(fonts, x, y, "poop", 12.0, 9, color, (w, h, 20, 12)),
 				}
 			}
