@@ -24,6 +24,13 @@ mod gsub;
 pub(crate) use gsub::tests as gsub_tests;
 mod gsub_context;
 mod otl;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "the GPU outline store reads glyphs next (#21)")
+)]
+pub(crate) mod quads;
+#[cfg(test)]
+mod quads_tests;
 mod raster;
 mod read;
 mod sfnt;

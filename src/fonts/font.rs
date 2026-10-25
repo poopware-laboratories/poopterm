@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use super::{
 	face::{Error, Face},
+	quads::{Quad, Quads},
 	raster::{Path, Raster},
 };
 
@@ -108,6 +109,28 @@ impl Font {
 	/// Whether `ch` is a color bitmap in this font.
 	pub(crate) fn has_color(&self, ch: char) -> bool {
 		self.face.color_bitmap(self.face.glyph_index(ch)).is_some()
+	}
+
+	/// The glyph's outline as quadratic curves in font units, cubics split
+	/// within 1/4096 em.
+	#[cfg_attr(
+		not(test),
+		expect(dead_code, reason = "the GPU outline store reads glyphs next (#21)")
+	)]
+	pub(crate) fn quads(&self, glyph: u16) -> Vec<Quad> {
+		let mut quads = Quads::new(f32::from(self.face.units_per_em) / 4096.0);
+		self.face.outline(glyph, &mut quads);
+		quads.finish()
+	}
+
+	#[cfg(test)]
+	pub(crate) fn outline_into(&self, glyph: u16, sink: &mut dyn super::face::Sink) {
+		self.face.outline(glyph, sink);
+	}
+
+	#[cfg(test)]
+	pub(crate) fn units_per_em(&self) -> f32 {
+		f32::from(self.face.units_per_em)
 	}
 
 	pub(crate) fn rasterize(&self, ch: char, px: f32) -> (Metrics, Vec<u8>) {
