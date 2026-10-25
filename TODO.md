@@ -161,19 +161,14 @@ one issue per piece (#20–#29); claim one there.
   - Track it: report peak and settled RSS in the benchmark, and test that
     clearing history releases its memory. Check on macOS (`footprint`,
     `vmmap`) and Linux (`/proc/<pid>/smaps_rollup`).
-- **cgroups v2 per tab, fully automatic (Linux).** Like Ghostty, put
-  each shell in its own cgroup, so a runaway program in one tab cannot
-  starve the terminal or the other tabs. The terminal process keeps its
-  own group. No configuration: at startup, check that `/sys/fs/cgroup` is
-  a cgroup2 mount (`cgroup.controllers` exists) and that we may create
-  groups there. Do that either through a delegated subtree we can write
-  (our own cgroup's directory) or by asking systemd for a transient user
-  scope over D-Bus. If neither works, run exactly as today with no
-  errors. Start with per-tab groups (memory and pids accounting, a
-  `memory.high` so one tab is throttled before the OOM killer picks the
-  terminal), then consider CPU weight so the UI and parser threads stay
-  responsive while a tab floods. Test in CI: available, read-only and
-  missing cgroupfs all behave correctly.
+- **cgroups v2 per tab (Linux): CPU weight and no-systemd hosts.** Each
+  shell now gets its own systemd scope (`src/cgroup.rs`), with memory and
+  task accounting and `MemoryHigh` at 7/8 of RAM. Still to do: a CPU weight
+  so the UI and parser threads stay responsive while a tab floods, and a
+  delegated subtree we write ourselves on hosts without systemd. Moving
+  the shell happens after it starts, so anything it forks in its first
+  milliseconds stays behind; `clone3(CLONE_INTO_CGROUP)` would close that
+  gap once we spawn shells ourselves instead of through portable-pty.
 - **Transparent huge pages for large buffers.** Large, long-lived
   allocations (scrollback rows, image bitmaps, the frame buffer, PTY
   queues) could cause fewer TLB misses on huge pages. Check once at

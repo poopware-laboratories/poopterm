@@ -30,6 +30,7 @@ Poopterm is a lightweight, high-throughput terminal emulator written in Rust: it
 - Supports PNG, JPEG, and WebP terminal wallpapers with adjustable strength in Settings.
 - Lets macOS users adjust main-window opacity from Settings.
 - Includes a desktop launcher and icon for Linux and FreeBSD.
+- On Linux with systemd, runs each tab's shell in its own cgroup scope, so a runaway program in one tab is throttled before it can starve the terminal or the other tabs.
 - **Fast output:** a background PTY reader with backpressure, redraws paced to the display, an O(columns) row-based grid with 16-byte cells, a portable-SIMD fast path for plain text, and synchronized updates that cost one screen copy however long the scrollback is. Run `scripts/bench-throughput.py` in any terminal to compare.
 
 ## Build and run

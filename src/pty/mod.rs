@@ -149,6 +149,10 @@ pub(crate) fn spawn_session(
 	cmd.cwd(&cwd);
 	let child = pair.slave.spawn_command(cmd)?;
 	drop(pair.slave);
+	#[cfg(target_os = "linux")]
+	if let Some(pid) = child.process_id() {
+		crate::cgroup::place(pid);
+	}
 
 	let mut reader = pair.master.try_clone_reader()?;
 	let writer = PtyWriter::spawn(pair.master.take_writer()?);
