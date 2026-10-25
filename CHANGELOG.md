@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.84 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Extend only fully colored edge rows into the padding (#117) (render).
+
 ## 26.10.83 "Giga Fly" — 2026-10-25
 
 ### Maintenance
