@@ -237,6 +237,25 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
 - **OSC 176 (application id)** is ignored: a Wayland app id is fixed once
   the window exists, so it cannot follow a program's request.
 
+## UI overhaul
+
+- **Center the chrome.** Many items sit off center: tab titles ride high in
+  their tab, the tab bar's labels, buttons and status bar text do not share
+  a baseline, and the + and settings buttons are not centered on the bar.
+  Derive every vertical position from one function of the bar height and
+  the font's real ascent and descent, and pin it with pixel tests.
+- **Drop the "poopterm" label** left of the tabs on Linux; the tabs start
+  at the window edge (after the window buttons where those sit on the left).
+- **One title line on Linux.** Merge the title bar into the tab bar: tabs,
+  new tab, settings, then minimize, maximize and close, in one row, with
+  the empty part of the row dragging the window (`drag_window`), a double
+  click maximizing, and the edges resizing it (`drag_resize_window`). This
+  means drawing our own decorations (`with_decorations(false)`) where the
+  compositor offers client-side ones (GNOME, KDE on request); keep server
+  side decorations where the user or compositor asks for them, and draw no
+  buttons on tiling compositors such as Sway. macOS already puts the tabs
+  in the title bar beside the system's traffic lights.
+
 ## Accessibility
 
 The gaps listed in [`ACCESSIBILITY.md`](ACCESSIBILITY.md); keep the two in
