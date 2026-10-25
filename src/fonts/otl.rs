@@ -142,4 +142,4 @@ impl Gdef {
 
 #[cfg(test)]
 #[path = "otl_tests.rs"]
-mod tests;
+pub(crate) mod tests;

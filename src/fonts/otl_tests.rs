@@ -124,7 +124,7 @@ fn malformed_class_tables_put_everything_in_class_zero() {
 /// Glyph classes: 1 to 3 bases, 4 a ligature, 5 to 9 marks; marks 5 and 6
 /// in attachment class 1, 7 and 8 in class 2; mark set 0 is {5, 7}, set 1
 /// is {9}.
-fn gdef(minor: u16) -> Vec<u8> {
+pub(crate) fn gdef(minor: u16) -> Vec<u8> {
 	gdef_fields(minor, minor >= 2)
 }
 

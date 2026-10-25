@@ -452,3 +452,6 @@ fn malformed_context_tables_change_nothing_and_never_panic() {
 		"no glyphs in a rule"
 	);
 }
+
+#[path = "gsub_context_edge_tests.rs"]
+mod edge;
