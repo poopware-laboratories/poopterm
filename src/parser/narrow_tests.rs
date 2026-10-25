@@ -206,7 +206,9 @@ fn cell_words_hold_each_field_in_place() {
 		);
 	}
 	let mut row = [Cell::default(); 2];
-	Cell::words_mut(&mut row)[1] = words;
+	// SAFETY: `words` comes from a whole cell.
+	let cells = unsafe { Cell::words_mut(&mut row) };
+	cells[1] = words;
 	assert_eq!(row, [Cell::default(), style()]);
 }
 

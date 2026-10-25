@@ -154,7 +154,10 @@ impl Term {
 			let base = Cell::without_char(spacer);
 			// Built once, so the lane holding the width is not rebuilt per character.
 			let (narrow, wide) = (Cell::with_width(base, 1), Cell::with_width(base, 2));
-			let cells = Cell::words_mut(row);
+			// SAFETY: every store below is `spacer`, a whole cell, or
+			// `with_char` of a `char`; `narrow::print_chunk` stores decoded
+			// characters only.
+			let cells = unsafe { Cell::words_mut(row) };
 			loop {
 				cells[x] = Cell::with_char(if width == 2 { wide } else { narrow }, c as u32);
 				if width == 2 {

@@ -134,6 +134,10 @@ pub(crate) struct Cell {
 	pub(crate) extra: u16,
 }
 
+// The vector views of cells (`bits`, `words`, `words_mut`, `fill`) rely on
+// this layout.
+const _: () = assert!(size_of::<Cell>() == 16 && align_of::<Cell>() == 16);
+
 impl Cell {
 	/// The cell as one 128-bit word; equal exactly when the cells are.
 	#[inline(always)]
@@ -173,11 +177,16 @@ impl Cell {
 		words | std::simd::u32x4::from_array([ch, 0, 0, 0])
 	}
 
-	/// `cells` as words, to store whole cells with one vector store each. Lane
-	/// 0 must hold a `char`.
+	/// `cells` as words, to store whole cells with one vector store each.
+	///
+	/// # Safety
+	///
+	/// Every word stored through the result must hold a valid `char` in lane
+	/// 0 (no surrogate, nothing above U+10FFFF), such as words built with
+	/// [`Cell::words`] or [`Cell::with_char`] from a `char`.
 	#[inline(always)]
-	pub(crate) fn words_mut(cells: &mut [Cell]) -> &mut [std::simd::u32x4] {
-		// SAFETY: as in `fill`; callers keep lane 0 a valid `char`.
+	pub(crate) unsafe fn words_mut(cells: &mut [Cell]) -> &mut [std::simd::u32x4] {
+		// SAFETY: as in `fill`; the caller keeps lane 0 a valid `char`.
 		unsafe { std::slice::from_raw_parts_mut(cells.as_mut_ptr().cast(), cells.len()) }
 	}
 

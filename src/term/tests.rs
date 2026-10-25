@@ -732,13 +732,6 @@ fn mode_queries_report_set_and_reset_states() {
 }
 
 #[test]
-fn cells_stay_compact() {
-	assert_eq!(std::mem::size_of::<Cell>(), 16);
-	// One aligned vector store or compare per cell.
-	assert_eq!(std::mem::align_of::<Cell>(), 16);
-}
-
-#[test]
 fn filling_cells_sets_every_field_of_every_cell_in_range() {
 	let mut cells = vec![Cell::default(); 5];
 	let styled = Cell {
