@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.93 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Choose fallback fonts by rank, not by what loaded first (#128) (render).
+
 ## 26.10.92 "Giga Fly" — 2026-10-25
 
 ### Added
