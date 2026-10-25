@@ -68,7 +68,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkBindImageMemory" => transmute::<BindImageMemory, VoidFunction>(bind),
 			b"vkCreateImageView" => transmute::<CreateImageView, VoidFunction>(create_view),
 			b"vkDestroyImageView" => transmute::<DestroyImageView, VoidFunction>(destroy_view),
-			_ => return None,
+			_ => return super::timeline_tests::function(name),
 		})
 	}
 }

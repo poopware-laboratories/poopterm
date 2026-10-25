@@ -11,12 +11,13 @@ pub(crate) type RawPhysicalDevice = *mut c_void;
 pub(crate) type RawDevice = *mut c_void;
 /// A `VkQueue`.
 pub(crate) type RawQueue = *mut c_void;
-/// A `VkBuffer`, `VkDeviceMemory`, `VkImage` and `VkImageView`: handles
-/// that are 64 bits on every platform.
+/// A `VkBuffer`, `VkDeviceMemory`, `VkImage`, `VkImageView` and
+/// `VkSemaphore`: handles that are 64 bits on every platform.
 pub(crate) type RawBuffer = u64;
 pub(crate) type RawMemory = u64;
 pub(crate) type RawImage = u64;
 pub(crate) type RawImageView = u64;
+pub(crate) type RawSemaphore = u64;
 
 /// `VK_WHOLE_SIZE`.
 pub(crate) const WHOLE_SIZE: u64 = !0;
@@ -27,12 +28,15 @@ pub(crate) const STRUCTURE_TYPE_INSTANCE_CREATE_INFO: i32 = 1;
 pub(crate) const STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO: i32 = 2;
 pub(crate) const STRUCTURE_TYPE_DEVICE_CREATE_INFO: i32 = 3;
 pub(crate) const STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO: i32 = 5;
+pub(crate) const STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO: i32 = 9;
 pub(crate) const STRUCTURE_TYPE_BUFFER_CREATE_INFO: i32 = 12;
 pub(crate) const STRUCTURE_TYPE_IMAGE_CREATE_INFO: i32 = 14;
 pub(crate) const STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO: i32 = 15;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: i32 = 51;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES: i32 = 53;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: i32 = 1_000_059_000;
+pub(crate) const STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO: i32 = 1_000_207_002;
+pub(crate) const STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO: i32 = 1_000_207_004;
 
 /// `VkApplicationInfo`.
 #[repr(C)]
@@ -280,6 +284,36 @@ pub(crate) struct ImageViewCreateInfo {
 	pub subresource_range: SubresourceRange,
 }
 
+/// `VkSemaphoreCreateInfo`.
+#[repr(C)]
+pub(crate) struct SemaphoreCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+}
+
+/// `VkSemaphoreTypeCreateInfo`, chained to the create info.
+#[repr(C)]
+pub(crate) struct SemaphoreTypeCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	/// `VkSemaphoreType`: 1, a timeline.
+	pub semaphore_type: i32,
+	pub initial_value: u64,
+}
+
+/// `VkSemaphoreWaitInfo`.
+#[repr(C)]
+pub(crate) struct SemaphoreWaitInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	/// `VkSemaphoreWaitFlags`: 0, every semaphore.
+	pub flags: u32,
+	pub semaphore_count: u32,
+	pub semaphores: *const RawSemaphore,
+	pub values: *const u64,
+}
+
 /// `PFN_vkVoidFunction`: what the loader returns, cast to the real type.
 pub(crate) type VoidFunction = unsafe extern "system" fn();
 pub(crate) type GetInstanceProcAddr =
@@ -349,3 +383,15 @@ pub(crate) type CreateImageView = unsafe extern "system" fn(
 ) -> i32;
 pub(crate) type DestroyImageView =
 	unsafe extern "system" fn(RawDevice, RawImageView, *const c_void);
+pub(crate) type CreateSemaphore = unsafe extern "system" fn(
+	RawDevice,
+	*const SemaphoreCreateInfo,
+	*const c_void,
+	*mut RawSemaphore,
+) -> i32;
+pub(crate) type DestroySemaphore =
+	unsafe extern "system" fn(RawDevice, RawSemaphore, *const c_void);
+pub(crate) type GetSemaphoreCounterValue =
+	unsafe extern "system" fn(RawDevice, RawSemaphore, *mut u64) -> i32;
+pub(crate) type WaitSemaphores =
+	unsafe extern "system" fn(RawDevice, *const SemaphoreWaitInfo, u64) -> i32;

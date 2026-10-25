@@ -263,6 +263,9 @@ unsafe extern "system" fn destroy_device(device: RawDevice, allocator: *const c_
 		if !driver.live_images.is_empty() || !driver.live_views.is_empty() {
 			(driver.invalid).push("vkDestroyDevice while images or views are live".into());
 		}
+		if !driver.live_semaphores.is_empty() {
+			(driver.invalid).push("vkDestroyDevice while semaphores are live".into());
+		}
 		driver.live_devices.retain(|&live| live != device);
 		driver.destroyed_devices.push(device);
 	})
@@ -411,6 +414,10 @@ fn device_functions_are_looked_up_with_the_new_device() {
 		"vkBindImageMemory",
 		"vkCreateImageView",
 		"vkDestroyImageView",
+		"vkCreateSemaphore",
+		"vkDestroySemaphore",
+		"vkGetSemaphoreCounterValue",
+		"vkWaitSemaphores",
 	];
 	let expected = names.map(|name| (live, name));
 	let lookups: Vec<_> = lookups

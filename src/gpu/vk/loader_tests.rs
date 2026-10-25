@@ -15,9 +15,10 @@ use super::{
 	instance::Instance,
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
+	timeline::Timeline,
 	version::major_minor,
 };
-use std::{env, num::NonZeroUsize, process::Command, ptr, rc::Rc};
+use std::{env, num::NonZeroUsize, process::Command, ptr, rc::Rc, time::Duration};
 
 fn required() -> bool {
 	env::var("POOPTERM_REQUIRE_VULKAN").is_ok_and(|value| value == "1")
@@ -126,6 +127,8 @@ fn child() {
 						let image = Image::new(&device, format, size, usage);
 						println!("child: {name} image: {}", image.is_ok());
 					}
+					let waited = Timeline::new(&device).and_then(|timeline| timeline.wait(0, Duration::ZERO));
+					println!("child: timeline waited: {waited:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -186,6 +189,10 @@ fn instances_pass_the_khronos_validation_layer() {
 		let line = format!("child: {name} image: true");
 		assert!(output.contains(&line), "{output}");
 	}
+	assert!(
+		output.contains("child: timeline waited: Ok(true)"),
+		"{output}"
+	);
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
@@ -349,4 +356,20 @@ fn images_are_made_within_the_devices_limits() {
 		Image::new(&device, 44, huge, 0x4).err(),
 		Some(Error::ImageSize(huge))
 	);
+}
+
+#[test]
+fn a_timeline_starts_at_zero_and_waiting_past_it_times_out() {
+	let Some(entry) = entry() else { return };
+	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
+	let device = Rc::new(offscreen(instance).expect("device"));
+	let timeline = Timeline::new(&device).expect("timeline");
+	assert_eq!(timeline.reached(), Ok(0));
+	assert_eq!(timeline.wait(0, Duration::ZERO), Ok(true));
+	// Nothing will signal 1: the driver gives up after the timeout.
+	assert_eq!(timeline.wait(1, Duration::ZERO), Ok(false));
+	assert_eq!(timeline.wait(1, Duration::from_millis(5)), Ok(false));
+	// A timeline outliving its device's last other owner keeps it alive.
+	drop(device);
+	assert_eq!(timeline.reached(), Ok(0));
 }

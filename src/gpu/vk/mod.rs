@@ -31,6 +31,9 @@ pub(crate) mod memory;
 mod memory_driver_tests;
 #[cfg(test)]
 mod memory_tests;
+pub(crate) mod timeline;
+#[cfg(test)]
+mod timeline_tests;
 pub(crate) mod types;
 #[cfg(test)]
 mod types_tests;
