@@ -54,6 +54,7 @@ use crate::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
 			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
 		},
+		zoom::{zoom_action, zoomed},
 	},
 	wallpaper::Wallpaper,
 };
@@ -63,6 +64,8 @@ pub(crate) use settings::SettingsEditor;
 pub(crate) struct App {
 	theme: Theme,
 	preferences: Preferences,
+	/// The terminal font size in points: Settings' size, changed by zoom.
+	font_points: usize,
 	/// What the vertical tab sidebar last drew, for partial redraws.
 	sidebar_shown: Option<draw_vertical_tabs::SidebarView>,
 	wallpaper: Option<Wallpaper>,
@@ -191,7 +194,7 @@ impl App {
 		let chrome = chrome(factor, cfg!(target_os = "macos"));
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
-		self.set_font_px(font_px(self.preferences.font_size, factor));
+		self.set_font_px(font_px(self.font_points, factor));
 		let layout = self.layout();
 		(self.margin, self.status_height, self.top) = (layout.margin, layout.status_height, layout.top);
 		// pr-check: end window glue
@@ -301,6 +304,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 	let next_session_id = sessions.len() as u64 + 1;
 	let mut app = App {
 		theme,
+		font_points: preferences.font_size,
 		preferences,
 		sidebar_shown: None,
 		wallpaper,

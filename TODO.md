@@ -269,7 +269,5 @@ step.
   candidate window there (`Ime::Preedit`, `set_ime_cursor_area`).
 - **Keyboard-only Settings.** Tab and Shift+Tab focus order through every
   control, with a visible focus ring.
-- **Font zoom shortcuts.** Ctrl+= / Ctrl+- / Ctrl+0 (Cmd on macOS), bindable
-  like the other shortcuts.
 - **Reduced motion.** A setting that pauses kitty animations, following the
   desktop's reduced-motion preference where the platform exposes one.

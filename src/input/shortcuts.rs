@@ -156,10 +156,13 @@ pub(crate) enum ShortcutAction {
 	CloseTab,
 	PreviousPrompt,
 	NextPrompt,
+	ZoomIn,
+	ZoomOut,
+	ZoomReset,
 }
 
 impl ShortcutAction {
-	pub(crate) const ALL: [Self; 7] = [
+	pub(crate) const ALL: [Self; 10] = [
 		Self::NewTab,
 		Self::CommandPalette,
 		Self::CycleTheme,
@@ -167,6 +170,9 @@ impl ShortcutAction {
 		Self::CloseTab,
 		Self::PreviousPrompt,
 		Self::NextPrompt,
+		Self::ZoomIn,
+		Self::ZoomOut,
+		Self::ZoomReset,
 	];
 
 	pub(crate) fn label(self) -> &'static str {
@@ -178,6 +184,9 @@ impl ShortcutAction {
 			Self::CloseTab => "Close tab",
 			Self::PreviousPrompt => "Previous prompt",
 			Self::NextPrompt => "Next prompt",
+			Self::ZoomIn => "Zoom in",
+			Self::ZoomOut => "Zoom out",
+			Self::ZoomReset => "Reset zoom",
 		}
 	}
 
@@ -190,6 +199,9 @@ impl ShortcutAction {
 			Self::CloseTab => "shortcut_close_tab",
 			Self::PreviousPrompt => "shortcut_previous_prompt",
 			Self::NextPrompt => "shortcut_next_prompt",
+			Self::ZoomIn => "shortcut_zoom_in",
+			Self::ZoomOut => "shortcut_zoom_out",
+			Self::ZoomReset => "shortcut_zoom_reset",
 		}
 	}
 }
@@ -204,12 +216,16 @@ pub(crate) struct Shortcuts {
 	pub close_tab: Shortcut,
 	pub previous_prompt: Shortcut,
 	pub next_prompt: Shortcut,
+	pub zoom_in: Shortcut,
+	pub zoom_out: Shortcut,
+	pub zoom_reset: Shortcut,
 }
 
 impl Shortcuts {
 	/// Builds the table from config text, falling back to platform defaults.
 	pub(crate) fn from_config(text: &str) -> Self {
 		let mac = cfg!(target_os = "macos");
+		let primary = if mac { "super" } else { "ctrl" };
 		let get = |key: &str, default: &str| {
 			config::value(text, key)
 				.and_then(|binding| Shortcut::parse(&binding))
@@ -239,6 +255,9 @@ impl Shortcuts {
 				"shortcut_next_prompt",
 				if mac { "super+down" } else { "ctrl+shift+down" },
 			),
+			zoom_in: get("shortcut_zoom_in", &format!("{primary}+=")),
+			zoom_out: get("shortcut_zoom_out", &format!("{primary}+-")),
+			zoom_reset: get("shortcut_zoom_reset", &format!("{primary}+0")),
 		}
 	}
 
@@ -255,6 +274,9 @@ impl Shortcuts {
 			ShortcutAction::CloseTab => &self.close_tab,
 			ShortcutAction::PreviousPrompt => &self.previous_prompt,
 			ShortcutAction::NextPrompt => &self.next_prompt,
+			ShortcutAction::ZoomIn => &self.zoom_in,
+			ShortcutAction::ZoomOut => &self.zoom_out,
+			ShortcutAction::ZoomReset => &self.zoom_reset,
 		}
 	}
 
@@ -267,6 +289,9 @@ impl Shortcuts {
 			ShortcutAction::CloseTab => self.close_tab = shortcut,
 			ShortcutAction::PreviousPrompt => self.previous_prompt = shortcut,
 			ShortcutAction::NextPrompt => self.next_prompt = shortcut,
+			ShortcutAction::ZoomIn => self.zoom_in = shortcut,
+			ShortcutAction::ZoomOut => self.zoom_out = shortcut,
+			ShortcutAction::ZoomReset => self.zoom_reset = shortcut,
 		}
 	}
 

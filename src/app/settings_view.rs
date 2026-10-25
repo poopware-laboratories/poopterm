@@ -23,15 +23,17 @@ pub(super) const SETTINGS_BUTTON_ROW: usize = 248;
 pub(super) const BOTTOM_BAR_ROW: usize = 296;
 pub(super) const COMPACT_TABS_ROW: usize = 344;
 pub(super) const PADDING_ROW: usize = 392;
-pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 7] = [
-	(ShortcutAction::NewTab, 104),
-	(ShortcutAction::CommandPalette, 152),
-	(ShortcutAction::CycleTheme, 200),
-	(ShortcutAction::Search, 248),
-	(ShortcutAction::CloseTab, 296),
-	(ShortcutAction::PreviousPrompt, 344),
-	(ShortcutAction::NextPrompt, 392),
-];
+/// Shortcut rows sit closer than other pages' rows so all ten clear the
+/// footer at the smallest window size.
+pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 10] = {
+	let mut rows = [(ShortcutAction::NewTab, 0); 10];
+	let mut i = 0;
+	while i < rows.len() {
+		rows[i] = (ShortcutAction::ALL[i], 104 + 44 * i);
+		i += 1;
+	}
+	rows
+};
 /// Top of the Fonts page's list and the distance between its rows.
 pub(super) const FONT_LIST_TOP: usize = 104;
 pub(super) const FONT_LIST_STRIDE: usize = 44;
