@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.81 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Plan a complete clean-room PTY layer replacing portable-pty (#114) (todo).
+
 ## 26.10.80 "Giga Fly" — 2026-10-25
 
 ### Added
