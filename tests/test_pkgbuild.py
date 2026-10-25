@@ -29,7 +29,7 @@ class Contents(unittest.TestCase):
 
     def test_it_builds_the_tag_of_its_own_version(self):
         self.assertEqual(field('source'), '("$pkgname::git+$url.git#tag=v$pkgver")')
-        self.assertEqual(field('url'), "'https://github.com/poopterm-labs/poopterm'")
+        self.assertEqual(field('url'), "'https://github.com/poopware-laboratories/poopterm'")
 
     def test_the_license_matches_the_crate(self):
         cargo = tomllib.loads((ROOT / 'Cargo.toml').read_text())

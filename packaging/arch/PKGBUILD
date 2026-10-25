@@ -5,7 +5,7 @@ pkgver=26.10.95
 pkgrel=1
 pkgdesc='Fast software-rendered terminal emulator'
 arch=('x86_64' 'aarch64')
-url='https://github.com/poopterm-labs/poopterm'
+url='https://github.com/poopware-laboratories/poopterm'
 license=('AGPL-3.0-or-later')
 # winit loads the display libraries at run time; xkbcommon serves both.
 depends=('gcc-libs' 'glibc' 'libxkbcommon')

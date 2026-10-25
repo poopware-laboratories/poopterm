@@ -1,7 +1,7 @@
 class Poopterm < Formula
   desc "Small, poop-colored terminal emulator"
-  homepage "https://github.com/poopterm-labs/poopterm"
-  url "https://github.com/poopterm-labs/poopterm.git",
+  homepage "https://github.com/poopware-laboratories/poopterm"
+  url "https://github.com/poopware-laboratories/poopterm.git",
       tag: "v26.10.95",
       using: :git
   version "26.10.95"

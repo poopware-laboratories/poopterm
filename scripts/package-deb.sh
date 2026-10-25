@@ -32,7 +32,7 @@ Source: poopterm
 Section: x11
 Priority: optional
 Maintainer: Poopterm Labs <poopterm-labs@users.noreply.github.com>
-Homepage: https://github.com/poopterm-labs/poopterm
+Homepage: https://github.com/poopware-laboratories/poopterm
 
 Package: poopterm
 Architecture: $architecture
@@ -56,7 +56,7 @@ Priority: optional
 Architecture: $architecture
 Depends: $depends
 Maintainer: Poopterm Labs <poopterm-labs@users.noreply.github.com>
-Homepage: https://github.com/poopterm-labs/poopterm
+Homepage: https://github.com/poopware-laboratories/poopterm
 Description: fast software-rendered terminal emulator
  Poopterm is a tabbed terminal emulator with a software-rendered interface,
  configurable themes, image protocol support, and shell integration.

@@ -37,7 +37,7 @@ Version: $version
 Release: 1
 Summary: Fast software-rendered terminal emulator
 License: AGPL-3.0-or-later
-URL: https://github.com/poopterm-labs/poopterm
+URL: https://github.com/poopware-laboratories/poopterm
 # winit loads the display libraries at run time, so rpm's ELF scan cannot
 # see them; xkbcommon serves both Wayland and X11.
 Requires: libxkbcommon
