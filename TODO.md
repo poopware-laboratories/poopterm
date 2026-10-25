@@ -165,8 +165,15 @@ one issue per piece (#20–#29); claim one there.
   shell now gets its own systemd scope (`src/cgroup.rs`), with memory and
   task accounting and `MemoryHigh` at 7/8 of RAM, and the terminal a sibling
   scope with `CPUWeight=400` so its UI and parser threads stay responsive
-  while a tab floods. Still to do: a delegated subtree we write ourselves on
-  hosts without systemd. Moving
+  while a tab floods. Still to do, in order: (1) a delegated subtree: one
+  scope for the terminal with `Delegate=yes` (systemd's cgroup delegation
+  rules), the terminal itself in a `terminal` leaf and one `tab-N` leaf per
+  tab created before its shell starts, controllers enabled in
+  `cgroup.subtree_control`, `memory.high` and `cpu.weight` written there;
+  without systemd, the same layout under our own cgroup when it is already
+  delegated (writable, and ours alone); tests on a fake cgroupfs in a temp
+  directory, including read-only and missing. (2) With our own PTY layer,
+  the shell joins its leaf before `exec`. Moving
   the shell happens after it starts, so anything it forks in its first
   milliseconds stays behind; `clone3(CLONE_INTO_CGROUP)` would close that
   gap once we spawn shells ourselves instead of through portable-pty.
