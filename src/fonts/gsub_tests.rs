@@ -631,3 +631,6 @@ fn installed_noto_shows_an_unknown_flag_as_one_placeholder() {
 
 #[path = "gsub_edge_tests.rs"]
 mod edge;
+
+#[path = "gsub_font_tests.rs"]
+mod font;
