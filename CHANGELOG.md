@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.96 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Point packages and the about page at the moved repository (#132) (release).
+
+### Maintenance
+
+- Rework the readme and move the reference into docs (#133).
+- Add diagrams and note boxes (#134).
+
 ## 26.10.95 "Giga Fly" — 2026-10-25
 
 ### Maintenance
