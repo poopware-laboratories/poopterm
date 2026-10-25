@@ -184,7 +184,7 @@ pub(crate) fn multiple(sequences: &[(u16, &[u16])]) -> Vec<u8> {
 	table(fields)
 }
 
-const CCMP: &[u8; 4] = b"ccmp";
+pub(crate) const CCMP: &[u8; 4] = b"ccmp";
 
 #[test]
 fn single_substitution_by_delta_wraps_around() {
@@ -628,3 +628,6 @@ fn installed_noto_shows_an_unknown_flag_as_one_placeholder() {
 	);
 	assert_ne!(unknown, font.ligature(&['🇩', '🇪']));
 }
+
+#[path = "gsub_edge_tests.rs"]
+mod edge;
