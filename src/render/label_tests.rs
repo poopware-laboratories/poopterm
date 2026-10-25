@@ -128,3 +128,37 @@ fn nothing_is_drawn_outside_the_box() {
 fn an_empty_box_draws_nothing() {
 	assert!(drawn("vim", Some("ok"), 0).iter().all(|&pixel| pixel == 0));
 }
+
+#[test]
+fn the_status_ink_starts_after_the_title_ink_at_every_room() {
+	for room in (0..=240).step_by(3) {
+		let pixels = drawn("cargo build", Some("compiling poopterm"), room);
+		let (title, status) = (columns(&pixels, TITLE), columns(&pixels, STATUS));
+		if let (Some(end), Some(start)) = (title.last(), status.first()) {
+			assert!(
+				end < start,
+				"room {room}: title ends at {end}, status starts at {start}"
+			);
+		}
+	}
+}
+
+#[test]
+fn a_shortened_status_keeps_its_color_and_ellipsis() {
+	let advance = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new()).advance('a', PX);
+	// Twelve cells: half is six, so "car…", the gap, then "compi…".
+	let pixels = drawn("cargo", Some("compiling"), 12 * advance);
+	let status = columns(&pixels, STATUS);
+	assert!(status.first() >= Some(&(10 + 6 * advance)));
+	assert!(status.last() < Some(&(10 + 12 * advance)));
+	// The ellipsis inks the status color in the last of the six cells.
+	assert!(status.iter().any(|&x| x >= 10 + 11 * advance));
+}
+
+#[test]
+fn a_box_too_small_for_the_status_shows_the_title() {
+	let advance = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new()).advance('a', PX);
+	let pixels = drawn("cargo", Some("compiling"), 3 * advance);
+	assert!(columns(&pixels, STATUS).is_empty());
+	assert!(pixels == plain("ca…"));
+}

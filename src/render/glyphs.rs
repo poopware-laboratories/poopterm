@@ -91,19 +91,24 @@ impl FontSet {
 		Self::new(primary, fallbacks).with_system_fallback(system)
 	}
 
-	/// Also searches installed fonts for characters no given font has.
-	/// The proportional font for window chrome, with the bundled font and
-	/// the installed fonts behind it.
+	/// The proportional font for window chrome, falling back to every
+	/// installed font.
 	pub(crate) fn load_ui() -> Self {
-		let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
-		let (primary, fallbacks) = match crate::fonts::load_ui_font() {
-			Some(font) => (font, vec![bundled]),
-			None => (bundled, Vec::new()),
-		};
 		let system = SystemFallback::new(crate::fonts::system_fonts);
-		Self::new(primary, fallbacks).with_system_fallback(system)
+		Self::ui(crate::fonts::load_ui_font()).with_system_fallback(system)
 	}
 
+	/// Chrome fonts: `found`, then the bundled font, which is primary when
+	/// no UI font was found.
+	pub(crate) fn ui(found: Option<Font>) -> Self {
+		let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
+		match found {
+			Some(font) => Self::new(font, vec![bundled]),
+			None => Self::new(bundled, Vec::new()),
+		}
+	}
+
+	/// Also searches installed fonts for characters no given font has.
 	pub(crate) fn with_system_fallback(mut self, system: SystemFallback) -> Self {
 		self.system = Some(system);
 		self
@@ -254,6 +259,27 @@ mod tests {
 		);
 		let mut fonts = FontSet::new(bundled(), Vec::new());
 		assert_eq!(fonts.advance('a', 13.0), exact.ceil() as usize);
+	}
+
+	#[test]
+	fn chrome_fonts_fall_back_to_the_bundled_font() {
+		// A UI font with only 'x' draws 'x' and leaves 'a' to the bundled one.
+		let mut fonts = FontSet::ui(Some(outline('x')));
+		assert_eq!(
+			fonts.glyph('x', 16.0).coverage,
+			outline('x').rasterize('x', 16.0).1
+		);
+		assert_eq!(
+			fonts.glyph('a', 16.0).coverage,
+			bundled().rasterize('a', 16.0).1
+		);
+		assert!(!has(fonts.primary(), 'a', false));
+		let mut fonts = FontSet::ui(None);
+		assert!(has(fonts.primary(), 'a', false));
+		assert_eq!(
+			fonts.glyph('a', 16.0).coverage,
+			bundled().rasterize('a', 16.0).1
+		);
 	}
 
 	#[test]

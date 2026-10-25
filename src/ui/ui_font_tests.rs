@@ -1,6 +1,7 @@
 //! Tests of the UI font choice and of fitting chrome text by width.
 use super::ui_font::{
-	LINUX_FAMILIES, MACOS_FAMILIES, choose_family, ellipsize_to_width, fit_label, text_width,
+	LINUX_FAMILIES, MACOS_FAMILIES, choose_family, ellipsize_to_width, fit_label, platform_families,
+	text_width,
 };
 
 /// Advances of a toy proportional font: `i` is narrow, `m` and `…` wide.
@@ -59,6 +60,13 @@ fn no_installed_family_means_the_bundled_font() {
 		choose_family(Some("Inter"), &MACOS_FAMILIES, |_| false),
 		None
 	);
+}
+
+#[test]
+fn macos_has_its_own_families() {
+	assert_eq!(platform_families(true)[0], "SF Pro Text");
+	assert_eq!(platform_families(false)[0], "Inter");
+	assert!(!platform_families(true).contains(&"Cantarell"));
 }
 
 #[test]
@@ -245,5 +253,24 @@ fn a_status_too_narrow_to_show_leaves_the_title_all_the_room() {
 	assert_eq!(
 		fit_label("Shell", Some("running"), 17, advance),
 		("S…".into(), String::new())
+	);
+	// Half of 18 holds only the ellipsis, which says nothing on its own.
+	assert_eq!(
+		fit_label("Shell", Some("running"), 18, advance),
+		("S…".into(), String::new())
+	);
+}
+
+#[test]
+fn combining_marks_stay_with_the_character_they_follow() {
+	// The marks take no width, so a base that fits keeps them.
+	let advance = |ch: char| if ch == '\u{301}' { 0 } else { advance(ch) };
+	assert_eq!(
+		ellipsize_to_width("e\u{301}e\u{301}e\u{301}x", 23, advance),
+		"e\u{301}e\u{301}…"
+	);
+	assert_eq!(
+		ellipsize_to_width("e\u{301}e\u{301}", 14, advance),
+		"e\u{301}e\u{301}"
 	);
 }

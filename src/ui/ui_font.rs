@@ -22,6 +22,15 @@ pub(crate) const MACOS_FAMILIES: [&str; 5] = [
 	"Arial",
 ];
 
+/// The UI families tried on macOS, or on every other platform.
+pub(crate) fn platform_families(macos: bool) -> &'static [&'static str] {
+	if macos {
+		&MACOS_FAMILIES
+	} else {
+		&LINUX_FAMILIES
+	}
+}
+
 /// The family chrome text is drawn in: the configured one when installed,
 /// else the first installed entry of `families`, else `None` for the
 /// bundled font.
@@ -74,7 +83,7 @@ pub(crate) fn ellipsize_to_width(
 
 /// Fits a tab's title and status into `room` pixels: after a gap of two
 /// spaces, the status gets at least half, or all the title leaves, and the
-/// title the rest; all of it when the status cannot show even an ellipsis.
+/// title the rest; all of it when the status cannot show a character.
 pub(crate) fn fit_label(
 	title: &str,
 	status: Option<&str>,
@@ -87,8 +96,8 @@ pub(crate) fn fit_label(
 	let shown = status.map_or_else(String::new, |status| {
 		ellipsize_to_width(status, status_room, &mut advance)
 	});
-	if shown.is_empty() {
-		return (ellipsize_to_width(title, room, advance), shown);
+	if shown.is_empty() || shown == "…" {
+		return (ellipsize_to_width(title, room, advance), String::new());
 	}
 	let title_room = room.saturating_sub(text_width(&shown, &mut advance) + gap);
 	(ellipsize_to_width(title, title_room, advance), shown)

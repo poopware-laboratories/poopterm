@@ -149,12 +149,7 @@ fn ui_font_file(
 /// The proportional font window chrome is drawn in: `ui_font_family` when
 /// installed, else the platform's usual UI family, else `None`.
 pub(crate) fn load_ui_font() -> Option<Font> {
-	use crate::ui::ui_font::{LINUX_FAMILIES, MACOS_FAMILIES};
-	let families: &[&str] = if cfg!(target_os = "macos") {
-		&MACOS_FAMILIES
-	} else {
-		&LINUX_FAMILIES
-	};
+	let families = crate::ui::ui_font::platform_families(cfg!(target_os = "macos"));
 	let configured = read_config_value("ui_font_family");
 	let (path, index) = ui_font_file(&system_fonts(), configured.as_deref(), families)?;
 	load_font(&path, index).ok()
