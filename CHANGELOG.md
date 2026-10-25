@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.114 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Create a vulkan device with the features the renderer needs (#154) (gpu).
+
 ## 26.10.113 "Giga Fly" — 2026-10-25
 
 ### Added
