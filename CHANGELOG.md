@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.111 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Turn the grid's pen calls into ordered quads with an atlas (#149) (gpu).
+
 ## 26.10.110 "Giga Fly" — 2026-10-25
 
 ### Maintenance
