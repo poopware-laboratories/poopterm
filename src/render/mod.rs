@@ -9,6 +9,9 @@ pub(crate) mod fxhash;
 pub(crate) mod glyphs;
 pub(crate) mod grid;
 pub(crate) mod images;
+pub(crate) mod label;
+#[cfg(test)]
+mod label_tests;
 mod multicell;
 pub(crate) mod padding;
 pub(crate) mod painter;

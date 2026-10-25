@@ -238,3 +238,12 @@ fn fitted_labels_and_their_gap_stay_within_the_room() {
 		}
 	}
 }
+
+#[test]
+fn a_status_too_narrow_to_show_leaves_the_title_all_the_room() {
+	// Half of 17 cannot hold the ellipsis, so the title takes all 17.
+	assert_eq!(
+		fit_label("Shell", Some("running"), 17, advance),
+		("S…".into(), String::new())
+	);
+}

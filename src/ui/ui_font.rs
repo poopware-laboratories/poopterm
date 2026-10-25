@@ -74,7 +74,7 @@ pub(crate) fn ellipsize_to_width(
 
 /// Fits a tab's title and status into `room` pixels: after a gap of two
 /// spaces, the status gets at least half, or all the title leaves, and the
-/// title the rest.
+/// title the rest; all of it when the status cannot show even an ellipsis.
 pub(crate) fn fit_label(
 	title: &str,
 	status: Option<&str>,
@@ -84,14 +84,12 @@ pub(crate) fn fit_label(
 	let gap = 2 * advance(' ');
 	let title_width = text_width(title, &mut advance);
 	let status_room = (room / 2).max(room.saturating_sub(title_width + gap));
-	let status_width = status.map_or(0, |status| {
-		text_width(status, &mut advance).min(status_room)
+	let shown = status.map_or_else(String::new, |status| {
+		ellipsize_to_width(status, status_room, &mut advance)
 	});
-	match status {
-		Some(status) if status_width > 0 => (
-			ellipsize_to_width(title, room.saturating_sub(status_width + gap), &mut advance),
-			ellipsize_to_width(status, status_width, advance),
-		),
-		_ => (ellipsize_to_width(title, room, advance), String::new()),
+	if shown.is_empty() {
+		return (ellipsize_to_width(title, room, advance), shown);
 	}
+	let title_room = room.saturating_sub(text_width(&shown, &mut advance) + gap);
+	(ellipsize_to_width(title, title_room, advance), shown)
 }

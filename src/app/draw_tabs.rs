@@ -2,12 +2,12 @@
 //! status programs set, scroll arrows, new-tab and settings buttons.
 use super::{draw::UiFont, *};
 use crate::{
-	render::painter::Painter,
-	term::status::{Progress, ProgressState},
-	ui::{
-		tabs::{Marker, tab_marker},
-		ui_font::{fit_label, text_width},
+	render::{
+		label::{Label, draw_label},
+		painter::Painter,
 	},
+	term::status::{Progress, ProgressState},
+	ui::tabs::{Marker, tab_marker},
 };
 
 pub(super) fn hit(cursor: (f64, f64), (x, y, w, h): (usize, usize, usize, usize)) -> bool {
@@ -139,48 +139,16 @@ impl App {
 			let left = if dot.is_some() { 22 } else { 12 } * scale;
 			let right = if self.sessions.len() > 1 { 32 } else { 12 } * scale;
 			let room = tab_width.saturating_sub(left + right);
-			let mut advance = |ch| self.ui_fonts.advance(ch, small_px);
-			let (label, status) = fit_label(
-				&session.title(),
-				style.status.as_deref(),
-				room,
-				&mut advance,
-			);
-			let status_offset = text_width(&label, &mut advance) + 2 * advance(' ');
-			let label_x = x + left;
-			p.text_clipped(
-				&mut self.ui_fonts,
-				label_x,
-				text_y,
-				&label,
-				ui.px * 0.82,
-				small_ascent,
-				fg,
-				(
-					label_x,
-					tab_y + 4 * scale,
-					room,
-					self.tab_height.saturating_sub(6 * scale),
-				),
-			);
-			if !status.is_empty() {
-				let status_x = label_x + status_offset;
-				p.text_clipped(
-					&mut self.ui_fonts,
-					status_x,
-					text_y,
-					&status,
-					ui.px * 0.82,
-					small_ascent,
-					style.status_color.unwrap_or(dim),
-					(
-						label_x,
-						tab_y + 4 * scale,
-						room,
-						self.tab_height.saturating_sub(6 * scale),
-					),
-				);
-			}
+			let title = session.title();
+			let label = Label {
+				title: &title,
+				status: style.status.as_deref(),
+				colors: (fg, style.status_color.unwrap_or(dim)),
+			};
+			let clip_h = self.tab_height.saturating_sub(6 * scale);
+			let clip = (x + left, tab_y + 4 * scale, room, clip_h);
+			let font = (small_px, small_ascent);
+			draw_label(p, &mut self.ui_fonts, &label, text_y, font, clip);
 			if self.sessions.len() > 1 {
 				p.text(
 					&mut self.ui_fonts,

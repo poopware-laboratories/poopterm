@@ -1,14 +1,18 @@
 //! Drawing for the optional vertical tab sidebar.
 use super::{draw::UiFont, draw_tabs::hit, *};
 use crate::{
-	render::{blend::blend, painter::Painter},
+	render::{
+		blend::blend,
+		label::{Label, draw_label},
+		painter::Painter,
+	},
 	term::{
 		status::{Progress, ProgressState},
 		tab_style::TabStyle,
 	},
 	ui::{
 		tabs::{Marker, VerticalTabLayout, tab_marker},
-		ui_font::{fit_label, text_width},
+		ui_font::text_width,
 	},
 };
 
@@ -257,33 +261,14 @@ impl App {
 			let left = if dot.is_some() { 20 } else { 8 } * scale;
 			let right = if show_close { 24 } else { 8 } * scale;
 			let room = layout.tab_width.saturating_sub(left + right);
-			let mut advance = |ch| self.ui_fonts.advance(ch, small_px);
-			let (label, status) = fit_label(&tab.title, style.status.as_deref(), room, &mut advance);
-			let status_offset = text_width(&label, &mut advance) + 2 * advance(' ');
-			let label_x = x + left;
-			p.text_clipped(
-				&mut self.ui_fonts,
-				label_x,
-				text_y,
-				&label,
-				ui.px * 0.76,
-				small_ascent,
-				fg,
-				(label_x, y, room, row_h),
-			);
-			if !status.is_empty() {
-				let status_x = label_x + status_offset;
-				p.text_clipped(
-					&mut self.ui_fonts,
-					status_x,
-					text_y,
-					&status,
-					ui.px * 0.76,
-					small_ascent,
-					style.status_color.unwrap_or(dim),
-					(label_x, y, room, row_h),
-				);
-			}
+			let label = Label {
+				title: &tab.title,
+				status: style.status.as_deref(),
+				colors: (fg, style.status_color.unwrap_or(dim)),
+			};
+			let font = (small_px, small_ascent);
+			let clip = (x + left, y, room, row_h);
+			draw_label(p, &mut self.ui_fonts, &label, text_y, font, clip);
 			if show_close {
 				p.text(
 					&mut self.ui_fonts,
