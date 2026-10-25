@@ -14,6 +14,7 @@ mod app;
 mod bench;
 #[cfg(target_os = "linux")]
 mod cgroup;
+#[cfg(target_os = "linux")]
 mod cgroup_tree;
 mod clipboard;
 #[cfg(test)]
