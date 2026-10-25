@@ -20,16 +20,39 @@ pub(crate) struct Glyph {
 	pub color: Option<Vec<u32>>,
 }
 
+/// How a character asks to be shown (UTS #51): as its default, or as an
+/// emoji or as text when a variation selector follows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Presentation {
+	Default,
+	/// VS16, U+FE0F.
+	Emoji,
+	/// VS15, U+FE0E.
+	Text,
+}
+
+impl Presentation {
+	/// The presentation a cell's `marks` ask for: a variation selector
+	/// counts only right after the character.
+	pub(crate) fn of(marks: &[char]) -> Self {
+		match marks.first() {
+			Some('\u{fe0f}') => Self::Emoji,
+			Some('\u{fe0e}') => Self::Text,
+			_ => Self::Default,
+		}
+	}
+}
+
 /// The primary font, its fallbacks, and every glyph rasterized so far.
 ///
-/// Lookups are keyed by `(char, pixel size)` and resolve the fallback font
+/// Lookups are keyed by `(char, pixel size, presentation)` and resolve the fallback font
 /// only on a cache miss, so drawing a cell costs a single hash lookup.
 pub(crate) struct FontSet {
 	primary: Font,
 	fallbacks: Vec<Font>,
 	/// Installed fonts, searched when no font above has a character.
 	system: Option<SystemFallback>,
-	cache: FxHashMap<(char, u32), Glyph>,
+	cache: FxHashMap<(char, u32, Presentation), Glyph>,
 	/// Box drawing and other glyphs drawn in code, for cells of `drawn_cell`.
 	drawn: FxHashMap<char, boxdraw::Drawn>,
 	drawn_cell: (usize, usize),
@@ -69,15 +92,35 @@ impl FontSet {
 	/// (the primary font otherwise).
 	#[inline]
 	pub(crate) fn glyph(&mut self, ch: char, px: f32) -> &Glyph {
-		match self.cache.entry((ch, px.to_bits())) {
+		self.presented(ch, px, Presentation::Default)
+	}
+
+	/// Returns the cached glyph for `ch` at `px` in `presentation`: from a
+	/// color font for an emoji, and from one without a color glyph for text,
+	/// when some font has one; otherwise as [`Self::glyph`] finds it.
+	#[inline]
+	pub(crate) fn presented(&mut self, ch: char, px: f32, presentation: Presentation) -> &Glyph {
+		match self.cache.entry((ch, px.to_bits(), presentation)) {
 			Entry::Occupied(entry) => entry.into_mut(),
 			Entry::Vacant(entry) => {
+				let emoji = match presentation {
+					Presentation::Default => emoji_presentation(ch),
+					Presentation::Emoji => true,
+					Presentation::Text => false,
+				};
+				let text = |font: &Font| has(font, ch, false) && !font.has_color(ch);
+				let text_font = if presentation == Presentation::Text && !text(&self.primary) {
+					self.fallbacks.iter().position(text)
+				} else {
+					None
+				};
 				let mut find = |color| {
 					(self.fallbacks.iter())
 						.position(|font| has(font, ch, color))
 						.or_else(|| self.system.as_mut()?.find(ch, color, &mut self.fallbacks))
 				};
-				let found = (emoji_presentation(ch).then(|| find(true)).flatten())
+				let found = text_font
+					.or_else(|| emoji.then(|| find(true)).flatten())
 					.or_else(|| (!has(&self.primary, ch, false)).then(|| find(false))?);
 				let font = found.map_or(&self.primary, |index| &self.fallbacks[index]);
 				let color = font.rasterize_color(ch, px);

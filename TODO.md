@@ -270,9 +270,9 @@ least as fast.
   parses every glyph of every fallback font (about 400 ms on a desktop
   with Nerd Fonts). Still to do: per-glyph rasterization, which is slower
   than fontdue's precomputed outlines (`font_engine_speed`); kerning;
-  feeding the GPU glyph atlas. Color emoji: CBDT bitmaps are done;
-  COLR and sbix, VS16 (U+FE0F) presentation and flags (GSUB ligatures)
-  remain.
+  feeding the GPU glyph atlas. Color emoji: CBDT bitmaps and VS16/VS15
+  presentation (drawing only; widening on VS16 waits for mode 2027) are
+  done; COLR and sbix, and flags and ZWJ sequences (GSUB ligatures) remain.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
