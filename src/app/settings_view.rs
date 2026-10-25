@@ -135,7 +135,7 @@ impl App {
 		);
 		let px = 18.0 * scale as f32;
 		let ascent = self
-			.fonts
+			.ui_fonts
 			.primary()
 			.horizontal_line_metrics(px)
 			.map_or(self.ascent, |metrics| metrics.ascent.round() as i32);
@@ -149,7 +149,7 @@ impl App {
 		};
 		let editor = &self.settings_editor;
 		let mut pen = Pen {
-			fonts: &mut self.fonts,
+			fonts: &mut self.ui_fonts,
 			px,
 			ascent,
 			color: self.theme.fg,

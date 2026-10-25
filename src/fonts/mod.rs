@@ -134,6 +134,32 @@ fn load_font(path: &Path, collection_index: u32) -> Result<Font, String> {
 	Font::from_bytes(bytes, collection_index).map_err(|error| error.to_string())
 }
 
+/// The file and collection index of the font window chrome is drawn in.
+fn ui_font_file(
+	db: &db::Cache,
+	configured: Option<&str>,
+	families: &[&str],
+) -> Option<(PathBuf, u32)> {
+	let installed = |family: &str| db.find(family, 400, false).is_some();
+	let family = crate::ui::ui_font::choose_family(configured, families, installed)?;
+	db.find(family, 400, false)
+		.map(|(path, index)| (path.to_owned(), index))
+}
+
+/// The proportional font window chrome is drawn in: `ui_font_family` when
+/// installed, else the platform's usual UI family, else `None`.
+pub(crate) fn load_ui_font() -> Option<Font> {
+	use crate::ui::ui_font::{LINUX_FAMILIES, MACOS_FAMILIES};
+	let families: &[&str] = if cfg!(target_os = "macos") {
+		&MACOS_FAMILIES
+	} else {
+		&LINUX_FAMILIES
+	};
+	let configured = read_config_value("ui_font_family");
+	let (path, index) = ui_font_file(&system_fonts(), configured.as_deref(), families)?;
+	load_font(&path, index).ok()
+}
+
 /// The installed fonts, from the cache in `$XDG_CACHE_HOME/poopterm`.
 pub(crate) fn system_fonts() -> db::Cache {
 	let roots = font_roots(
@@ -248,6 +274,50 @@ mod tests {
 		);
 		assert_eq!(source(None, some(""), some(" ")), None);
 		assert_eq!(source(None, None, None), None);
+	}
+
+	/// Installed faces of `families`, one file each, at 400 unless named
+	/// with a weight after a colon.
+	fn installed(families: &[&str]) -> db::Cache {
+		let files = families.iter().map(|name| {
+			let (family, weight) = name.split_once(':').unwrap_or((name, "400"));
+			db::FontFile {
+				path: format!("/{name}.ttf").into(),
+				stamp: db::Stamp { mtime: 0, size: 1 },
+				faces: vec![sfnt::FaceInfo {
+					index: 0,
+					family: family.into(),
+					style: String::new(),
+					full_name: String::new(),
+					postscript: String::new(),
+					weight: weight.parse().unwrap(),
+					italic: false,
+					monospace: false,
+					drawable: true,
+					color: false,
+					pages: Default::default(),
+				}],
+			}
+		});
+		db::Cache {
+			files: files.collect(),
+			..db::Cache::default()
+		}
+	}
+
+	#[test]
+	fn the_ui_font_is_the_regular_face_of_the_chosen_family() {
+		let db = installed(&["Noto Sans:700", "Noto Sans", "DejaVu Sans"]);
+		let families = ["Inter", "Noto Sans", "DejaVu Sans"];
+		assert_eq!(
+			ui_font_file(&db, None, &families),
+			Some(("/Noto Sans.ttf".into(), 0))
+		);
+		assert_eq!(
+			ui_font_file(&db, Some("dejavu sans"), &families),
+			Some(("/DejaVu Sans.ttf".into(), 0))
+		);
+		assert_eq!(ui_font_file(&db, Some("Inter"), &["Inter"]), None);
 	}
 
 	#[test]

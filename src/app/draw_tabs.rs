@@ -4,7 +4,10 @@ use super::{draw::UiFont, *};
 use crate::{
 	render::painter::Painter,
 	term::status::{Progress, ProgressState},
-	ui::tabs::{Marker, tab_marker},
+	ui::{
+		tabs::{Marker, tab_marker},
+		ui_font::{fit_label, text_width},
+	},
 };
 
 pub(super) fn hit(cursor: (f64, f64), (x, y, w, h): (usize, usize, usize, usize)) -> bool {
@@ -32,7 +35,7 @@ impl App {
 		p.rect(0, tab_y, p.width, self.tab_height, bg);
 		if !cfg!(target_os = "macos") {
 			p.text(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				16 * scale,
 				text_y,
 				"poopterm",
@@ -119,7 +122,7 @@ impl App {
 				.or(style.indicator.map(|color| ("•", color)));
 			if let Some((glyph, color)) = dot {
 				p.text(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					x + 10 * scale,
 					text_y,
 					glyph,
@@ -132,15 +135,21 @@ impl App {
 				self.draw_tab_progress(p, (x, tab_y, tab_width), scale, progress);
 			}
 			// Labels are drawn smaller than the UI font, up to the close button.
-			let small_cw = ui.cw as f32 * 0.82;
+			let small_px = ui.px * 0.82;
 			let left = if dot.is_some() { 22 } else { 12 } * scale;
 			let right = if self.sessions.len() > 1 { 32 } else { 12 } * scale;
 			let room = tab_width.saturating_sub(left + right);
-			let max_chars = ((room as f32 / small_cw.max(1.0)) as usize).max(1);
-			let (label, status) = tab_label(&session.title(), style.status.as_deref(), max_chars);
+			let mut advance = |ch| self.ui_fonts.advance(ch, small_px);
+			let (label, status) = fit_label(
+				&session.title(),
+				style.status.as_deref(),
+				room,
+				&mut advance,
+			);
+			let status_offset = text_width(&label, &mut advance) + 2 * advance(' ');
 			let label_x = x + left;
 			p.text_clipped(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				label_x,
 				text_y,
 				&label,
@@ -155,9 +164,9 @@ impl App {
 				),
 			);
 			if !status.is_empty() {
-				let status_x = label_x + ((label.chars().count() + 2) as f32 * small_cw) as usize;
+				let status_x = label_x + status_offset;
 				p.text_clipped(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					status_x,
 					text_y,
 					&status,
@@ -174,7 +183,7 @@ impl App {
 			}
 			if self.sessions.len() > 1 {
 				p.text(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					x + tab_width.saturating_sub(28 * scale),
 					text_y,
 					"×",
@@ -203,7 +212,7 @@ impl App {
 			let rect = (x, arrow_y, layout.arrow_w, arrow_h);
 			p.button(rect, style, hit(self.cursor_pos, rect));
 			p.text(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				x + layout.arrow_w.saturating_sub(ui.cw) / 2,
 				arrow_y + arrow_h.saturating_sub(ui.ch) / 2,
 				label,
@@ -235,7 +244,7 @@ impl App {
 			let rect = (x, button_y, w, button_h);
 			p.button(rect, style, hit(self.cursor_pos, rect));
 			p.text(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				x + w.saturating_sub(ui.cw) / 2,
 				button_y + button_h.saturating_sub(ui.ch) / 2,
 				label,
@@ -270,67 +279,5 @@ impl App {
 		};
 		let shade = if progress.percent.is_some() { 255 } else { 140 };
 		p.rect(left, y, done, 2 * scale, blend(bg, color, shade));
-	}
-}
-
-/// Truncates `title` to `max_chars` characters, ending in `…` when shortened.
-pub(super) fn ellipsize(title: &str, max_chars: usize) -> String {
-	let max_chars = max_chars.max(1);
-	if title.chars().count() <= max_chars {
-		return title.to_owned();
-	}
-	let mut label: String = title.chars().take(max_chars).collect();
-	if max_chars > 1 {
-		label.pop();
-		label.push('…');
-	}
-	label
-}
-
-/// Fits a tab's title and status into `max_chars`: after a two-character
-/// gap, the status gets at least half, or all the title leaves, and the
-/// title the rest.
-pub(super) fn tab_label(title: &str, status: Option<&str>, max_chars: usize) -> (String, String) {
-	let room = (max_chars / 2).max(max_chars.saturating_sub(title.chars().count() + 2));
-	let status_chars = status.map_or(0, |status| status.chars().count().min(room));
-	if status_chars == 0 {
-		return (ellipsize(title, max_chars), String::new());
-	}
-	(
-		ellipsize(title, max_chars.saturating_sub(status_chars + 2)),
-		ellipsize(status.unwrap_or_default(), status_chars),
-	)
-}
-
-#[cfg(test)]
-mod tests {
-	use super::{ellipsize, tab_label};
-
-	#[test]
-	fn statuses_share_the_tab_with_the_title() {
-		let label = |status| tab_label("cargo build", status, 20);
-		assert_eq!(label(None), ("cargo build".into(), String::new()));
-		assert_eq!(label(Some("ok")), ("cargo build".into(), "ok".into()));
-		assert_eq!(
-			label(Some("compiling poopterm")),
-			("cargo b…".into(), "compiling…".into())
-		);
-		assert_eq!(
-			tab_label("a very long title indeed", Some("ok"), 20),
-			("a very long tit…".into(), "ok".into())
-		);
-		assert_eq!(tab_label("vim", Some("x"), 1), ("v".into(), String::new()));
-		// A short title leaves the status more room.
-		assert_eq!(
-			tab_label("vim", Some("compiling poopterm"), 20),
-			("vim".into(), "compiling poop…".into())
-		);
-	}
-
-	#[test]
-	fn long_titles_are_ellipsized_to_fit() {
-		assert_eq!(ellipsize("vim main.rs", 20), "vim main.rs");
-		assert_eq!(ellipsize("vim main.rs", 5), "vim …");
-		assert_eq!(ellipsize("vim", 1), "v");
 	}
 }

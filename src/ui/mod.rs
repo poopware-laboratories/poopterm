@@ -20,4 +20,7 @@ mod tabs_horizontal_tests;
 mod tabs_vertical_edge_tests;
 #[cfg(test)]
 mod tabs_vertical_tests;
+pub(crate) mod ui_font;
+#[cfg(test)]
+mod ui_font_tests;
 pub(crate) mod zoom;

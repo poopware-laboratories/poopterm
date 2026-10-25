@@ -92,6 +92,18 @@ impl FontSet {
 	}
 
 	/// Also searches installed fonts for characters no given font has.
+	/// The proportional font for window chrome, with the bundled font and
+	/// the installed fonts behind it.
+	pub(crate) fn load_ui() -> Self {
+		let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
+		let (primary, fallbacks) = match crate::fonts::load_ui_font() {
+			Some(font) => (font, vec![bundled]),
+			None => (bundled, Vec::new()),
+		};
+		let system = SystemFallback::new(crate::fonts::system_fonts);
+		Self::new(primary, fallbacks).with_system_fallback(system)
+	}
+
 	pub(crate) fn with_system_fallback(mut self, system: SystemFallback) -> Self {
 		self.system = Some(system);
 		self
@@ -107,6 +119,11 @@ impl FontSet {
 	#[inline]
 	pub(crate) fn glyph(&mut self, ch: char, px: f32) -> &Glyph {
 		self.presented(ch, px, Presentation::Default)
+	}
+
+	/// How far text drawing moves past `ch` at `px`, in whole pixels.
+	pub(crate) fn advance(&mut self, ch: char, px: f32) -> usize {
+		self.glyph(ch, px).metrics.advance_width.ceil() as usize
 	}
 
 	/// Returns the cached glyph for `ch` at `px` in `presentation`: from a
@@ -225,6 +242,18 @@ mod tests {
 		assert!(large > small);
 		fonts.glyph('a', 12.0);
 		assert_eq!(fonts.cached(), 2);
+	}
+
+	#[test]
+	fn advances_round_up_like_text_drawing() {
+		let exact = bundled().metrics('a', 13.0).advance_width;
+		assert_ne!(
+			exact.fract(),
+			0.0,
+			"a fractional advance shows the rounding"
+		);
+		let mut fonts = FontSet::new(bundled(), Vec::new());
+		assert_eq!(fonts.advance('a', 13.0), exact.ceil() as usize);
 	}
 
 	#[test]
