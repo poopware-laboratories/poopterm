@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.80 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Run each shell in its own systemd cgroup scope (#112) (pty).
+- Give the terminal a higher CPU weight than its shells (#113) (pty).
+
 ## 26.10.79 "Giga Fly" — 2026-10-25
 
 ### Added
