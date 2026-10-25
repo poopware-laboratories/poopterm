@@ -451,6 +451,27 @@ fn stateful_vte_parser_handles_fragmented_controls_and_invalid_utf8() {
 }
 
 #[test]
+fn selection_color_queries_follow_the_theme() {
+	let queries = b"\x1b]17;?\x07\x1b]19;?\x07";
+	let mut dark = terminal(8, 2);
+	feed(&mut dark, queries);
+	assert_eq!(dark.responses[0], b"\x1b]17;rgb:89/b4/fa\x07");
+	assert_eq!(dark.responses[1], b"\x1b]19;rgb:1e/1e/2e\x07");
+	let mut light = Term::new(
+		8,
+		2,
+		Theme::from_kind(ThemeKind::CatppuccinLatte),
+		"/".into(),
+	);
+	feed(&mut light, queries);
+	assert_eq!(light.responses[0], b"\x1b]17;rgb:1e/66/f5\x07");
+	assert_eq!(light.responses[1], b"\x1b]19;rgb:ff/ff/ff\x07");
+	// A program's own selection colors still win.
+	feed(&mut light, b"\x1b]17;#102030\x07\x1b]17;?\x07");
+	assert_eq!(light.responses[2], b"\x1b]17;rgb:10/20/30\x07");
+}
+
+#[test]
 fn osc_palette_and_default_color_queries_are_answered() {
 	let mut t = terminal(8, 2);
 	feed(&mut t, b"\x1b]4;1;#123456\x07\x1b[31mA");

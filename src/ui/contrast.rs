@@ -1,10 +1,15 @@
 //! Contrast between colors (WCAG 2.2), and the chrome colors derived from a
 //! theme so that dimmed and accented text stays readable in every theme.
 
-use crate::{render::blend::blend, theme::Theme};
+use crate::{
+	render::blend::blend,
+	theme::{LIGHT_THEME_SELECTION_COLORS, SELECTION_COLORS, Theme},
+};
 
 /// WCAG AA's minimum contrast for normal text.
 pub(crate) const TEXT: f64 = 4.5;
+/// WCAG's minimum contrast for shapes such as a selected area.
+pub(crate) const UI: f64 = 3.0;
 /// How far toward the foreground dimmed text starts, out of 255.
 pub(crate) const DIM: u32 = 150;
 
@@ -52,6 +57,15 @@ pub(crate) fn tab_text_colors(theme: &Theme) -> (u32, u32) {
 		readable(blend(theme.bg, theme.fg, DIM)),
 		readable(theme.palette[4]),
 	)
+}
+
+/// The selection colors to use on a theme background `bg`.
+pub(crate) fn selection_colors(bg: u32) -> (u32, u32) {
+	if ratio(SELECTION_COLORS.1, bg) >= UI {
+		SELECTION_COLORS
+	} else {
+		LIGHT_THEME_SELECTION_COLORS
+	}
 }
 
 #[cfg(test)]
@@ -207,5 +221,47 @@ mod tests {
 			assert_eq!(dim == start_dim, reads(start_dim), "{name} dim");
 			assert_eq!(accent == start_accent, reads(start_accent), "{name} accent");
 		}
+	}
+
+	#[test]
+	fn the_selection_shows_and_its_text_reads_in_every_theme() {
+		for theme in built_in() {
+			let (fg, bg) = selection_colors(theme.bg);
+			let name = theme.kind.name();
+			assert!(
+				ratio(bg, theme.bg) >= UI,
+				"{name} area {:.2}",
+				ratio(bg, theme.bg)
+			);
+			assert!(ratio(fg, bg) >= TEXT, "{name} text {:.2}", ratio(fg, bg));
+		}
+	}
+
+	#[test]
+	fn dark_themes_keep_the_light_selection() {
+		for kind in [ThemeKind::MacOsDark, ThemeKind::Nord, ThemeKind::Poop] {
+			assert_eq!(
+				selection_colors(Theme::from_kind(kind).bg),
+				SELECTION_COLORS
+			);
+		}
+		assert_eq!(selection_colors(0x000000), SELECTION_COLORS);
+	}
+
+	#[test]
+	fn light_themes_get_the_deep_selection() {
+		for kind in [
+			ThemeKind::MacOsLight,
+			ThemeKind::RosePineDawn,
+			ThemeKind::CatppuccinLatte,
+		] {
+			let bg = Theme::from_kind(kind).bg;
+			assert!(
+				ratio(SELECTION_COLORS.1, bg) < UI,
+				"the light one barely shows"
+			);
+			assert_eq!(selection_colors(bg), LIGHT_THEME_SELECTION_COLORS);
+		}
+		assert_eq!(selection_colors(0xFFFFFF), LIGHT_THEME_SELECTION_COLORS);
 	}
 }

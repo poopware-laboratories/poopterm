@@ -166,7 +166,7 @@ impl Term {
 	/// The current dynamic color `which`, as a query reports it.
 	pub(crate) fn dynamic_color(&self, which: Dynamic) -> u32 {
 		let colors = &self.colors;
-		let (selection_fg, selection_bg) = crate::theme::SELECTION_COLORS;
+		let (selection_fg, selection_bg) = crate::ui::contrast::selection_colors(self.default_bg);
 		match which {
 			Dynamic::Foreground => self.default_fg,
 			Dynamic::Background => self.default_bg,
