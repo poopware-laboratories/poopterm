@@ -2,6 +2,7 @@
 use super::{
 	blend::blend,
 	boxdraw::{self, Drawn},
+	cell_joins::{Join, join, may_join},
 	fit::{fit_left, fit_scale},
 	glyphs::{FontSet, Presentation, Shape, joins},
 	images::draw_placement,
@@ -120,6 +121,7 @@ fn draw_row(p: &mut Painter, fonts: &mut FontSet, view: &GridView, row: usize, l
 	let frame = view.frame;
 	let absolute_row = frame.first_row + row;
 	let cells = frame.row(row);
+	let may_join = layer != Layer::Backgrounds && may_join(cells);
 	// Right to left, so a wide glyph is drawn after the cell it spills into.
 	for (col, cell) in cells.iter().enumerate().rev() {
 		let point = CellPoint {
@@ -148,6 +150,16 @@ fn draw_row(p: &mut Painter, fonts: &mut FontSet, view: &GridView, row: usize, l
 		} else {
 			(cell.fg, cell.bg)
 		};
+		let joined = if !may_join {
+			Join::Alone
+		} else {
+			join(
+				cells,
+				col,
+				|cell, chars| cell_chars(frame, cell, chars),
+				|chars| fonts.cluster(chars, view.px).is_some(),
+			)
+		};
 		draw_cell(
 			p,
 			fonts,
@@ -156,12 +168,27 @@ fn draw_row(p: &mut Painter, fonts: &mut FontSet, view: &GridView, row: usize, l
 			(col, row),
 			(fg, bg),
 			layer,
-			cells.get(col + 1),
+			(&joined, cells),
 		);
 		if is_cursor && !solid_block && layer != Layer::Backgrounds {
 			draw_cursor(p, view, cell, (col, row));
 		}
 	}
+}
+
+/// Appends the characters of `cell` and its marks, unless it is part of a
+/// block of scaled text.
+fn cell_chars(frame: &Frame, cell: &Cell, chars: &mut Vec<char>) -> bool {
+	if cell.extra == NO_EXTRA {
+		chars.push(cell.ch);
+		return true;
+	}
+	if frame.multicell(cell).is_some() {
+		return false;
+	}
+	chars.push(cell.ch);
+	chars.extend_from_slice(frame.marks(cell));
+	true
 }
 
 /// The pixels of grid row `row` inside the surface.
@@ -185,7 +212,7 @@ fn draw_cell(
 	(col, row): (usize, usize),
 	(fg, bg): (u32, u32),
 	layer: Layer,
-	next: Option<&Cell>,
+	(joined, cells): (&Join, &[Cell]),
 ) {
 	let (cw, ch) = view.cell;
 	let line = view.scale.max(1);
@@ -215,7 +242,11 @@ fn draw_cell(
 	if cell.attrs & attr::STRIKE != 0 {
 		p.rect(x0, y0 + ch / 2, cw, line, fg);
 	}
-	if (cell.ch == ' ' && cell.extra == NO_EXTRA) || cell.width == 0 || cell.ch == PLACEHOLDER {
+	if (cell.ch == ' ' && cell.extra == NO_EXTRA)
+		|| cell.width == 0
+		|| cell.ch == PLACEHOLDER
+		|| *joined == Join::Second
+	{
 		return;
 	}
 	let italic = cell.attrs & attr::ITALIC != 0;
@@ -229,14 +260,20 @@ fn draw_cell(
 		}
 		return;
 	}
-	let span = cw * cell.width as usize;
+	let columns = match joined {
+		Join::First { columns, .. } => *columns,
+		_ => usize::from(cell.width),
+	};
+	let span = cw * columns;
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
 	let marks = match cell.extra {
 		NO_EXTRA => &[][..],
 		_ => view.frame.marks(cell),
 	};
 	let presentation = Presentation::of(marks);
-	let cluster: Vec<char> = if joins(marks) {
+	let cluster: Vec<char> = if let Join::First { chars, .. } = joined {
+		chars.clone()
+	} else if joins(marks) {
 		std::iter::once(cell.ch)
 			.chain(marks.iter().copied())
 			.collect()
@@ -259,7 +296,8 @@ fn draw_cell(
 			p.glyph(glyph, origin, clip, italic, fg);
 		} else {
 			let style = (italic, fg, shape);
-			draw_oversized(p, fonts, view, cell, (x0, y0), style, next);
+			let next = cells.get(col + 1);
+			draw_oversized(p, fonts, view, span, (x0, y0), style, next);
 		}
 	}
 	if cell.extra == NO_EXTRA {
@@ -339,20 +377,19 @@ fn draw_oversized(
 	p: &mut Painter,
 	fonts: &mut FontSet,
 	view: &GridView,
-	cell: &Cell,
+	span: usize,
 	(x0, y0): (usize, usize),
 	(italic, fg, shape): (bool, u32, Shape),
 	next: Option<&Cell>,
 ) {
 	let (cw, ch) = view.cell;
-	let span = cw * cell.width as usize;
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
 	let next_blank =
 		next.is_some_and(|next| next.ch == ' ' && next.extra == NO_EXTRA && next.width == 1);
 	let glyph = fonts.shaped(shape, view.px);
 	let metrics = glyph.metrics;
 	let overflows = metrics.xmin < 0 || metrics.xmin + metrics.width as i32 > span as i32;
-	let room = if overflows && next_blank && cell.width == 1 {
+	let room = if overflows && next_blank && span == cw {
 		span + cw
 	} else {
 		span

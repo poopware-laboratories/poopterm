@@ -242,4 +242,4 @@ fn a_text_presentation_keeps_a_sequence_apart() {
 }
 
 #[path = "glyph_clusters_grid_tests.rs"]
-mod grid;
+pub(crate) mod grid;

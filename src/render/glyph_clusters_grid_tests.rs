@@ -14,21 +14,21 @@ use crate::{
 	ui::selection::{CellPoint, Selection},
 };
 
-const WHITE: u32 = 0xff_ffff;
+pub(crate) const WHITE: u32 = 0xff_ffff;
 const LINK: u32 = 0x12_3456;
-const SELECTED: u32 = 0x33_4455;
+pub(crate) const SELECTED: u32 = 0x33_4455;
 
 /// A grid of `cols` cells of `cell` pixels, drawn at `px`, with the test
 /// emoji font as the fallback.
-struct Grid {
+pub(crate) struct Grid {
 	cols: usize,
 	cell: (usize, usize),
 	px: f32,
-	selection: Option<Selection>,
+	pub(crate) selection: Option<Selection>,
 }
 
 impl Grid {
-	fn new(cols: usize, cell: (usize, usize), px: f32) -> Self {
+	pub(crate) fn new(cols: usize, cell: (usize, usize), px: f32) -> Self {
 		Self {
 			cols,
 			cell,
@@ -42,7 +42,7 @@ impl Grid {
 	}
 
 	/// Draws `input` (after white on black) with `fonts`.
-	fn draw_with(&self, fonts: &mut FontSet, input: &str) -> Vec<u32> {
+	pub(crate) fn draw_with(&self, fonts: &mut FontSet, input: &str) -> Vec<u32> {
 		let theme = Theme::from_kind(ThemeKind::Poop);
 		let mut term = Term::new(self.cols, 1, theme, "/".into());
 		let input = format!("\x1b[38;2;255;255;255m\x1b[48;2;0;0;0m{input}");
@@ -78,7 +78,7 @@ impl Grid {
 	}
 
 	/// The colors (without alpha) in cell `col`.
-	fn cell_colors(&self, pixels: &[u32], col: usize) -> Vec<u32> {
+	pub(crate) fn cell_colors(&self, pixels: &[u32], col: usize) -> Vec<u32> {
 		let (w, h) = self.cell;
 		(0..h)
 			.flat_map(|y| pixels[y * self.width() + col * w..][..w].iter())
@@ -86,12 +86,12 @@ impl Grid {
 			.collect()
 	}
 
-	fn has(&self, pixels: &[u32], col: usize, color: u32) -> bool {
+	pub(crate) fn has(&self, pixels: &[u32], col: usize, color: u32) -> bool {
 		self.cell_colors(pixels, col).contains(&(color & 0xff_ffff))
 	}
 }
 
-fn bundled() -> crate::fonts::Font {
+pub(crate) fn bundled() -> crate::fonts::Font {
 	crate::fonts::Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap()
 }
 

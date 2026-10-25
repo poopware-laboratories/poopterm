@@ -169,6 +169,44 @@ fn images_match_a_full_redraw_pixel_for_pixel() {
 }
 
 #[test]
+fn emoji_joined_across_cells_match_a_full_redraw_pixel_for_pixel() {
+	// The first cell draws the glyph of both: a change to the second cell
+	// must draw the first again, and a broken pair must draw both alone.
+	let mut term = Term::new(6, 3, Theme::from_kind(ThemeKind::Poop), "/".into());
+	let mut parser = Parser::new();
+	let joining = crate::render::cell_joins::tests::draw::joining_font();
+	let mut fonts = FontSet::new(
+		crate::fonts::Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap(),
+		vec![joining],
+	);
+	let mut canvas = Canvas::new();
+	for input in [
+		"\u{1f1e6}",
+		"\u{1f1e7}x",
+		"\r\n\u{1f44d}",
+		"\u{1f3fd}",
+		"\x1b[1;2H\u{1f1e6}",
+		"\x1b[2;3H\x1b[K",
+	] {
+		parser.advance(&mut term, input.as_bytes());
+		let mut frame = Frame::default();
+		term.snapshot(&mut frame);
+		let mut expected = vec![0; frame.cols * 10 * frame.rows * 20];
+		draw(&mut expected, &mut fonts, &frame, KEY, None);
+		update(&mut canvas, &mut fonts, &mut frame, KEY);
+		assert!(canvas.pixels == expected, "input {input:?}");
+	}
+	let toned = crate::render::glyphs::clusters::tests::RED;
+	let flag = crate::render::glyphs::clusters::tests::GREEN;
+	for (color, what) in [(flag, "the flag"), (toned, "the toned thumb")] {
+		assert!(
+			!canvas.pixels.contains(&(color & 0xff_ffff)),
+			"{what} was undone"
+		);
+	}
+}
+
+#[test]
 fn emoji_sequences_arriving_in_pieces_match_a_full_redraw_pixel_for_pixel() {
 	// Each read leaves a cluster unfinished: the cell must be drawn again
 	// when the rest of its sequence attaches to it.
