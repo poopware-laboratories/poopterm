@@ -32,6 +32,9 @@ pub(super) struct Functions {
 	pub begin: BeginCommandBuffer,
 	pub end: EndCommandBuffer,
 	pub submit: QueueSubmit2,
+	pub barrier: CmdPipelineBarrier2,
+	pub upload: CmdCopyBufferToImage,
+	pub download: CmdCopyImageToBuffer,
 }
 
 impl Functions {
@@ -66,6 +69,9 @@ impl Functions {
 				begin: cast(function(c"vkBeginCommandBuffer")?),
 				end: cast(function(c"vkEndCommandBuffer")?),
 				submit: cast(function(c"vkQueueSubmit2")?),
+				barrier: cast(function(c"vkCmdPipelineBarrier2")?),
+				upload: cast(function(c"vkCmdCopyBufferToImage")?),
+				download: cast(function(c"vkCmdCopyImageToBuffer")?),
 			})
 		}
 	}

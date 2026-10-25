@@ -38,6 +38,9 @@ pub(super) enum Stage {
 pub(super) struct CommandBuffer {
 	pub pool: RawCommandPool,
 	pub stage: Stage,
+	/// The layouts its barriers leave images in, which take effect once
+	/// it is submitted.
+	pub layouts: Vec<(RawImage, i32)>,
 }
 
 /// `VK_COMMAND_POOL_CREATE_TRANSIENT_BIT`, `_RESET_COMMAND_BUFFER_BIT`.
@@ -63,7 +66,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkBeginCommandBuffer" => transmute::<BeginCommandBuffer, VoidFunction>(begin),
 			b"vkEndCommandBuffer" => transmute::<EndCommandBuffer, VoidFunction>(end),
 			b"vkQueueSubmit2" => transmute::<QueueSubmit2, VoidFunction>(submit),
-			_ => return None,
+			_ => return super::recording_tests::function(name),
 		})
 	}
 }
@@ -82,7 +85,7 @@ impl Driver {
 
 	/// The command buffer behind `handle`, if the fake allocated it from a
 	/// live pool.
-	fn command_buffer(&mut self, handle: RawCommandBuffer) -> Option<&mut CommandBuffer> {
+	pub(super) fn command_buffer(&mut self, handle: RawCommandBuffer) -> Option<&mut CommandBuffer> {
 		let index = (handle as usize).wrapping_sub(0x7c_0001);
 		let buffer = self.command_buffers.get(index)?;
 		self
@@ -177,6 +180,7 @@ unsafe extern "system" fn allocate(
 		driver.command_buffers.push(CommandBuffer {
 			pool: info.command_pool,
 			stage: Stage::Initial,
+			layouts: Vec::new(),
 		});
 		let handle = 0x7c_0000 + driver.command_buffers.len();
 		// SAFETY: as above.
@@ -206,6 +210,7 @@ unsafe extern "system" fn reset_pool(device: RawDevice, pool: RawCommandPool, fl
 			.filter(|buffer| buffer.pool == pool)
 		{
 			buffer.stage = Stage::Initial;
+			buffer.layouts.clear();
 		}
 		driver.recorded.push(format!("reset {pool:#x}"));
 		0
@@ -368,6 +373,8 @@ unsafe extern "system" fn submit(
 		}
 		if let Some(submitted) = driver.command_buffer(buffer.command_buffer) {
 			submitted.stage = Stage::Submitted(signal.semaphore, signal.value);
+			let layouts = std::mem::take(&mut submitted.layouts);
+			driver.image_layouts.extend(layouts);
 		}
 		driver.recorded.push(format!(
 			"submit {:?} to {queue:?}: {:#x} to {} after {:#x}",

@@ -4,13 +4,23 @@ use super::{
 	call::{Error, check},
 	device::Device,
 	memory::{Usage, choose_memory},
+	recording::Layout,
 	types::*,
 };
-use std::{ptr, rc::Rc};
+use std::{cell::Cell, ptr, rc::Rc};
 
 /// `VK_IMAGE_VIEW_TYPE_2D_ARRAY`: every image is viewed as layers, so
 /// shaders sample one kind of image.
 const VIEW_2D_ARRAY: i32 = 5;
+
+/// `VkFormat`: eight bits a channel, four bytes a texel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Format {
+	/// `VK_FORMAT_R8G8B8A8_UNORM`.
+	Rgba = 37,
+	/// `VK_FORMAT_B8G8R8A8_UNORM`: `0xAARRGGBB` words in memory.
+	Bgra = 44,
+}
 
 pub(crate) struct Image {
 	handle: RawImage,
@@ -18,16 +28,22 @@ pub(crate) struct Image {
 	memory: RawMemory,
 	/// Zero until made.
 	view: RawImageView,
+	/// Width, height and layers.
+	pub(super) size: [u32; 3],
+	/// `VkImageUsageFlags`.
+	pub(super) usage: u32,
+	/// The layout the submissions so far leave it in.
+	pub(super) layout: Cell<Layout>,
 	/// Dropped after the image is destroyed, as it was made from it.
-	device: Rc<Device>,
+	pub(super) device: Rc<Device>,
 }
 
 impl Image {
-	/// An image of `format` (`VkFormat`) for `usage` (`VkImageUsageFlags`),
-	/// `size` wide, high and deep in layers, within the device's limits.
+	/// An image of `format` for `usage` (`VkImageUsageFlags`), `size` wide,
+	/// high and deep in layers, within the device's limits.
 	pub(crate) fn new(
 		device: &Rc<Device>,
-		format: i32,
+		format: Format,
 		size: [u32; 3],
 		usage: u32,
 	) -> Result<Self, Error> {
@@ -43,7 +59,7 @@ impl Image {
 			next: ptr::null(),
 			flags: 0,
 			image_type: 1,
-			format,
+			format: format as i32,
 			extent: [width, height, 1],
 			mip_levels: 1,
 			array_layers: layers,
@@ -64,6 +80,9 @@ impl Image {
 			handle,
 			memory: 0,
 			view: 0,
+			size,
+			usage,
+			layout: Cell::new(Layout::Undefined),
 			device: device.clone(),
 		};
 		let mut needs = MemoryRequirements::default();
@@ -90,7 +109,7 @@ impl Image {
 			flags: 0,
 			image: handle,
 			view_type: VIEW_2D_ARRAY,
-			format,
+			format: format as i32,
 			components: [0; 4],
 			subresource_range: SubresourceRange {
 				aspect_mask: 1,

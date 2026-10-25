@@ -1,8 +1,9 @@
-//! The layouts of the command and submit structures against the
-//! specification's C declarations on 64-bit targets.
+//! The layouts of the command, barrier, copy and submit structures against
+//! the specification's C declarations on 64-bit targets.
 use super::submit_types::{
-	CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferSubmitInfo,
-	CommandPoolCreateInfo, SemaphoreSubmitInfo, SubmitInfo2,
+	BufferImageCopy, BufferMemoryBarrier2, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+	CommandBufferSubmitInfo, CommandPoolCreateInfo, DependencyInfo, ImageMemoryBarrier2,
+	SemaphoreSubmitInfo, SubmitInfo2,
 };
 use std::mem::{align_of, offset_of, size_of};
 
@@ -79,4 +80,67 @@ fn submit_structures_are_laid_out_as_vulkan_declares_them() {
 		offset_of!(SubmitInfo2, signal_semaphore_infos),
 	];
 	assert_eq!(offsets, [16, 20, 24, 32, 40, 48, 56]);
+}
+
+#[test]
+fn barrier_structures_are_laid_out_as_vulkan_declares_them() {
+	let image = (
+		size_of::<ImageMemoryBarrier2>(),
+		align_of::<ImageMemoryBarrier2>(),
+	);
+	assert_eq!(image, (96, 8));
+	let offsets = [
+		offset_of!(ImageMemoryBarrier2, src_stage_mask),
+		offset_of!(ImageMemoryBarrier2, src_access_mask),
+		offset_of!(ImageMemoryBarrier2, dst_stage_mask),
+		offset_of!(ImageMemoryBarrier2, dst_access_mask),
+		offset_of!(ImageMemoryBarrier2, old_layout),
+		offset_of!(ImageMemoryBarrier2, new_layout),
+		offset_of!(ImageMemoryBarrier2, src_queue_family_index),
+		offset_of!(ImageMemoryBarrier2, dst_queue_family_index),
+		offset_of!(ImageMemoryBarrier2, image),
+		offset_of!(ImageMemoryBarrier2, subresource_range),
+	];
+	assert_eq!(offsets, [16, 24, 32, 40, 48, 52, 56, 60, 64, 72]);
+	let buffer = (
+		size_of::<BufferMemoryBarrier2>(),
+		align_of::<BufferMemoryBarrier2>(),
+	);
+	assert_eq!(buffer, (80, 8));
+	let offsets = [
+		offset_of!(BufferMemoryBarrier2, dst_access_mask),
+		offset_of!(BufferMemoryBarrier2, src_queue_family_index),
+		offset_of!(BufferMemoryBarrier2, dst_queue_family_index),
+		offset_of!(BufferMemoryBarrier2, buffer),
+		offset_of!(BufferMemoryBarrier2, offset),
+		offset_of!(BufferMemoryBarrier2, size),
+	];
+	assert_eq!(offsets, [40, 48, 52, 56, 64, 72]);
+	let dependency = (size_of::<DependencyInfo>(), align_of::<DependencyInfo>());
+	assert_eq!(dependency, (64, 8));
+	let offsets = [
+		offset_of!(DependencyInfo, dependency_flags),
+		offset_of!(DependencyInfo, memory_barrier_count),
+		offset_of!(DependencyInfo, memory_barriers),
+		offset_of!(DependencyInfo, buffer_memory_barrier_count),
+		offset_of!(DependencyInfo, buffer_memory_barriers),
+		offset_of!(DependencyInfo, image_memory_barrier_count),
+		offset_of!(DependencyInfo, image_memory_barriers),
+	];
+	assert_eq!(offsets, [16, 20, 24, 32, 40, 48, 56]);
+}
+
+#[test]
+fn copy_regions_are_laid_out_as_vulkan_declares_them() {
+	let copy = (size_of::<BufferImageCopy>(), align_of::<BufferImageCopy>());
+	assert_eq!(copy, (56, 8));
+	let offsets = [
+		offset_of!(BufferImageCopy, buffer_offset),
+		offset_of!(BufferImageCopy, buffer_row_length),
+		offset_of!(BufferImageCopy, buffer_image_height),
+		offset_of!(BufferImageCopy, image_subresource),
+		offset_of!(BufferImageCopy, image_offset),
+		offset_of!(BufferImageCopy, image_extent),
+	];
+	assert_eq!(offsets, [0, 8, 12, 16, 32, 44]);
 }

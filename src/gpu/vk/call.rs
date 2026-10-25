@@ -29,6 +29,9 @@ pub(crate) enum Error {
 	/// An image's width, height and layers, beyond what the device allows
 	/// or zero.
 	ImageSize([u32; 3]),
+	/// A copy outside its buffer or image, of nothing, between devices, or
+	/// with a buffer or image not made for it.
+	Copy,
 }
 
 impl fmt::Display for Error {
@@ -47,6 +50,7 @@ impl fmt::Display for Error {
 				f,
 				"the Vulkan device cannot make a {width}×{height} image of {layers} layers"
 			),
+			Self::Copy => write!(f, "a Vulkan copy outside what it copies between"),
 		}
 	}
 }

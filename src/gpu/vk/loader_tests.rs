@@ -12,7 +12,7 @@ use super::{
 	commands::Commands,
 	device::Device,
 	entry::Entry,
-	image::Image,
+	image::{Format, Image},
 	instance::Instance,
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
@@ -26,7 +26,7 @@ fn required() -> bool {
 }
 
 /// The system's Vulkan, or `None` where there is none and none is required.
-fn entry() -> Option<Entry> {
+pub(super) fn entry() -> Option<Entry> {
 	match Entry::load() {
 		Ok(entry) => Some(entry),
 		Err(error) if required() => panic!("{error}"),
@@ -136,6 +136,8 @@ fn child() {
 						commands.finish().map(|()| value)
 					});
 					println!("child: submitted: {submitted:?}");
+					let copied = super::round_trip_tests::round_trip(&device);
+					println!("child: round trip: {copied:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -146,7 +148,7 @@ fn child() {
 
 /// A device on the GPU the renderer would choose to draw offscreen, or on
 /// the CPU when there is no GPU.
-fn offscreen(instance: Rc<Instance>) -> Result<Device, Error> {
+pub(super) fn offscreen(instance: Rc<Instance>) -> Result<Device, Error> {
 	let handles = instance.physical_devices()?;
 	let devices: Vec<_> = (handles.iter())
 		.map(|&handle| instance.describe(handle))
@@ -200,6 +202,7 @@ fn instances_pass_the_khronos_validation_layer() {
 		output.contains("child: timeline waited: Ok(true)"),
 		"{output}"
 	);
+	assert!(output.contains("child: round trip: Ok(true)"), "{output}");
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
@@ -336,9 +339,9 @@ fn buffers_get_memory_for_their_purpose_and_the_cpu_sees_what_it_should() {
 /// The images the renderer makes: the glyph atlas in pages of
 /// VK_FORMAT_B8G8R8A8_UNORM, sampled and copied to, and a target of
 /// _R8G8B8A8_UNORM drawn to and copied from.
-const IMAGES: [(&str, i32, [u32; 3], u32); 2] = [
-	("atlas", 44, [2048, 2048, 4], 0x4 | 0x2),
-	("target", 37, [800, 600, 1], 0x10 | 0x1),
+const IMAGES: [(&str, Format, [u32; 3], u32); 2] = [
+	("atlas", Format::Bgra, [2048, 2048, 4], 0x4 | 0x2),
+	("target", Format::Rgba, [800, 600, 1], 0x10 | 0x1),
 ];
 
 #[test]
@@ -356,11 +359,11 @@ fn images_are_made_within_the_devices_limits() {
 	);
 	assert_ne!(images[0].handle(), images[1].handle());
 	// Every device allows 4096 wide and 256 layers; none allows 2^20.
-	let wide = Image::new(&device, 44, [4096, 1, 256], 0x4);
+	let wide = Image::new(&device, Format::Bgra, [4096, 1, 256], 0x4);
 	assert!(wide.is_ok());
 	let huge = [1 << 20, 1, 1];
 	assert_eq!(
-		Image::new(&device, 44, huge, 0x4).err(),
+		Image::new(&device, Format::Bgra, huge, 0x4).err(),
 		Some(Error::ImageSize(huge))
 	);
 }

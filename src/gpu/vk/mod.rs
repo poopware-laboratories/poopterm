@@ -34,6 +34,11 @@ pub(crate) mod memory;
 mod memory_driver_tests;
 #[cfg(test)]
 mod memory_tests;
+pub(crate) mod recording;
+#[cfg(test)]
+mod recording_tests;
+#[cfg(test)]
+mod round_trip_tests;
 pub(crate) mod submit_types;
 #[cfg(test)]
 mod submit_types_tests;
