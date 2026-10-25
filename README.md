@@ -10,7 +10,7 @@ Poopterm is a lightweight, high-throughput terminal emulator written in Rust: it
 - Supports basic cursor movement, 16-color, 256-color, and truecolor SGR,
   alternate-screen switching, and common editing and function keys.
 - Configurable scrollback (5,000 lines by default). Use the mouse wheel to browse it.
-- Supports drag-to-select text and system clipboard copy/paste.
+- Supports drag-to-select text (hold Alt to select a rectangle) and system clipboard copy/paste.
 - Keeps combining marks attached to their base cell for display and copy, and can load a user font with the bundled font as a missing-glyph fallback.
 - Opens independent shell sessions in tabs, with activity and bell indicators.
 - Searches scrollback with a highlighted match and next/previous navigation.

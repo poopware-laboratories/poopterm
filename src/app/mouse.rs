@@ -2,7 +2,10 @@
 use super::*;
 use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
 use crate::input::{paste::paste_bytes, scroll::alternate_scroll_bytes};
-use crate::ui::links::{LinkAction, link_action};
+use crate::ui::{
+	copy::selection_text,
+	links::{LinkAction, link_action},
+};
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
 impl App {
@@ -34,33 +37,7 @@ impl App {
 	}
 
 	pub(super) fn selected_text(&self) -> Option<String> {
-		let term = self.active_term();
-		let (start, end) = self.selection?.in_rows(term.history_base)?.ordered();
-		let mut result = String::new();
-		for row in start.row..=end.row {
-			let Some(cells) = term.row_cells(row) else {
-				break;
-			};
-			let from = if row == start.row { start.col } else { 0 };
-			let to = if row == end.row {
-				end.col
-			} else {
-				cells.len().saturating_sub(1)
-			};
-			for cell in cells.iter().take(to + 1).skip(from) {
-				if cell.width != 0 {
-					result.push(cell.ch);
-					result.extend(term.marks(cell));
-				}
-			}
-			if row != end.row {
-				while result.ends_with(' ') {
-					result.pop();
-				}
-				result.push('\n');
-			}
-		}
-		Some(result)
+		selection_text(&self.active_term(), self.selection?)
 	}
 
 	pub(super) fn copy_selection(&self) {
@@ -202,7 +179,8 @@ impl App {
 	/// pointer is dragged to another cell, so clicks leave no mark.
 	pub(super) fn begin_selection(&mut self, x: f64, y: f64) {
 		if let Some(point) = self.point_at(x, y) {
-			self.drag_anchor = Some(self.to_line(point));
+			// Alt drags a rectangle, as in xterm and Alacritty.
+			self.drag_anchor = Some((self.to_line(point), self.mods.alt));
 			if self.selection.take().is_some() {
 				self.request_redraw();
 			}
@@ -234,11 +212,11 @@ impl App {
 
 	/// Drags past the grid's edges keep selecting up to the nearest cell.
 	pub(super) fn extend_selection(&mut self, x: f64, y: f64) {
-		let Some(anchor) = self.drag_anchor else {
+		let Some((anchor, block)) = self.drag_anchor else {
 			return;
 		};
 		let point = self.to_line(self.grid_geometry().nearest(x, y));
-		let selection = Selection::dragged(anchor, point, self.selection);
+		let selection = Selection::dragged(anchor, point, self.selection, block);
 		if selection.map(Selection::ordered) != self.selection.map(Selection::ordered) {
 			self.selection = selection;
 			self.request_redraw();

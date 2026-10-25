@@ -41,6 +41,7 @@ pub(crate) fn find_matches(term: &Term, query: &str) -> Vec<Selection> {
 							row,
 							col: chars[start + needle.len() - 1].1,
 						},
+						block: false,
 					});
 				}
 			}

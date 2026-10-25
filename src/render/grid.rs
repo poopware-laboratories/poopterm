@@ -12,7 +12,7 @@ use super::{
 use crate::{
 	graphics::{Placement, Rect, kitty::PLACEHOLDER},
 	term::{Cell, CursorShape, Frame, NO_EXTRA, attr},
-	ui::selection::CellPoint,
+	ui::selection::{CellPoint, Selection},
 };
 
 /// Everything needed to draw one terminal viewport.
@@ -30,16 +30,16 @@ pub(crate) struct GridView<'a> {
 	pub link_color: u32,
 	pub selection_colors: (u32, u32),
 	pub match_colors: (u32, u32),
-	pub selection: Option<(CellPoint, CellPoint)>,
-	pub search_match: Option<(CellPoint, CellPoint)>,
+	pub selection: Option<Selection>,
+	pub search_match: Option<Selection>,
 	/// Unfocused windows draw a hollow block cursor.
 	pub focused: bool,
 	/// The area around the grid that edge cell backgrounds extend into.
 	pub padding: Option<Rect>,
 }
 
-fn contains(range: Option<(CellPoint, CellPoint)>, point: CellPoint) -> bool {
-	range.is_some_and(|(start, end)| point >= start && point <= end)
+fn contains(range: Option<Selection>, point: CellPoint) -> bool {
+	range.is_some_and(|range| range.contains(point))
 }
 
 /// Images with a lower z-index are drawn under non-default cell backgrounds
