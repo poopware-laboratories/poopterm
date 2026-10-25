@@ -42,14 +42,17 @@ pub(super) struct UiFont {
 }
 
 impl App {
+	/// The whole-number scale the window chrome is drawn at.
 	pub(super) fn scale(&self) -> usize {
-		self
-			.window
-			.as_ref()
-			.map_or(1.0, |w| w.scale_factor())
-			.round()
-			.max(1.0) as usize
+		chrome_scale(self.factor())
 	}
+
+	/// The window's display scale factor.
+	// pr-check: window glue: only a real window has a scale factor
+	pub(super) fn factor(&self) -> f64 {
+		self.window.as_ref().map_or(1.0, |w| w.scale_factor())
+	}
+	// pr-check: end window glue
 
 	pub(super) fn ui_font(&self, px: f32) -> UiFont {
 		let font = self.fonts.primary();

@@ -1,6 +1,7 @@
 //! Window-system-independent UI models: selection, search and tab layout.
 pub(crate) mod copy;
 pub(crate) mod links;
+pub(crate) mod scale;
 pub(crate) mod search;
 pub(crate) mod selection;
 #[cfg(test)]
