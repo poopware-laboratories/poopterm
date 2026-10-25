@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.118 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Wait for the gpu with vulkan timeline semaphores (#158) (gpu).
+
 ## 26.10.117 "Giga Fly" — 2026-10-25
 
 ### Added
