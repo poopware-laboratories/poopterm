@@ -176,7 +176,7 @@ impl App {
 			scale,
 			default_bg: self.theme.bg,
 			link_color: self.theme.palette[4],
-			selection_colors: crate::theme::SELECTION_COLORS,
+			selection_colors: selection_colors(self.theme.bg),
 			match_colors: (self.theme.bg, self.theme.palette[3]),
 			selection: self.selection_rows(),
 			search_match: self.search_matches.get(self.search_match_index).copied(),

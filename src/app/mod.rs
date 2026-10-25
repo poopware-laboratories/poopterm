@@ -46,7 +46,7 @@ use crate::{
 	term::{Frame, Term, TermGuard},
 	theme::{Theme, ThemeKind},
 	ui::{
-		contrast::tab_text_colors,
+		contrast::{selection_colors, tab_text_colors},
 		layout::{Layout, layout},
 		scale::{chrome, chrome_scale, font_px},
 		search::find_matches,
