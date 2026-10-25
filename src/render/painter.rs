@@ -75,22 +75,8 @@ impl<'a> Painter<'a> {
 		radius: usize,
 		color: u32,
 	) {
-		let radius = radius.min(h / 2).min(w / 2);
-		for row in 0..h {
-			let dy = if row < radius {
-				radius - row
-			} else if row >= h - radius {
-				row - (h - radius - 1)
-			} else {
-				0
-			};
-			let inset = if dy == 0 {
-				0
-			} else {
-				radius.saturating_sub((radius * radius).saturating_sub(dy * dy).isqrt())
-			};
-			self.rect(x + inset, y + row, w.saturating_sub(2 * inset), 1, color);
-		}
+		let size = (self.width, self.height);
+		super::shapes::round_rect(self.pixels, size, (x, y, w, h), radius, color);
 	}
 
 	pub(crate) fn button(

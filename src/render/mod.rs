@@ -18,6 +18,9 @@ mod label_tests;
 mod multicell;
 pub(crate) mod padding;
 pub(crate) mod painter;
+pub(crate) mod shapes;
+#[cfg(test)]
+mod shapes_tests;
 
 #[cfg(test)]
 mod backend_tests;
