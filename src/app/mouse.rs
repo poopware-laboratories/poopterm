@@ -1,7 +1,9 @@
 //! Mouse events: selection, links, wheel scrolling and mouse reporting.
+use super::draw_tabs::hit;
 use super::*;
 use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
 use crate::input::{paste::paste_bytes, scroll::alternate_scroll_bytes};
+use crate::render::header::close_rect;
 use crate::ui::{
 	copy::selection_text,
 	links::{LinkAction, link_action},
@@ -355,9 +357,8 @@ impl App {
 					let left = layout.tab_x(index);
 					let width = layout.tab_width(index);
 					if x >= left as f64 && x < (left + width) as f64 {
-						if self.sessions.len() > 1
-							&& x >= (left + width.saturating_sub(28 * layout.scale)) as f64
-						{
+						let close = close_rect(left, width, (self.tab_y(), self.tab_height), layout.scale);
+						if self.sessions.len() > 1 && hit((x, y), close) {
 							self.close_tab(index, event_loop);
 						} else {
 							self.activate_tab(index);

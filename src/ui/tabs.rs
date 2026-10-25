@@ -148,17 +148,14 @@ pub(crate) fn tab_layout_with_compaction(
 		compact_tabs,
 	} = options;
 	let scale = scale.max(1);
-	let arrow_w = 28 * scale;
-	let left_arrow_x = left_reserve + 8 * scale;
-	let start = left_arrow_x + arrow_w + 6 * scale;
-	let plus_w = if show_plus { 52 * scale } else { 0 };
-	let settings_w = if show_settings { 42 * scale } else { 0 };
+	let plus_w = if show_plus { 36 * scale } else { 0 };
+	let settings_w = if show_settings { 36 * scale } else { 0 };
 	let controls_gap = if show_plus && show_settings {
-		8 * scale
+		4 * scale
 	} else {
 		0
 	};
-	let right = 12 * scale;
+	let right = 8 * scale;
 	let settings_x = width.saturating_sub(right + settings_w);
 	let plus_x = settings_x.saturating_sub(controls_gap + plus_w);
 	let controls_left = if show_plus {
@@ -168,11 +165,58 @@ pub(crate) fn tab_layout_with_compaction(
 	} else {
 		width.saturating_sub(right)
 	};
-	let right_arrow_x = controls_left.saturating_sub(8 * scale + arrow_w);
-	let viewport_end = right_arrow_x.saturating_sub(8 * scale);
 	let gap = 6 * scale;
-	let room = viewport_end.saturating_sub(start);
-	let (tab_width, compact_width, visible_count) = if compact_tabs && count > 1 {
+	let left_arrow_x = left_reserve + 8 * scale;
+	let fit = |start: usize, end: usize| {
+		let room = end.saturating_sub(start);
+		fit_tabs(room, count, scale, gap, scroll, active_tab, compact_tabs)
+	};
+	// Arrows take room only when the tabs overflow without them.
+	let unscrolled = fit(left_arrow_x, controls_left.saturating_sub(8 * scale));
+	let arrow_w = if unscrolled.2 >= count { 0 } else { 28 * scale };
+	let (start, right_arrow_x, (tab_width, compact_width, visible_count)) = if arrow_w == 0 {
+		(left_arrow_x, controls_left, unscrolled)
+	} else {
+		let start = left_arrow_x + arrow_w + 6 * scale;
+		let right_arrow_x = controls_left.saturating_sub(8 * scale + arrow_w);
+		(
+			start,
+			right_arrow_x,
+			fit(start, right_arrow_x.saturating_sub(8 * scale)),
+		)
+	};
+	let first_visible = scroll.min(count.saturating_sub(visible_count));
+	TabLayout {
+		start,
+		width: tab_width,
+		compact_width,
+		gap,
+		first_visible,
+		visible_count,
+		active_tab,
+		compact_tabs,
+		left_arrow_x,
+		right_arrow_x,
+		arrow_w,
+		plus_x,
+		plus_w,
+		settings_x,
+		settings_w,
+		scale,
+	}
+}
+
+/// Tab width, compact width and visible slots for tabs in `room` pixels.
+fn fit_tabs(
+	room: usize,
+	count: usize,
+	scale: usize,
+	gap: usize,
+	scroll: usize,
+	active_tab: usize,
+	compact_tabs: bool,
+) -> (usize, usize, usize) {
+	if compact_tabs && count > 1 {
 		let min_compact = 80 * scale;
 		let min_active = 144 * scale;
 		let preferred_active = 320 * scale;
@@ -203,25 +247,6 @@ pub(crate) fn tab_layout_with_compaction(
 			.min(220 * scale);
 		let visible_count = ((room + gap) / (tab_width.max(1) + gap)).max(1);
 		(tab_width, tab_width, visible_count)
-	};
-	let first_visible = scroll.min(count.saturating_sub(visible_count));
-	TabLayout {
-		start,
-		width: tab_width,
-		compact_width,
-		gap,
-		first_visible,
-		visible_count,
-		active_tab,
-		compact_tabs,
-		left_arrow_x,
-		right_arrow_x,
-		arrow_w,
-		plus_x,
-		plus_w,
-		settings_x,
-		settings_w,
-		scale,
 	}
 }
 

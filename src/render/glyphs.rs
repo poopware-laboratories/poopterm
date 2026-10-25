@@ -91,6 +91,23 @@ impl FontSet {
 		Self::new(primary, fallbacks).with_system_fallback(system)
 	}
 
+	/// The proportional font for window chrome, falling back to every
+	/// installed font.
+	pub(crate) fn load_ui() -> Self {
+		let system = SystemFallback::new(crate::fonts::system_fonts);
+		Self::ui(crate::fonts::load_ui_font()).with_system_fallback(system)
+	}
+
+	/// Chrome fonts: `found`, then the bundled font, which is primary when
+	/// no UI font was found.
+	pub(crate) fn ui(found: Option<Font>) -> Self {
+		let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
+		match found {
+			Some(font) => Self::new(font, vec![bundled]),
+			None => Self::new(bundled, Vec::new()),
+		}
+	}
+
 	/// Also searches installed fonts for characters no given font has.
 	pub(crate) fn with_system_fallback(mut self, system: SystemFallback) -> Self {
 		self.system = Some(system);
@@ -107,6 +124,11 @@ impl FontSet {
 	#[inline]
 	pub(crate) fn glyph(&mut self, ch: char, px: f32) -> &Glyph {
 		self.presented(ch, px, Presentation::Default)
+	}
+
+	/// How far text drawing moves past `ch` at `px`, in whole pixels.
+	pub(crate) fn advance(&mut self, ch: char, px: f32) -> usize {
+		self.glyph(ch, px).metrics.advance_width.ceil() as usize
 	}
 
 	/// Returns the cached glyph for `ch` at `px` in `presentation`: from a
@@ -225,6 +247,39 @@ mod tests {
 		assert!(large > small);
 		fonts.glyph('a', 12.0);
 		assert_eq!(fonts.cached(), 2);
+	}
+
+	#[test]
+	fn advances_round_up_like_text_drawing() {
+		let exact = bundled().metrics('a', 13.0).advance_width;
+		assert_ne!(
+			exact.fract(),
+			0.0,
+			"a fractional advance shows the rounding"
+		);
+		let mut fonts = FontSet::new(bundled(), Vec::new());
+		assert_eq!(fonts.advance('a', 13.0), exact.ceil() as usize);
+	}
+
+	#[test]
+	fn chrome_fonts_fall_back_to_the_bundled_font() {
+		// A UI font with only 'x' draws 'x' and leaves 'a' to the bundled one.
+		let mut fonts = FontSet::ui(Some(outline('x')));
+		assert_eq!(
+			fonts.glyph('x', 16.0).coverage,
+			outline('x').rasterize('x', 16.0).1
+		);
+		assert_eq!(
+			fonts.glyph('a', 16.0).coverage,
+			bundled().rasterize('a', 16.0).1
+		);
+		assert!(!has(fonts.primary(), 'a', false));
+		let mut fonts = FontSet::ui(None);
+		assert!(has(fonts.primary(), 'a', false));
+		assert_eq!(
+			fonts.glyph('a', 16.0).coverage,
+			bundled().rasterize('a', 16.0).1
+		);
 	}
 
 	#[test]

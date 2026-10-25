@@ -107,6 +107,12 @@ bundled DejaVu Sans Mono for Powerline font. Emoji draw in color from an install
 Font icon coverage, choose a Nerd Font Mono family or file. Use a monospaced
 font for predictable cell alignment.
 
+Tabs, the status bar, search, the command palette and Settings are drawn in a
+proportional UI font: `ui_font_family` when it is installed, otherwise the
+first installed of Inter, Adwaita Sans, Cantarell, Noto Sans, Roboto, Ubuntu,
+DejaVu Sans and Liberation Sans (SF Pro Text, SF Pro, Helvetica Neue,
+Helvetica and Arial on macOS), and the bundled font when none is.
+
 Poopterm also searches common system font directories for up to eight TTF
 fonts with Nerd Font, Symbol, or Awesome in their filenames. Characters none
 of those fonts have (CJK, math, rare scripts) are drawn from an installed font

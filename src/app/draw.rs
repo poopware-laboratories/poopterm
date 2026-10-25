@@ -10,6 +10,7 @@ use crate::{
 		painter::{ButtonStyle, Painter},
 	},
 	shell_integration::Phase,
+	ui::ui_font::text_width,
 };
 
 /// Commands offered by the command palette, in display order.
@@ -60,7 +61,7 @@ impl App {
 	// pr-check: end window glue
 
 	pub(super) fn ui_font(&self, px: f32) -> UiFont {
-		let font = self.fonts.primary();
+		let font = self.ui_fonts.primary();
 		let metrics = font.horizontal_line_metrics(px).expect("font metrics");
 		UiFont {
 			px,
@@ -83,6 +84,7 @@ impl App {
 		self.pacer.drawn(std::time::Instant::now());
 		self.refresh_search_if_dirty();
 		self.fonts.trim();
+		self.ui_fonts.trim();
 		let Some(mut renderer) = self.renderer.take() else {
 			return;
 		};
@@ -233,7 +235,7 @@ impl App {
 		let text_y = y + box_h.saturating_sub(ui.ch) / 2;
 		let color = self.theme.fg;
 		p.text(
-			&mut self.fonts,
+			&mut self.ui_fonts,
 			x + 12 * scale,
 			text_y,
 			&label,
@@ -266,7 +268,7 @@ impl App {
 			format!("Run command: {}", self.command_query)
 		};
 		p.text_clipped(
-			&mut self.fonts,
+			&mut self.ui_fonts,
 			x + 16 * scale,
 			y + 14 * scale,
 			&label,
@@ -286,7 +288,7 @@ impl App {
 		);
 		for (index, command) in matches.into_iter().enumerate() {
 			p.text_clipped(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				x + 20 * scale,
 				y + (PALETTE_COMMANDS_TOP + index * PALETTE_COMMAND_ROW_HEIGHT) * scale,
 				command,
@@ -359,13 +361,12 @@ impl App {
 		);
 		drop(term);
 		let text_y = status_y + self.status_height.saturating_sub(ui.ch) / 2;
-		let right_x = p
-			.width
-			.saturating_sub(right.chars().count() * (ui.cw * 3 / 4) + 16 * scale);
-		let color = self.theme.fg;
 		let px = ui.px * 0.72;
+		let right_width = text_width(&right, |ch| self.ui_fonts.advance(ch, px));
+		let right_x = p.width.saturating_sub(right_width + 16 * scale);
+		let color = self.theme.fg;
 		p.text(
-			&mut self.fonts,
+			&mut self.ui_fonts,
 			16 * scale,
 			text_y,
 			&left,
@@ -374,7 +375,7 @@ impl App {
 			color,
 		);
 		p.text(
-			&mut self.fonts,
+			&mut self.ui_fonts,
 			right_x,
 			text_y,
 			&right,

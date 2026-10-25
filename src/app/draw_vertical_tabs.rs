@@ -1,16 +1,19 @@
 //! Drawing for the optional vertical tab sidebar.
-use super::{
-	draw::UiFont,
-	draw_tabs::{hit, tab_label},
-	*,
-};
+use super::{draw::UiFont, draw_tabs::hit, *};
 use crate::{
-	render::{blend::blend, painter::Painter},
+	render::{
+		blend::blend,
+		label::{Label, draw_label},
+		painter::Painter,
+	},
 	term::{
 		status::{Progress, ProgressState},
 		tab_style::TabStyle,
 	},
-	ui::tabs::{Marker, VerticalTabLayout, tab_marker},
+	ui::{
+		tabs::{Marker, VerticalTabLayout, tab_marker},
+		ui_font::text_width,
+	},
 };
 
 /// What one sidebar row shows.
@@ -205,9 +208,9 @@ impl App {
 				.or(style.indicator.map(|color| ("•", color)));
 			if layout.compact_rail {
 				let label = (index + 1).to_string();
-				let glyph_width = (label.chars().count() as f32 * ui.cw as f32 * 0.9) as usize;
+				let glyph_width = text_width(&label, |ch| self.ui_fonts.advance(ch, ui.px * 0.9));
 				p.text(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					x + layout.tab_width.saturating_sub(glyph_width) / 2,
 					y + row_h.saturating_sub(ui.ch) / 2,
 					&label,
@@ -227,7 +230,7 @@ impl App {
 				}
 				if show_close {
 					p.text(
-						&mut self.fonts,
+						&mut self.ui_fonts,
 						x + layout.tab_width.saturating_sub(17 * scale),
 						y + row_h.saturating_sub(ui.ch) / 2,
 						"×",
@@ -245,7 +248,7 @@ impl App {
 			let small_ascent = (ui.ascent as f32 * 0.82) as i32;
 			if let Some((glyph, color)) = dot {
 				p.text(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					x + 8 * scale,
 					text_y,
 					glyph,
@@ -254,39 +257,21 @@ impl App {
 					color,
 				);
 			}
-			let small_cw = ui.cw as f32 * 0.76;
+			let small_px = ui.px * 0.76;
 			let left = if dot.is_some() { 20 } else { 8 } * scale;
 			let right = if show_close { 24 } else { 8 } * scale;
 			let room = layout.tab_width.saturating_sub(left + right);
-			let max_chars = ((room as f32 / small_cw.max(1.0)) as usize).max(1);
-			let (label, status) = tab_label(&tab.title, style.status.as_deref(), max_chars);
-			let label_x = x + left;
-			p.text_clipped(
-				&mut self.fonts,
-				label_x,
-				text_y,
-				&label,
-				ui.px * 0.76,
-				small_ascent,
-				fg,
-				(label_x, y, room, row_h),
-			);
-			if !status.is_empty() {
-				let status_x = label_x + ((label.chars().count() + 2) as f32 * small_cw) as usize;
-				p.text_clipped(
-					&mut self.fonts,
-					status_x,
-					text_y,
-					&status,
-					ui.px * 0.76,
-					small_ascent,
-					style.status_color.unwrap_or(dim),
-					(label_x, y, room, row_h),
-				);
-			}
+			let label = Label {
+				title: &tab.title,
+				status: style.status.as_deref(),
+				colors: (fg, style.status_color.unwrap_or(dim)),
+			};
+			let font = (small_px, small_ascent);
+			let clip = (x + left, y, room, row_h);
+			draw_label(p, &mut self.ui_fonts, &label, text_y, font, clip);
 			if show_close {
 				p.text(
-					&mut self.fonts,
+					&mut self.ui_fonts,
 					x + layout.tab_width.saturating_sub(20 * scale),
 					text_y,
 					"×",
@@ -317,7 +302,7 @@ impl App {
 			let rect = (x, y, layout.button_width, layout.button_height);
 			p.button(rect, style, hovered);
 			p.text(
-				&mut self.fonts,
+				&mut self.ui_fonts,
 				x + layout.button_width.saturating_sub(ui.cw) / 2,
 				button_text_y(y),
 				label,
