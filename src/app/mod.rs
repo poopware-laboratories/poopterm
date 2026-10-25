@@ -46,6 +46,7 @@ use crate::{
 	term::{Frame, TermGuard},
 	theme::{Theme, ThemeKind},
 	ui::{
+		layout::{Layout, layout},
 		scale::{chrome, chrome_scale, font_px},
 		search::find_matches,
 		selection::{CellPoint, GridGeometry, Selection},
@@ -191,33 +192,20 @@ impl App {
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.preferences.font_size, factor));
-		self.update_chrome_layout(self.scale());
+		let layout = self.layout();
+		(self.margin, self.status_height, self.top) = (layout.margin, layout.status_height, layout.top);
 		// pr-check: end window glue
 	}
 
-	/// Recomputes the areas reserved for window chrome after a settings change.
-	pub(super) fn update_chrome_layout(&mut self, scale: usize) {
-		self.margin = self.border + self.preferences.padding * scale;
-		self.status_height = if self.preferences.show_bottom_bar {
-			26 * scale
-		} else {
-			0
-		};
-		let top_chrome = if !self.preferences.show_tabs || self.preferences.vertical_tabs {
-			if cfg!(target_os = "macos") {
-				self.titlebar_height
-			} else {
-				0
-			}
-		} else {
-			self.titlebar_height
-				+ if cfg!(target_os = "macos") {
-					0
-				} else {
-					self.tab_height
-				}
-		};
-		self.top = top_chrome + self.margin;
+	/// The grid's place in the window with the current chrome and settings.
+	pub(super) fn layout(&self) -> Layout {
+		let chrome = chrome(self.factor(), cfg!(target_os = "macos"));
+		layout(
+			&chrome,
+			self.scale(),
+			&self.preferences,
+			self.sidebar_width(),
+		)
 	}
 
 	/// Width of the vertical tab sidebar, or 0 when it is not shown.
@@ -244,12 +232,8 @@ impl App {
 		self.height = h.max(1);
 		self.ensure_active_tab_visible();
 
-		let cols = ((self.width as usize).saturating_sub(self.grid_left() + self.margin)
-			/ self.cw.max(1))
-		.max(2);
-		let rows = ((self.height as usize).saturating_sub(self.top + self.margin + self.status_height)
-			/ self.ch.max(1))
-		.max(2);
+		let window = (self.width as usize, self.height as usize);
+		let (cols, rows) = self.layout().grid_size(window, (self.cw, self.ch));
 
 		for session in &self.sessions {
 			let mut term = session.term();
