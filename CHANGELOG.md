@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.90 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw emoji sequences through GSUB ligatures (#124) (render).
+
 ## 26.10.89 "Giga Fly" — 2026-10-25
 
 ### Fixed
