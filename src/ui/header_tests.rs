@@ -8,7 +8,7 @@ use super::{
 use crate::{
 	render::{
 		blend::blend,
-		header::{Badge, Header, Icon, close_rect},
+		header::{Badge, Header, Icon, close_rect, pill},
 	},
 	term::{
 		status::{Progress, ProgressState},
@@ -503,6 +503,51 @@ fn disabled_icons_are_dimmer_than_text_yet_visible_in_every_theme() {
 		kind = kind.next();
 		if kind == ThemeKind::MacOsDark {
 			break;
+		}
+	}
+}
+
+#[test]
+fn the_pointer_is_over_at_most_one_tab_or_button_anywhere_on_the_header() {
+	let theme = theme();
+	let hover = header_colors(&theme).hover;
+	let few = layout(3, 0, true);
+	let few_tabs = [info("one"), info("two"), info("three")];
+	let (many, many_tabs) = scrolled(10);
+	for (layout, tabs, count) in [(&few, &few_tabs[..], 3), (&many, &many_tabs[..], 30)] {
+		for x in (0..1000).map(|x| x as f64 + 0.5) {
+			for y in [0.0, 6.0, 21.5, 37.9, 43.5] {
+				let header = header(&HeaderInput {
+					count,
+					cursor: (x, y),
+					..input(layout, tabs, &theme)
+				});
+				let tabs = header.tabs.iter().filter(|tab| tab.fill == Some(hover));
+				let buttons = header.buttons.iter().filter(|button| button.hovered);
+				let over: Vec<_> = tabs
+					.map(|tab| (tab.x, tab.width))
+					.chain(buttons.map(|button| (button.rect.0, button.rect.2)))
+					.collect();
+				assert!(over.len() <= 1, "{over:?} at ({x}, {y})");
+				for (left, width) in over {
+					assert!(x >= left as f64 && x < (left + width) as f64);
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn the_close_button_sits_inside_its_tab_beside_room_for_a_title() {
+	for scale in 1..=3 {
+		let bounds = (0, 44 * scale);
+		for width in 80 * scale..=320 * scale {
+			let (px, py, pw, ph) = pill(10, width, bounds, scale);
+			let (cx, cy, cw, ch) = close_rect(10, width, bounds, scale);
+			assert!(cy >= py && cy + ch <= py + ph, "{width} at {scale}x");
+			assert!(cx + cw <= px + pw, "{width} at {scale}x");
+			// The title keeps 12 pixels of padding and at least 40 of text.
+			assert!(cx >= px + (12 + 40) * scale, "{width} at {scale}x");
 		}
 	}
 }

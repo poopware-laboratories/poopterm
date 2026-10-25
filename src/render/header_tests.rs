@@ -485,3 +485,64 @@ fn each_arrow_points_its_own_way() {
 		);
 	}
 }
+
+#[test]
+fn each_tab_is_drawn_in_its_own_place() {
+	let mut first = tab(10, 150, "one");
+	first.fill = Some(COLORS.raised);
+	let second = tab(166, 150, "two");
+	let mut third = tab(322, 70, "");
+	third.fill = Some(COLORS.hover);
+	let drawn = draw(&header(1, vec![first, second, third], Vec::new()));
+	// Just inside the top of each pill, clear of its rounded corners.
+	assert_eq!(drawn.at(85, 11), COLORS.raised);
+	assert_eq!(drawn.at(240, 11), COLORS.bar);
+	assert_eq!(drawn.at(357, 11), COLORS.hover);
+	assert!(drawn.inked((22, 10, 120, 32)) && drawn.inked((178, 10, 120, 32)));
+	assert!(
+		!drawn.inked((322, 4, 70, 44)),
+		"the untitled tab has no text"
+	);
+}
+
+#[test]
+fn a_status_follows_the_title_in_its_own_color() {
+	let mut busy = tab(10, 300, "vim");
+	busy.label.status = Some("main");
+	busy.label.colors = (COLORS.fg, 0x00ff00);
+	let drawn = draw(&header(1, vec![busy], Vec::new()));
+	let green = |pixel: u32| (pixel >> 8 & 0xff) > 0x80 && pixel >> 16 < 0x60;
+	let status = (10..310)
+		.find(|&x| (10..42).any(|y| green(drawn.at(x, y))))
+		.expect("the status is drawn");
+	let title = first_ink(&drawn);
+	assert!(
+		title >= 22 && status > title + 20,
+		"title at {title}, status at {status}"
+	);
+}
+
+#[test]
+fn the_close_mark_is_centered_in_its_button() {
+	for scale in [1, 2] {
+		let width = 160 * scale;
+		let mut shown = tab(10, width, "");
+		shown.close = Some(false);
+		let drawn = draw(&header(scale, vec![shown], Vec::new()));
+		let rect @ (x, y, w, h) = close_rect(10, width, (4, 44 * scale), scale);
+		let columns: Vec<_> = (x..x + w)
+			.filter(|&column| drawn.inked((column, y, 1, h)))
+			.collect();
+		let (left, right) = (columns[0] - x, x + w - 1 - columns.last().unwrap());
+		let (top, bottom) = drawn.ink_rows(rect);
+		let (above, below) = (top - y, y + h - 1 - bottom);
+		assert!(
+			left.abs_diff(right) <= scale + 1,
+			"{left} and {right} at {scale}x"
+		);
+		assert!(
+			above.abs_diff(below) <= 3 * scale,
+			"{above} and {below} at {scale}x"
+		);
+	}
+}

@@ -90,14 +90,9 @@ pub(crate) fn close_rect(
 
 pub(crate) fn draw_header(p: &mut Painter, fonts: &mut FontSet, header: &Header) {
 	let (y, height, scale) = (header.y, header.height, header.scale);
+	let separator = (y + height).saturating_sub(scale);
 	p.rect(0, y, p.width, height, header.colors.bar);
-	p.rect(
-		0,
-		(y + height).saturating_sub(scale),
-		p.width,
-		scale,
-		header.colors.separator,
-	);
+	p.rect(0, separator, p.width, scale, header.colors.separator);
 	for tab in &header.tabs {
 		draw_tab(p, fonts, header, tab);
 	}
@@ -115,7 +110,8 @@ fn draw_tab(p: &mut Painter, fonts: &mut FontSet, header: &Header, tab: &HeaderT
 		p.round_rect(x, y, width, height, 6 * scale, fill);
 	}
 	let mut left = x + 12 * scale;
-	let (top, ascent) = text_row(fonts, header.px, bounds);
+	let (line_height, ascent) = line(fonts, header.px);
+	let top = header.y + header.height.saturating_sub(line_height) / 2;
 	match tab.badge {
 		Some(Badge::Dot(color)) => {
 			let size = 6 * scale;
@@ -184,16 +180,13 @@ fn draw_button(p: &mut Painter, fonts: &mut FontSet, header: &Header, button: &H
 	}
 }
 
-/// The top of a text line centered in `(y, height)`, and its ascent.
-fn text_row(fonts: &FontSet, px: f32, (y, height): (usize, usize)) -> (usize, i32) {
-	let Some(metrics) = fonts.primary().horizontal_line_metrics(px) else {
-		return (y, 0);
-	};
-	let line = (metrics.ascent - metrics.descent).round() as usize;
-	(
-		y + height.saturating_sub(line) / 2,
-		metrics.ascent.round() as i32,
-	)
+/// The height of a line of text at `px`, and its ascent.
+fn line(fonts: &FontSet, px: f32) -> (usize, i32) {
+	let metrics = fonts.primary().horizontal_line_metrics(px);
+	metrics.map_or((0, 0), |metrics| {
+		let line = (metrics.ascent - metrics.descent).round() as usize;
+		(line, metrics.ascent.round() as i32)
+	})
 }
 
 /// Draws `text` with its advance and line centered on `(x, y)`.
@@ -206,18 +199,7 @@ fn centered_text(
 	color: u32,
 ) {
 	let width = text_width(text, |ch| fonts.advance(ch, px));
-	let Some(metrics) = fonts.primary().horizontal_line_metrics(px) else {
-		return;
-	};
-	let line = (metrics.ascent - metrics.descent).round() as usize;
-	let (left, top) = (x.saturating_sub(width / 2), y.saturating_sub(line / 2));
-	p.text(
-		fonts,
-		left,
-		top,
-		text,
-		px,
-		metrics.ascent.round() as i32,
-		color,
-	);
+	let (height, ascent) = line(fonts, px);
+	let (left, top) = (x.saturating_sub(width / 2), y.saturating_sub(height / 2));
+	p.text(fonts, left, top, text, px, ascent, color);
 }
