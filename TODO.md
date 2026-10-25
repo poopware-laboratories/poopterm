@@ -132,6 +132,12 @@ issue before starting a piece.
   cap goes away if measurements show parsing no longer suffers.
 - Measure frame time, input latency and flood throughput before and after
   on every platform, as for any performance work.
+- **Status:** `gpu::vk::Renderer` draws a `QuadPen` frame offscreen, and
+  every shared grid scene matches software within one step a channel per
+  translucent layer (software truncates each blend, the GPU rounds it), on
+  Intel and llvmpipe. Still to do: frames with images (refused for now,
+  so software draws them), the swapchain and presenting (#24b), and
+  fractional scale.
 
 ## Resource management and memory
 
