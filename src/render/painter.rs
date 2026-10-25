@@ -177,6 +177,40 @@ impl<'a> Painter<'a> {
 	pub(crate) fn glyph(
 		&mut self,
 		glyph: &Glyph,
+		origin: (i32, i32),
+		clip: (i32, i32, i32, i32),
+		italic: bool,
+		color: u32,
+	) {
+		#[cfg(target_arch = "x86_64")]
+		if crate::cpu::has_v3() {
+			// SAFETY: the CPU supports the features.
+			return unsafe { self.glyph_v3(glyph, origin, clip, italic, color) };
+		}
+		self.glyph_with(glyph, origin, clip, italic, color);
+	}
+
+	/// # Safety
+	///
+	/// The CPU must have the features [`crate::cpu::has_v3`] checks.
+	#[cfg(target_arch = "x86_64")]
+	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
+	unsafe fn glyph_v3(
+		&mut self,
+		glyph: &Glyph,
+		origin: (i32, i32),
+		clip: (i32, i32, i32, i32),
+		italic: bool,
+		color: u32,
+	) {
+		self.glyph_with(glyph, origin, clip, italic, color);
+	}
+
+	/// The body of [`Painter::glyph`], compiled into each variant.
+	#[inline(always)]
+	fn glyph_with(
+		&mut self,
+		glyph: &Glyph,
 		(x, y): (i32, i32),
 		(clip_left, clip_top, clip_right, clip_bottom): (i32, i32, i32, i32),
 		italic: bool,
@@ -349,5 +383,142 @@ mod tests {
 		Painter::new(&mut sheared, 6, 6).glyph(&outline, (0, 0), (0, 0, 6, 6), true, 0xffffff);
 		assert_eq!(sheared[0], 0, "the top row moved right");
 		assert_eq!(sheared[1], 0xffffff);
+	}
+
+	/// Where a glyph is drawn, its clip, italic and text color.
+	#[cfg(target_arch = "x86_64")]
+	type Style = ((i32, i32), (i32, i32, i32, i32), bool, u32);
+
+	/// Draws `glyph` over `background` (`width` pixels wide) with the
+	/// baseline body and with the v3 variant; returns both results.
+	#[cfg(target_arch = "x86_64")]
+	fn both_variants(
+		background: &[u32],
+		width: usize,
+		glyph: &Glyph,
+		(origin, clip, italic, color): Style,
+	) -> (Vec<u32>, Vec<u32>) {
+		let height = background.len() / width;
+		let (mut baseline, mut v3) = (background.to_vec(), background.to_vec());
+		Painter::new(&mut baseline, width, height).glyph_with(glyph, origin, clip, italic, color);
+		// SAFETY: the callers check `has_v3`.
+		unsafe { Painter::new(&mut v3, width, height).glyph_v3(glyph, origin, clip, italic, color) };
+		(baseline, v3)
+	}
+
+	/// Coverage and alpha values that reach each blending path: none, full,
+	/// and in between.
+	#[cfg(target_arch = "x86_64")]
+	fn alpha(rng: &mut crate::bench::corpus::Rng) -> u8 {
+		match rng.below(3) {
+			0 => 0,
+			1 => 255,
+			_ => rng.next() as u8,
+		}
+	}
+
+	#[cfg(target_arch = "x86_64")]
+	#[test]
+	fn v3_glyphs_match_the_baseline_on_random_glyphs_clips_and_backgrounds() {
+		if !crate::cpu::has_v3() {
+			return;
+		}
+		let mut rng = crate::bench::corpus::Rng::new(0x9e7);
+		for case in 0..4_000 {
+			let (width, height) = (1 + rng.below(40), 1 + rng.below(12));
+			let (w, h) = (1 + rng.below(30), 1 + rng.below(24));
+			let coverage: Vec<u8> = (0..w * h).map(|_| alpha(&mut rng)).collect();
+			let glyph = if rng.below(4) == 0 {
+				let pixels = coverage
+					.iter()
+					.map(|&a| u32::from(a) << 24 | rng.next() as u32 >> 8);
+				color_glyph(w, pixels.collect())
+			} else {
+				Glyph {
+					metrics: crate::fonts::Metrics {
+						width: w,
+						height: h,
+						..Default::default()
+					},
+					coverage,
+					color: None,
+				}
+			};
+			let at = |rng: &mut crate::bench::corpus::Rng, size: usize| rng.below(size + 20) as i32 - 10;
+			let origin = (at(&mut rng, width), at(&mut rng, height));
+			let clip = (
+				at(&mut rng, width),
+				at(&mut rng, height),
+				at(&mut rng, width),
+				at(&mut rng, height),
+			);
+			let background: Vec<u32> = (0..width * height)
+				.map(|_| rng.next() as u32 & 0xff_ffff)
+				.collect();
+			let style = (
+				origin,
+				clip,
+				rng.below(2) == 0,
+				rng.next() as u32 & 0xff_ffff,
+			);
+			let (baseline, v3) = both_variants(&background, width, &glyph, style);
+			assert_eq!(
+				v3, baseline,
+				"case {case}: {width}x{height}, glyph {w}x{h}, {style:?}"
+			);
+		}
+	}
+
+	#[cfg(target_arch = "x86_64")]
+	#[test]
+	fn v3_glyphs_match_the_baseline_for_every_row_length_and_alpha_run() {
+		// Rows of 1 to 33 pixels at each offset, so every chunk and remainder
+		// length meets runs of no, full and partial coverage.
+		if !crate::cpu::has_v3() {
+			return;
+		}
+		for len in 1..=33 {
+			for offset in 0..8 {
+				for pattern in [[0, 0, 0, 0], [255; 4], [0, 255, 128, 7], [1, 254, 255, 0]] {
+					let coverage: Vec<u8> = (0..len).map(|i| pattern[i / 4 % 4]).collect();
+					let glyph = Glyph {
+						metrics: crate::fonts::Metrics {
+							width: len,
+							height: 1,
+							..Default::default()
+						},
+						coverage,
+						color: None,
+					};
+					let background: Vec<u32> = (0..48).map(|i| 0x0001_0203 * i).collect();
+					let style = ((offset, 0), (0, 0, 48, 1), false, 0xc0_ffee);
+					let (baseline, v3) = both_variants(&background, 48, &glyph, style);
+					assert_eq!(v3, baseline, "{len} pixels at {offset}, {pattern:?}");
+				}
+			}
+		}
+	}
+
+	#[cfg(target_arch = "x86_64")]
+	#[test]
+	fn the_dispatched_glyph_draws_like_both_variants() {
+		// Whichever variant `glyph` picks on this CPU, it matches the body.
+		let glyph = color_glyph(
+			3,
+			vec![
+				0x80ff_0000,
+				0xff00_ff00,
+				0x0000_00ff,
+				0x40ff_ffff,
+				0xff00_0000,
+				0x7f12_3456,
+			],
+		);
+		let mut dispatched = vec![0x33_3333; 5 * 3];
+		let mut body = dispatched.clone();
+		Painter::new(&mut dispatched, 5, 3).glyph(&glyph, (1, 0), (0, 0, 5, 3), false, 0);
+		Painter::new(&mut body, 5, 3).glyph_with(&glyph, (1, 0), (0, 0, 5, 3), false, 0);
+		assert_eq!(dispatched, body);
+		assert_eq!(body[1], 0x99_1919, "half red over gray");
 	}
 }

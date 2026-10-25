@@ -1,7 +1,7 @@
 //! Color blending, vectorized with portable SIMD.
 use std::simd::u32x4;
 
-#[inline]
+#[inline(always)]
 pub(crate) fn blend(bg: u32, fg: u32, a: u32) -> u32 {
 	if a == 0 {
 		return bg;
@@ -16,7 +16,7 @@ pub(crate) fn blend(bg: u32, fg: u32, a: u32) -> u32 {
 	red | green | blue
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn blend_coverage_row(pixels: &mut [u32], coverage: &[u8], fg: u32) {
 	let (pixel_chunks, pixel_remainder) = pixels.as_chunks_mut::<4>();
 	let (coverage_chunks, coverage_remainder) = coverage.as_chunks::<4>();
@@ -37,7 +37,7 @@ pub(crate) fn blend_coverage_row(pixels: &mut [u32], coverage: &[u8], fg: u32) {
 	}
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn blend_chunk(bg: u32x4, fg: u32x4, a: u32x4) -> u32x4 {
 	let inv_a_v = u32x4::splat(255) - a;
 	let max_a = u32x4::splat(255);
