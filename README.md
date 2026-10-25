@@ -166,7 +166,7 @@ installs what releases ship. See
 
 ## Configuration
 
-Open **Settings** with the gear button in the tab bar, or edit
+Open **Settings** with the menu button (☰) by the tabs, or edit
 `~/.config/poopterm/config.toml` (`~/Library/Application Support/poopterm/config.toml`
 on macOS). Settings edits the same file and keeps your comments and unknown
 keys.

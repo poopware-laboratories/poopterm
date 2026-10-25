@@ -2,7 +2,7 @@
 
 Everything Poopterm can be told: the config file and its keys, themes and
 fonts, environment variables, shortcuts, shell integration, sessions and
-terminfo. Settings (the gear button in the tab bar) edits the same file.
+terminfo. Settings (the menu button, ☰, by the tabs) edits the same file.
 
 - [Config file](#config-file)
 - [Themes](#themes)
@@ -32,7 +32,7 @@ on macOS and `~/.config/poopterm/config.toml` on Linux and FreeBSD (or
 `$XDG_CONFIG_HOME/poopterm/config.toml` when `XDG_CONFIG_HOME` is set). Open
 tabs are kept in `$XDG_STATE_HOME/poopterm` and generated files in
 `$XDG_DATA_HOME/poopterm`. Create
-the file or open **Settings** from the gear button in the tab bar. Settings
+the file or open **Settings** from the menu button (☰) by the tabs. Settings
 opens in a separate window with a theme picker, wallpaper chooser and strength
 control, font-size and scrollback controls, session restore, tab visibility and
 orientation, compact tabs, tab-button visibility, and a bottom-bar toggle.

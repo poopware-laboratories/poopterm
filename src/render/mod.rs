@@ -21,6 +21,9 @@ pub(crate) mod painter;
 pub(crate) mod shapes;
 #[cfg(test)]
 mod shapes_tests;
+pub(crate) mod sidebar;
+#[cfg(test)]
+mod sidebar_tests;
 
 #[cfg(test)]
 mod backend_tests;

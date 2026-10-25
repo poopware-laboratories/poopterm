@@ -18,6 +18,7 @@ use crate::{
 };
 
 /// What the header needs to know about one tab.
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TabInfo {
 	pub title: String,
 	pub style: TabStyle,
@@ -64,64 +65,17 @@ pub(crate) fn header_colors(theme: &Theme) -> HeaderColors {
 
 pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 	let (layout, theme) = (input.layout, input.theme);
-	let colors = header_colors(theme);
-	let (dim, accent) = tab_text_colors(theme);
+	let palette = TabPalette::new(theme);
+	let colors = palette.colors;
 	let scale = layout.scale;
 	let tabs = input.tabs.iter().enumerate().map(|(local, tab)| {
 		let index = layout.first_visible + local;
 		let (x, width) = (layout.tab_x(index), layout.tab_width(index));
 		let active = index == input.active;
 		let hovered = contains((x, input.bounds.0, width, input.bounds.1), input.cursor);
-		let fill = match tab.style.color {
-			Some(color) => {
-				let shade = if active {
-					150
-				} else if hovered {
-					110
-				} else {
-					80
-				};
-				Some(blend(colors.bar, color, shade))
-			}
-			None if active => Some(colors.raised),
-			None if hovered => Some(colors.hover),
-			None => None,
-		};
-		// The terminal's own markers say more than a program's indicator.
-		let badge = tab
-			.marker
-			.map(|marker| match marker {
-				Marker::Bell => Badge::Bell(accent),
-				Marker::Blocked => Badge::Dot(theme.palette[3]),
-				Marker::Error => Badge::Dot(theme.palette[1]),
-				Marker::Done => Badge::Dot(theme.palette[2]),
-				Marker::Working => Badge::Dot(accent),
-				Marker::Activity => Badge::Dot(dim),
-			})
-			.or(tab.style.indicator.map(Badge::Dot));
-		let progress = tab.progress.map(|progress| {
-			let color = match progress.state {
-				ProgressState::Error => theme.palette[1],
-				ProgressState::Paused => theme.palette[3],
-				_ => theme.palette[4],
-			};
-			(progress.percent, color)
-		});
 		let close = (input.count > 1 && (active || hovered))
 			.then(|| contains(close_rect(x, width, input.bounds, scale), input.cursor));
-		HeaderTab {
-			x,
-			width,
-			label: Label {
-				title: &tab.title,
-				status: tab.style.status.as_deref(),
-				colors: (theme.fg, tab.style.status_color.unwrap_or(dim)),
-			},
-			fill,
-			badge,
-			progress,
-			close,
-		}
+		header_tab(tab, &palette, (x, width), (active, hovered), close)
 	});
 	let height = BUTTON_HEIGHT * scale;
 	let top = input.bounds.0 + input.bounds.1.saturating_sub(height) / 2;
@@ -165,7 +119,95 @@ pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 	}
 }
 
+/// The colors tabs are drawn in, worked out once per frame: finding
+/// readable text colors takes a search.
+#[derive(Clone, Copy)]
+pub(crate) struct TabPalette<'a> {
+	pub theme: &'a Theme,
+	pub colors: HeaderColors,
+	pub dim: u32,
+	pub accent: u32,
+}
+
+impl<'a> TabPalette<'a> {
+	pub(crate) fn new(theme: &'a Theme) -> Self {
+		let (dim, accent) = tab_text_colors(theme);
+		let colors = header_colors(theme);
+		Self {
+			theme,
+			colors,
+			dim,
+			accent,
+		}
+	}
+}
+
+/// How `tab` looks at `(x, width)`, `active` or `hovered`, with its close
+/// button when `close` is `Some(hovered)`.
+pub(crate) fn header_tab<'a>(
+	tab: &'a TabInfo,
+	palette: &TabPalette,
+	(x, width): (usize, usize),
+	(active, hovered): (bool, bool),
+	close: Option<bool>,
+) -> HeaderTab<'a> {
+	let TabPalette {
+		theme,
+		colors,
+		dim,
+		accent,
+	} = *palette;
+	let fill = match tab.style.color {
+		Some(color) => {
+			let shade = if active {
+				150
+			} else if hovered {
+				110
+			} else {
+				80
+			};
+			Some(blend(colors.bar, color, shade))
+		}
+		None if active => Some(colors.raised),
+		None if hovered => Some(colors.hover),
+		None => None,
+	};
+	// The terminal's own markers say more than a program's indicator.
+	let badge = tab
+		.marker
+		.map(|marker| match marker {
+			Marker::Bell => Badge::Bell(accent),
+			Marker::Blocked => Badge::Dot(theme.palette[3]),
+			Marker::Error => Badge::Dot(theme.palette[1]),
+			Marker::Done => Badge::Dot(theme.palette[2]),
+			Marker::Working => Badge::Dot(accent),
+			Marker::Activity => Badge::Dot(dim),
+		})
+		.or(tab.style.indicator.map(Badge::Dot));
+	let progress = tab.progress.map(|progress| {
+		let color = match progress.state {
+			ProgressState::Error => theme.palette[1],
+			ProgressState::Paused => theme.palette[3],
+			_ => theme.palette[4],
+		};
+		(progress.percent, color)
+	});
+	HeaderTab {
+		x,
+		width,
+		label: Label {
+			title: &tab.title,
+			status: tab.style.status.as_deref(),
+			colors: (theme.fg, tab.style.status_color.unwrap_or(dim)),
+		},
+		fill,
+		badge,
+		progress,
+		close,
+	}
+}
+
 /// Whether `rect` holds the point `(x, y)`.
-fn contains((left, top, width, height): Rect, (x, y): (f64, f64)) -> bool {
+pub(crate) fn contains((left, top, width, height): Rect, (x, y): (f64, f64)) -> bool {
 	x >= left as f64 && x < (left + width) as f64 && y >= top as f64 && y < (top + height) as f64
 }

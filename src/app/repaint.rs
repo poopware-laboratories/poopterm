@@ -44,10 +44,10 @@ impl App {
 			bands.push((y, (y + ch).min(p.height)));
 		}
 		if sidebar > 0 {
-			bands.extend(self.redraw_sidebar_if_changed(p, scale, ui));
+			bands.extend(self.redraw_sidebar_if_changed(p, ui));
 		} else {
 			self.restore_background(p, 0, top);
-			self.draw_tab_bar(p, scale, ui);
+			self.draw_tab_bar(p, ui);
 			bands.push((0, top.min(p.height)));
 		}
 		// The padding above and below the grid takes the first and last

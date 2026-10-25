@@ -148,7 +148,7 @@ impl App {
 		let scale = self.scale();
 		let ui = self.ui_font(18.0 * scale as f32);
 		self.restore_background(p, 0, p.height);
-		self.draw_tab_bar(p, scale, ui);
+		self.draw_tab_bar(p, ui);
 		self.draw_terminal(p, scale, None);
 		if self.search_active {
 			self.draw_search_box(p, scale, ui);
