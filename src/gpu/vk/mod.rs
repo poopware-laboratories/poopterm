@@ -13,6 +13,14 @@ mod choose_tests;
 pub(crate) mod commands;
 #[cfg(test)]
 mod commands_tests;
+#[cfg(test)]
+mod descriptor_driver_tests;
+pub(crate) mod descriptor_types;
+#[cfg(test)]
+mod descriptor_types_tests;
+pub(crate) mod descriptors;
+#[cfg(test)]
+mod descriptors_tests;
 pub(crate) mod device;
 #[cfg(test)]
 mod device_tests;

@@ -49,7 +49,7 @@ pub(crate) struct QuadPipeline {
 	set_layout: RawDescriptorSetLayout,
 	sampler: RawSampler,
 	/// Dropped after the rest is destroyed, as it was made from it.
-	device: Rc<Device>,
+	pub(super) device: Rc<Device>,
 }
 
 impl QuadPipeline {
