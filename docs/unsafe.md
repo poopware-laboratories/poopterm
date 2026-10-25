@@ -170,11 +170,11 @@ function pointers the loader returns, which is `unsafe` by language rule.
 | Where | What | Why it is sound |
 |-------|------|-----------------|
 | `entry.rs` | `vkGetInstanceProcAddr` from `dlsym`, and `cast` | The specification gives each function name one type; `cast` turns the loader's `PFN_vkVoidFunction` into the type named with it, and checks at compile time that both are function pointers of one size. |
-| `entry.rs`, `instance.rs`, `device.rs`, `buffer.rs` | Calls into the driver | Every structure passed is `#[repr(C)]`, laid out as the specification declares it (tested field by field in `types_tests.rs`), and outlives the call; handles are live while their owner is; output pointers point to room for what the driver writes, which `call::enumerate` sizes from the count. Result codes become `Error`s, never panics. |
+| `entry.rs`, `instance.rs`, `device.rs`, `buffer.rs`, `image.rs` | Calls into the driver | Every structure passed is `#[repr(C)]`, laid out as the specification declares it (tested field by field in `types_tests.rs`), and outlives the call; handles are live while their owner is; output pointers point to room for what the driver writes, which `call::enumerate` sizes from the count. Result codes become `Error`s, never panics. |
 | `instance.rs` | `vkDestroyInstance` on drop | The instance owns the handle and is not `Clone`; each device holds an `Rc` of it, so it is destroyed only after its last device. |
 | `features.rs`, `instance.rs` | The feature chain | `Features` is boxed before its structures are linked, so the `pNext` pointers stay valid while it lives, and the create info points to it only during the call. |
-| `device.rs` | `vkDestroyDevice` on drop | The device owns the handle and is not `Clone`; each buffer holds an `Rc` of it, so it is destroyed only after its last buffer. |
-| `buffer.rs` | Building a buffer, and `vkDestroyBuffer` and `vkFreeMemory` on drop | Handles are kept only after a call succeeds, so a failed call's output is never used; dropping a half-built buffer releases exactly what was made. Memory is mapped only when `choose_memory` picked a host-visible type, once. |
+| `device.rs` | `vkDestroyDevice` on drop | The device owns the handle and is not `Clone`; each buffer and image holds an `Rc` of it, so it is destroyed only after the last of them. |
+| `buffer.rs`, `image.rs` | Building a buffer or image, and destroying and freeing it on drop | Handles are kept only after a call succeeds, so a failed call's output is never used; dropping a half-built buffer releases exactly what was made. Memory is mapped only when `choose_memory` picked a host-visible type, once. |
 | `buffer.rs` | `bytes` and `bytes_mut` | The mapping covers the buffer's size and lasts until the memory is freed on drop; `&mut self` keeps other views out. Nothing is submitted to the GPU yet; once it is, access must wait for the GPU to finish with the buffer. |
 
 The layouts and the enumeration logic are unit-tested without a driver;
@@ -187,8 +187,8 @@ The layouts and the enumeration logic are unit-tested without a driver;
   `has_v3()`, to compare them with the baseline.
 - `gpu/vk/call_tests.rs`: fake drivers write items through the pointer
   `enumerate` passes, within the count it gave.
-- `gpu/vk/driver_tests.rs`, `device_tests.rs`, `memory_driver_tests.rs`:
-  the fake driver reads the structures and `pNext` chains the bindings
+- `gpu/vk/driver_tests.rs`, `device_tests.rs`, `memory_driver_tests.rs`,
+  `buffer_tests.rs`, `image_tests.rs`: the fake driver reads the structures and `pNext` chains the bindings
   pass, and writes through their output pointers, as a real driver would.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.

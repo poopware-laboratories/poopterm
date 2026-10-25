@@ -11,6 +11,7 @@ use super::{
 	choose::{GRAPHICS, Kind, choose},
 	device::Device,
 	entry::Entry,
+	image::Image,
 	instance::Instance,
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
@@ -121,6 +122,10 @@ fn child() {
 						let buffer = Buffer::new(&device, NonZeroUsize::MIN, usage, purpose);
 						println!("child: {purpose:?} buffer: {}", buffer.is_ok());
 					}
+					for (name, format, size, usage) in IMAGES {
+						let image = Image::new(&device, format, size, usage);
+						println!("child: {name} image: {}", image.is_ok());
+					}
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -175,6 +180,10 @@ fn instances_pass_the_khronos_validation_layer() {
 	);
 	for purpose in ["Upload", "Device", "Readback"] {
 		let line = format!("child: {purpose} buffer: true");
+		assert!(output.contains(&line), "{output}");
+	}
+	for (name, ..) in IMAGES {
+		let line = format!("child: {name} image: true");
 		assert!(output.contains(&line), "{output}");
 	}
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
@@ -308,4 +317,36 @@ fn buffers_get_memory_for_their_purpose_and_the_cpu_sees_what_it_should() {
 	let last = Buffer::new(&device, NonZeroUsize::MIN, 0x80, Usage::Upload).unwrap();
 	drop(device);
 	assert!(last.bytes().is_some_and(|bytes| bytes.len() == 1));
+}
+
+/// The images the renderer makes: the glyph atlas in pages of
+/// VK_FORMAT_B8G8R8A8_UNORM, sampled and copied to, and a target of
+/// _R8G8B8A8_UNORM drawn to and copied from.
+const IMAGES: [(&str, i32, [u32; 3], u32); 2] = [
+	("atlas", 44, [2048, 2048, 4], 0x4 | 0x2),
+	("target", 37, [800, 600, 1], 0x10 | 0x1),
+];
+
+#[test]
+fn images_are_made_within_the_devices_limits() {
+	let Some(entry) = entry() else { return };
+	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
+	let device = Rc::new(offscreen(instance).expect("device"));
+	let images: Vec<_> = (IMAGES.iter())
+		.map(|&(_, format, size, usage)| Image::new(&device, format, size, usage).expect("image"))
+		.collect();
+	assert!(
+		images
+			.iter()
+			.all(|image| image.handle() != 0 && image.view() != 0)
+	);
+	assert_ne!(images[0].handle(), images[1].handle());
+	// Every device allows 4096 wide and 256 layers; none allows 2^20.
+	let wide = Image::new(&device, 44, [4096, 1, 256], 0x4);
+	assert!(wide.is_ok());
+	let huge = [1 << 20, 1, 1];
+	assert_eq!(
+		Image::new(&device, 44, huge, 0x4).err(),
+		Some(Error::ImageSize(huge))
+	);
 }

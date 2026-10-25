@@ -120,7 +120,7 @@ impl Instance {
 		})
 	}
 
-	fn properties(&self, device: RawPhysicalDevice) -> PhysicalDeviceProperties {
+	pub(super) fn properties(&self, device: RawPhysicalDevice) -> PhysicalDeviceProperties {
 		let mut properties = PhysicalDeviceProperties::default();
 		// SAFETY: the device is one of this live instance's, and `properties`
 		// is writable.
