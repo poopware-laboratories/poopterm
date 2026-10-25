@@ -145,3 +145,46 @@ fn deleting_frames_keeps_the_root_frame() {
 	control(&mut t, "a=a,i=1,c=2");
 	assert!(replies(&mut t).pop().unwrap().contains("ENOENT"));
 }
+
+#[test]
+fn reduced_motion_holds_animations_on_their_current_frame() {
+	let mut t = image();
+	t.reduce_motion = true;
+	frame(&mut t, "z=100,q=1", &[[9, 9, 9], [8, 8, 8]]);
+	control(&mut t, "a=a,i=1,s=3,v=1");
+	assert_eq!(t.animation_deadline(), None, "nothing to wake for");
+	let later = std::time::Instant::now() + std::time::Duration::from_secs(5);
+	assert!(!t.advance_animations(later));
+	assert_eq!(shown(&t), ROOT);
+	// A program choosing a frame itself still shows it: that is not motion
+	// the terminal starts on its own.
+	control(&mut t, "a=a,i=1,c=2");
+	assert_eq!(shown(&t)[0], 0xff09_0909);
+}
+
+#[test]
+fn turning_reduced_motion_off_resumes_the_animation() {
+	let mut t = image();
+	frame(&mut t, "z=100,q=1", &[[9, 9, 9], [8, 8, 8]]);
+	control(&mut t, "a=a,i=1,s=3,v=1");
+	t.reduce_motion = true;
+	assert_eq!(t.animation_deadline(), None);
+	t.reduce_motion = false;
+	let deadline = t.animation_deadline().unwrap();
+	assert!(t.advance_animations(deadline));
+	assert_eq!(shown(&t)[0], 0xff09_0909);
+}
+
+#[test]
+fn reduced_motion_also_holds_animations_still_loading() {
+	// `s=2` plays frames as they arrive; held, new frames do not move it.
+	let mut t = image();
+	t.reduce_motion = true;
+	control(&mut t, "a=a,i=1,s=2");
+	frame(&mut t, "z=10,q=1", &[[9, 9, 9], [8, 8, 8]]);
+	frame(&mut t, "z=10,q=1", &[[7, 7, 7], [6, 6, 6]]);
+	assert_eq!(t.animation_deadline(), None);
+	let later = std::time::Instant::now() + std::time::Duration::from_secs(1);
+	assert!(!t.advance_animations(later));
+	assert_eq!(shown(&t), ROOT);
+}

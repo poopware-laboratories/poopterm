@@ -40,6 +40,8 @@ pub struct Preferences {
 	pub show_bottom_bar: bool,
 	/// Space between the grid and the window edge, in logical pixels.
 	pub padding: usize,
+	/// Hold animations still (kitty graphics) instead of playing them.
+	pub reduce_motion: bool,
 	pub(crate) renderer: RendererPreference,
 }
 
@@ -57,6 +59,7 @@ impl Default for Preferences {
 			show_settings_button: true,
 			show_bottom_bar: true,
 			padding: 0,
+			reduce_motion: false,
 			renderer: RendererPreference::Auto,
 		}
 	}
@@ -103,6 +106,9 @@ impl Preferences {
 				.and_then(|s| s.parse().ok())
 				.unwrap_or(defaults.padding)
 				.min(32),
+			reduce_motion: value(text, "reduce_motion")
+				.and_then(|s| s.parse().ok())
+				.unwrap_or(defaults.reduce_motion),
 			renderer: RendererPreference::parse(value(text, "renderer")),
 		}
 	}
@@ -287,6 +293,18 @@ mod tests {
 			"other comments are the user's"
 		);
 	}
+	#[test]
+	fn reduced_motion_is_off_unless_the_config_turns_it_on() {
+		assert!(!Preferences::default().reduce_motion);
+		assert!(!Preferences::parse("").reduce_motion);
+		assert!(Preferences::parse("reduce_motion = true").reduce_motion);
+		assert!(!Preferences::parse("reduce_motion = false").reduce_motion);
+		assert!(
+			!Preferences::parse("reduce_motion = yes").reduce_motion,
+			"not a bool"
+		);
+	}
+
 	#[test]
 	fn invalid_preferences_are_bounded() {
 		let p = Preferences::parse(

@@ -43,7 +43,7 @@ use crate::{
 	pty::{Seen, Session, UserEvent, spawn_session},
 	render::{blend::blend, glyphs::FontSet},
 	session_store::restored_session_dirs,
-	term::{Frame, TermGuard},
+	term::{Frame, Term, TermGuard},
 	theme::{Theme, ThemeKind},
 	ui::{
 		contrast::tab_text_colors,
@@ -229,6 +229,16 @@ impl App {
 		self.margin + self.sidebar_width()
 	}
 
+	/// Tells a terminal about the window showing it and the user's settings.
+	pub(super) fn describe_window(&self, term: &mut Term) {
+		// pr-check: window glue: copies the window's cell size and settings into a terminal
+		term.cell_width = self.cw;
+		term.cell_height = self.ch;
+		term.scale = self.factor() as f32;
+		term.reduce_motion = self.preferences.reduce_motion;
+		// pr-check: end window glue
+	}
+
 	pub(super) fn resize(&mut self, w: u32, h: u32) {
 		// Also reached after font, wallpaper and settings changes.
 		self.canvas.invalidate();
@@ -241,9 +251,7 @@ impl App {
 
 		for session in &self.sessions {
 			let mut term = session.term();
-			term.cell_width = self.cw;
-			term.cell_height = self.ch;
-			term.scale = self.factor() as f32;
+			self.describe_window(&mut term);
 			if cols != term.cols || rows != term.rows {
 				term.resize(cols, rows);
 				let _ = session.master.resize(PtySize {

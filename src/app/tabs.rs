@@ -94,6 +94,7 @@ impl App {
 			&self.term_env,
 		) {
 			Ok(session) => {
+				self.describe_window(&mut session.term());
 				self.sessions.push(session);
 				self.active = self.sessions.len() - 1;
 				self.ensure_active_tab_visible();
