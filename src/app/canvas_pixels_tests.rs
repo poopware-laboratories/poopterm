@@ -169,6 +169,47 @@ fn images_match_a_full_redraw_pixel_for_pixel() {
 }
 
 #[test]
+fn emoji_sequences_arriving_in_pieces_match_a_full_redraw_pixel_for_pixel() {
+	// Each read leaves a cluster unfinished: the cell must be drawn again
+	// when the rest of its sequence attaches to it.
+	let mut term = Term::new(6, 3, Theme::from_kind(ThemeKind::Poop), "/".into());
+	let mut parser = Parser::new();
+	let emoji = crate::render::glyphs::clusters::tests::emoji_font();
+	let mut fonts = FontSet::new(
+		crate::fonts::Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap(),
+		vec![emoji],
+	);
+	let mut canvas = Canvas::new();
+	for input in [
+		"a1",
+		"\u{fe0f}",
+		"\u{20e3}b",
+		"\r\n\u{2764}\u{fe0f}",
+		"\u{200d}",
+		"\u{1f525}",
+		"\r\n\u{1f525}\u{e0067}",
+		"\u{e007f}x",
+		"\x1b[1;2H2",
+		"\x1b[2;1H\x1b[K",
+	] {
+		parser.advance(&mut term, input.as_bytes());
+		let mut frame = Frame::default();
+		term.snapshot(&mut frame);
+		let mut expected = vec![0; frame.cols * 10 * frame.rows * 20];
+		draw(&mut expected, &mut fonts, &frame, KEY, None);
+		update(&mut canvas, &mut fonts, &mut frame, KEY);
+		assert!(canvas.pixels == expected, "input {input:?}");
+	}
+	let mut frame = Frame::default();
+	term.snapshot(&mut frame);
+	let green = crate::render::glyphs::clusters::tests::GREEN & 0xff_ffff;
+	assert!(
+		!canvas.pixels.contains(&green),
+		"the keycap was overwritten by the 2"
+	);
+}
+
+#[test]
 fn negative_z_images_cover_backgrounds_unless_far_below_and_never_text() {
 	let mut fonts = fonts();
 	let mut pixel = |control: &str, text: &str| {

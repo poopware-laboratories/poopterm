@@ -268,7 +268,10 @@ least as fast.
   than fontdue's precomputed outlines (`font_engine_speed`); kerning;
   feeding the GPU glyph atlas. Color emoji: CBDT bitmaps and VS16/VS15
   presentation (drawing only; widening on VS16 waits for mode 2027) are
-  done; COLR and sbix, and flags and ZWJ sequences (GSUB ligatures) remain.
+  done, and so are sequences inside one cell (ZWJ, keycaps, tag flags)
+  through our own GSUB engine. Flags from regional indicator pairs and
+  skin-tone modifiers, which the term keeps in separate cells, remain, and
+  so do COLR and sbix.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and

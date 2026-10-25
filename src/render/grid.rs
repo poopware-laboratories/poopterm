@@ -3,7 +3,7 @@ use super::{
 	blend::blend,
 	boxdraw::{self, Drawn},
 	fit::{fit_left, fit_scale},
-	glyphs::{FontSet, Presentation},
+	glyphs::{FontSet, Presentation, Shape, joins},
 	images::draw_placement,
 	multicell::draw_multicell,
 	padding::extend_padding,
@@ -231,22 +231,34 @@ fn draw_cell(
 	}
 	let span = cw * cell.width as usize;
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
-	let presentation = if cell.extra == NO_EXTRA {
-		Presentation::Default
+	let marks = match cell.extra {
+		NO_EXTRA => &[][..],
+		_ => view.frame.marks(cell),
+	};
+	let presentation = Presentation::of(marks);
+	let cluster: Vec<char> = if joins(marks) {
+		std::iter::once(cell.ch)
+			.chain(marks.iter().copied())
+			.collect()
 	} else {
-		Presentation::of(view.frame.marks(cell))
+		Vec::new()
+	};
+	let shape = if !cluster.is_empty() && fonts.cluster(&cluster, view.px).is_some() {
+		Shape::Cluster(&cluster)
+	} else {
+		Shape::Char(cell.ch, presentation)
 	};
 	if boxdraw::covers(cell.ch) {
 		draw_drawn(p, fonts, cell.ch, (x0, y0), (span, ch), fg);
 	} else {
-		let glyph = fonts.presented(cell.ch, view.px, presentation);
+		let glyph = fonts.shaped(shape, view.px);
 		let m = &glyph.metrics;
 		if m.xmin >= 0 && m.xmin + m.width as i32 <= span as i32 && m.height <= ch + 1 {
 			let origin = (x0 as i32 + m.xmin, glyph_top(glyph, y0, view.ascent));
 			let clip = (x0 as i32, top, (x0 + span) as i32, bottom);
 			p.glyph(glyph, origin, clip, italic, fg);
 		} else {
-			let style = (italic, fg, presentation);
+			let style = (italic, fg, shape);
 			draw_oversized(p, fonts, view, cell, (x0, y0), style, next);
 		}
 	}
@@ -262,8 +274,18 @@ fn draw_cell(
 			view.link_color,
 		);
 	}
-	for &mark in view.frame.marks(cell) {
-		if matches!(mark, '\u{200d}' | '\u{fe0e}' | '\u{fe0f}') {
+	// A joined cluster drew its marks as part of its glyph.
+	let marks = if let Shape::Cluster(_) = shape {
+		&[][..]
+	} else {
+		marks
+	};
+	for &mark in marks {
+		// Joiners, variation selectors and tags are invisible.
+		if matches!(
+			mark,
+			'\u{200d}' | '\u{fe0e}' | '\u{fe0f}' | '\u{e0020}'..='\u{e007f}'
+		) {
 			continue;
 		}
 		let glyph = fonts.glyph(mark, view.px);
@@ -319,7 +341,7 @@ fn draw_oversized(
 	view: &GridView,
 	cell: &Cell,
 	(x0, y0): (usize, usize),
-	(italic, fg, presentation): (bool, u32, Presentation),
+	(italic, fg, shape): (bool, u32, Shape),
 	next: Option<&Cell>,
 ) {
 	let (cw, ch) = view.cell;
@@ -327,7 +349,7 @@ fn draw_oversized(
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
 	let next_blank =
 		next.is_some_and(|next| next.ch == ' ' && next.extra == NO_EXTRA && next.width == 1);
-	let glyph = fonts.presented(cell.ch, view.px, presentation);
+	let glyph = fonts.shaped(shape, view.px);
 	let metrics = glyph.metrics;
 	let overflows = metrics.xmin < 0 || metrics.xmin + metrics.width as i32 > span as i32;
 	let room = if overflows && next_blank && cell.width == 1 {
@@ -339,7 +361,7 @@ fn draw_oversized(
 	// at full size; that pixel is clipped as before.
 	let scale = fit_scale((metrics.width, metrics.height), (room + 1, ch + 1));
 	let glyph = if scale < 1.0 {
-		fonts.presented(cell.ch, view.px * scale, presentation)
+		fonts.shaped(shape, view.px * scale)
 	} else {
 		glyph
 	};

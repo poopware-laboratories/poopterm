@@ -8,6 +8,10 @@ use crate::fonts::{
 
 use super::{boxdraw, fxhash::FxHashMap};
 
+#[path = "glyph_clusters.rs"]
+pub(crate) mod clusters;
+pub(crate) use clusters::{Shape, joins};
+
 /// Upper bound on cached rasterizations before the cache is reset.
 const MAX_CACHED_GLYPHS: usize = 4096;
 
@@ -53,6 +57,10 @@ pub(crate) struct FontSet {
 	/// Installed fonts, searched when no font above has a character.
 	system: Option<SystemFallback>,
 	cache: FxHashMap<(char, u32, Presentation), Glyph>,
+	/// Clusters joined into one glyph, keyed by the pixel size's bits and
+	/// the characters; `None` for those no font joins.
+	clusters: FxHashMap<Box<[u32]>, Option<Glyph>>,
+	cluster_key: Vec<u32>,
 	/// Box drawing and other glyphs drawn in code, for cells of `drawn_cell`.
 	drawn: FxHashMap<char, boxdraw::Drawn>,
 	drawn_cell: (usize, usize),
@@ -65,6 +73,8 @@ impl FontSet {
 			fallbacks,
 			system: None,
 			cache: FxHashMap::default(),
+			clusters: FxHashMap::default(),
+			cluster_key: Vec::new(),
 			drawn: FxHashMap::default(),
 			drawn_cell: (0, 0),
 		}
@@ -164,11 +174,15 @@ impl FontSet {
 		if self.cache.len() > MAX_CACHED_GLYPHS {
 			self.cache.clear();
 		}
+		if self.clusters.len() > MAX_CACHED_GLYPHS {
+			self.clusters.clear();
+		}
 	}
 
 	/// Drops every rasterization, e.g. after the font size changes.
 	pub(crate) fn clear(&mut self) {
 		self.cache.clear();
+		self.clusters.clear();
 		self.drawn.clear();
 	}
 
