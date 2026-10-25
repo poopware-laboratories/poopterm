@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.117 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Make vulkan images within the device's limits, viewed as layers (#157) (gpu).
+
 ## 26.10.116 "Giga Fly" — 2026-10-25
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "poopterm"
-version = "26.10.116"
+version = "26.10.117"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 
