@@ -41,6 +41,7 @@ pub(crate) fn compact(coverage: &[u8], (w, h): (usize, usize)) -> Drawn {
 		glyph: Glyph {
 			metrics,
 			coverage: trimmed,
+			color: None,
 		},
 	}
 }

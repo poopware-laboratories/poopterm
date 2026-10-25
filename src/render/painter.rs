@@ -172,7 +172,7 @@ impl<'a> Painter<'a> {
 	}
 
 	/// Blends `glyph` with its top-left corner at `(x, y)`, clipped to
-	/// `clip = (left, top, right, bottom)`. `italic` shears rows to simulate
+	/// `clip = (left, top, right, bottom)`, in `color` unless it has its own. `italic` shears rows to simulate
 	/// slanted text.
 	pub(crate) fn glyph(
 		&mut self,
@@ -191,7 +191,8 @@ impl<'a> Painter<'a> {
 		let clip_right = clip_right.min(self.width as i32);
 		for py in top..bottom {
 			let gy = (py - y) as usize;
-			let shift = if italic {
+			// Emoji keep their shape in italic text.
+			let shift = if italic && glyph.color.is_none() {
 				(metrics.height.saturating_sub(gy) / 6) as i32
 			} else {
 				0
@@ -205,11 +206,15 @@ impl<'a> Painter<'a> {
 			let len = (draw_right - draw_left) as usize;
 			let src = gy * metrics.width + (draw_left - left) as usize;
 			let dst = py as usize * self.width + draw_left as usize;
-			blend_coverage_row(
-				&mut self.pixels[dst..dst + len],
-				&glyph.coverage[src..src + len],
-				color,
-			);
+			let target = &mut self.pixels[dst..dst + len];
+			match &glyph.color {
+				Some(pixels) => {
+					for (out, &pixel) in target.iter_mut().zip(&pixels[src..src + len]) {
+						*out = blend(*out, pixel & 0xff_ffff, pixel >> 24);
+					}
+				}
+				None => blend_coverage_row(target, &glyph.coverage[src..src + len], color),
+			}
 		}
 	}
 }
@@ -241,6 +246,7 @@ mod tests {
 				..Default::default()
 			},
 			coverage: vec![255; 6],
+			color: None,
 		};
 		let mut pixels = vec![0u32; 3 * 4];
 		let mut painter = Painter::new(&mut pixels, 3, 4);
@@ -284,5 +290,64 @@ mod tests {
 		Painter::new(&mut pixels, 8, 8).round_rect(0, 0, 8, 8, 3, 1);
 		assert_eq!(pixels[0], 0, "corner stays clear");
 		assert_eq!(pixels[4 * 8], 1, "middle row is filled edge to edge");
+	}
+
+	fn color_glyph(width: usize, pixels: Vec<u32>) -> Glyph {
+		Glyph {
+			metrics: crate::fonts::Metrics {
+				width,
+				height: pixels.len() / width,
+				..Default::default()
+			},
+			coverage: Vec::new(),
+			color: Some(pixels),
+		}
+	}
+
+	#[test]
+	fn color_glyphs_draw_their_own_colors_not_the_text_color() {
+		let glyph = color_glyph(2, vec![0xffff0000, 0xff00ff00, 0xff0000ff, 0x00ffffff]);
+		let mut pixels = vec![0x101010u32; 3 * 2];
+		Painter::new(&mut pixels, 3, 2).glyph(&glyph, (1, 0), (0, 0, 3, 2), false, 0xffffff);
+		assert_eq!(
+			pixels,
+			[0x101010, 0xff0000, 0x00ff00, 0x101010, 0x0000ff, 0x101010]
+		);
+	}
+
+	#[test]
+	fn translucent_color_pixels_blend_with_what_is_below() {
+		let glyph = color_glyph(1, vec![0x80ffffff]);
+		let mut pixels = vec![0u32];
+		Painter::new(&mut pixels, 1, 1).glyph(&glyph, (0, 0), (0, 0, 1, 1), false, 0);
+		assert_eq!(pixels, [blend(0, 0xffffff, 0x80)]);
+	}
+
+	#[test]
+	fn color_glyphs_are_clipped_like_others() {
+		let glyph = color_glyph(3, vec![0xff00ff00; 9]);
+		let mut pixels = vec![0u32; 4 * 4];
+		Painter::new(&mut pixels, 4, 4).glyph(&glyph, (-1, 2), (0, 0, 1, 3), false, 0);
+		let drawn: Vec<usize> = (0..16).filter(|&i| pixels[i] != 0).collect();
+		assert_eq!(drawn, [8], "column 0 of row 2 only");
+	}
+
+	#[test]
+	fn italic_text_shears_outlines_but_not_color_glyphs() {
+		let mut upright = vec![0u32; 6 * 6];
+		let mut italic = upright.clone();
+		let glyph = color_glyph(2, vec![0xff00ff00; 12]);
+		Painter::new(&mut upright, 6, 6).glyph(&glyph, (0, 0), (0, 0, 6, 6), false, 0);
+		Painter::new(&mut italic, 6, 6).glyph(&glyph, (0, 0), (0, 0, 6, 6), true, 0);
+		assert_eq!(upright, italic);
+		let outline = Glyph {
+			metrics: glyph.metrics,
+			coverage: vec![255; 12],
+			color: None,
+		};
+		let mut sheared = vec![0u32; 6 * 6];
+		Painter::new(&mut sheared, 6, 6).glyph(&outline, (0, 0), (0, 0, 6, 6), true, 0xffffff);
+		assert_eq!(sheared[0], 0, "the top row moved right");
+		assert_eq!(sheared[1], 0xffffff);
 	}
 }

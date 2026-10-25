@@ -239,7 +239,7 @@ at startup, and reads only new or changed fonts when they differ.
 `font_path` or the `POOPTERM_FONT` environment variable selects a font file
 instead, and takes precedence over `font_family`; `POOPTERM_FONT` takes
 precedence over `font_path`. Glyphs missing from a custom font fall back to the
-bundled DejaVu Sans Mono for Powerline font. For complete htop or other Nerd
+bundled DejaVu Sans Mono for Powerline font. Emoji draw in color from an installed color bitmap font (CBDT, such as Noto Color Emoji). For complete htop or other Nerd
 Font icon coverage, choose a Nerd Font Mono family or file. Use a monospaced
 font for predictable cell alignment.
 The older `macos-dark` and `macos-light` values remain accepted for existing configs.

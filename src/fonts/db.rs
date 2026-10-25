@@ -29,7 +29,7 @@ const MAX_CACHE_FILE: u64 = 64 << 20;
 /// Paths with their stamps.
 type Stamped = Vec<(PathBuf, Stamp)>;
 /// Bumped when face data changes meaning, so old caches are rebuilt.
-const HEADER: &str = "poopterm-fonts 3";
+const HEADER: &str = "poopterm-fonts 4";
 
 /// Modification time in nanoseconds and size. A missing path has the
 /// default stamp.
@@ -293,12 +293,13 @@ pub(crate) fn encode(cache: &Cache) -> String {
 		);
 		for face in faces {
 			out += &format!(
-				"f\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+				"f\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
 				face.index,
 				face.weight,
 				u8::from(face.italic),
 				u8::from(face.monospace),
-				u8::from(face.outlines),
+				u8::from(face.drawable),
+				u8::from(face.color),
 				coverage::encode(&face.pages),
 				escape(&face.family),
 				escape(&face.style),
@@ -342,7 +343,8 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 				weight,
 				italic,
 				monospace,
-				outlines,
+				drawable,
+				color,
 				pages,
 				family,
 				style,
@@ -354,7 +356,8 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 					weight: weight.parse().ok()?,
 					italic: *italic == "1",
 					monospace: *monospace == "1",
-					outlines: *outlines == "1",
+					drawable: *drawable == "1",
+					color: *color == "1",
 					pages: coverage::decode(pages)?,
 					family: unescape(family)?,
 					style: unescape(style)?,

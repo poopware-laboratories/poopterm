@@ -102,6 +102,11 @@ pub(crate) fn decode_file(data: &[u8]) -> Result<Bitmap, Error> {
 	}
 }
 
+/// A PNG image within the size limits, as color glyphs store them.
+pub(crate) fn png(data: &[u8]) -> Option<Bitmap> {
+	decode_png(data).ok()
+}
+
 fn decode_png(data: &[u8]) -> Result<Bitmap, Error> {
 	decode_as(data, image::ImageFormat::Png, "EBADPNG")
 }
