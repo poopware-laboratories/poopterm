@@ -269,9 +269,10 @@ least as fast.
   feeding the GPU glyph atlas. Color emoji: CBDT bitmaps and VS16/VS15
   presentation (drawing only; widening on VS16 waits for mode 2027) are
   done, and so are sequences inside one cell (ZWJ, keycaps, tag flags)
-  through our own GSUB engine. Flags from regional indicator pairs and
-  skin-tone modifiers, which the term keeps in separate cells, remain, and
-  so do COLR and sbix.
+  through our own GSUB engine. So are flags from regional indicator pairs
+  and skin-tone modifiers: the term keeps them in separate cells, as
+  wcwidth counts them, and the renderer draws the font's joined glyph
+  across both (`render::cell_joins`). COLR and sbix remain.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
