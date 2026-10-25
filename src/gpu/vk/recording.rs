@@ -8,6 +8,7 @@ use super::{
 	buffer::Buffer,
 	call::{Error, check},
 	commands::Commands,
+	descriptors::QuadSet,
 	image::Image,
 	submit_types::*,
 };
@@ -24,6 +25,14 @@ const HOST: u64 = 0x4000;
 const TRANSFER_READ: u64 = 0x800;
 const TRANSFER_WRITE: u64 = 0x1000;
 const HOST_READ: u64 = 0x2000;
+/// `VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT` and
+/// `_FRAGMENT_SHADER_BIT`; `VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT`,
+/// `_COLOR_ATTACHMENT_WRITE_BIT` and `_SHADER_SAMPLED_READ_BIT`.
+const COLOR_OUTPUT: u64 = 0x400;
+const FRAGMENT: u64 = 0x80;
+const COLOR_READ: u64 = 0x80;
+const COLOR_WRITE: u64 = 0x100;
+const SAMPLED_READ: u64 = 0x1_0000_0000;
 /// `VK_BUFFER_USAGE_TRANSFER_SRC_BIT` and `_DST_BIT`, which image usage
 /// shares.
 const TRANSFER_SRC: u32 = 1;
@@ -36,6 +45,8 @@ const TEXEL: u64 = 4;
 pub(crate) enum Layout {
 	/// Contents unknown; made images start here.
 	Undefined = 0,
+	ColorAttachment = 2,
+	ShaderReadOnly = 5,
 	TransferSrc = 6,
 	TransferDst = 7,
 }
@@ -46,6 +57,8 @@ impl Layout {
 	pub(crate) fn scope(self) -> (u64, u64) {
 		match self {
 			Self::Undefined => (0, 0),
+			Self::ColorAttachment => (COLOR_OUTPUT, COLOR_READ | COLOR_WRITE),
+			Self::ShaderReadOnly => (FRAGMENT, SAMPLED_READ),
 			Self::TransferSrc => (ALL_TRANSFER, TRANSFER_READ),
 			Self::TransferDst => (ALL_TRANSFER, TRANSFER_WRITE),
 		}
@@ -65,10 +78,12 @@ pub(crate) struct Region {
 /// Commands being recorded. Dropped without being submitted, they are
 /// discarded when recording starts again.
 pub(crate) struct Recording<'a> {
-	commands: &'a mut Commands,
+	pub(super) commands: &'a mut Commands,
 	/// The layouts its barriers leave images in, the last one for an image
 	/// counting; they take effect once submitted.
 	layouts: Vec<(Rc<Image>, Layout)>,
+	/// The sets drawn with, which the submission marks used.
+	pub(super) sets: Vec<Rc<QuadSet>>,
 }
 
 impl<'a> Recording<'a> {
@@ -77,6 +92,7 @@ impl<'a> Recording<'a> {
 		Self {
 			commands,
 			layouts: Vec::new(),
+			sets: Vec::new(),
 		}
 	}
 
@@ -179,7 +195,7 @@ impl<'a> Recording<'a> {
 	/// Moves every layer of `image` to `layout`, after what used it in
 	/// the layout it is in. Even a move to the same layout orders what
 	/// comes after it.
-	fn transition(&mut self, image: &Rc<Image>, layout: Layout) {
+	pub(super) fn transition(&mut self, image: &Rc<Image>, layout: Layout) {
 		let pending = self
 			.layouts
 			.iter()
@@ -273,6 +289,9 @@ impl<'a> Recording<'a> {
 		commands.submitted = value;
 		for (image, layout) in self.layouts {
 			image.layout.set(layout);
+		}
+		for set in self.sets {
+			*set.used.borrow_mut() = Some((commands.timeline.clone(), value));
 		}
 		Ok(value)
 	}

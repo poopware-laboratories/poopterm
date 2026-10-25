@@ -24,6 +24,18 @@ mod descriptors_tests;
 pub(crate) mod device;
 #[cfg(test)]
 mod device_tests;
+pub(crate) mod draw;
+#[cfg(test)]
+mod draw_driver_tests;
+#[cfg(test)]
+mod draw_gpu_tests;
+#[cfg(test)]
+mod draw_rules_tests;
+#[cfg(test)]
+mod draw_tests;
+pub(crate) mod draw_types;
+#[cfg(test)]
+mod draw_types_tests;
 #[cfg(test)]
 mod driver_tests;
 pub(crate) mod entry;

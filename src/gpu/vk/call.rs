@@ -34,6 +34,12 @@ pub(crate) enum Error {
 	Copy,
 	/// A shader that is not SPIR-V Vulkan 1.3 takes.
 	Spirv,
+	/// A draw of quads past its buffer's end, between devices, to the
+	/// atlas itself, or with a buffer or image not made for it.
+	Draw,
+	/// A quad set already drawn with in the recording, or by commands the
+	/// GPU has yet to finish.
+	Busy,
 }
 
 impl fmt::Display for Error {
@@ -54,6 +60,8 @@ impl fmt::Display for Error {
 			),
 			Self::Copy => write!(f, "a Vulkan copy outside what it copies between"),
 			Self::Spirv => write!(f, "a shader is not SPIR-V for Vulkan 1.3"),
+			Self::Draw => write!(f, "a Vulkan draw of quads it cannot draw"),
+			Self::Busy => write!(f, "a Vulkan quad set still in use"),
 		}
 	}
 }

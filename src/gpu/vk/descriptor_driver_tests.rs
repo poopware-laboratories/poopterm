@@ -33,7 +33,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkAllocateDescriptorSets" => {
 				transmute::<AllocateDescriptorSets, VoidFunction>(allocate_sets)
 			}
-			_ => return None,
+			_ => return super::draw_driver_tests::function(name),
 		})
 	}
 }

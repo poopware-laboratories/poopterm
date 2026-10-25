@@ -1,8 +1,8 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, descriptor_types::*, entry::cast, instance::Instance, memory::MemoryType,
-	pipeline_types::*, submit_types::*, types::*,
+	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
+	memory::MemoryType, pipeline_types::*, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -49,6 +49,15 @@ pub(super) struct Functions {
 	pub create_descriptor_pool: CreateDescriptorPool,
 	pub destroy_descriptor_pool: DestroyDescriptorPool,
 	pub allocate_descriptor_sets: AllocateDescriptorSets,
+	pub update_sets: UpdateDescriptorSets,
+	pub begin_rendering: CmdBeginRendering,
+	pub end_rendering: CmdEndRendering,
+	pub bind_pipeline: CmdBindPipeline,
+	pub set_viewport: CmdSetViewport,
+	pub set_scissor: CmdSetScissor,
+	pub bind_sets: CmdBindDescriptorSets,
+	pub push: CmdPushConstants,
+	pub draw: CmdDraw,
 }
 
 impl Functions {
@@ -99,6 +108,15 @@ impl Functions {
 				create_descriptor_pool: cast(function(c"vkCreateDescriptorPool")?),
 				destroy_descriptor_pool: cast(function(c"vkDestroyDescriptorPool")?),
 				allocate_descriptor_sets: cast(function(c"vkAllocateDescriptorSets")?),
+				update_sets: cast(function(c"vkUpdateDescriptorSets")?),
+				begin_rendering: cast(function(c"vkCmdBeginRendering")?),
+				end_rendering: cast(function(c"vkCmdEndRendering")?),
+				bind_pipeline: cast(function(c"vkCmdBindPipeline")?),
+				set_viewport: cast(function(c"vkCmdSetViewport")?),
+				set_scissor: cast(function(c"vkCmdSetScissor")?),
+				bind_sets: cast(function(c"vkCmdBindDescriptorSets")?),
+				push: cast(function(c"vkCmdPushConstants")?),
+				draw: cast(function(c"vkCmdDraw")?),
 			})
 		}
 	}

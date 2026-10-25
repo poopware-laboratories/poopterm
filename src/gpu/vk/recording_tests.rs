@@ -64,6 +64,9 @@ fn scope(layout: i32) -> (u64, u64) {
 	match layout {
 		SOURCE => (ALL_TRANSFER, TRANSFER_READ),
 		DESTINATION => (ALL_TRANSFER, TRANSFER_WRITE),
+		// Written as a color attachment, and sampled by fragment shaders.
+		2 => (0x400, 0x80 | 0x100),
+		5 => (0x80, 0x1_0000_0000),
 		_ => (0, 0),
 	}
 }
@@ -71,7 +74,7 @@ fn scope(layout: i32) -> (u64, u64) {
 impl Driver {
 	/// The layout `image` is in where `buffer` has got to: what its own
 	/// barriers left it in, else what the submissions before did.
-	fn layout(&mut self, buffer: RawCommandBuffer, image: RawImage) -> i32 {
+	pub(super) fn layout(&mut self, buffer: RawCommandBuffer, image: RawImage) -> i32 {
 		let committed = (self.image_layouts.iter().rev()).find(|(made, _)| *made == image);
 		let committed = committed.map_or(UNDEFINED, |&(_, layout)| layout);
 		let Some(buffer) = self.command_buffer(buffer) else {
@@ -82,7 +85,7 @@ impl Driver {
 	}
 
 	/// Breaks the test unless `buffer` is being recorded.
-	fn check_recording(&mut self, buffer: RawCommandBuffer, call: &str) {
+	pub(super) fn check_recording(&mut self, buffer: RawCommandBuffer, call: &str) {
 		let stage = self.command_buffer(buffer).map(|buffer| buffer.stage);
 		self.require(stage == Some(Stage::Recording), || {
 			format!("{call}: {stage:?}, not recording")
@@ -90,7 +93,7 @@ impl Driver {
 	}
 
 	/// The size and usage of `buffer`, if live.
-	fn made_buffer(&self, buffer: RawBuffer) -> Option<(u64, u32)> {
+	pub(super) fn made_buffer(&self, buffer: RawBuffer) -> Option<(u64, u32)> {
 		let made = self.buffers.get(buffer.wrapping_sub(0xb0_0001) as usize);
 		made
 			.filter(|_| self.live_buffers.contains(&buffer))
@@ -98,7 +101,7 @@ impl Driver {
 	}
 
 	/// The extent, layers and usage of `image`, if live and bound.
-	fn made_image(&self, image: RawImage) -> Option<([u32; 3], u32, u32)> {
+	pub(super) fn made_image(&self, image: RawImage) -> Option<([u32; 3], u32, u32)> {
 		let made = self.images.get(image.wrapping_sub(0xa0_0001) as usize);
 		let bound = self.bound_images.iter().any(|&(bound, _)| bound == image);
 		let live = self.live_images.contains(&image) && bound;

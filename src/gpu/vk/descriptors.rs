@@ -5,8 +5,9 @@ use super::{
 	call::{Error, check},
 	descriptor_types::*,
 	pipeline::QuadPipeline,
+	timeline::Timeline,
 };
-use std::{ptr, rc::Rc};
+use std::{cell::RefCell, ptr, rc::Rc};
 
 /// `VkDescriptorType`: a combined image sampler and a storage buffer.
 const COMBINED_IMAGE_SAMPLER: i32 = 1;
@@ -27,9 +28,12 @@ const SIZES: [DescriptorPoolSize; 2] = [
 pub(crate) struct QuadSet {
 	pool: RawDescriptorPool,
 	set: RawDescriptorSet,
+	/// The timeline and value of the last submission that drew with it:
+	/// until the GPU gets there, the set must not be updated.
+	pub(super) used: RefCell<Option<(Rc<Timeline>, u64)>>,
 	/// Dropped after the pool is destroyed: the set is of its layout, and
 	/// the pool of its device.
-	pipeline: Rc<QuadPipeline>,
+	pub(super) pipeline: Rc<QuadPipeline>,
 }
 
 impl QuadSet {
@@ -53,6 +57,7 @@ impl QuadSet {
 		let mut made = Self {
 			pool,
 			set: 0,
+			used: RefCell::new(None),
 			pipeline: pipeline.clone(),
 		};
 		let layout = pipeline.set_layout();

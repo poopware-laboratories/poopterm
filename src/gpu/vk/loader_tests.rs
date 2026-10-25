@@ -144,6 +144,8 @@ fn child() {
 						.map(Rc::new)
 						.and_then(|pipeline| super::descriptors::QuadSet::new(&pipeline));
 					println!("child: quad set: {}", set.is_ok());
+					let drawn = super::draw_gpu_tests::draw_known_quads(&device);
+					println!("child: drawn: {drawn:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -211,6 +213,7 @@ fn instances_pass_the_khronos_validation_layer() {
 	assert!(output.contains("child: round trip: Ok(true)"), "{output}");
 	assert!(output.contains("child: quad pipeline: true"), "{output}");
 	assert!(output.contains("child: quad set: true"), "{output}");
+	assert!(output.contains("child: drawn: Ok(true)"), "{output}");
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}

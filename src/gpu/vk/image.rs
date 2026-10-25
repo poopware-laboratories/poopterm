@@ -30,6 +30,7 @@ pub(crate) struct Image {
 	view: RawImageView,
 	/// Width, height and layers.
 	pub(super) size: [u32; 3],
+	pub(super) format: Format,
 	/// `VkImageUsageFlags`.
 	pub(super) usage: u32,
 	/// The layout the submissions so far leave it in.
@@ -81,6 +82,7 @@ impl Image {
 			memory: 0,
 			view: 0,
 			size,
+			format,
 			usage,
 			layout: Cell::new(Layout::Undefined),
 			device: device.clone(),

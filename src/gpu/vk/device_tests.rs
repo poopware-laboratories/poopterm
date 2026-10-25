@@ -450,6 +450,15 @@ fn device_functions_are_looked_up_with_the_new_device() {
 		"vkCreateDescriptorPool",
 		"vkDestroyDescriptorPool",
 		"vkAllocateDescriptorSets",
+		"vkUpdateDescriptorSets",
+		"vkCmdBeginRendering",
+		"vkCmdEndRendering",
+		"vkCmdBindPipeline",
+		"vkCmdSetViewport",
+		"vkCmdSetScissor",
+		"vkCmdBindDescriptorSets",
+		"vkCmdPushConstants",
+		"vkCmdDraw",
 	];
 	let expected = names.map(|name| (live, name));
 	let lookups: Vec<_> = lookups

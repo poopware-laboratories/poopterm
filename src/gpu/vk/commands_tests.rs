@@ -41,6 +41,8 @@ pub(super) struct CommandBuffer {
 	/// The layouts its barriers leave images in, which take effect once
 	/// it is submitted.
 	pub layouts: Vec<(RawImage, i32)>,
+	/// What it has set up for drawing.
+	pub drawing: super::draw_driver_tests::Drawing,
 }
 
 /// `VK_COMMAND_POOL_CREATE_TRANSIENT_BIT`, `_RESET_COMMAND_BUFFER_BIT`.
@@ -181,6 +183,7 @@ unsafe extern "system" fn allocate(
 			pool: info.command_pool,
 			stage: Stage::Initial,
 			layouts: Vec::new(),
+			drawing: Default::default(),
 		});
 		let handle = 0x7c_0000 + driver.command_buffers.len();
 		// SAFETY: as above.
@@ -211,6 +214,7 @@ unsafe extern "system" fn reset_pool(device: RawDevice, pool: RawCommandPool, fl
 		{
 			buffer.stage = Stage::Initial;
 			buffer.layouts.clear();
+			buffer.drawing = Default::default();
 		}
 		driver.recorded.push(format!("reset {pool:#x}"));
 		0
@@ -259,12 +263,17 @@ unsafe extern "system" fn begin(
 
 unsafe extern "system" fn end(buffer: RawCommandBuffer) -> i32 {
 	with(|driver| {
-		let stage = driver.command_buffer(buffer).map(|buffer| buffer.stage);
+		let made = driver.command_buffer(buffer);
+		let rendering = made
+			.as_ref()
+			.is_some_and(|buffer| buffer.drawing.rendering.is_some());
+		let stage = made.map(|buffer| buffer.stage);
 		let recording = stage == Some(Stage::Recording);
 		driver.require(recording, || {
 			format!("vkEndCommandBuffer: {stage:?}, not recording")
 		});
-		if !recording {
+		driver.require(!rendering, || "vkEndCommandBuffer: while rendering".into());
+		if !recording || rendering {
 			return VALIDATION_FAILED;
 		}
 		if let Some(code) = driver.failing(c"vkEndCommandBuffer") {
@@ -330,9 +339,9 @@ unsafe extern "system" fn submit(
 		let (Some(buffer), Some(signal)) = (buffers.first(), signals.first()) else {
 			return -1;
 		};
-		let stage = driver
-			.command_buffer(buffer.command_buffer)
-			.map(|buffer| buffer.stage);
+		let made = driver.command_buffer(buffer.command_buffer);
+		let stale = made.as_ref().is_some_and(|buffer| buffer.drawing.stale);
+		let stage = made.map(|buffer| buffer.stage);
 		let timeline = driver.live_semaphores.contains(&signal.semaphore)
 			&& driver
 				.semaphores
@@ -358,6 +367,7 @@ unsafe extern "system" fn submit(
 				"one device",
 			),
 			(stage == Some(Stage::Executable), "an executable buffer"),
+			(!stale, "no set updated since it was bound"),
 			(timeline, "a live timeline"),
 			(above, "a value above the timeline's and every pending one"),
 			(signal.stage_mask != 0, "a stage"),
