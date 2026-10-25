@@ -6,6 +6,7 @@
 //! is 1, as on Linux CI, which installs Mesa's software driver and the
 //! validation layer.
 use super::{
+	buffer::Buffer,
 	call::Error,
 	choose::{GRAPHICS, Kind, choose},
 	device::Device,
@@ -15,7 +16,7 @@ use super::{
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
 	version::major_minor,
 };
-use std::{env, process::Command, ptr, rc::Rc};
+use std::{env, num::NonZeroUsize, process::Command, ptr, rc::Rc};
 
 fn required() -> bool {
 	env::var("POOPTERM_REQUIRE_VULKAN").is_ok_and(|value| value == "1")
@@ -113,7 +114,14 @@ fn child() {
 				instance.physical_devices().unwrap().len()
 			);
 			match offscreen(Rc::new(instance)) {
-				Ok(device) => println!("child: a device drawing on family {}", device.family()),
+				Ok(device) => {
+					println!("child: a device drawing on family {}", device.family());
+					let device = Rc::new(device);
+					for (purpose, usage) in PURPOSES {
+						let buffer = Buffer::new(&device, NonZeroUsize::MIN, usage, purpose);
+						println!("child: {purpose:?} buffer: {}", buffer.is_ok());
+					}
+				}
 				Err(error) => println!("child: no device: {error}"),
 			}
 		}
@@ -165,6 +173,10 @@ fn instances_pass_the_khronos_validation_layer() {
 		output.contains("child: a device drawing on family"),
 		"{output}"
 	);
+	for purpose in ["Upload", "Device", "Readback"] {
+		let line = format!("child: {purpose} buffer: true");
+		assert!(output.contains(&line), "{output}");
+	}
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
@@ -256,4 +268,44 @@ fn every_device_has_memory_for_each_use() {
 			);
 		}
 	}
+}
+
+/// Each purpose of memory, with buffer usage flags it suits: vertices,
+/// storage written by the GPU, and pixels copied out.
+const PURPOSES: [(Usage, u32); 3] = [
+	(Usage::Upload, 0x80 | 0x1),
+	(Usage::Device, 0x20 | 0x2),
+	(Usage::Readback, 0x2),
+];
+
+#[test]
+fn buffers_get_memory_for_their_purpose_and_the_cpu_sees_what_it_should() {
+	let Some(entry) = entry() else { return };
+	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
+	let device = Rc::new(offscreen(instance).expect("device"));
+	let size = NonZeroUsize::new(65_536 + 3).unwrap();
+	for (purpose, usage) in PURPOSES {
+		let mut buffer = Buffer::new(&device, size, usage, purpose).expect("buffer");
+		assert_ne!(buffer.handle(), 0);
+		if purpose == Usage::Device {
+			assert!(buffer.bytes().is_none());
+			continue;
+		}
+		let bytes = buffer.bytes_mut().expect("mapped");
+		assert_eq!(bytes.len(), size.get());
+		for (i, byte) in bytes.iter_mut().enumerate() {
+			*byte = (i * 7 % 251) as u8;
+		}
+		let read = buffer.bytes().unwrap();
+		assert!(
+			read
+				.iter()
+				.enumerate()
+				.all(|(i, &byte)| byte == (i * 7 % 251) as u8)
+		);
+	}
+	// A buffer outliving its device's last other owner keeps it alive.
+	let last = Buffer::new(&device, NonZeroUsize::MIN, 0x80, Usage::Upload).unwrap();
+	drop(device);
+	assert!(last.bytes().is_some_and(|bytes| bytes.len() == 1));
 }

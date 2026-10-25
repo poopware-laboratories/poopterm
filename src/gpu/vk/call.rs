@@ -24,6 +24,8 @@ pub(crate) enum Error {
 	Failed(i32),
 	/// The device lacks this feature, which the renderer needs.
 	Lacks(&'static str),
+	/// No memory type suits the resource and what it is for.
+	NoMemory,
 }
 
 impl fmt::Display for Error {
@@ -37,6 +39,7 @@ impl fmt::Display for Error {
 			}
 			Self::Failed(code) => write!(f, "VkResult {code}"),
 			Self::Lacks(feature) => write!(f, "the Vulkan device lacks {feature}"),
+			Self::NoMemory => write!(f, "no Vulkan memory type suits the resource"),
 		}
 	}
 }

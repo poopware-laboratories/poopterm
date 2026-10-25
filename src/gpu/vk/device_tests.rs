@@ -3,6 +3,7 @@
 //! the order devices and instances are destroyed in. The fake's device
 //! functions live here and check the specification's valid usage rules.
 use super::{
+	buffer_tests,
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind, TRANSFER},
 	device::Device,
@@ -244,7 +245,7 @@ pub(super) unsafe extern "system" fn get_device_proc_addr(
 			Some(match name.to_bytes() {
 				b"vkDestroyDevice" => transmute::<DestroyDevice, VoidFunction>(destroy_device),
 				b"vkGetDeviceQueue" => transmute::<GetDeviceQueue, VoidFunction>(get_device_queue),
-				_ => return None,
+				_ => return buffer_tests::function(name),
 			})
 		}
 	})
@@ -255,6 +256,9 @@ unsafe extern "system" fn destroy_device(device: RawDevice, allocator: *const c_
 		driver.check_live_device(device, "vkDestroyDevice");
 		if !allocator.is_null() {
 			driver.invalid.push("vkDestroyDevice: an allocator".into());
+		}
+		if !driver.live_buffers.is_empty() || !driver.live_memory.is_empty() {
+			(driver.invalid).push("vkDestroyDevice while buffers or memory are live".into());
 		}
 		driver.live_devices.retain(|&live| live != device);
 		driver.destroyed_devices.push(device);
@@ -388,7 +392,18 @@ fn device_functions_are_looked_up_with_the_new_device() {
 	let before = with(|driver| driver.lookups.len());
 	let device = Device::new(instance, physical, 1).unwrap();
 	let (lookups, live) = with(|driver| (driver.lookups[before..].to_vec(), driver.live_devices[0]));
-	let expected = [(live, "vkDestroyDevice"), (live, "vkGetDeviceQueue")];
+	let names = [
+		"vkDestroyDevice",
+		"vkGetDeviceQueue",
+		"vkCreateBuffer",
+		"vkDestroyBuffer",
+		"vkGetBufferMemoryRequirements",
+		"vkAllocateMemory",
+		"vkFreeMemory",
+		"vkBindBufferMemory",
+		"vkMapMemory",
+	];
+	let expected = names.map(|name| (live, name));
 	let lookups: Vec<_> = lookups
 		.iter()
 		.map(|(at, name)| (*at, name.as_str()))

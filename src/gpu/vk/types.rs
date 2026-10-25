@@ -11,12 +11,21 @@ pub(crate) type RawPhysicalDevice = *mut c_void;
 pub(crate) type RawDevice = *mut c_void;
 /// A `VkQueue`.
 pub(crate) type RawQueue = *mut c_void;
+/// A `VkBuffer`, and a `VkDeviceMemory`: handles that are 64 bits on every
+/// platform.
+pub(crate) type RawBuffer = u64;
+pub(crate) type RawMemory = u64;
+
+/// `VK_WHOLE_SIZE`.
+pub(crate) const WHOLE_SIZE: u64 = !0;
 
 /// `VkStructureType` values.
 pub(crate) const STRUCTURE_TYPE_APPLICATION_INFO: i32 = 0;
 pub(crate) const STRUCTURE_TYPE_INSTANCE_CREATE_INFO: i32 = 1;
 pub(crate) const STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO: i32 = 2;
 pub(crate) const STRUCTURE_TYPE_DEVICE_CREATE_INFO: i32 = 3;
+pub(crate) const STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO: i32 = 5;
+pub(crate) const STRUCTURE_TYPE_BUFFER_CREATE_INFO: i32 = 12;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: i32 = 51;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES: i32 = 53;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: i32 = 1_000_059_000;
@@ -171,6 +180,39 @@ pub(crate) struct DeviceCreateInfo {
 	pub enabled_features: *const c_void,
 }
 
+/// `VkBufferCreateInfo`.
+#[repr(C)]
+pub(crate) struct BufferCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+	pub size: u64,
+	/// `VkBufferUsageFlags`.
+	pub usage: u32,
+	/// `VkSharingMode`: 0, exclusive to one queue family.
+	pub sharing_mode: i32,
+	pub queue_family_index_count: u32,
+	pub queue_family_indices: *const u32,
+}
+
+/// `VkMemoryRequirements`.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MemoryRequirements {
+	pub size: u64,
+	pub alignment: u64,
+	pub memory_type_bits: u32,
+}
+
+/// `VkMemoryAllocateInfo`.
+#[repr(C)]
+pub(crate) struct MemoryAllocateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub allocation_size: u64,
+	pub memory_type_index: u32,
+}
+
 /// `PFN_vkVoidFunction`: what the loader returns, cast to the real type.
 pub(crate) type VoidFunction = unsafe extern "system" fn();
 pub(crate) type GetInstanceProcAddr =
@@ -205,3 +247,23 @@ pub(crate) type GetDeviceProcAddr =
 	unsafe extern "system" fn(RawDevice, *const c_char) -> Option<VoidFunction>;
 pub(crate) type DestroyDevice = unsafe extern "system" fn(RawDevice, *const c_void);
 pub(crate) type GetDeviceQueue = unsafe extern "system" fn(RawDevice, u32, u32, *mut RawQueue);
+pub(crate) type CreateBuffer = unsafe extern "system" fn(
+	RawDevice,
+	*const BufferCreateInfo,
+	*const c_void,
+	*mut RawBuffer,
+) -> i32;
+pub(crate) type DestroyBuffer = unsafe extern "system" fn(RawDevice, RawBuffer, *const c_void);
+pub(crate) type GetBufferMemoryRequirements =
+	unsafe extern "system" fn(RawDevice, RawBuffer, *mut MemoryRequirements);
+pub(crate) type AllocateMemory = unsafe extern "system" fn(
+	RawDevice,
+	*const MemoryAllocateInfo,
+	*const c_void,
+	*mut RawMemory,
+) -> i32;
+pub(crate) type FreeMemory = unsafe extern "system" fn(RawDevice, RawMemory, *const c_void);
+pub(crate) type BindBufferMemory =
+	unsafe extern "system" fn(RawDevice, RawBuffer, RawMemory, u64) -> i32;
+pub(crate) type MapMemory =
+	unsafe extern "system" fn(RawDevice, RawMemory, u64, u64, u32, *mut *mut c_void) -> i32;
