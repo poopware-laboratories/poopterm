@@ -1,6 +1,10 @@
-//! Calling Vulkan: result codes as errors, and the two-call pattern that
-//! lists objects (count first, then the items).
-use std::{ffi::CStr, fmt};
+//! Calling Vulkan: result codes as errors, the two-call pattern that lists
+//! objects (count first, then the items), and the fixed-size strings it
+//! writes.
+use std::{
+	ffi::{CStr, c_char},
+	fmt,
+};
 
 /// `VK_INCOMPLETE`: the list had more items than there was room for.
 pub(crate) const INCOMPLETE: i32 = 5;
@@ -64,4 +68,11 @@ pub(crate) fn enumerate<T: Copy>(
 		}
 	}
 	Err(Error::Failed(INCOMPLETE))
+}
+
+/// The text of a fixed-size C string field, up to its first NUL or its
+/// end, with bytes that are not UTF-8 replaced.
+pub(crate) fn fixed_string(field: &[c_char]) -> String {
+	let bytes = field.iter().map(|&c| c as u8).take_while(|&byte| byte != 0);
+	String::from_utf8_lossy(&bytes.collect::<Vec<u8>>()).into_owned()
 }

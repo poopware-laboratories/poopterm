@@ -19,7 +19,21 @@ pub(crate) enum Kind {
 	Cpu,
 }
 
-#[derive(Clone, Debug)]
+impl Kind {
+	/// The kind a `VkPhysicalDeviceType` value names; unknown ones are
+	/// `Other`.
+	pub(crate) fn from_type(value: i32) -> Self {
+		match value {
+			1 => Self::Integrated,
+			2 => Self::Discrete,
+			3 => Self::Virtual,
+			4 => Self::Cpu,
+			_ => Self::Other,
+		}
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct QueueFamily {
 	/// `VkQueueFlags`.
 	pub flags: u32,
@@ -28,8 +42,9 @@ pub(crate) struct QueueFamily {
 	pub present: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Device {
+	pub name: String,
 	pub kind: Kind,
 	pub api: u32,
 	pub families: Vec<QueueFamily>,

@@ -16,6 +16,7 @@ fn family(flags: u32, present: bool) -> QueueFamily {
 
 fn device(kind: Kind) -> Device {
 	Device {
+		name: format!("{kind:?}"),
 		kind,
 		api: api_version(1, 3),
 		families: vec![family(GRAPHICS | TRANSFER, true)],
@@ -190,6 +191,7 @@ fn random_machines_get_the_device_the_rules_pick() {
 	for _ in 0..5000 {
 		let devices: Vec<Device> = (0..rng.below(5))
 			.map(|_| Device {
+				name: String::new(),
 				kind: *rng.pick(&kinds),
 				api: api_version(1, 2 + rng.below(3) as u32) | rng.below(300) as u32,
 				families: (0..rng.below(4))
@@ -206,5 +208,24 @@ fn random_machines_get_the_device_the_rules_pick() {
 			let answer = choose(&devices, window, software);
 			assert_eq!(answer, expected(&devices, window, software), "{devices:#?}");
 		}
+	}
+}
+
+#[test]
+fn device_types_map_to_kinds_and_unknown_ones_to_other() {
+	// VK_PHYSICAL_DEVICE_TYPE_OTHER, _INTEGRATED_GPU, _DISCRETE_GPU,
+	// _VIRTUAL_GPU and _CPU, then values a newer driver might report.
+	let kinds = [
+		Kind::Other,
+		Kind::Integrated,
+		Kind::Discrete,
+		Kind::Virtual,
+		Kind::Cpu,
+	];
+	for (value, kind) in kinds.into_iter().enumerate() {
+		assert_eq!(Kind::from_type(value as i32), kind);
+	}
+	for unknown in [5, 1_000_000_000, -1, i32::MAX, i32::MIN] {
+		assert_eq!(Kind::from_type(unknown), Kind::Other);
 	}
 }

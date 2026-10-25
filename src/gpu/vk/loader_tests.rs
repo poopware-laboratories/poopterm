@@ -5,7 +5,13 @@
 //! Tests that need a loader skip without one, unless `POOPTERM_REQUIRE_VULKAN`
 //! is 1, as on Linux CI, which installs Mesa's software driver and the
 //! validation layer.
-use super::{call::Error, entry::Entry, library::Library, version::major_minor};
+use super::{
+	call::Error,
+	choose::{GRAPHICS, Kind, choose},
+	entry::Entry,
+	library::Library,
+	version::major_minor,
+};
 use std::{env, process::Command, ptr};
 
 fn required() -> bool {
@@ -153,4 +159,42 @@ fn closing_one_loader_leaves_another_usable() {
 	assert!(!second.physical_devices().expect("devices").is_empty());
 	let third = entry().map(|entry| entry.create_instance(c"third"));
 	assert!(third.is_some_and(|instance| instance.is_ok()));
+}
+
+#[test]
+fn every_device_is_described_and_one_can_draw_offscreen() {
+	let Some(entry) = entry() else { return };
+	let instance = entry.create_instance(c"poopterm tests").expect("instance");
+	let handles = instance.physical_devices().expect("devices");
+	let devices: Vec<_> = (handles.iter())
+		.map(|&handle| instance.describe(handle).expect("description"))
+		.collect();
+	for device in &devices {
+		assert!(
+			!device.name.is_empty() && !device.name.contains('\0'),
+			"{device:?}"
+		);
+		assert!(major_minor(device.api) >= (1, 0), "{device:?}");
+		let draws = device
+			.families
+			.iter()
+			.any(|family| family.flags & GRAPHICS != 0);
+		assert!(
+			draws,
+			"a conformant device has a graphics queue: {device:?}"
+		);
+		assert!(device.families.iter().all(|family| !family.present));
+	}
+	// Mesa's llvmpipe, at least, is Vulkan 1.3 and draws.
+	let choice = choose(&devices, false, true).expect("a device to draw on");
+	let chosen = &devices[choice.device];
+	assert!(chosen.families[choice.family].flags & GRAPHICS != 0);
+	if let Some(gpu) = devices.iter().position(|device| device.kind != Kind::Cpu) {
+		assert_ne!(chosen.kind, Kind::Cpu, "{:?} is a GPU", devices[gpu]);
+	}
+	// Describing again gives the same answer.
+	assert_eq!(
+		instance.describe(handles[choice.device]).as_ref(),
+		Ok(chosen)
+	);
 }
