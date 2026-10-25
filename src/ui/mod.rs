@@ -9,6 +9,9 @@ pub(crate) mod header;
 mod header_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
+pub(crate) mod overlays;
+#[cfg(test)]
+mod overlays_tests;
 pub(crate) mod scale;
 pub(crate) mod search;
 pub(crate) mod selection;

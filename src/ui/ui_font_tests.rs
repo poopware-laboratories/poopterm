@@ -1,7 +1,7 @@
 //! Tests of the UI font choice and of fitting chrome text by width.
 use super::ui_font::{
-	LINUX_FAMILIES, MACOS_FAMILIES, choose_family, ellipsize_to_width, fit_label, platform_families,
-	text_width,
+	LINUX_FAMILIES, MACOS_FAMILIES, choose_family, ellipsize_start_to_width, ellipsize_to_width,
+	fit_label, platform_families, text_width,
 };
 
 /// Advances of a toy proportional font: `i` is narrow, `m` and `…` wide.
@@ -273,4 +273,78 @@ fn combining_marks_stay_with_the_character_they_follow() {
 		ellipsize_to_width("e\u{301}e\u{301}", 14, advance),
 		"e\u{301}e\u{301}"
 	);
+}
+
+#[test]
+fn text_that_fits_keeps_its_start() {
+	assert_eq!(ellipsize_start_to_width("Shell", 27, advance), "Shell");
+	assert_eq!(ellipsize_start_to_width("", 0, advance), "");
+}
+
+#[test]
+fn text_that_does_not_fit_keeps_its_end_after_an_ellipsis() {
+	// "ll" is 6, the ellipsis 9: "…ll" (15) fits in 15, "…ell" (22) does not.
+	assert_eq!(ellipsize_start_to_width("Shell", 15, advance), "…ll");
+	assert_eq!(ellipsize_start_to_width("Shell", 21, advance), "…ll");
+	assert_eq!(ellipsize_start_to_width("Shell", 22, advance), "…ell");
+	assert!(text_width(&ellipsize_start_to_width("Shell", 24, advance), advance) <= 24);
+	// Narrow characters at the end let more of them stay: "ill" is 9.
+	assert_eq!(ellipsize_start_to_width("mmmmill", 18, advance), "…ill");
+}
+
+#[test]
+fn the_start_ellipsis_keeps_whole_characters() {
+	let kept = ellipsize_start_to_width("naïve façade", 40, advance);
+	assert!(kept.starts_with('…'));
+	assert!("naïve façade".ends_with(&kept[3..]), "{kept}");
+	assert!(text_width(&kept, advance) <= 40);
+	// One more character would not fit.
+	let next = "naïve façade"
+		.chars()
+		.rev()
+		.nth(kept.chars().count() - 1)
+		.unwrap();
+	assert!(text_width(&kept, advance) + advance(next) > 40);
+}
+
+#[test]
+fn widths_too_small_for_a_start_ellipsis_give_nothing_or_the_ellipsis() {
+	assert_eq!(ellipsize_start_to_width("Shell", 8, advance), "");
+	assert_eq!(ellipsize_start_to_width("Shell", 0, advance), "");
+	assert_eq!(ellipsize_start_to_width("mmm", 10, advance), "…");
+}
+
+#[test]
+fn the_start_ellipsis_cuts_between_characters_of_any_length() {
+	// Two, three and four bytes each, all 7 wide in the toy font.
+	let text = "aé世🦀b";
+	assert_eq!(ellipsize_start_to_width(text, 9 + 7, advance), "…b");
+	assert_eq!(ellipsize_start_to_width(text, 9 + 14, advance), "…🦀b");
+	assert_eq!(ellipsize_start_to_width(text, 9 + 21, advance), "…世🦀b");
+	// One pixel short of the whole text, which is 35 wide.
+	assert_eq!(ellipsize_start_to_width(text, 34, advance), "…世🦀b");
+	assert_eq!(ellipsize_start_to_width(text, 35, advance), text);
+}
+
+#[test]
+fn both_ellipses_agree_on_text_that_fits_and_stay_within_the_width() {
+	for text in ["", "Shell", "naïve façade", "mmmmill", "aé世🦀b"] {
+		for max in 0..80 {
+			let start = ellipsize_start_to_width(text, max, advance);
+			let end = ellipsize_to_width(text, max, advance);
+			if text_width(text, advance) <= max {
+				assert_eq!(
+					(start.as_str(), end.as_str()),
+					(text, text),
+					"{text:?} in {max}"
+				);
+			} else {
+				assert!(
+					text_width(&start, advance) <= max,
+					"{text:?} in {max}: {start:?}"
+				);
+				assert!(start.is_empty() || start.starts_with('…'), "{start:?}");
+			}
+		}
+	}
 }
