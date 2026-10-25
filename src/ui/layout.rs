@@ -276,6 +276,27 @@ mod tests {
 	}
 
 	#[test]
+	fn without_a_rim_the_grid_starts_at_the_padding_at_every_scale() {
+		for factor in [1.0, 1.5, 2.0, 3.0] {
+			let scale = chrome_scale(factor);
+			for padding in [0, 5] {
+				for (prefs, sidebar) in tab_modes().into_iter().zip([0, 0, 180]) {
+					let prefs = Preferences { padding, ..prefs };
+					let layout = layout(&chrome(factor, false), scale, &prefs, sidebar);
+					assert_eq!(layout.margin, padding * scale, "{factor}");
+					assert_eq!(layout.left, sidebar + padding * scale, "{factor}");
+					let bar = if prefs.show_tabs && !prefs.vertical_tabs {
+						44
+					} else {
+						0
+					};
+					assert_eq!(layout.top, (bar + padding) * scale, "{factor}");
+				}
+			}
+		}
+	}
+
+	#[test]
 	fn the_window_for_a_grid_adds_the_sidebar_and_every_bar() {
 		let [_, _, vertical] = tab_modes();
 		let layout = layout(&chrome(1.0, false), 1, &vertical, 180);

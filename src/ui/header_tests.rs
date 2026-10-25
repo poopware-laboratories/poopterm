@@ -8,7 +8,7 @@ use super::{
 use crate::{
 	render::{
 		blend::blend,
-		header::{Badge, Header, Icon, close_rect, pill},
+		header::{Badge, Header, Icon, Rect, close_rect, pill},
 	},
 	term::{
 		status::{Progress, ProgressState},
@@ -548,6 +548,38 @@ fn the_close_button_sits_inside_its_tab_beside_room_for_a_title() {
 			assert!(cx + cw <= px + pw, "{width} at {scale}x");
 			// The title keeps 12 pixels of padding and at least 40 of text.
 			assert!(cx >= px + (12 + 40) * scale, "{width} at {scale}x");
+		}
+	}
+}
+
+#[test]
+fn buttons_stay_inside_the_header_and_clear_of_tabs_at_any_width_and_scale() {
+	let theme = theme();
+	for scale in 1..=3 {
+		for width in (400 * scale..2400 * scale).step_by(97) {
+			for count in [1, 5, 40] {
+				let layout = tab_layout_with_compaction(width, count, scale, options(0, true));
+				let shown = layout.visible_count.min(count);
+				let tabs: Vec<_> = (0..shown).map(|_| info("t")).collect();
+				let header = header(&HeaderInput {
+					count,
+					bounds: (0, 44 * scale),
+					..input(&layout, &tabs, &theme)
+				});
+				let mut rects: Vec<_> = header.buttons.iter().map(|button| button.rect).collect();
+				rects.sort();
+				let at = format!("{count} tabs in {width} at {scale}x");
+				for &(x, y, w, h) in &rects {
+					assert!(x + w <= width && y + h <= 44 * scale, "{at}");
+				}
+				for pair in rects.windows(2) {
+					assert!(pair[0].0 + pair[0].2 <= pair[1].0, "{at}: {pair:?}");
+				}
+				for tab in &header.tabs {
+					let clear = |&(x, _, w, _): &Rect| tab.x + tab.width <= x || x + w <= tab.x;
+					assert!(rects.iter().all(clear), "{at}: tab at {}", tab.x);
+				}
+			}
 		}
 	}
 }
