@@ -16,3 +16,5 @@ pub(crate) mod painter;
 mod backend_tests;
 #[cfg(test)]
 mod emoji_tests;
+#[cfg(test)]
+mod presentation_tests;

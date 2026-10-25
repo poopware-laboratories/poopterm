@@ -3,7 +3,7 @@ use super::{
 	blend::blend,
 	boxdraw::{self, Drawn},
 	fit::{fit_left, fit_scale},
-	glyphs::FontSet,
+	glyphs::{FontSet, Presentation},
 	images::draw_placement,
 	multicell::draw_multicell,
 	padding::extend_padding,
@@ -231,17 +231,23 @@ fn draw_cell(
 	}
 	let span = cw * cell.width as usize;
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
+	let presentation = if cell.extra == NO_EXTRA {
+		Presentation::Default
+	} else {
+		Presentation::of(view.frame.marks(cell))
+	};
 	if boxdraw::covers(cell.ch) {
 		draw_drawn(p, fonts, cell.ch, (x0, y0), (span, ch), fg);
 	} else {
-		let glyph = fonts.glyph(cell.ch, view.px);
+		let glyph = fonts.presented(cell.ch, view.px, presentation);
 		let m = &glyph.metrics;
 		if m.xmin >= 0 && m.xmin + m.width as i32 <= span as i32 && m.height <= ch + 1 {
 			let origin = (x0 as i32 + m.xmin, glyph_top(glyph, y0, view.ascent));
 			let clip = (x0 as i32, top, (x0 + span) as i32, bottom);
 			p.glyph(glyph, origin, clip, italic, fg);
 		} else {
-			draw_oversized(p, fonts, view, cell, (x0, y0), italic, fg, next);
+			let style = (italic, fg, presentation);
+			draw_oversized(p, fonts, view, cell, (x0, y0), style, next);
 		}
 	}
 	if cell.extra == NO_EXTRA {
@@ -257,7 +263,7 @@ fn draw_cell(
 		);
 	}
 	for &mark in view.frame.marks(cell) {
-		if mark == '\u{200d}' || mark == '\u{fe0f}' {
+		if matches!(mark, '\u{200d}' | '\u{fe0e}' | '\u{fe0f}') {
 			continue;
 		}
 		let glyph = fonts.glyph(mark, view.px);
@@ -307,15 +313,13 @@ fn draw_drawn(
 /// Draws a font glyph whose ink is wider or taller than its cell: it spills
 /// into a blank neighbor, or else shrinks.
 #[cold]
-#[allow(clippy::too_many_arguments)]
 fn draw_oversized(
 	p: &mut Painter,
 	fonts: &mut FontSet,
 	view: &GridView,
 	cell: &Cell,
 	(x0, y0): (usize, usize),
-	italic: bool,
-	fg: u32,
+	(italic, fg, presentation): (bool, u32, Presentation),
 	next: Option<&Cell>,
 ) {
 	let (cw, ch) = view.cell;
@@ -323,7 +327,7 @@ fn draw_oversized(
 	let (top, bottom) = (y0 as i32, (y0 + ch) as i32);
 	let next_blank =
 		next.is_some_and(|next| next.ch == ' ' && next.extra == NO_EXTRA && next.width == 1);
-	let glyph = fonts.glyph(cell.ch, view.px);
+	let glyph = fonts.presented(cell.ch, view.px, presentation);
 	let metrics = glyph.metrics;
 	let overflows = metrics.xmin < 0 || metrics.xmin + metrics.width as i32 > span as i32;
 	let room = if overflows && next_blank && cell.width == 1 {
@@ -335,7 +339,7 @@ fn draw_oversized(
 	// at full size; that pixel is clipped as before.
 	let scale = fit_scale((metrics.width, metrics.height), (room + 1, ch + 1));
 	let glyph = if scale < 1.0 {
-		fonts.glyph(cell.ch, view.px * scale)
+		fonts.presented(cell.ch, view.px * scale, presentation)
 	} else {
 		glyph
 	};

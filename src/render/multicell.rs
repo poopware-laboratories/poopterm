@@ -1,7 +1,11 @@
 //! Draws scaled text (kitty's OSC 66) over its block of cells, one row of
 //! the block at a time, so rows redraw alone.
 
-use super::{glyphs::FontSet, grid::GridView, painter::Painter};
+use super::{
+	glyphs::{FontSet, Presentation},
+	grid::GridView,
+	painter::Painter,
+};
 use crate::term::multicell::Multicell;
 
 /// Where a block's text goes: its offset from the block's top-left corner
@@ -67,12 +71,17 @@ pub(super) fn draw_multicell(
 	let mut pen = layout.x;
 	// The span of the last character, which marks are centered over.
 	let mut last = (pen, layout.cell_w);
-	for c in part.text.chars() {
+	let mut chars = part.text.chars().peekable();
+	while let Some(c) = chars.next() {
 		let width = crate::width::width(c);
-		if width == 0 && matches!(c, '\u{200d}' | '\u{fe0f}') {
+		if width == 0 && matches!(c, '\u{200d}' | '\u{fe0e}' | '\u{fe0f}') {
 			continue;
 		}
-		let glyph = fonts.glyph(c, px);
+		let presentation = match chars.peek() {
+			Some(&next) => Presentation::of(&[next]),
+			None => Presentation::Default,
+		};
+		let glyph = fonts.presented(c, px, presentation);
 		let x = if width == 0 {
 			last.0 + (last.1 - glyph.metrics.width as f32) / 2.0
 		} else {
