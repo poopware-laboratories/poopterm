@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.85 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Allow fractional font sizes (#118) (config).
+
+### Maintenance
+
+- Record that the gpu work is claimed by vx9k (#119) (todo).
+
 ## 26.10.84 "Giga Fly" — 2026-10-25
 
 ### Fixed
