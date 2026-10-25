@@ -57,6 +57,9 @@ pub(crate) fn extend_below(p: &mut Painter, view: &GridView) {
 
 /// Paints pixel rows `ys` across the padding area with `row`'s
 /// backgrounds, each cell's under it and the edge cells' to the sides.
+/// Only a row colored all the way across extends: a partly colored one,
+/// such as less's reverse-video prompt, would leave a band that looks
+/// like a selected line.
 fn extend_row(p: &mut Painter, view: &GridView, row: usize, ys: (usize, usize)) {
 	let (Some(area), Some(cells)) = (
 		view.padding,
@@ -64,6 +67,9 @@ fn extend_row(p: &mut Painter, view: &GridView, row: usize, ys: (usize, usize)) 
 	) else {
 		return;
 	};
+	if cells.iter().any(|cell| cell.bg == view.default_bg) {
+		return;
+	}
 	let (Some(first), Some(last)) = (cells.first(), cells.last()) else {
 		return;
 	};
@@ -173,9 +179,31 @@ mod tests {
 		assert_eq!((at(2, 30), at(48, 30)), (UNDER, UNDER));
 		// Row 2 (y 47..67): blue only where its edge cell is blue.
 		assert_eq!((at(2, 50), at(48, 50)), (BLUE, UNDER));
-		// Below row 2, under its first cell and the left corner only.
-		assert_eq!((at(2, 70), at(10, 77), at(20, 70)), (BLUE, BLUE, UNDER));
-		assert_eq!(at(10, 78), UNDER);
+		// Row 2 is only partly colored, so nothing extends below it.
+		assert_eq!((at(2, 70), at(10, 77), at(20, 70)), (UNDER, UNDER, UNDER));
+	}
+
+	#[test]
+	fn a_partly_colored_edge_row_does_not_extend_above_or_below() {
+		// A less prompt: two reverse-video cells, then default ones.
+		let frame = frame("\x1b[7mab\x1b[0m\x1b[3;1H\x1b[7mab\x1b[0m");
+		let pixels = draw(&frame, None);
+		let at = |x: usize, y: usize| pixels[y * 52 + x];
+		// The prompt's own cells and the padding beside them stay colored.
+		assert_ne!((at(2, 10), at(2, 50)), (UNDER, UNDER));
+		// No band above the first row or below the last.
+		assert_eq!((at(2, 4), at(10, 4), at(20, 4)), (UNDER, UNDER, UNDER));
+		assert_eq!((at(2, 70), at(10, 77), at(20, 70)), (UNDER, UNDER, UNDER));
+	}
+
+	#[test]
+	fn a_fully_colored_last_row_extends_below() {
+		// A statusline: every cell of the last row colored.
+		let frame = frame("\x1b[3;1H\x1b[48;2;0;0;238m\x1b[K");
+		let pixels = draw(&frame, None);
+		let at = |x: usize, y: usize| pixels[y * 52 + x];
+		assert_eq!((at(1, 77), at(20, 70), at(50, 77)), (BLUE, BLUE, BLUE));
+		assert_eq!(at(20, 78), UNDER);
 	}
 
 	#[test]
