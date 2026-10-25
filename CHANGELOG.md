@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.99 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Antialias rounded corners (#137) (render).
+
 ## 26.10.98 "Giga Fly" — 2026-10-25
 
 ### Added
