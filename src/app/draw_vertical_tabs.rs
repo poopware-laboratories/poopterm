@@ -121,7 +121,7 @@ impl App {
 		view: &SidebarView,
 	) {
 		let (bg, border, fg) = (self.theme.bg, self.theme.border, self.theme.fg);
-		let accent = self.theme.palette[4];
+		let (dim, accent) = tab_text_colors(&self.theme);
 		let sidebar_top = self.sidebar_top();
 		let sidebar_bg = blend(bg, border, 24);
 		p.rect(
@@ -200,7 +200,7 @@ impl App {
 					Marker::Error => ("•", self.theme.palette[1]),
 					Marker::Done => ("•", self.theme.palette[2]),
 					Marker::Working => ("•", accent),
-					Marker::Activity => ("•", blend(bg, fg, 150)),
+					Marker::Activity => ("•", dim),
 				})
 				.or(style.indicator.map(|color| ("•", color)));
 			if layout.compact_rail {
@@ -280,7 +280,7 @@ impl App {
 					&status,
 					ui.px * 0.76,
 					small_ascent,
-					style.status_color.unwrap_or(blend(bg, fg, 150)),
+					style.status_color.unwrap_or(dim),
 					(label_x, y, room, row_h),
 				);
 			}

@@ -1,4 +1,5 @@
 //! Window-system-independent UI models: selection, search and tab layout.
+pub(crate) mod contrast;
 pub(crate) mod copy;
 pub(crate) mod layout;
 pub(crate) mod links;

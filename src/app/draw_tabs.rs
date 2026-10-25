@@ -26,7 +26,7 @@ impl App {
 		let tab_y = self.tab_y();
 		let layout = self.tab_layout();
 		let (bg, border, fg) = (self.theme.bg, self.theme.border, self.theme.fg);
-		let accent = self.theme.palette[4];
+		let (dim, accent) = tab_text_colors(&self.theme);
 		let text_y = tab_y + self.tab_height.saturating_sub(ui.ch) / 2;
 		let small_ascent = (ui.ascent as f32 * 0.82) as i32;
 		p.rect(0, tab_y, p.width, self.tab_height, bg);
@@ -114,7 +114,7 @@ impl App {
 					Marker::Error => ("•", self.theme.palette[1]),
 					Marker::Done => ("•", self.theme.palette[2]),
 					Marker::Working => ("•", accent),
-					Marker::Activity => ("•", blend(bg, fg, 150)),
+					Marker::Activity => ("•", dim),
 				})
 				.or(style.indicator.map(|color| ("•", color)));
 			if let Some((glyph, color)) = dot {
@@ -163,7 +163,7 @@ impl App {
 					&status,
 					ui.px * 0.82,
 					small_ascent,
-					style.status_color.unwrap_or(blend(bg, fg, 150)),
+					style.status_color.unwrap_or(dim),
 					(
 						label_x,
 						tab_y + 4 * scale,

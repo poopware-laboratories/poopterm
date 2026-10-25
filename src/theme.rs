@@ -298,24 +298,7 @@ pub(crate) fn xterm_color(index: u8, palette: [u32; 8]) -> u32 {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	fn relative_luminance(color: u32) -> f64 {
-		let linear_channel = |shift: u32| {
-			let srgb = ((color >> shift) & 0xFF) as f64 / 255.0;
-			if srgb <= 0.04045 {
-				srgb / 12.92
-			} else {
-				((srgb + 0.055) / 1.055).powf(2.4)
-			}
-		};
-		0.2126 * linear_channel(16) + 0.7152 * linear_channel(8) + 0.0722 * linear_channel(0)
-	}
-
-	fn contrast_ratio(foreground: u32, background: u32) -> f64 {
-		let foreground = relative_luminance(foreground);
-		let background = relative_luminance(background);
-		(foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
-	}
+	use crate::ui::contrast::ratio as contrast_ratio;
 
 	#[test]
 	fn built_in_theme_foreground_background_meet_wcag_aa() {
@@ -456,15 +439,6 @@ mod tests {
 		for (index, theme) in themes.iter().enumerate() {
 			assert_eq!(theme.next(), themes[(index + 1) % themes.len()]);
 		}
-	}
-
-	#[test]
-	fn contrast_ratio_uses_wcag_relative_luminance() {
-		assert!((contrast_ratio(0x000000, 0xFFFFFF) - 21.0).abs() < f64::EPSILON);
-		assert!((contrast_ratio(0xFFFFFF, 0x000000) - 21.0).abs() < f64::EPSILON);
-		assert!((contrast_ratio(0x000000, 0x000000) - 1.0).abs() < f64::EPSILON);
-		assert!(contrast_ratio(0x767676, 0xFFFFFF) >= 4.5);
-		assert!(contrast_ratio(0x777777, 0xFFFFFF) < 4.5);
 	}
 
 	#[test]
