@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.82 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Require a SAFETY comment on every unsafe block (#115).
+
 ## 26.10.81 "Giga Fly" — 2026-10-25
 
 ### Maintenance
