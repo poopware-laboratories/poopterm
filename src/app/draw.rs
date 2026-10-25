@@ -8,38 +8,19 @@ use crate::{
 	render::{
 		grid::{GridView, draw_grid},
 		painter::{ButtonStyle, Painter},
+		popover::draw_popover,
 		status_bar::draw_status_bar,
 	},
-	ui::status_bar::{StatusInput, status_bar},
+	ui::{
+		overlays::{Place, command_palette, search_box},
+		status_bar::{StatusInput, status_bar},
+	},
 };
 
-/// Commands offered by the command palette, in display order.
-pub(super) const PALETTE_COMMANDS: [&str; 7] = [
-	"New tab",
-	"Settings",
-	"About poopterm",
-	"Cycle theme",
-	"Copy last command output",
-	"Close tab",
-	"Rename active tab",
-];
-
-const PALETTE_COMMANDS_TOP: usize = 54;
-const PALETTE_COMMAND_ROW_HEIGHT: usize = 28;
-const PALETTE_BOTTOM_PADDING: usize = 16;
-
-fn command_palette_height(command_count: usize, scale: usize) -> usize {
-	(PALETTE_COMMANDS_TOP + command_count * PALETTE_COMMAND_ROW_HEIGHT + PALETTE_BOTTOM_PADDING)
-		* scale
-}
-
-/// Metrics for toolbar text, which keeps its size regardless of the terminal font.
+/// Toolbar text, which keeps its size regardless of the terminal font.
 #[derive(Clone, Copy)]
 pub(super) struct UiFont {
 	pub px: f32,
-	pub cw: usize,
-	pub ch: usize,
-	pub ascent: i32,
 }
 
 impl App {
@@ -61,14 +42,7 @@ impl App {
 	// pr-check: end window glue
 
 	pub(super) fn ui_font(&self, px: f32) -> UiFont {
-		let font = self.ui_fonts.primary();
-		let metrics = font.horizontal_line_metrics(px).expect("font metrics");
-		UiFont {
-			px,
-			cw: font.metrics('M', px).advance_width.ceil() as usize,
-			ch: metrics.new_line_size.ceil() as usize,
-			ascent: metrics.ascent.round() as i32,
-		}
+		UiFont { px }
 	}
 
 	pub(super) fn button_style(&self, scale: usize) -> ButtonStyle {
@@ -199,105 +173,31 @@ impl App {
 		}
 	}
 
-	/// Draws a bordered, rounded panel and returns nothing; used by overlays.
-	fn panel(&self, p: &mut Painter, (x, y, w, h): (usize, usize, usize, usize), radius: usize) {
-		let scale = self.scale();
-		p.round_rect(x, y, w, h, radius, self.theme.border);
-		p.round_rect(
-			x + scale,
-			y + scale,
-			w.saturating_sub(2 * scale),
-			h.saturating_sub(2 * scale),
-			radius.saturating_sub(scale),
-			self.theme.bg,
-		);
+	fn overlay_place(&self, p: &Painter, scale: usize) -> Place {
+		Place {
+			window: (p.width, p.height),
+			top: self.top,
+			scale,
+		}
 	}
 
 	fn draw_search_box(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
-		let box_w = (500 * scale).min(p.width.saturating_sub(24 * scale));
-		let box_h = 42 * scale;
-		let x = p.width.saturating_sub(box_w + 16 * scale);
-		let y = self.top + 12 * scale;
-		self.panel(p, (x, y, box_w, box_h), 8 * scale);
-		let status = if self.search_matches.is_empty() {
-			"0 matches".to_owned()
-		} else {
-			format!(
-				"{}/{}",
-				self.search_match_index + 1,
-				self.search_matches.len()
-			)
-		};
-		let available = (box_w / ui.cw.max(1)).saturating_sub(25);
-		let skip = self.search_query.chars().count().saturating_sub(available);
-		let query: String = self.search_query.chars().skip(skip).collect();
-		let label = format!("Find: {query}  {status}  Enter / Esc");
-		let text_y = y + box_h.saturating_sub(ui.ch) / 2;
-		let color = self.theme.fg;
-		p.text(
-			&mut self.ui_fonts,
-			x + 12 * scale,
-			text_y,
-			&label,
-			ui.px * 0.82,
-			ui.ascent,
-			color,
-		);
+		let place = self.overlay_place(p, scale);
+		// pr-check: window glue: hands the search state to the tested search box model
+		let found = (self.search_matches.len(), self.search_match_index);
+		let query = (self.search_query.as_str(), found.0, found.1);
+		let popover = search_box(place, query, ui.px * 0.86, &self.theme);
+		draw_popover(p, &mut self.ui_fonts, &popover);
+		// pr-check: end window glue
 	}
 
 	fn draw_command_palette(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
-		let box_w = (520 * scale).min(p.width.saturating_sub(24 * scale));
-		let x = p.width.saturating_sub(box_w) / 2;
-		let y = self.top + 20 * scale;
-		let query = self.command_query.to_ascii_lowercase();
-		let matches: Vec<_> = PALETTE_COMMANDS
-			.into_iter()
-			.filter(|command| command.to_ascii_lowercase().contains(&query))
-			.collect();
-		let requested_height = if self.renaming_tab {
-			210 * scale
-		} else {
-			command_palette_height(matches.len(), scale)
-		};
-		let box_h = requested_height.min(p.height.saturating_sub(y));
-		self.panel(p, (x, y, box_w, box_h), 10 * scale);
-		let color = self.theme.fg;
-		let label = if self.renaming_tab {
-			format!("Rename active tab: {}", self.command_query)
-		} else {
-			format!("Run command: {}", self.command_query)
-		};
-		p.text_clipped(
-			&mut self.ui_fonts,
-			x + 16 * scale,
-			y + 14 * scale,
-			&label,
-			ui.px * 0.86,
-			ui.ascent,
-			color,
-			(x + 16 * scale, y, box_w.saturating_sub(32 * scale), box_h),
-		);
-		if self.renaming_tab {
-			return;
-		}
-		let row_clip = (
-			x + 20 * scale,
-			y + PALETTE_COMMANDS_TOP * scale,
-			box_w.saturating_sub(40 * scale),
-			box_h.saturating_sub(PALETTE_COMMANDS_TOP * scale),
-		);
-		for (index, command) in matches.into_iter().enumerate() {
-			p.text_clipped(
-				&mut self.ui_fonts,
-				x + 20 * scale,
-				y + (PALETTE_COMMANDS_TOP + index * PALETTE_COMMAND_ROW_HEIGHT) * scale,
-				command,
-				ui.px * 0.78,
-				ui.ascent,
-				color,
-				row_clip,
-			);
-		}
+		let place = self.overlay_place(p, scale);
+		// pr-check: window glue: hands the palette state to the tested palette model
+		let query = (self.command_query.as_str(), self.renaming_tab);
+		let popover = command_palette(place, query, ui.px * 0.86, &self.theme);
+		draw_popover(p, &mut self.ui_fonts, &popover);
+		// pr-check: end window glue
 	}
 
 	pub(super) fn draw_status_bar(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
@@ -326,20 +226,5 @@ impl App {
 		drop(term);
 		draw_status_bar(p, &mut self.ui_fonts, &bar);
 		// pr-check: end window glue
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn command_palette_height_contains_every_command_row() {
-		let scale = 2;
-		let final_row_bottom = (PALETTE_COMMANDS_TOP
-			+ (PALETTE_COMMANDS.len() - 1) * PALETTE_COMMAND_ROW_HEIGHT
-			+ PALETTE_COMMAND_ROW_HEIGHT)
-			* scale;
-		assert!(command_palette_height(PALETTE_COMMANDS.len(), scale) >= final_row_bottom);
 	}
 }

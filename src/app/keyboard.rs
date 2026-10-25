@@ -1,10 +1,10 @@
 //! Keyboard events: application shortcuts, overlays, then PTY input.
-use super::draw::PALETTE_COMMANDS;
 use super::*;
 use crate::input::{
 	keypad::encode_keypad,
 	keys::{KeyModes, encode_key},
 };
+use crate::ui::overlays::palette_matches;
 use winit::{event::KeyEvent, keyboard::KeyLocation};
 
 impl App {
@@ -80,12 +80,8 @@ impl App {
 					self.command_query.pop();
 				}
 				Key::Named(NamedKey::Enter) => {
-					let query = self.command_query.to_ascii_lowercase();
 					self.command_palette = false;
-					if let Some(command) = PALETTE_COMMANDS
-						.iter()
-						.find(|command| command.to_ascii_lowercase().contains(&query))
-					{
+					if let Some(command) = palette_matches(&self.command_query).first() {
 						match *command {
 							"Rename active tab" => {
 								self.renaming_tab = true;

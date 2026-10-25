@@ -81,6 +81,31 @@ pub(crate) fn ellipsize_to_width(
 	fitted
 }
 
+/// `text` whole if it fits in `max`, else its longest suffix that fits
+/// after a leading ellipsis; empty when not even the ellipsis fits.
+pub(crate) fn ellipsize_start_to_width(
+	text: &str,
+	max: usize,
+	mut advance: impl FnMut(char) -> usize,
+) -> String {
+	if text_width(text, &mut advance) <= max {
+		return text.to_owned();
+	}
+	let Some(mut budget) = max.checked_sub(advance('…')) else {
+		return String::new();
+	};
+	let mut start = text.len();
+	for (index, ch) in text.char_indices().rev() {
+		let width = advance(ch);
+		if width > budget {
+			break;
+		}
+		budget -= width;
+		start = index;
+	}
+	format!("…{}", &text[start..])
+}
+
 /// Fits a tab's title and status into `room` pixels: after a gap of two
 /// spaces, the status gets at least half, or all the title leaves, and the
 /// title the rest; all of it when the status cannot show a character.
