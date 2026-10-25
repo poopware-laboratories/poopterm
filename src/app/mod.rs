@@ -77,6 +77,8 @@ pub(crate) struct App {
 	ascent: i32,
 	margin: usize,
 	top: usize,
+	/// The first pixel row of the padding above the grid, under the chrome.
+	padding_top: usize,
 	titlebar_height: usize,
 	tab_height: usize,
 	status_height: usize,
@@ -196,7 +198,8 @@ impl App {
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
 		let layout = self.layout();
-		(self.margin, self.status_height, self.top) = (layout.margin, layout.status_height, layout.top);
+		(self.margin, self.status_height) = (layout.margin, layout.status_height);
+		(self.top, self.padding_top) = (layout.top, layout.padding_top);
 		// pr-check: end window glue
 	}
 
@@ -322,6 +325,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		ascent: 15,
 		margin: 8,
 		top: 8,
+		padding_top: 0,
 		titlebar_height: 0,
 		tab_height: 46,
 		status_height: 26,

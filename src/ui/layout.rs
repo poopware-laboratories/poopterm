@@ -10,6 +10,9 @@ pub(crate) struct Layout {
 	pub(crate) margin: usize,
 	/// The grid's first pixel row.
 	pub(crate) top: usize,
+	/// The first pixel row of the padding above the grid: below the border,
+	/// the title bar and a tab bar, which ends where the grid starts.
+	pub(crate) padding_top: usize,
 	pub(crate) status_height: usize,
 	/// The grid's first pixel column, right of a vertical tab `sidebar`.
 	pub(crate) left: usize,
@@ -20,9 +23,15 @@ pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar
 	let margin = chrome.border + prefs.padding * scale;
 	// With a title bar (macOS), the tab strip sits in it.
 	let tab_bar = prefs.show_tabs && !prefs.vertical_tabs && chrome.titlebar_height == 0;
+	let top = chrome.titlebar_height + if tab_bar { chrome.tab_height } else { 0 } + margin;
 	Layout {
 		margin,
-		top: chrome.titlebar_height + if tab_bar { chrome.tab_height } else { 0 } + margin,
+		top,
+		padding_top: if tab_bar {
+			top
+		} else {
+			chrome.titlebar_height + chrome.border
+		},
 		status_height: if prefs.show_bottom_bar { 26 * scale } else { 0 },
 		left: margin + sidebar,
 	}
@@ -78,6 +87,7 @@ mod tests {
 		let expected = Layout {
 			margin: 2,
 			top: 46,
+			padding_top: 46,
 			status_height: 26,
 			left: 2,
 		};
@@ -223,6 +233,50 @@ mod tests {
 		};
 		let layout = layout(&chrome(2.0, true), 2, &prefs, 0);
 		assert_eq!((layout.margin, layout.top, layout.left), (8, 88 + 8, 8));
+	}
+
+	#[test]
+	fn the_padding_above_the_grid_starts_below_the_tab_bar() {
+		// The tab bar ends where the grid starts; its bottom border must not
+		// be painted over with the padding.
+		let prefs = Preferences {
+			padding: 3,
+			..Preferences::default()
+		};
+		let tabs = linux(&prefs);
+		assert_eq!(tabs.top, 44 + 2 + 3);
+		assert_eq!(tabs.padding_top, tabs.top);
+		let scaled = layout(&chrome(2.0, false), 2, &prefs, 0);
+		assert_eq!(scaled.padding_top, scaled.top);
+	}
+
+	#[test]
+	fn without_a_tab_bar_the_padding_starts_inside_the_border() {
+		for padding in [0, 3] {
+			let [_, hidden, vertical] = tab_modes().map(|prefs| Preferences { padding, ..prefs });
+			for prefs in [hidden, vertical] {
+				let layout = linux(&prefs);
+				assert_eq!(
+					layout.padding_top, 2,
+					"below the border, vertical: {}",
+					prefs.vertical_tabs
+				);
+				assert_eq!(layout.top - layout.padding_top, padding);
+			}
+		}
+	}
+
+	#[test]
+	fn on_macos_the_padding_starts_below_the_title_bar() {
+		for prefs in tab_modes() {
+			let prefs = Preferences {
+				padding: 4,
+				..prefs
+			};
+			let layout = layout(&chrome(2.0, true), 2, &prefs, 0);
+			assert_eq!(layout.padding_top, 88, "vertical: {}", prefs.vertical_tabs);
+			assert_eq!(layout.top, 88 + 8);
+		}
 	}
 
 	#[test]
