@@ -1,6 +1,7 @@
 //! Tests of calling Vulkan: which result codes are errors and how they
 //! read, and the two-call enumeration as drivers may answer it.
-use super::call::{Error, INCOMPLETE, check, enumerate};
+use super::call::{Error, INCOMPLETE, check, enumerate, fixed_string};
+use std::ffi::c_char;
 
 #[test]
 fn success_and_status_codes_pass_and_negative_codes_fail() {
@@ -138,4 +139,37 @@ fn an_empty_list_takes_one_call() {
 	};
 	assert_eq!(enumerate(0, empty), Ok(vec![]));
 	assert_eq!(calls, 1);
+}
+
+/// `text` in a fixed-size field of `N` C characters, padded with `fill`.
+fn field<const N: usize>(text: &[u8], fill: u8) -> [c_char; N] {
+	let mut field = [fill as c_char; N];
+	for (out, &byte) in field.iter_mut().zip(text) {
+		*out = byte as c_char;
+	}
+	field
+}
+
+#[test]
+fn fixed_strings_end_at_the_first_nul() {
+	assert_eq!(
+		fixed_string(&field::<256>(b"llvmpipe (LLVM 23.1.1)\0junk", 0)),
+		"llvmpipe (LLVM 23.1.1)"
+	);
+	assert_eq!(
+		fixed_string(&field::<256>(b"VK_KHR_swapchain", 0)),
+		"VK_KHR_swapchain"
+	);
+	assert_eq!(fixed_string(&field::<8>(b"\0", b'x')), "");
+	assert_eq!(fixed_string(&field::<8>(b"", 0)), "");
+}
+
+#[test]
+fn fixed_strings_without_a_nul_stop_at_the_field_and_bad_bytes_are_replaced() {
+	// A broken driver may fill the whole field; nothing past it is read.
+	assert_eq!(fixed_string(&field::<4>(b"abcdef", b'z')), "abcd");
+	assert_eq!(fixed_string(&field::<3>(b"", b'q')), "qqq");
+	assert_eq!(fixed_string(&field::<6>(b"a\xffb\0", 0)), "a\u{fffd}b");
+	assert_eq!(fixed_string(&field::<6>("é\0".as_bytes(), 0)), "é");
+	assert_eq!(fixed_string(&[]), "");
 }

@@ -36,6 +36,58 @@ pub(crate) struct InstanceCreateInfo {
 	pub enabled_extension_names: *const *const c_char,
 }
 
+/// `VkPhysicalDeviceProperties`, with the limits and sparse properties
+/// kept opaque until the renderer reads one.
+#[repr(C)]
+pub(crate) struct PhysicalDeviceProperties {
+	pub api_version: u32,
+	pub driver_version: u32,
+	pub vendor_id: u32,
+	pub device_id: u32,
+	/// `VkPhysicalDeviceType`.
+	pub device_type: i32,
+	pub device_name: [c_char; 256],
+	pub pipeline_cache_uuid: [u8; 16],
+	/// `VkPhysicalDeviceLimits`: 504 bytes, aligned for its 64-bit sizes.
+	pub limits: [u64; 63],
+	/// `VkPhysicalDeviceSparseProperties`.
+	pub sparse: [u32; 5],
+}
+
+impl Default for PhysicalDeviceProperties {
+	fn default() -> Self {
+		Self {
+			api_version: 0,
+			driver_version: 0,
+			vendor_id: 0,
+			device_id: 0,
+			device_type: 0,
+			device_name: [0; 256],
+			pipeline_cache_uuid: [0; 16],
+			limits: [0; 63],
+			sparse: [0; 5],
+		}
+	}
+}
+
+/// `VkQueueFamilyProperties`.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct QueueFamilyProperties {
+	pub queue_flags: u32,
+	pub queue_count: u32,
+	pub timestamp_valid_bits: u32,
+	pub min_image_transfer_granularity: [u32; 3],
+}
+
+/// `VkExtensionProperties`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct ExtensionProperties {
+	pub extension_name: [c_char; 256],
+	pub spec_version: u32,
+}
+
 /// `PFN_vkVoidFunction`: what the loader returns, cast to the real type.
 pub(crate) type VoidFunction = unsafe extern "system" fn();
 pub(crate) type GetInstanceProcAddr =
@@ -46,3 +98,13 @@ pub(crate) type CreateInstance =
 pub(crate) type DestroyInstance = unsafe extern "system" fn(RawInstance, *const c_void);
 pub(crate) type EnumeratePhysicalDevices =
 	unsafe extern "system" fn(RawInstance, *mut u32, *mut RawPhysicalDevice) -> i32;
+pub(crate) type GetPhysicalDeviceProperties =
+	unsafe extern "system" fn(RawPhysicalDevice, *mut PhysicalDeviceProperties);
+pub(crate) type GetPhysicalDeviceQueueFamilyProperties =
+	unsafe extern "system" fn(RawPhysicalDevice, *mut u32, *mut QueueFamilyProperties);
+pub(crate) type EnumerateDeviceExtensionProperties = unsafe extern "system" fn(
+	RawPhysicalDevice,
+	*const c_char,
+	*mut u32,
+	*mut ExtensionProperties,
+) -> i32;

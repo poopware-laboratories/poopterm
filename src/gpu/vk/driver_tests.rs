@@ -4,6 +4,7 @@
 //! the specification's valid usage rules as it is called.
 use super::{
 	call::{Error, INCOMPLETE},
+	choose::{Device, GRAPHICS, Kind, QueueFamily, TRANSFER},
 	entry::Entry,
 	types::*,
 	version::api_version,
@@ -28,6 +29,8 @@ struct Driver {
 	/// The devices there are once the first count was given, if more.
 	grown: Vec<RawPhysicalDevice>,
 	device_calls: u32,
+	/// What each of `devices` is, by index.
+	described: Vec<Device>,
 	lookups: Vec<(RawInstance, String)>,
 	created: Vec<Created>,
 	live: Vec<RawInstance>,
@@ -60,6 +63,19 @@ impl Driver {
 			.iter()
 			.find(|(failing, _)| *failing == name)
 			.map(|&(_, code)| code)
+	}
+
+	/// The description of `device`, breaking the test unless the driver
+	/// listed it.
+	fn device(&mut self, device: RawPhysicalDevice, call: &str) -> Option<Device> {
+		let index = self.devices.iter().position(|&listed| listed == device);
+		let found = index.and_then(|index| self.described.get(index).cloned());
+		if found.is_none() {
+			self
+				.invalid
+				.push(format!("{call} on {device:?}, which was not listed"));
+		}
+		found
 	}
 
 	/// Breaks the test unless `instance` is one the driver made and has not
@@ -131,6 +147,15 @@ unsafe extern "system" fn get_instance_proc_addr(
 				b"vkDestroyInstance" => transmute::<DestroyInstance, VoidFunction>(destroy_instance),
 				b"vkEnumeratePhysicalDevices" => {
 					transmute::<EnumeratePhysicalDevices, VoidFunction>(enumerate_physical_devices)
+				}
+				b"vkGetPhysicalDeviceProperties" => {
+					transmute::<GetPhysicalDeviceProperties, VoidFunction>(properties)
+				}
+				b"vkGetPhysicalDeviceQueueFamilyProperties" => {
+					transmute::<GetPhysicalDeviceQueueFamilyProperties, VoidFunction>(queue_families)
+				}
+				b"vkEnumerateDeviceExtensionProperties" => {
+					transmute::<EnumerateDeviceExtensionProperties, VoidFunction>(extensions)
 				}
 				_ => return None,
 			})
@@ -246,17 +271,128 @@ unsafe extern "system" fn enumerate_physical_devices(
 			}
 			return 0;
 		}
-		let all = &driver.devices;
-		// SAFETY: the bindings pass a count, and room for that many devices.
-		let room = unsafe { count.read() } as usize;
-		let written = room.min(all.len());
-		for (i, &device) in all[..written].iter().enumerate() {
-			// SAFETY: within the room given.
-			unsafe { devices.add(i).write(device) };
+		// SAFETY: passed on as the bindings gave them.
+		unsafe { answer(&driver.devices, count, devices) }
+	})
+}
+
+/// Answers a list call with `all`: the count, or as many items as there
+/// is room for, with `VK_INCOMPLETE` when that is not all of them.
+///
+/// # Safety
+///
+/// `count` is writable, and when `items` is not null it is readable and
+/// `items` has room for that many.
+unsafe fn answer<T: Copy>(all: &[T], count: *mut u32, items: *mut T) -> i32 {
+	if items.is_null() {
+		// SAFETY: writable, the caller says.
+		unsafe { count.write(all.len() as u32) };
+		return 0;
+	}
+	// SAFETY: readable, the caller says.
+	let written = (unsafe { count.read() } as usize).min(all.len());
+	for (i, &item) in all[..written].iter().enumerate() {
+		// SAFETY: within the room the caller gives.
+		unsafe { items.add(i).write(item) };
+	}
+	// SAFETY: writable.
+	unsafe { count.write(written as u32) };
+	if written < all.len() { INCOMPLETE } else { 0 }
+}
+
+/// `text` as a fixed-size C string field, cut to leave room for its NUL.
+fn field<const N: usize>(text: &str) -> [c_char; N] {
+	let mut field = [0; N];
+	for (out, &byte) in field[..N - 1].iter_mut().zip(text.as_bytes()) {
+		*out = byte as c_char;
+	}
+	field
+}
+
+unsafe extern "system" fn properties(
+	device: RawPhysicalDevice,
+	properties: *mut PhysicalDeviceProperties,
+) {
+	with(|driver| {
+		let Some(device) = driver.device(device, "vkGetPhysicalDeviceProperties") else {
+			return;
+		};
+		let device_type = match device.kind {
+			Kind::Other => 0,
+			Kind::Integrated => 1,
+			Kind::Discrete => 2,
+			Kind::Virtual => 3,
+			Kind::Cpu => 4,
+		};
+		// The rest is noise the bindings must not depend on.
+		let written = PhysicalDeviceProperties {
+			api_version: device.api,
+			driver_version: 0xdead,
+			vendor_id: 0x8086,
+			device_id: 0xbeef,
+			device_type,
+			device_name: field(&device.name),
+			pipeline_cache_uuid: [0xab; 16],
+			limits: [u64::MAX; 63],
+			sparse: [1; 5],
+		};
+		// SAFETY: the bindings pass room for the properties.
+		unsafe { properties.write(written) };
+	})
+}
+
+unsafe extern "system" fn queue_families(
+	device: RawPhysicalDevice,
+	count: *mut u32,
+	families: *mut QueueFamilyProperties,
+) {
+	with(|driver| {
+		let Some(device) = driver.device(device, "vkGetPhysicalDeviceQueueFamilyProperties") else {
+			return;
+		};
+		let all: Vec<_> = (device.families.iter())
+			.map(|family| QueueFamilyProperties {
+				queue_flags: family.flags,
+				queue_count: family.count,
+				timestamp_valid_bits: 64,
+				min_image_transfer_granularity: [1, 1, 1],
+			})
+			.collect();
+		// SAFETY: passed on as the bindings gave them.
+		unsafe { answer(&all, count, families) };
+	})
+}
+
+unsafe extern "system" fn extensions(
+	device: RawPhysicalDevice,
+	layer: *const c_char,
+	count: *mut u32,
+	extensions: *mut ExtensionProperties,
+) -> i32 {
+	with(|driver| {
+		if !layer.is_null() {
+			driver
+				.invalid
+				.push("vkEnumerateDeviceExtensionProperties: a layer".into());
 		}
-		// SAFETY: as above.
-		unsafe { count.write(written as u32) };
-		if written < all.len() { INCOMPLETE } else { 0 }
+		let Some(device) = driver.device(device, "vkEnumerateDeviceExtensionProperties") else {
+			return -3;
+		};
+		if let Some(code) = driver.failing(c"vkEnumerateDeviceExtensionProperties") {
+			return code;
+		}
+		let mut names = vec!["VK_KHR_maintenance5", "VK_KHR_swapchain_mutable_format"];
+		if device.swapchain {
+			names.insert(1, "VK_KHR_swapchain");
+		}
+		let all: Vec<_> = (names.iter())
+			.map(|name| ExtensionProperties {
+				extension_name: field(name),
+				spec_version: 1,
+			})
+			.collect();
+		// SAFETY: passed on as the bindings gave them.
+		unsafe { answer(&all, count, extensions) }
 	})
 }
 
@@ -352,6 +488,9 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 		(ptr::null_mut(), "vkCreateInstance"),
 		(handle, "vkDestroyInstance"),
 		(handle, "vkEnumeratePhysicalDevices"),
+		(handle, "vkGetPhysicalDeviceProperties"),
+		(handle, "vkGetPhysicalDeviceQueueFamilyProperties"),
+		(handle, "vkEnumerateDeviceExtensionProperties"),
 	];
 	let lookups: Vec<_> = driver
 		.lookups
@@ -372,13 +511,26 @@ fn a_function_the_loader_lacks_is_missing_and_the_instance_is_not_kept() {
 	let error = install(driver).create_instance(c"poopterm").err();
 	assert_eq!(error, Some(Error::Missing(c"vkCreateInstance")));
 	assert!(finish().created.is_empty());
-	// Without vkEnumeratePhysicalDevices the new instance is destroyed again.
-	let mut driver = Driver::offering(api_version(1, 3));
-	driver.lacks.push(c"vkEnumeratePhysicalDevices");
-	let error = install(driver).create_instance(c"poopterm").err();
-	assert_eq!(error, Some(Error::Missing(c"vkEnumeratePhysicalDevices")));
-	let driver = finish();
-	assert_eq!((driver.live.len(), driver.destroyed.len()), (0, 1));
+	// Without any of the instance's other functions, the new instance is
+	// destroyed again.
+	let functions = [
+		c"vkEnumeratePhysicalDevices",
+		c"vkGetPhysicalDeviceProperties",
+		c"vkGetPhysicalDeviceQueueFamilyProperties",
+		c"vkEnumerateDeviceExtensionProperties",
+	];
+	for name in functions {
+		let mut driver = Driver::offering(api_version(1, 3));
+		driver.lacks.push(name);
+		let error = install(driver).create_instance(c"poopterm").err();
+		assert_eq!(error, Some(Error::Missing(name)));
+		let driver = finish();
+		assert_eq!(
+			(driver.live.len(), driver.destroyed.len()),
+			(0, 1),
+			"{name:?}"
+		);
+	}
 	// Without vkDestroyInstance nothing could destroy it: it leaks, and the
 	// error says why.
 	let mut driver = Driver::offering(api_version(1, 3));
@@ -455,12 +607,21 @@ fn a_device_list_that_grows_while_it_is_read_is_read_again() {
 
 #[test]
 fn functions_are_looked_up_once_per_instance_not_per_call() {
-	let mut driver = Driver::offering(api_version(1, 3));
-	driver.devices = vec![0x60 as RawPhysicalDevice];
-	let instance = install(driver).create_instance(c"poopterm").unwrap();
+	let device = Device {
+		name: "once".into(),
+		kind: Kind::Virtual,
+		api: api_version(1, 3),
+		families: vec![family(GRAPHICS, 1)],
+		swapchain: true,
+	};
+	let instance = install(with_devices(&[device]))
+		.create_instance(c"poopterm")
+		.unwrap();
 	let lookups = with(|driver| driver.lookups.len());
 	for _ in 0..3 {
-		assert_eq!(instance.physical_devices().unwrap().len(), 1);
+		let handles = instance.physical_devices().unwrap();
+		assert_eq!(handles.len(), 1);
+		assert!(instance.describe(handles[0]).is_ok());
 	}
 	assert_eq!(with(|driver| driver.lookups.len()), lookups);
 	drop(instance);
@@ -555,4 +716,139 @@ fn the_fake_driver_reports_broken_rules() {
 	}
 	let invalid = with(std::mem::take).invalid;
 	assert_eq!(invalid.len(), 2, "{invalid:?}");
+}
+
+/// A driver offering 1.3 with `devices`, handles 0x100, 0x200, ….
+fn with_devices(devices: &[Device]) -> Driver {
+	let mut driver = Driver::offering(api_version(1, 3));
+	driver.devices = (1..=devices.len())
+		.map(|i| (i << 8) as RawPhysicalDevice)
+		.collect();
+	driver.described = devices.to_vec();
+	driver
+}
+
+fn family(flags: u32, count: u32) -> QueueFamily {
+	QueueFamily {
+		flags,
+		count,
+		present: false,
+	}
+}
+
+#[test]
+fn devices_are_described_as_the_driver_reports_them() {
+	let long_name = "GPU ".repeat(70);
+	let devices = [
+		Device {
+			name: "Intel(R) Graphics (ADL-N)".into(),
+			kind: Kind::Integrated,
+			api: api_version(1, 4) | 363,
+			families: vec![family(GRAPHICS | 2 | TRANSFER, 1), family(TRANSFER, 2)],
+			swapchain: true,
+		},
+		Device {
+			name: "llvmpipe (LLVM 23.1.1, 256 bits)".into(),
+			kind: Kind::Cpu,
+			api: api_version(1, 3),
+			families: vec![family(GRAPHICS, 1)],
+			swapchain: false,
+		},
+		Device {
+			// Cut to the field, which keeps a byte for the NUL.
+			name: long_name[..255].into(),
+			kind: Kind::Other,
+			api: api_version(1, 2),
+			families: vec![],
+			swapchain: true,
+		},
+	];
+	let instance = install(with_devices(&devices))
+		.create_instance(c"poopterm")
+		.unwrap();
+	let handles = instance.physical_devices().unwrap();
+	assert_eq!(handles.len(), 3);
+	for (handle, expected) in handles.into_iter().zip(&devices) {
+		assert_eq!(instance.describe(handle).as_ref(), Ok(expected));
+	}
+	drop(instance);
+	finish();
+}
+
+#[test]
+fn a_device_whose_extensions_cannot_be_listed_is_an_error() {
+	let device = Device {
+		name: "broken".into(),
+		kind: Kind::Discrete,
+		api: api_version(1, 3),
+		families: vec![family(GRAPHICS, 1)],
+		swapchain: true,
+	};
+	let mut driver = with_devices(&[device]);
+	driver
+		.fails
+		.push((c"vkEnumerateDeviceExtensionProperties", -1));
+	let instance = install(driver).create_instance(c"poopterm").unwrap();
+	let handle = instance.physical_devices().unwrap()[0];
+	assert_eq!(instance.describe(handle), Err(Error::Failed(-1)));
+	drop(instance);
+	finish();
+}
+
+#[test]
+fn the_fake_driver_reports_devices_it_never_listed() {
+	let instance = install(with_devices(&[]))
+		.create_instance(c"poopterm")
+		.unwrap();
+	let unlisted = 0x900 as RawPhysicalDevice;
+	assert!(instance.describe(unlisted).is_err());
+	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
+	assert_eq!(invalid.len(), 3, "{invalid:?}");
+	assert!(
+		invalid
+			.iter()
+			.all(|rule| rule.ends_with("0x900, which was not listed"))
+	);
+	drop(instance);
+	finish();
+}
+
+#[test]
+fn every_kind_and_any_name_comes_through_as_the_driver_wrote_it() {
+	let kinds = [
+		Kind::Integrated,
+		Kind::Discrete,
+		Kind::Virtual,
+		Kind::Other,
+		Kind::Cpu,
+	];
+	let names = [
+		"AMD Radeon\u{2122} 780M",
+		"",
+		"\u{65e5}\u{672c}\u{8a9e} GPU",
+		"a",
+		"V3D 7.1.10.2",
+	];
+	let devices: Vec<_> = (kinds.into_iter().zip(names))
+		.map(|(kind, name)| Device {
+			name: name.into(),
+			kind,
+			api: api_version(1, 3),
+			families: vec![family(TRANSFER, 1); 9],
+			swapchain: false,
+		})
+		.collect();
+	let instance = install(with_devices(&devices))
+		.create_instance(c"poopterm")
+		.unwrap();
+	let handles = instance.physical_devices().unwrap();
+	let described: Vec<_> = handles
+		.iter()
+		.map(|&handle| instance.describe(handle).unwrap())
+		.collect();
+	assert_eq!(described, devices);
+	// Only the swapchain itself counts, not an extension named after it.
+	assert!(described.iter().all(|device| !device.swapchain));
+	drop(instance);
+	finish();
 }
