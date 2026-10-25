@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.83 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Describe the delegated cgroup subtree still to do (#116) (todo).
+
 ## 26.10.82 "Giga Fly" — 2026-10-25
 
 ### Maintenance
