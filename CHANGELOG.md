@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.73 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Let marked window glue in src/app count for neither side of the ratio (#101).
+
 ## 26.10.72 "Giga Fly" — 2026-10-25
 
 ### Added
