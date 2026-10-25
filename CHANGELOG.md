@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.106 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Turn glyph outlines into quadratic curves for gpu coverage (#144) (fonts).
+
 ## 26.10.105 "Giga Fly" — 2026-10-25
 
 ### Added
