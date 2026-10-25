@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.75 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Plan the ui overhaul: centered chrome and one title line on linux (#104) (todo).
+- Lay out the grid and window size in a tested ui::layout (#103) (app).
+
 ## 26.10.74 "Giga Fly" — 2026-10-25
 
 ### Fixed
