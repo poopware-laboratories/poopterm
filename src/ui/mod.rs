@@ -17,6 +17,9 @@ mod selection_tests;
 pub(crate) mod sidebar;
 #[cfg(test)]
 mod sidebar_tests;
+pub(crate) mod status_bar;
+#[cfg(test)]
+mod status_bar_tests;
 pub(crate) mod tabs;
 #[cfg(test)]
 mod tabs_arrows_tests;

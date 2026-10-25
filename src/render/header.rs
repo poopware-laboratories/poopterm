@@ -225,7 +225,7 @@ pub(crate) fn draw_button(
 }
 
 /// The height of a line of text at `px`, and its ascent.
-fn line(fonts: &FontSet, px: f32) -> (usize, i32) {
+pub(crate) fn line(fonts: &FontSet, px: f32) -> (usize, i32) {
 	let metrics = fonts.primary().horizontal_line_metrics(px);
 	metrics.map_or((0, 0), |metrics| {
 		let line = (metrics.ascent - metrics.descent).round() as usize;

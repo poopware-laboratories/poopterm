@@ -40,7 +40,7 @@ use crate::{
 		keys::Modifiers, mouse::MouseButtonCode, scroll::ScrollAccumulator, shortcuts::Shortcuts,
 	},
 	pty::{Seen, Session, UserEvent, spawn_session},
-	render::{blend::blend, glyphs::FontSet},
+	render::glyphs::FontSet,
 	session_store::restored_session_dirs,
 	term::{Frame, Term, TermGuard},
 	theme::{Theme, ThemeKind},

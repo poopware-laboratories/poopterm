@@ -24,6 +24,9 @@ mod shapes_tests;
 pub(crate) mod sidebar;
 #[cfg(test)]
 mod sidebar_tests;
+pub(crate) mod status_bar;
+#[cfg(test)]
+mod status_bar_tests;
 
 #[cfg(test)]
 mod backend_tests;

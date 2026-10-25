@@ -8,9 +8,9 @@ use crate::{
 	render::{
 		grid::{GridView, draw_grid},
 		painter::{ButtonStyle, Painter},
+		status_bar::draw_status_bar,
 	},
-	shell_integration::Phase,
-	ui::ui_font::text_width,
+	ui::status_bar::{StatusInput, status_bar},
 };
 
 /// Commands offered by the command palette, in display order.
@@ -304,85 +304,28 @@ impl App {
 		if !self.preferences.show_bottom_bar {
 			return;
 		}
-		let status_y = p.height.saturating_sub(self.status_height + self.border);
-		let (bg, border) = (self.theme.bg, self.theme.border);
-		p.rect(
-			0,
-			status_y,
-			p.width,
-			self.status_height,
-			blend(bg, border, 28),
-		);
-		p.rect(0, status_y, p.width, scale, blend(bg, border, 100));
+		let y = p.height.saturating_sub(self.status_height + self.border);
 		let term = self.sessions[self.active].term();
-		let cwd = term
-			.cwd
-			.file_name()
-			.and_then(|name| name.to_str())
-			.unwrap_or("~");
-		let left: String = match &self.hovered_link {
-			Some(link) => format!("→ {link}")
-				.chars()
-				.take(p.width / ui.cw.max(1) / 2)
-				.collect(),
-			// Say when the user acts as someone else or somewhere else.
-			None => match term.contexts.label().or_else(|| {
-				let local = crate::term::iterm::hostname();
-				term.iterm.remote_label(local).map(str::to_owned)
-			}) {
-				Some(place) => format!("{place}  ·  {cwd}"),
-				None => cwd.to_owned(),
-			}
-			.chars()
-			.filter(|c| !c.is_control())
-			.take(p.width / ui.cw.max(1) / 3)
-			.collect(),
+		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
+		// Say when the user acts as someone else or somewhere else.
+		let place = term.contexts.label().or_else(|| {
+			let local = crate::term::iterm::hostname();
+			term.iterm.remote_label(local).map(str::to_owned)
+		});
+		// pr-check: window glue: hands the live terminal's state to the tested status bar model
+		let input = StatusInput {
+			link: self.hovered_link.as_deref(),
+			place: place.as_deref(),
+			cwd: cwd.unwrap_or("~"),
+			shell: &term.shell,
+			size: (term.cols, term.rows),
+			theme: self.theme.kind.name(),
 		};
-		let shell = &term.shell;
-		let command = match (shell.phase, &shell.command_line, &shell.last_error) {
-			(Phase::Output, Some(line), _) => {
-				let line: String = line.chars().filter(|c| !c.is_control()).collect();
-				let short: String = line.chars().take(32).collect();
-				let more = if short.len() < line.len() { "…" } else { "" };
-				format!("   ·   running {short}{more}")
-			}
-			(Phase::Output, None, _) => "   ·   running".to_owned(),
-			(_, _, Some(error)) => format!("   ·   error {error}"),
-			_ => shell
-				.last_exit_code
-				.map(|code| format!("   ·   exit {code}"))
-				.unwrap_or_default(),
-		};
-		let right = format!(
-			"{} × {}   ·   {}{command}",
-			term.cols,
-			term.rows,
-			self.theme.kind.name()
-		);
+		let rect = (0, y, p.width, self.status_height);
+		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);
 		drop(term);
-		let text_y = status_y + self.status_height.saturating_sub(ui.ch) / 2;
-		let px = ui.px * 0.72;
-		let right_width = text_width(&right, |ch| self.ui_fonts.advance(ch, px));
-		let right_x = p.width.saturating_sub(right_width + 16 * scale);
-		let color = self.theme.fg;
-		p.text(
-			&mut self.ui_fonts,
-			16 * scale,
-			text_y,
-			&left,
-			px,
-			ui.ascent,
-			color,
-		);
-		p.text(
-			&mut self.ui_fonts,
-			right_x,
-			text_y,
-			&right,
-			px,
-			ui.ascent,
-			color,
-		);
+		draw_status_bar(p, &mut self.ui_fonts, &bar);
+		// pr-check: end window glue
 	}
 }
 
