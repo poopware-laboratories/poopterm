@@ -5,10 +5,10 @@ use super::{
 	cell_joins::{Join, join, may_join},
 	fit::{fit_left, fit_scale},
 	glyphs::{FontSet, Presentation, Shape, joins},
-	images::draw_placement,
 	multicell::draw_multicell,
 	padding::extend_padding,
-	painter::{Painter, glyph_top},
+	painter::glyph_top,
+	pen::{Ink, Pen},
 };
 use crate::{
 	graphics::{Placement, Rect, kitty::PLACEHOLDER},
@@ -59,7 +59,7 @@ enum Layer {
 /// Glyphs and images are clipped to their row, so each row can be redrawn
 /// alone.
 pub(crate) fn draw_grid(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	view: &GridView,
 	rows: Option<&[bool]>,
@@ -90,7 +90,7 @@ pub(crate) fn draw_grid(
 
 /// Draws the image slices of the Unicode placeholder cells in `row`, where
 /// their text would be.
-fn draw_placeholders(p: &mut Painter, view: &GridView, row: usize) {
+fn draw_placeholders(p: &mut impl Pen, view: &GridView, row: usize) {
 	let (cw, ch) = view.cell;
 	let row_clip = row_clip(p, view, row);
 	for cell in view.frame.placeholders_in(row) {
@@ -106,18 +106,11 @@ fn draw_placeholders(p: &mut Painter, view: &GridView, row: usize) {
 			x as isize - (cell.slot.1 * cw) as isize,
 			y as isize - (cell.slot.0 * ch) as isize,
 		);
-		draw_placement(
-			p.pixels,
-			p.width,
-			clip,
-			&cell.placement(view.cell),
-			at,
-			view.cell,
-		);
+		p.placement(clip, &cell.placement(view.cell), at, view.cell);
 	}
 }
 
-fn draw_row(p: &mut Painter, fonts: &mut FontSet, view: &GridView, row: usize, layer: Layer) {
+fn draw_row(p: &mut impl Pen, fonts: &mut FontSet, view: &GridView, row: usize, layer: Layer) {
 	let frame = view.frame;
 	let absolute_row = frame.first_row + row;
 	let cells = frame.row(row);
@@ -192,20 +185,21 @@ fn cell_chars(frame: &Frame, cell: &Cell, chars: &mut Vec<char>) -> bool {
 }
 
 /// The pixels of grid row `row` inside the surface.
-fn row_clip(p: &Painter, view: &GridView, row: usize) -> Rect {
+fn row_clip(p: &impl Pen, view: &GridView, row: usize) -> Rect {
 	let (cw, ch) = view.cell;
 	let (left, top) = (view.origin.0, view.origin.1 + row * ch);
+	let (width, height) = p.size();
 	Rect {
 		x: left,
 		y: top,
-		width: (view.frame.cols * cw).min(p.width.saturating_sub(left)),
-		height: ch.min(p.height.saturating_sub(top)),
+		width: (view.frame.cols * cw).min(width.saturating_sub(left)),
+		height: ch.min(height.saturating_sub(top)),
 	}
 }
 
 #[allow(clippy::too_many_arguments)]
 fn draw_cell(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	view: &GridView,
 	cell: &Cell,
@@ -293,7 +287,7 @@ fn draw_cell(
 		if m.xmin >= 0 && m.xmin + m.width as i32 <= span as i32 && m.height <= ch + 1 {
 			let origin = (x0 as i32 + m.xmin, glyph_top(glyph, y0, view.ascent));
 			let clip = (x0 as i32, top, (x0 + span) as i32, bottom);
-			p.glyph(glyph, origin, clip, italic, fg);
+			p.glyph(glyph, Ink::Text(shape, view.px), origin, clip, italic, fg);
 		} else {
 			let style = (italic, fg, shape);
 			let next = cells.get(col + 1);
@@ -329,8 +323,10 @@ fn draw_cell(
 		let glyph = fonts.glyph(mark, view.px);
 		let x = x0 as i32 + (cw as i32 - glyph.metrics.width as i32) / 2;
 		let origin = (x, glyph_top(glyph, y0, view.ascent));
+		let ink = Ink::Text(Shape::Char(mark, Presentation::Default), view.px);
 		p.glyph(
 			glyph,
+			ink,
 			origin,
 			(x0 as i32, top, (x0 + cw) as i32, bottom),
 			false,
@@ -343,7 +339,7 @@ fn draw_cell(
 /// the cell exactly.
 #[inline(never)]
 fn draw_drawn(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	ch: char,
 	(x0, y0): (usize, usize),
@@ -364,7 +360,7 @@ fn draw_drawn(
 				(x0 + cell.0) as i32,
 				(y0 + cell.1) as i32,
 			);
-			p.glyph(glyph, (x, y), clip, false, fg);
+			p.glyph(glyph, Ink::Drawn(ch, cell), (x, y), clip, false, fg);
 		}
 		None => {}
 	}
@@ -374,7 +370,7 @@ fn draw_drawn(
 /// into a blank neighbor, or else shrinks.
 #[cold]
 fn draw_oversized(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	view: &GridView,
 	span: usize,
@@ -397,8 +393,13 @@ fn draw_oversized(
 	// A pixel of slack keeps ordinary letters whose ink barely pokes out
 	// at full size; that pixel is clipped as before.
 	let scale = fit_scale((metrics.width, metrics.height), (room + 1, ch + 1));
+	let px = if scale < 1.0 {
+		view.px * scale
+	} else {
+		view.px
+	};
 	let glyph = if scale < 1.0 {
-		fonts.shaped(shape, view.px * scale)
+		fonts.shaped(shape, px)
 	} else {
 		glyph
 	};
@@ -413,6 +414,7 @@ fn draw_oversized(
 	};
 	p.glyph(
 		glyph,
+		Ink::Text(shape, px),
 		(x0 as i32 + left, y),
 		(x0 as i32, top, (x0 + room) as i32, bottom),
 		italic,
@@ -421,7 +423,7 @@ fn draw_oversized(
 }
 
 /// Underline, bar, or (when unfocused) hollow block cursors, drawn over the cell.
-fn draw_cursor(p: &mut Painter, view: &GridView, cell: &Cell, (col, row): (usize, usize)) {
+fn draw_cursor(p: &mut impl Pen, view: &GridView, cell: &Cell, (col, row): (usize, usize)) {
 	let (cw, ch) = view.cell;
 	let x = view.origin.0 + col * cw;
 	let y = view.origin.1 + row * ch;
@@ -443,7 +445,7 @@ fn draw_cursor(p: &mut Painter, view: &GridView, cell: &Cell, (col, row): (usize
 
 /// Draws the images whose z-index is in `layer`, in order, inside `clip`.
 fn draw_images(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	view: &GridView,
 	images: &[&Placement],
 	clip: Rect,
@@ -457,7 +459,7 @@ fn draw_images(
 			(left + image.col * cw) as isize,
 			top as isize + (image.row + frame.scroll_offset as isize) * ch as isize,
 		);
-		draw_placement(p.pixels, p.width, clip, image, at, view.cell);
+		p.placement(clip, image, at, view.cell);
 	}
 }
 
