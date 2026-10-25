@@ -169,7 +169,8 @@ and erasing, inserting and deleting erase the blocks they would cut.
   desktop notification ids back to the program that asked (`routes.rs`).
 - `cgroup` (Linux) asks systemd on the session bus for a transient scope per
   shell (`StartTransientUnit`, sent without awaiting a reply), with memory and
-  task accounting and `MemoryHigh` at 7/8 of RAM. A worker thread checks once
+  task accounting and `MemoryHigh` at 7/8 of RAM. The terminal first moves
+  into a sibling scope with `CPUWeight=400`, so a flooding tab cannot slow it. A worker thread checks once
   for the unified cgroup2 hierarchy; without it, a bus or systemd, nothing
   changes.
 

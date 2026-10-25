@@ -161,11 +161,12 @@ one issue per piece (#20–#29); claim one there.
   - Track it: report peak and settled RSS in the benchmark, and test that
     clearing history releases its memory. Check on macOS (`footprint`,
     `vmmap`) and Linux (`/proc/<pid>/smaps_rollup`).
-- **cgroups v2 per tab (Linux): CPU weight and no-systemd hosts.** Each
+- **cgroups v2 per tab (Linux): no-systemd hosts.** Each
   shell now gets its own systemd scope (`src/cgroup.rs`), with memory and
-  task accounting and `MemoryHigh` at 7/8 of RAM. Still to do: a CPU weight
-  so the UI and parser threads stay responsive while a tab floods, and a
-  delegated subtree we write ourselves on hosts without systemd. Moving
+  task accounting and `MemoryHigh` at 7/8 of RAM, and the terminal a sibling
+  scope with `CPUWeight=400` so its UI and parser threads stay responsive
+  while a tab floods. Still to do: a delegated subtree we write ourselves on
+  hosts without systemd. Moving
   the shell happens after it starts, so anything it forks in its first
   milliseconds stays behind; `clone3(CLONE_INTO_CGROUP)` would close that
   gap once we spawn shells ourselves instead of through portable-pty.
