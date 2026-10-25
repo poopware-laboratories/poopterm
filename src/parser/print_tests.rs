@@ -161,3 +161,31 @@ fn line_drawing_covers_the_whole_dec_special_graphics_set() {
 	// The rest of ASCII is unchanged.
 	assert!(('!'..='^').all(|c| super::dec_graphic(c) == c));
 }
+
+#[test]
+fn segments_store_characters_at_the_edges_of_valid_scalars_intact() {
+	// The segment path writes cells as raw words (`Cell::words_mut`), so lane
+	// 0 must stay a valid `char`: check the scalars beside the surrogate gap
+	// and at the top of Unicode, after a narrow run and next to wide ones.
+	let edges = [
+		'\u{D7FF}',
+		'\u{E000}',
+		'\u{FFFD}',
+		'\u{10FFFD}',
+		'\u{10FFFF}',
+	];
+	for edge in edges {
+		let stream = format!("abcdefgh{edge}中{edge}");
+		let term = printed(&stream, 20);
+		let row: Vec<(char, u8)> = term.grid.iter().next().unwrap()[..14]
+			.iter()
+			.map(|c| (c.ch, c.width))
+			.collect();
+		let width = crate::width::width(edge) as u8;
+		let mut expected: Vec<(char, u8)> = "abcdefgh".chars().map(|c| (c, 1)).collect();
+		expected.push((edge, width));
+		expected.extend([('中', 2), (' ', 0), (edge, width)]);
+		assert_eq!(row[..expected.len()], expected[..], "U+{:04X}", edge as u32);
+		assert_matches_per_character(&stream, 14);
+	}
+}
