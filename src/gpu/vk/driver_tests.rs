@@ -82,8 +82,12 @@ pub(super) struct Driver {
 	pub pools: Vec<(u32, u32)>,
 	pub live_pools: Vec<RawCommandPool>,
 	pub command_buffers: Vec<CommandBuffer>,
-	/// Pools reset, and buffers begun, ended and submitted, in order.
+	/// Pools reset, buffers begun, ended and submitted, and the barriers
+	/// and copies recorded, in order.
 	pub recorded: Vec<String>,
+	/// The layout each image was left in by the submissions so far, the
+	/// last one for an image counting.
+	pub image_layouts: Vec<(RawImage, i32)>,
 	/// Buffers, images, views, semaphores and pools destroyed and memory
 	/// freed, in order.
 	pub released: Vec<String>,

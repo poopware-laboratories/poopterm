@@ -14,9 +14,11 @@ pub(crate) struct Buffer {
 	memory: RawMemory,
 	/// The CPU's view of the memory; null unless mapped.
 	mapped: *mut u8,
-	size: usize,
+	pub(super) size: usize,
+	/// `VkBufferUsageFlags`.
+	pub(super) usage: u32,
 	/// Dropped after the buffer is destroyed, as it was made from it.
-	device: Rc<Device>,
+	pub(super) device: Rc<Device>,
 }
 
 impl Buffer {
@@ -49,6 +51,7 @@ impl Buffer {
 			memory: 0,
 			mapped: ptr::null_mut(),
 			size: size.get(),
+			usage,
 			device: device.clone(),
 		};
 		let mut needs = MemoryRequirements::default();

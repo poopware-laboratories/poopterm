@@ -29,6 +29,7 @@ fn errors_say_what_failed() {
 			"Vulkan 1.2 is older than 1.3",
 		),
 		(Error::TooOld(1 << 22), "Vulkan 1.0 is older than 1.3"),
+		(Error::Copy, "a Vulkan copy outside what it copies between"),
 	];
 	for (error, text) in cases {
 		assert!(error.to_string().contains(text), "{error:?}: {error}");

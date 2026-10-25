@@ -9,7 +9,7 @@ use super::{
 	choose::{Device as Described, GRAPHICS, Kind},
 	device::Device,
 	driver_tests::{family, finish, install, with, with_devices},
-	image::Image,
+	image::{Format, Image},
 	memory::Usage,
 	types::*,
 	version::api_version,
@@ -45,14 +45,14 @@ pub(super) struct MadeView {
 
 /// What the fake aligns image sizes to.
 const PAGE: u64 = 4096;
-/// `VK_FORMAT_B8G8R8A8_UNORM` and `_R8G8B8A8_UNORM`.
-const BGRA: i32 = 44;
-const RGBA: i32 = 37;
+const BGRA: Format = Format::Bgra;
+const RGBA: Format = Format::Rgba;
 /// `VK_IMAGE_USAGE_TRANSFER_SRC_BIT`, `_TRANSFER_DST_BIT`, `_SAMPLED_BIT`
 /// and `_COLOR_ATTACHMENT_BIT`.
 const TRANSFER_SRC: u32 = 1;
 const TRANSFER_DST: u32 = 2;
 const SAMPLED: u32 = 4;
+const STORAGE: u32 = 8;
 const COLOR_ATTACHMENT: u32 = 0x10;
 
 /// The fake's image function `name`, if it has it.
@@ -242,6 +242,10 @@ unsafe extern "system" fn create_view(
 				}),
 				"layers",
 			),
+			(
+				made.is_some_and(|made| made.usage & (SAMPLED | STORAGE | COLOR_ATTACHMENT) != 0),
+				"an image made to be viewed",
+			),
 		];
 		for (holds, rule) in rules {
 			driver.require(holds, || format!("vkCreateImageView: {rule}"));
@@ -307,7 +311,7 @@ fn an_image_is_made_in_gpu_memory_and_viewed_as_all_its_layers() {
 	drop(device);
 	let driver = finish();
 	let made = MadeImage {
-		format: BGRA,
+		format: 44,
 		extent: [512, 256, 1],
 		layers: 3,
 		usage: SAMPLED | TRANSFER_DST,
@@ -319,7 +323,7 @@ fn an_image_is_made_in_gpu_memory_and_viewed_as_all_its_layers() {
 		image: 0xa0_0001,
 		// VK_IMAGE_VIEW_TYPE_2D_ARRAY, identity components.
 		view_type: 5,
-		format: BGRA,
+		format: 44,
 		components: [0; 4],
 		range: SubresourceRange {
 			aspect_mask: 1,
@@ -485,7 +489,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 		next: ptr::null(),
 		flags: 0,
 		image_type: 1,
-		format: BGRA,
+		format: BGRA as i32,
 		extent,
 		mip_levels: 1,
 		array_layers,
@@ -547,11 +551,38 @@ fn the_fake_driver_reports_broken_image_rules() {
 		// A view of an image not bound yet; then bound to a type it does not
 		// allow, and bound twice; then views in another format and of more
 		// layers than it has.
-		create_view(handle, &view_info(image, BGRA, 1), ptr::null(), &mut view);
+		create_view(
+			handle,
+			&view_info(image, BGRA as i32, 1),
+			ptr::null(),
+			&mut view,
+		);
 		bind(handle, image, visible, 0);
 		bind(handle, image, device_local, 0);
-		create_view(handle, &view_info(image, RGBA, 1), ptr::null(), &mut view);
-		create_view(handle, &view_info(image, BGRA, 2), ptr::null(), &mut view);
+		create_view(
+			handle,
+			&view_info(image, RGBA as i32, 1),
+			ptr::null(),
+			&mut view,
+		);
+		create_view(
+			handle,
+			&view_info(image, BGRA as i32, 2),
+			ptr::null(),
+			&mut view,
+		);
+		// A view of an image only copied to and from.
+		let mut copied = info([1, 1, 1], 1, 0);
+		copied.usage = TRANSFER_SRC | TRANSFER_DST;
+		let mut image = 0;
+		create_image(handle, &copied, ptr::null(), &mut image);
+		bind(handle, image, allocate(0), 0);
+		create_view(
+			handle,
+			&view_info(image, BGRA as i32, 1),
+			ptr::null(),
+			&mut view,
+		);
 	}
 	let expected = [
 		"vkCreateImageView: a live image bound to memory",
@@ -559,6 +590,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 		"vkBindImageMemory: a live image bound once",
 		"vkCreateImageView: the image's format",
 		"vkCreateImageView: layers",
+		"vkCreateImageView: an image made to be viewed",
 	];
 	assert_eq!(reported(), expected);
 	// Destroying the device while they live, then each twice.
