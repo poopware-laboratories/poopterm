@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.113 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Describe each vulkan device from the driver (#153) (gpu).
+
 ## 26.10.112 "Giga Fly" — 2026-10-25
 
 ### Added
