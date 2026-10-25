@@ -270,8 +270,10 @@ unsafe extern "system" fn destroy_device(device: RawDevice, allocator: *const c_
 			(driver.invalid).push("vkDestroyDevice while command pools are live".into());
 		}
 		if !driver.pipeline_objects.live.is_empty() {
-			(driver.invalid)
-				.push("vkDestroyDevice while shaders, samplers, layouts or pipelines are live".into());
+			(driver.invalid).push(
+				"vkDestroyDevice while shaders, samplers, layouts, pipelines or descriptor pools are live"
+					.into(),
+			);
 		}
 		driver.live_devices.retain(|&live| live != device);
 		driver.destroyed_devices.push(device);
@@ -445,6 +447,9 @@ fn device_functions_are_looked_up_with_the_new_device() {
 		"vkDestroyPipelineLayout",
 		"vkCreateGraphicsPipelines",
 		"vkDestroyPipeline",
+		"vkCreateDescriptorPool",
+		"vkDestroyDescriptorPool",
+		"vkAllocateDescriptorSets",
 	];
 	let expected = names.map(|name| (live, name));
 	let lookups: Vec<_> = lookups

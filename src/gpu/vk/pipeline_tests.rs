@@ -424,7 +424,7 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 	drop(device);
 	assert_eq!(
 		reported(),
-		["vkDestroyDevice while shaders, samplers, layouts or pipelines are live"]
+		["vkDestroyDevice while shaders, samplers, layouts, pipelines or descriptor pools are live"]
 	);
 	with(|driver| driver.pipeline_objects.live.clear());
 	finish();

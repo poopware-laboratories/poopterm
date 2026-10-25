@@ -4,6 +4,7 @@
 //! hands out handles, and destroys them.
 use super::{
 	buffer_tests::GARBAGE,
+	descriptor_types::{DescriptorPoolSize, RawDescriptorPool},
 	driver_tests::{Driver, with},
 	pipeline_types::*,
 	types::*,
@@ -44,7 +45,12 @@ pub(super) struct Objects {
 	/// The set layouts and push constant ranges of each pipeline layout.
 	pub pipeline_layouts: Vec<(Vec<RawDescriptorSetLayout>, Vec<[u32; 3]>)>,
 	pub pipelines: Vec<MadePipeline>,
-	/// The handles of every kind not destroyed yet.
+	/// The most sets and the descriptors of each descriptor pool.
+	pub pools: Vec<(u32, Vec<DescriptorPoolSize>)>,
+	/// The pool and layout of each descriptor set.
+	pub sets: Vec<(RawDescriptorPool, RawDescriptorSetLayout)>,
+	/// The handles of every kind not destroyed yet, but sets, which go
+	/// with their pool.
 	pub live: Vec<u64>,
 }
 
@@ -60,7 +66,7 @@ pub(super) const SCISSOR: i32 = 1;
 /// The handles each kind is numbered from.
 const MODULES: u64 = 0x60_0000;
 const SAMPLERS: u64 = 0x61_0000;
-const SET_LAYOUTS: u64 = 0x62_0000;
+pub(super) const SET_LAYOUTS: u64 = 0x62_0000;
 const PIPELINE_LAYOUTS: u64 = 0x63_0000;
 const PIPELINES: u64 = 0x64_0000;
 
@@ -89,19 +95,19 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 				transmute::<CreateGraphicsPipelines, VoidFunction>(create_pipelines)
 			}
 			b"vkDestroyPipeline" => transmute::<DestroyPipeline, VoidFunction>(destroy_pipeline),
-			_ => return None,
+			_ => return super::descriptor_driver_tests::function(name),
 		})
 	}
 }
 
 impl Driver {
-	fn live_object(&self, handle: u64, kind: u64) -> bool {
+	pub(super) fn live_object(&self, handle: u64, kind: u64) -> bool {
 		handle & !0xffff == kind && self.pipeline_objects.live.contains(&handle)
 	}
 
 	/// Checks the rules every create call shares, and makes the next
 	/// handle of `kind`, numbered `count` + 1, unless `name` fails.
-	fn make_object(
+	pub(super) fn make_object(
 		&mut self,
 		device: RawDevice,
 		call: &'static CStr,
@@ -122,7 +128,7 @@ impl Driver {
 	}
 
 	/// Destroys `handle` of `kind`, breaking the test unless it is live.
-	fn release_object(
+	pub(super) fn release_object(
 		&mut self,
 		device: RawDevice,
 		(handle, kind, allocator): (u64, u64, *const c_void),

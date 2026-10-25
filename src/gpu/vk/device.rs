@@ -1,8 +1,8 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, entry::cast, instance::Instance, memory::MemoryType, pipeline_types::*,
-	submit_types::*, types::*,
+	call::Error, descriptor_types::*, entry::cast, instance::Instance, memory::MemoryType,
+	pipeline_types::*, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -46,6 +46,9 @@ pub(super) struct Functions {
 	pub destroy_pipeline_layout: DestroyPipelineLayout,
 	pub create_pipelines: CreateGraphicsPipelines,
 	pub destroy_pipeline: DestroyPipeline,
+	pub create_descriptor_pool: CreateDescriptorPool,
+	pub destroy_descriptor_pool: DestroyDescriptorPool,
+	pub allocate_descriptor_sets: AllocateDescriptorSets,
 }
 
 impl Functions {
@@ -93,6 +96,9 @@ impl Functions {
 				destroy_pipeline_layout: cast(function(c"vkDestroyPipelineLayout")?),
 				create_pipelines: cast(function(c"vkCreateGraphicsPipelines")?),
 				destroy_pipeline: cast(function(c"vkDestroyPipeline")?),
+				create_descriptor_pool: cast(function(c"vkCreateDescriptorPool")?),
+				destroy_descriptor_pool: cast(function(c"vkDestroyDescriptorPool")?),
+				allocate_descriptor_sets: cast(function(c"vkAllocateDescriptorSets")?),
 			})
 		}
 	}

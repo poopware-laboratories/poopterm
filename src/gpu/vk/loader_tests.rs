@@ -140,6 +140,10 @@ fn child() {
 					println!("child: round trip: {copied:?}");
 					let pipeline = super::pipeline::QuadPipeline::new(&device, Format::Bgra);
 					println!("child: quad pipeline: {}", pipeline.is_ok());
+					let set = pipeline
+						.map(Rc::new)
+						.and_then(|pipeline| super::descriptors::QuadSet::new(&pipeline));
+					println!("child: quad set: {}", set.is_ok());
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -206,6 +210,7 @@ fn instances_pass_the_khronos_validation_layer() {
 	);
 	assert!(output.contains("child: round trip: Ok(true)"), "{output}");
 	assert!(output.contains("child: quad pipeline: true"), "{output}");
+	assert!(output.contains("child: quad set: true"), "{output}");
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
