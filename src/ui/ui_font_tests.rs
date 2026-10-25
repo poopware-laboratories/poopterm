@@ -166,3 +166,75 @@ fn no_room_gives_empty_labels() {
 		(String::new(), String::new())
 	);
 }
+
+#[test]
+fn a_configured_family_is_trimmed() {
+	let installed = |family: &str| family == "Inter";
+	assert_eq!(
+		choose_family(Some("  Inter "), &LINUX_FAMILIES, installed),
+		Some("Inter")
+	);
+}
+
+#[test]
+fn ellipsizing_cuts_between_characters_of_any_length() {
+	// Each of these is 7 wide and 3 bytes long: 21 of 30 fits beside "…".
+	assert_eq!(ellipsize_to_width("日本語のタブ", 30, advance), "日本語…");
+	assert_eq!(ellipsize_to_width("🦀🦀🦀🦀🦀", 25, advance), "🦀🦀…");
+}
+
+#[test]
+fn a_prefix_of_only_spaces_leaves_the_ellipsis_alone() {
+	assert_eq!(ellipsize_to_width("    x", 12, advance), "…");
+}
+
+#[test]
+fn ellipsized_text_fits_keeps_a_prefix_and_grows_with_the_width() {
+	for text in [
+		"Shell",
+		"cargo build --release",
+		"日本語 mix",
+		"a  b  c",
+		"mmmmmmmm",
+	] {
+		let mut previous = 0;
+		for max in 0..=text_width(text, advance) + 4 {
+			let fitted = ellipsize_to_width(text, max, advance);
+			let width = text_width(&fitted, advance);
+			assert!(width <= max, "{fitted:?} is {width} wide, over {max}");
+			let kept = fitted.strip_suffix('…').unwrap_or(&fitted);
+			assert!(
+				text.starts_with(kept),
+				"{fitted:?} is not a prefix of {text:?}"
+			);
+			assert_eq!(
+				fitted == text,
+				max >= text_width(text, advance),
+				"{text:?} at {max}"
+			);
+			assert!(width >= previous, "{text:?} shrank to {fitted:?} at {max}");
+			previous = width;
+		}
+	}
+}
+
+#[test]
+fn fitted_labels_and_their_gap_stay_within_the_room() {
+	for (title, status) in [
+		("Shell", "running"),
+		("cargo build", "ok"),
+		("vim", "compiling"),
+	] {
+		for room in 0..=120 {
+			let (label, shown) = fit_label(title, Some(status), room, advance);
+			let mut width = text_width(&label, advance);
+			if !shown.is_empty() {
+				width += 6 + text_width(&shown, advance);
+			}
+			assert!(
+				width <= room,
+				"{label:?} {shown:?} is {width} wide, over {room}"
+			);
+		}
+	}
+}

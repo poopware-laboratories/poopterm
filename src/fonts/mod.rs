@@ -277,10 +277,11 @@ mod tests {
 	}
 
 	/// Installed faces of `families`, one file each, at 400 unless named
-	/// with a weight after a colon.
+	/// with a weight after a colon, italic when it ends in `i`.
 	fn installed(families: &[&str]) -> db::Cache {
 		let files = families.iter().map(|name| {
-			let (family, weight) = name.split_once(':').unwrap_or((name, "400"));
+			let (family, style) = name.split_once(':').unwrap_or((name, "400"));
+			let weight = style.trim_end_matches('i');
 			db::FontFile {
 				path: format!("/{name}.ttf").into(),
 				stamp: db::Stamp { mtime: 0, size: 1 },
@@ -291,7 +292,7 @@ mod tests {
 					full_name: String::new(),
 					postscript: String::new(),
 					weight: weight.parse().unwrap(),
-					italic: false,
+					italic: style.ends_with('i'),
 					monospace: false,
 					drawable: true,
 					color: false,
@@ -318,6 +319,20 @@ mod tests {
 			Some(("/DejaVu Sans.ttf".into(), 0))
 		);
 		assert_eq!(ui_font_file(&db, Some("Inter"), &["Inter"]), None);
+	}
+
+	#[test]
+	fn a_family_without_a_regular_face_still_draws_in_its_closest() {
+		let db = installed(&["Inter:700", "Inter:300", "Inter:400i"]);
+		assert_eq!(
+			ui_font_file(&db, None, &["Inter", "DejaVu Sans"]),
+			Some(("/Inter:300.ttf".into(), 0))
+		);
+		let db = installed(&["Inter:400i", "Inter:500"]);
+		assert_eq!(
+			ui_font_file(&db, None, &["Inter"]),
+			Some(("/Inter:500.ttf".into(), 0))
+		);
 	}
 
 	#[test]
