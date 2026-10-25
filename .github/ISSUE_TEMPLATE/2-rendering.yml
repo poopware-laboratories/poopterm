@@ -12,9 +12,9 @@ body:
     attributes:
       label: Before you report
       options:
-        - label: I searched the [existing issues](https://github.com/poopterm-labs/poopterm/issues?q=is%3Aissue+label%3Arendering) and this is not a duplicate.
+        - label: I searched the [existing issues](https://github.com/poopware-laboratories/poopterm/issues?q=is%3Aissue+label%3Arendering) and this is not a duplicate.
           required: true
-        - label: I can reproduce this on the [latest release](https://github.com/poopterm-labs/poopterm/releases/latest) or on `main`.
+        - label: I can reproduce this on the [latest release](https://github.com/poopware-laboratories/poopterm/releases/latest) or on `main`.
           required: true
 
   - type: dropdown

@@ -10,7 +10,7 @@ so we take reports about it seriously.
 Poopterm ships rolling releases (`YEAR.MONTH.PATCH`, for example `26.10.10`).
 Security fixes go into the next release on `main`; older releases are not
 patched. Please check that a problem still exists in the
-[latest release](https://github.com/poopterm-labs/poopterm/releases/latest)
+[latest release](https://github.com/poopware-laboratories/poopterm/releases/latest)
 or on `main` before reporting it.
 
 ## Reporting a vulnerability
@@ -18,7 +18,7 @@ or on `main` before reporting it.
 **Do not open a public issue for security problems.**
 
 Report privately through GitHub:
-[**Report a vulnerability**](https://github.com/poopterm-labs/poopterm/security/advisories/new)
+[**Report a vulnerability**](https://github.com/poopware-laboratories/poopterm/security/advisories/new)
 (Security tab → Advisories → Report a vulnerability).
 
 Please include:
@@ -82,6 +82,7 @@ breaking one of them is a vulnerability:
   limit, and delete only specially marked files in temporary directories;
 - links to executable or launchable files are copied to the clipboard
   instead of opened;
-- parsers of untrusted input avoid `unsafe` unless it is proven necessary,
-  and replacements for third-party decoders are fuzzed against the original
-  crate.
+- parsers of untrusted input avoid `unsafe` unless it is proven necessary
+  (every block is listed and justified in [`docs/unsafe.md`](docs/unsafe.md)),
+  and replacements for third-party decoders are tested against the original
+  crate with randomized and damaged input.

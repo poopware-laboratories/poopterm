@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for taking the time to report a bug. A precise report gets fixed much faster.
 
-        - **Security problems** (code execution, file access, leaking data through escape sequences): do not file them here, use [private reporting](https://github.com/poopterm-labs/poopterm/security/advisories/new).
+        - **Security problems** (code execution, file access, leaking data through escape sequences): do not file them here, use [private reporting](https://github.com/poopware-laboratories/poopterm/security/advisories/new).
         - **Wrong drawing** (glyphs, colors, box lines, images): the *Rendering problem* form asks for what helps there.
         - **A program misbehaving** inside Poopterm (vim, tmux, htop…) or an escape sequence: use *Terminal compatibility*.
 
@@ -16,9 +16,9 @@ body:
     attributes:
       label: Before you report
       options:
-        - label: I searched the [existing issues](https://github.com/poopterm-labs/poopterm/issues?q=is%3Aissue) and this is not a duplicate.
+        - label: I searched the [existing issues](https://github.com/poopware-laboratories/poopterm/issues?q=is%3Aissue) and this is not a duplicate.
           required: true
-        - label: I can reproduce this on the [latest release](https://github.com/poopterm-labs/poopterm/releases/latest) or on `main`.
+        - label: I can reproduce this on the [latest release](https://github.com/poopware-laboratories/poopterm/releases/latest) or on `main`.
           required: true
         - label: This is not a security vulnerability.
           required: true

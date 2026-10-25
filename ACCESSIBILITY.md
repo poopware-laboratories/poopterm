@@ -29,7 +29,7 @@ to fix, not a design decision.
   [README](README.md#tabs-and-keyboard-shortcuts)). In Settings, Enter or
   Ctrl+S / Cmd+S saves, Esc goes back or closes, and the arrow keys change
   the theme and the font.
-- **Text size.** `font_size` goes from 10 to 32 logical pixels, in steps as
+- **Text size.** `font_size` goes from 10 to 32 points, in steps as
   fine as 0.01 (Settings steps by 0.5), and follows the display scale
   factor, so HiDPI and desktop scaling enlarge it further.
   Any installed font can be chosen in Settings → Fonts. Ctrl+= / Ctrl+- /
@@ -80,7 +80,7 @@ implemented from their specifications, like our D-Bus and clipboard code.
 
 ## Reporting a problem
 
-Open an [accessibility report](https://github.com/poopterm-labs/poopterm/issues/new?template=6-accessibility.yml).
+Open an [accessibility report](https://github.com/poopware-laboratories/poopterm/issues/new?template=6-accessibility.yml).
 It asks what you were trying to do, what got in the way, and which
 assistive technology you use, if any. You do not need to know the cause or
 a fix.

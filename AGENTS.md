@@ -30,8 +30,8 @@ cargo test --release -- --ignored --nocapture parser_throughput   # parser bench
 - Linux build deps: `pkg-config libx11-dev libxkbcommon-dev libwayland-dev`.
 - CI (`.github/workflows/ci.yml`) runs fmt, test and clippy (including
   clippy for FreeBSD) on Linux and macOS, a release build on macOS and in the
-  Debian and Fedora package jobs, and the tests and a debug build in a FreeBSD VM. All
-  must pass.
+  Debian, Fedora and Arch package jobs, and the tests and a debug build in a
+  FreeBSD VM and on Alpine (musl). All must pass.
 - **Platform-gated code** (`#[cfg(target_os = ...)]`) is not compiled on your
   host. Before committing such changes, check the other targets too:
   `rustup target add aarch64-apple-darwin x86_64-unknown-freebsd`, then
@@ -40,7 +40,7 @@ cargo test --release -- --ignored --nocapture parser_throughput   # parser bench
 ## Before you start
 
 Check [`TODO.md`](TODO.md) and the open
-[issues](https://github.com/poopterm-labs/poopterm/issues) first. Someone may
+[issues](https://github.com/poopware-laboratories/poopterm/issues) first. Someone may
 already be working on the change, an issue may set out how it should be
 done, or a higher-priority item may come first. Comment on an issue to claim
 it, and link the issue from your pull request (`Closes #N`).
@@ -116,13 +116,13 @@ input events ──► App (UI thread) ──► input::{keys,mouse,paste} ─�
 
 | Path | Responsibility |
 |------|----------------|
-| `src/term/` | Terminal state: `Grid` (one `Vec<Cell>` per row), scrollback, cursor, modes, Sixel placement, synchronized output. `Cell` is 16 bytes; combining marks and hyperlinks live in `term::extras`. `SharedTerm` is the lock shared with the parser thread; `Frame` is the copy the renderer draws. |
+| `src/term/` | Terminal state: `Grid` (one `Vec<Cell>` per row), scrollback (one contiguous ring), cursor, modes, Sixel placement, synchronized output. `Cell` is 16 bytes; combining marks and hyperlinks live in `term::extras`. `SharedTerm` is the lock shared with the parser thread; `Frame` is the copy the renderer draws. |
 | `src/vt/` | Escape-sequence tokenizer: the DEC state machine with SIMD scans, handing text, CSI/ESC/OSC/DCS/APC events to a `vt::Handler`. vte is only a test oracle. |
 | `src/parser/` | Applies `vt` events to `Term` (`impl Handler for Term`); `csi`, `esc`, `osc`, `sgr`, `print` apply each family. |
 | `src/pty/` | Shell process, reader and parser threads (`pump`), `OutputQueue`, non-blocking `PtyWriter`. |
 | `src/input/` | Pure encoders: keys, mouse reports, paste, scroll, shortcuts. |
 | `src/graphics/` | Image data shared by Sixel and the kitty graphics protocol: `Bitmap`, `Placement`, streaming base64. `graphics::kitty` parses commands, receives chunked transfers, decodes and stores images and animation frames; `term/kitty*.rs` applies commands to `Term`. |
-| `src/render/` | Pure drawing: `Painter`, `FontSet` glyph cache, grid renderer, row damage, SIMD blending. |
+| `src/render/` | Pure drawing: `Painter`, `FontSet` glyph cache and font choice, emoji clusters and cross-cell joins, grid renderer, row damage, SIMD blending. |
 | `src/ui/` | Pure UI models: selection, search, tab layout. |
 | `src/app/` | winit event loop and glue. `App` methods are split by concern (`keyboard`, `mouse`, `tabs`, `settings`, `draw`, …). |
 | `src/inflate/` | Our own zlib/DEFLATE decoder for kitty `o=z` payloads, tested against `miniz_oxide`. |
@@ -161,7 +161,7 @@ Details: [`docs/architecture.md`](docs/architecture.md).
   `// SAFETY:` comment saying why it is sound; clippy's
   `undocumented_unsafe_blocks` and rustc's `unsafe_op_in_unsafe_fn` are
   denied in `Cargo.toml`, so CI rejects one without it. Every block is
-  listed, with its reasoning, in [`docs/UNSAFE.md`](docs/UNSAFE.md); update
+  listed, with its reasoning, in [`docs/unsafe.md`](docs/unsafe.md); update
   it in the same pull request.
 - **Config compatibility.** `config.toml` keys are user-facing; keep old
   names working (see `ThemeKind::parse`) and preserve unknown keys on save.
@@ -199,8 +199,8 @@ change, however small, goes through a branch and a pull request.
    The body explains *why*, links the issue, and carries the evidence:
    benchmark numbers for performance work, screenshots for rendering
    changes. Add no tool footers ("Generated with …") or session links.
-4. **Required checks** must all pass: CI (Linux, macOS, FreeBSD, Debian
-   package), CodeQL, and the pull request rules (title and 3:1 ratio). No
+4. **Required checks** must all pass: CI (Linux, macOS, FreeBSD, Alpine,
+   and the Debian, Fedora and Arch packages), CodeQL, and the pull request rules (title and 3:1 ratio). No
    approval is required; ask for review when a second pair of eyes helps.
 5. **Merge by squashing** once green: `gh pr merge --squash --delete-branch`.
    Squash is the only merge method; history on `main` stays linear, one

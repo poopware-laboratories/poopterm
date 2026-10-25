@@ -75,7 +75,7 @@ targets (`aarch64-apple-darwin`, `x86_64-unknown-freebsd`); see
   functions that tests can call without a window.
 
 [`docs/architecture.md`](docs/architecture.md) is the map of the code;
-[`docs/UNSAFE.md`](docs/UNSAFE.md) lists every `unsafe` block and why it is
+[`docs/unsafe.md`](docs/unsafe.md) lists every `unsafe` block and why it is
 sound.
 
 ## Commits and pull request titles
@@ -112,13 +112,14 @@ branch and a pull request.
    The pull request template carries the checklist, including the
    accessibility checks from [`ACCESSIBILITY.md`](ACCESSIBILITY.md) for
    changes to what users see or do.
-4. CI (Linux, macOS, FreeBSD, Debian package, CodeQL) and the pull request
+4. CI (Linux, macOS, FreeBSD, Alpine, the Debian, Fedora and Arch
+   packages, CodeQL) and the pull request
    rules must pass. The pull request is then squashed onto `main`, keeping
    your authorship.
 
 ## Reporting bugs
 
-[Open an issue](https://github.com/poopterm-labs/poopterm/issues/new/choose)
+[Open an issue](https://github.com/poopware-laboratories/poopterm/issues/new/choose)
 and pick the form that fits: bug report, rendering problem, terminal
 compatibility, performance problem, accessibility problem or feature
 request. Each form asks for
@@ -126,7 +127,7 @@ what that kind of report needs: your Poopterm version (Settings → About, or
 `poopterm --version`), OS, display server and shell; steps to reproduce;
 for rendering and escape-sequence bugs, the exact bytes that trigger it (for
 example captured with `script`) and a screenshot; for performance, numbers.
-Questions go to [Discussions](https://github.com/poopterm-labs/poopterm/discussions).
+Questions go to [Discussions](https://github.com/poopware-laboratories/poopterm/discussions).
 
 ## License
 

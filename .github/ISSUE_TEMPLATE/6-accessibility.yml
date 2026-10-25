@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for telling us. You do not need to know the cause or a fix: what you tried to do and what got in the way is enough.
-        [ACCESSIBILITY.md](https://github.com/poopterm-labs/poopterm/blob/main/ACCESSIBILITY.md) lists the known limitations and their workarounds.
+        [ACCESSIBILITY.md](https://github.com/poopware-laboratories/poopterm/blob/main/ACCESSIBILITY.md) lists the known limitations and their workarounds.
 
   - type: textarea
     id: goal
