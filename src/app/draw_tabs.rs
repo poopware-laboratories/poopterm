@@ -42,9 +42,7 @@ impl App {
 			px: ui.px * 0.82,
 			theme: &self.theme,
 		});
-		paint(p, &mut self.ui_fonts, |scene, fonts| {
-			draw_header(scene, fonts, &header)
-		});
+		paint(p, &mut self.ui_fonts, |s, f| draw_header(s, f, &header));
 		// pr-check: end window glue
 	}
 }

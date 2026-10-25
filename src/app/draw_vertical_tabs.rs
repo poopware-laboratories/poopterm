@@ -71,9 +71,7 @@ impl App {
 			px: ui.px * 0.82,
 			theme: &self.theme,
 		});
-		paint(p, &mut self.ui_fonts, |scene, fonts| {
-			draw_sidebar(scene, fonts, &sidebar)
-		});
+		paint(p, &mut self.ui_fonts, |s, f| draw_sidebar(s, f, &sidebar));
 		// pr-check: end window glue
 	}
 }
