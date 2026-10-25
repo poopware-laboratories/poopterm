@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.74 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Follow display scale changes and draw chrome at one whole scale (#102) (app).
+
 ## 26.10.73 "Giga Fly" — 2026-10-25
 
 ### Maintenance
