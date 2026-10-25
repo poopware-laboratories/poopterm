@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.122 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Allocate the quad pipeline's descriptor set (#162) (gpu).
+
 ## 26.10.121 "Giga Fly" — 2026-10-25
 
 ### Added
