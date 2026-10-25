@@ -12,9 +12,9 @@ use crate::{
 	theme::{Theme, ThemeKind},
 };
 
-const BLUE: u32 = 0xff00_00ff;
-const GREEN: u32 = 0xff00_ff00;
-const RED: u32 = 0xffff_0000;
+pub(crate) const BLUE: u32 = 0xff00_00ff;
+pub(crate) const GREEN: u32 = 0xff00_ff00;
+pub(crate) const RED: u32 = 0xffff_0000;
 
 /// The characters of [`emoji_font`], sorted, as glyphs 1 to 6.
 const CHARS: [char; 6] = ['1', '\u{200d}', '\u{20e3}', '❤', '\u{fe0f}', '🔥'];
@@ -24,7 +24,7 @@ const HEART_ON_FIRE: &[char] = &['❤', '\u{fe0f}', '\u{200d}', '🔥'];
 /// A color font whose characters are blue 10-pixel squares at 16 pixels
 /// per em, with a green keycap 1 (glyph 7) and a red heart on fire
 /// (glyph 8) as ligatures.
-fn emoji_font() -> Font {
+pub(crate) fn emoji_font() -> Font {
 	emoji_font_with(GREEN)
 }
 
@@ -240,3 +240,6 @@ fn a_text_presentation_keeps_a_sequence_apart() {
 	assert!(!first_cell_has(&pixels, GREEN));
 	assert!(first_cell_has(&pixels, 0xffffff), "the digit in text");
 }
+
+#[path = "glyph_clusters_grid_tests.rs"]
+mod grid;

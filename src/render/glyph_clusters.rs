@@ -117,4 +117,4 @@ fn rasterize(font: &Font, glyph: u16, px: f32) -> Glyph {
 
 #[cfg(test)]
 #[path = "glyph_clusters_tests.rs"]
-mod tests;
+pub(crate) mod tests;

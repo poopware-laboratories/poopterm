@@ -9,7 +9,7 @@ use crate::fonts::{
 use super::{boxdraw, fxhash::FxHashMap};
 
 #[path = "glyph_clusters.rs"]
-mod clusters;
+pub(crate) mod clusters;
 pub(crate) use clusters::{Shape, joins};
 
 /// Upper bound on cached rasterizations before the cache is reset.

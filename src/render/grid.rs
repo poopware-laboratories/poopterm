@@ -281,7 +281,11 @@ fn draw_cell(
 		marks
 	};
 	for &mark in marks {
-		if matches!(mark, '\u{200d}' | '\u{fe0e}' | '\u{fe0f}') {
+		// Joiners, variation selectors and tags are invisible.
+		if matches!(
+			mark,
+			'\u{200d}' | '\u{fe0e}' | '\u{fe0f}' | '\u{e0020}'..='\u{e007f}'
+		) {
 			continue;
 		}
 		let glyph = fonts.glyph(mark, view.px);
