@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.103 "Giga Fly" — 2026-10-25
+
+### Fixed
+
+- Keep the palette open to rename a tab (#141) (ui).
+
 ## 26.10.102 "Giga Fly" — 2026-10-25
 
 ### Added
