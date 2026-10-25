@@ -31,7 +31,7 @@ pub(crate) fn fill_rect(
 }
 
 /// Colors for a bordered, rounded button.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ButtonStyle {
 	pub scale: usize,
 	pub background: u32,
