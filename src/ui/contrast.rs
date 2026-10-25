@@ -41,11 +41,22 @@ pub(crate) fn readable(color: u32, target: u32, backgrounds: &[u32], min: f64) -
 		.unwrap_or(target)
 }
 
-/// What tabs are drawn on: the window, the vertical tab sidebar, and the
-/// hovered and active tab shades of both tab strips (`draw_tabs`,
-/// `draw_vertical_tabs`).
-pub(crate) fn tab_backgrounds(theme: &Theme) -> [u32; 6] {
-	[0, 24, 38, 40, 70, 74].map(|shade| blend(theme.bg, theme.border, shade))
+/// What tabs are drawn on: the window, the vertical tab sidebar and its
+/// hovered and active tab shades (`draw_vertical_tabs`), and the header
+/// bar's (`render::header`).
+pub(crate) fn tab_backgrounds(theme: &Theme) -> [u32; 7] {
+	let sidebar = [0, 24, 40, 74].map(|shade| blend(theme.bg, theme.border, shade));
+	let header = crate::ui::header::header_colors(theme);
+	let [window, sidebar, hovered, active] = sidebar;
+	[
+		window,
+		sidebar,
+		hovered,
+		active,
+		header.bar,
+		header.hover,
+		header.raised,
+	]
 }
 
 /// Tab text colors besides the title: dimmed (status text, the activity
@@ -160,10 +171,18 @@ mod tests {
 	}
 
 	#[test]
-	fn theme_colors_that_already_read_are_left_alone() {
-		// macOS Dark's dim text passes as it was; Rose Pine's blue reads too.
+	fn theme_colors_move_only_as_far_as_they_must() {
+		// macOS Dark's dim text sat at the limit, so the lighter header
+		// shades move it a few steps, far short of the foreground; Rose
+		// Pine's blue reads as it is.
 		let dark = Theme::from_kind(ThemeKind::MacOsDark);
-		assert_eq!(tab_text_colors(&dark).0, blend(dark.bg, dark.fg, DIM));
+		let start = blend(dark.bg, dark.fg, DIM);
+		let dim = tab_text_colors(&dark).0;
+		let steps = (0..=255).position(|a| blend(start, dark.fg, a) == dim);
+		assert!(
+			steps.is_some_and(|steps| steps > 0 && steps < 64),
+			"{steps:?}"
+		);
 		let pine = Theme::from_kind(ThemeKind::RosePine);
 		assert_eq!(tab_text_colors(&pine).1, pine.palette[4]);
 	}

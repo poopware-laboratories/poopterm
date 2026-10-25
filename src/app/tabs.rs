@@ -8,8 +8,9 @@ use std::process::Command;
 use std::thread;
 
 impl App {
+	/// Room left of the tabs: for the window buttons on macOS.
 	pub(super) fn tab_left_reserve(&self) -> usize {
-		(if cfg!(target_os = "macos") { 80 } else { 112 }) * self.scale()
+		(if cfg!(target_os = "macos") { 80 } else { 0 }) * self.scale()
 	}
 
 	pub(super) fn tab_y(&self) -> usize {

@@ -85,11 +85,11 @@ mod tests {
 	#[test]
 	fn the_default_linux_layout_sits_below_the_tab_bar() {
 		let expected = Layout {
-			margin: 2,
-			top: 46,
-			padding_top: 46,
+			margin: 0,
+			top: 44,
+			padding_top: 44,
 			status_height: 26,
-			left: 2,
+			left: 0,
 		};
 		assert_eq!(linux(&Preferences::default()), expected);
 	}
@@ -101,9 +101,9 @@ mod tests {
 			..Preferences::default()
 		};
 		let layout = layout(&chrome(2.0, false), 2, &prefs, 0);
-		assert_eq!(layout.margin, 4 + 12);
+		assert_eq!(layout.margin, 12);
 		assert_eq!(layout.status_height, 52);
-		assert_eq!(layout.top, 88 + 16);
+		assert_eq!(layout.top, 88 + 12);
 	}
 
 	#[test]
@@ -118,15 +118,15 @@ mod tests {
 	#[test]
 	fn without_a_tab_strip_on_top_the_grid_starts_at_the_margin() {
 		let [_, hidden, vertical] = tab_modes();
-		assert_eq!(linux(&hidden).top, 2);
-		assert_eq!(linux(&vertical).top, 2);
+		assert_eq!(linux(&hidden).top, 0);
+		assert_eq!(linux(&vertical).top, 0);
 	}
 
 	#[test]
 	fn a_vertical_tab_sidebar_moves_the_grid_right() {
 		let [_, _, vertical] = tab_modes();
-		assert_eq!(layout(&chrome(1.0, false), 1, &vertical, 180).left, 182);
-		assert_eq!(linux(&vertical).left, 2);
+		assert_eq!(layout(&chrome(1.0, false), 1, &vertical, 180).left, 180);
+		assert_eq!(linux(&vertical).left, 0);
 	}
 
 	#[test]
@@ -141,15 +141,15 @@ mod tests {
 	#[test]
 	fn cells_fill_the_space_left_inside_the_chrome() {
 		let layout = linux(&Preferences::default());
-		// 2 + 80 * 10 + 2 by 46 + 24 * 20 + 2 + 26.
-		assert_eq!(layout.grid_size((804, 554), (10, 20)), (80, 24));
+		// 80 * 10 by 44 + 24 * 20 + 26.
+		assert_eq!(layout.grid_size((800, 550), (10, 20)), (80, 24));
 		assert_eq!(
-			layout.grid_size((803, 553), (10, 20)),
+			layout.grid_size((799, 549), (10, 20)),
 			(79, 23),
 			"a pixel short"
 		);
 		assert_eq!(
-			layout.grid_size((813, 573), (10, 20)),
+			layout.grid_size((809, 569), (10, 20)),
 			(80, 24),
 			"a pixel under the next"
 		);
@@ -161,7 +161,7 @@ mod tests {
 		assert_eq!(layout.grid_size((1, 1), (10, 20)), (2, 2));
 		assert_eq!(layout.grid_size((0, 0), (0, 0)), (2, 2));
 		assert_eq!(
-			layout.grid_size((804, 554), (0, 0)),
+			layout.grid_size((800, 550), (0, 0)),
 			(800, 480),
 			"no division by zero"
 		);
@@ -221,7 +221,7 @@ mod tests {
 		let at = |factor: f64| layout(&chrome(factor, false), chrome_scale(factor), &prefs, 0);
 		assert_eq!(at(1.25), at(1.0));
 		assert_eq!(at(1.5), at(2.0));
-		assert_eq!(at(1.5).margin, 4 + 8);
+		assert_eq!(at(1.5).margin, 8);
 		assert_eq!(at(1.5).status_height, 52);
 	}
 
@@ -244,23 +244,19 @@ mod tests {
 			..Preferences::default()
 		};
 		let tabs = linux(&prefs);
-		assert_eq!(tabs.top, 44 + 2 + 3);
+		assert_eq!(tabs.top, 44 + 3);
 		assert_eq!(tabs.padding_top, tabs.top);
 		let scaled = layout(&chrome(2.0, false), 2, &prefs, 0);
 		assert_eq!(scaled.padding_top, scaled.top);
 	}
 
 	#[test]
-	fn without_a_tab_bar_the_padding_starts_inside_the_border() {
+	fn without_a_tab_bar_the_padding_starts_at_the_top() {
 		for padding in [0, 3] {
 			let [_, hidden, vertical] = tab_modes().map(|prefs| Preferences { padding, ..prefs });
 			for prefs in [hidden, vertical] {
 				let layout = linux(&prefs);
-				assert_eq!(
-					layout.padding_top, 2,
-					"below the border, vertical: {}",
-					prefs.vertical_tabs
-				);
+				assert_eq!(layout.padding_top, 0, "vertical: {}", prefs.vertical_tabs);
 				assert_eq!(layout.top - layout.padding_top, padding);
 			}
 		}
@@ -283,9 +279,9 @@ mod tests {
 	fn the_window_for_a_grid_adds_the_sidebar_and_every_bar() {
 		let [_, _, vertical] = tab_modes();
 		let layout = layout(&chrome(1.0, false), 1, &vertical, 180);
-		// 180 + 2 + 80 * 10 + 2 across, 2 + 24 * 20 + 2 + 26 down.
-		assert_eq!(layout.window_size((80, 24), (10, 20)), (984, 510));
+		// 180 + 80 * 10 across, 24 * 20 + 26 down.
+		assert_eq!(layout.window_size((80, 24), (10, 20)), (980, 506));
 		let horizontal = linux(&Preferences::default());
-		assert_eq!(horizontal.window_size((80, 24), (10, 20)), (804, 554));
+		assert_eq!(horizontal.window_size((80, 24), (10, 20)), (800, 550));
 	}
 }

@@ -356,9 +356,8 @@ fn compact_strip_scroll_10_keeps_the_selected_page_in_bounds() {
 #[test]
 fn compact_strip_scroll_17_keeps_the_selected_page_in_bounds() {
 	let layout = compact_strip(600, 20, 1, 17, 17);
-	assert_eq!(layout.first_visible, 17);
-	assert!(layout.visible_count >= 1);
-	assert!(layout.first_visible + layout.visible_count <= 20);
+	// The last page holds four tabs, so the scroll stops at 16.
+	assert_eq!((layout.first_visible, layout.visible_count), (16, 4));
 	assert_eq!(layout.tab_width(17), layout.width);
 	assert!(layout.width > layout.compact_width);
 	assert_strip_geometry(&layout, 20);

@@ -52,10 +52,11 @@ pub(crate) struct Chrome {
 
 pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 	let scale = chrome_scale(factor);
-	// macOS draws its own rim, which follows the rounded corners.
-	let (border, titlebar, tab) = if macos { (0, 44, 40) } else { (2, 0, 44) };
+	// No rim is drawn: macOS draws its own, which follows the rounded
+	// corners, and on Linux the header bar runs edge to edge.
+	let (titlebar, tab) = if macos { (44, 40) } else { (0, 44) };
 	Chrome {
-		border: border * scale,
+		border: 0,
 		titlebar_height: titlebar * scale,
 		tab_height: tab * scale,
 	}
@@ -115,12 +116,13 @@ mod tests {
 	}
 
 	#[test]
-	fn linux_chrome_has_a_border_and_no_title_bar() {
+	fn linux_chrome_has_no_border_and_no_title_bar() {
+		// The header bar runs edge to edge, like GTK and KDE header bars.
 		let chrome = chrome(1.0, false);
 		assert_eq!(
 			chrome,
 			Chrome {
-				border: 2,
+				border: 0,
 				titlebar_height: 0,
 				tab_height: 44,
 			}
@@ -161,20 +163,12 @@ mod tests {
 	}
 
 	#[test]
-	fn the_border_is_at_least_two_pixels_at_any_scale() {
-		// `(2.0 * scale) as usize` truncated; small factors must not lose it.
-		for factor in [0.5, 1.0, 1.2, 1.4] {
-			assert_eq!(chrome(factor, false).border, 2, "{factor}");
-		}
-	}
-
-	#[test]
 	fn tiny_factors_are_raised_to_the_smallest_scale() {
 		// A factor that rounds the font to nothing would leave no cells.
 		assert_eq!(font_px(pt(14), 1e-300), 14.0 * MIN_FACTOR as f32);
 		assert_eq!(font_px(pt(14), 0.01), 14.0 * MIN_FACTOR as f32);
 		assert_eq!(font_px(pt(16), 0.5), 8.0, "small real factors are kept");
-		assert_eq!(chrome(1e-300, false).border, 2);
+		assert_eq!(chrome(1e-300, false).tab_height, 44);
 	}
 
 	#[test]

@@ -4,6 +4,9 @@ pub(crate) mod copy;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;
+pub(crate) mod header;
+#[cfg(test)]
+mod header_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
 pub(crate) mod scale;
@@ -12,6 +15,8 @@ pub(crate) mod selection;
 #[cfg(test)]
 mod selection_tests;
 pub(crate) mod tabs;
+#[cfg(test)]
+mod tabs_arrows_tests;
 #[cfg(test)]
 mod tabs_horizontal_edge_tests;
 #[cfg(test)]

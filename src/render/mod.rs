@@ -8,6 +8,9 @@ pub(crate) mod fit;
 pub(crate) mod fxhash;
 pub(crate) mod glyphs;
 pub(crate) mod grid;
+pub(crate) mod header;
+#[cfg(test)]
+mod header_tests;
 pub(crate) mod images;
 pub(crate) mod label;
 #[cfg(test)]
