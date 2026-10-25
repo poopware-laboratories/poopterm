@@ -9,6 +9,7 @@ use super::{
 	device_tests::{self, Made},
 	entry::Entry,
 	features::Flag,
+	image_tests::{MadeImage, MadeView},
 	memory::MemoryType,
 	memory_driver_tests,
 	types::*,
@@ -47,6 +48,8 @@ pub(super) struct Driver {
 	pub made: Vec<Made>,
 	pub live_devices: Vec<RawDevice>,
 	pub destroyed_devices: Vec<RawDevice>,
+	/// maxImageDimension2D and maxImageArrayLayers, if not 16384 and 2048.
+	pub image_limits: Option<(u32, u32)>,
 	/// The memory types buffers may use, as `memoryTypeBits`; `None` for
 	/// every type.
 	pub buffer_bits: Option<u32>,
@@ -59,7 +62,14 @@ pub(super) struct Driver {
 	pub bound: Vec<(RawBuffer, RawMemory)>,
 	/// The bytes behind each mapped allocation.
 	pub mapped: Vec<(RawMemory, Box<[u8]>)>,
-	/// Buffers destroyed and memory freed, in order.
+	/// The memory types images may use, as for buffers.
+	pub image_bits: Option<u32>,
+	pub images: Vec<MadeImage>,
+	pub live_images: Vec<RawImage>,
+	pub bound_images: Vec<(RawImage, RawMemory)>,
+	pub views: Vec<MadeView>,
+	pub live_views: Vec<RawImageView>,
+	/// Buffers, images and views destroyed and memory freed, in order.
 	pub released: Vec<String>,
 	/// Valid usage rules the bindings broke.
 	pub invalid: Vec<String>,
@@ -102,6 +112,16 @@ impl Driver {
 				.push(format!("{call} on {device:?}, which was not listed"));
 		}
 		found
+	}
+
+	/// Every device's limits: the image limits, and noise the bindings must
+	/// not depend on.
+	fn limits(&self) -> Limits {
+		let mut limits = Limits([0x5a5a_5a5a; 126]);
+		let (dimension, layers) = self.image_limits.unwrap_or((16384, 2048));
+		limits.0[MAX_IMAGE_DIMENSION_2D] = dimension;
+		limits.0[MAX_IMAGE_ARRAY_LAYERS] = layers;
+		limits
 	}
 
 	/// Breaks the test unless `device` is one the driver made and has not
@@ -383,7 +403,7 @@ unsafe extern "system" fn properties(
 			device_type,
 			device_name: field(&device.name),
 			pipeline_cache_uuid: [0xab; 16],
-			limits: [u64::MAX; 63],
+			limits: driver.limits(),
 			sparse: [1; 5],
 		};
 		// SAFETY: the bindings pass room for the properties.

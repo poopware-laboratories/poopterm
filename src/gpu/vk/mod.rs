@@ -19,6 +19,9 @@ pub(crate) mod entry;
 pub(crate) mod features;
 #[cfg(test)]
 mod features_tests;
+pub(crate) mod image;
+#[cfg(test)]
+mod image_tests;
 pub(crate) mod instance;
 pub(crate) mod library;
 #[cfg(test)]

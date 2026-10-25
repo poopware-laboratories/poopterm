@@ -30,7 +30,7 @@ pub(super) struct Made {
 /// What the fake aligns buffer sizes to.
 const ALIGNMENT: u64 = 256;
 /// What a failing call leaves in its output handle.
-const GARBAGE: u64 = 0xdead;
+pub(super) const GARBAGE: u64 = 0xdead;
 /// `VK_BUFFER_USAGE_TRANSFER_DST_BIT` and `_VERTEX_BUFFER_BIT`.
 const TRANSFER_DST: u32 = 2;
 const VERTEX: u32 = 0x80;
@@ -49,21 +49,21 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkFreeMemory" => transmute::<FreeMemory, VoidFunction>(free),
 			b"vkBindBufferMemory" => transmute::<BindBufferMemory, VoidFunction>(bind),
 			b"vkMapMemory" => transmute::<MapMemory, VoidFunction>(map),
-			_ => return None,
+			_ => return super::image_tests::function(name),
 		})
 	}
 }
 
 impl Driver {
 	/// Breaks the test unless `rule` holds.
-	fn require(&mut self, rule: bool, broken: impl FnOnce() -> String) {
+	pub(super) fn require(&mut self, rule: bool, broken: impl FnOnce() -> String) {
 		if !rule {
 			self.invalid.push(broken());
 		}
 	}
 
 	/// The memory types buffers may use.
-	fn allowed(&self) -> u32 {
+	pub(super) fn allowed(&self) -> u32 {
 		let every = u32::MAX
 			.checked_shr(32 - self.memory.len() as u32)
 			.unwrap_or(0);
@@ -177,7 +177,7 @@ unsafe extern "system" fn allocate(
 }
 
 /// The size and type of `memory`, as the fake numbers allocations.
-fn allocation(driver: &Driver, memory: RawMemory) -> Option<(u64, u32)> {
+pub(super) fn allocation(driver: &Driver, memory: RawMemory) -> Option<(u64, u32)> {
 	let live = driver.live_memory.contains(&memory);
 	live.then(|| driver.allocations[(memory - 0xe0_0001) as usize])
 }
@@ -283,7 +283,7 @@ unsafe extern "system" fn free(device: RawDevice, memory: RawMemory, allocator: 
 }
 
 /// A device on a driver whose GPU has `memory`, with `change` made to it.
-fn device(memory: &[u32], change: impl FnOnce(&mut Driver)) -> Rc<Device> {
+pub(super) fn device(memory: &[u32], change: impl FnOnce(&mut Driver)) -> Rc<Device> {
 	let described = Described {
 		name: "buffers".into(),
 		kind: Kind::Integrated,
@@ -303,7 +303,7 @@ fn device(memory: &[u32], change: impl FnOnce(&mut Driver)) -> Rc<Device> {
 
 /// Intel ADL-N's first memory types: device-local, + host-visible
 /// coherent, + cached.
-const INTEL: [u32; 3] = [0x1, 0x7, 0xf];
+pub(super) const INTEL: [u32; 3] = [0x1, 0x7, 0xf];
 
 fn size(bytes: usize) -> NonZeroUsize {
 	NonZeroUsize::new(bytes).unwrap()

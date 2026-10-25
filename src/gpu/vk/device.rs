@@ -13,6 +13,12 @@ pub(super) struct Functions {
 	pub free: FreeMemory,
 	pub bind_buffer: BindBufferMemory,
 	pub map: MapMemory,
+	pub create_image: CreateImage,
+	pub destroy_image: DestroyImage,
+	pub image_requirements: GetImageMemoryRequirements,
+	pub bind_image: BindImageMemory,
+	pub create_view: CreateImageView,
+	pub destroy_view: DestroyImageView,
 }
 
 impl Functions {
@@ -30,6 +36,12 @@ impl Functions {
 				free: cast(function(c"vkFreeMemory")?),
 				bind_buffer: cast(function(c"vkBindBufferMemory")?),
 				map: cast(function(c"vkMapMemory")?),
+				create_image: cast(function(c"vkCreateImage")?),
+				destroy_image: cast(function(c"vkDestroyImage")?),
+				image_requirements: cast(function(c"vkGetImageMemoryRequirements")?),
+				bind_image: cast(function(c"vkBindImageMemory")?),
+				create_view: cast(function(c"vkCreateImageView")?),
+				destroy_view: cast(function(c"vkDestroyImageView")?),
 			})
 		}
 	}
@@ -40,6 +52,8 @@ pub(crate) struct Device {
 	pub(super) functions: Functions,
 	/// The memory types of the GPU, which allocations name by index.
 	pub(super) memory: Vec<MemoryType>,
+	/// The largest image: its width and height, and its layers.
+	pub(super) image_limits: [u32; 2],
 	queue: RawQueue,
 	family: u32,
 	destroy: DestroyDevice,
@@ -72,10 +86,15 @@ impl Device {
 		// SAFETY: the device was made with one queue of `family`, and `queue`
 		// is writable.
 		unsafe { (functions.get_queue)(handle, family, 0, &mut queue) };
+		let limits = instance.properties(physical).limits.0;
 		Ok(Self {
 			handle,
 			functions,
 			memory: instance.memory_types(physical),
+			image_limits: [
+				limits[MAX_IMAGE_DIMENSION_2D],
+				limits[MAX_IMAGE_ARRAY_LAYERS],
+			],
 			queue,
 			family,
 			destroy,

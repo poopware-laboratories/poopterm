@@ -11,10 +11,12 @@ pub(crate) type RawPhysicalDevice = *mut c_void;
 pub(crate) type RawDevice = *mut c_void;
 /// A `VkQueue`.
 pub(crate) type RawQueue = *mut c_void;
-/// A `VkBuffer`, and a `VkDeviceMemory`: handles that are 64 bits on every
-/// platform.
+/// A `VkBuffer`, `VkDeviceMemory`, `VkImage` and `VkImageView`: handles
+/// that are 64 bits on every platform.
 pub(crate) type RawBuffer = u64;
 pub(crate) type RawMemory = u64;
+pub(crate) type RawImage = u64;
+pub(crate) type RawImageView = u64;
 
 /// `VK_WHOLE_SIZE`.
 pub(crate) const WHOLE_SIZE: u64 = !0;
@@ -26,6 +28,8 @@ pub(crate) const STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO: i32 = 2;
 pub(crate) const STRUCTURE_TYPE_DEVICE_CREATE_INFO: i32 = 3;
 pub(crate) const STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO: i32 = 5;
 pub(crate) const STRUCTURE_TYPE_BUFFER_CREATE_INFO: i32 = 12;
+pub(crate) const STRUCTURE_TYPE_IMAGE_CREATE_INFO: i32 = 14;
+pub(crate) const STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO: i32 = 15;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: i32 = 51;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES: i32 = 53;
 pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: i32 = 1_000_059_000;
@@ -67,8 +71,7 @@ pub(crate) struct PhysicalDeviceProperties {
 	pub device_type: i32,
 	pub device_name: [c_char; 256],
 	pub pipeline_cache_uuid: [u8; 16],
-	/// `VkPhysicalDeviceLimits`: 504 bytes, aligned for its 64-bit sizes.
-	pub limits: [u64; 63],
+	pub limits: Limits,
 	/// `VkPhysicalDeviceSparseProperties`.
 	pub sparse: [u32; 5],
 }
@@ -83,11 +86,21 @@ impl Default for PhysicalDeviceProperties {
 			device_type: 0,
 			device_name: [0; 256],
 			pipeline_cache_uuid: [0; 16],
-			limits: [0; 63],
+			limits: Limits([0; 126]),
 			sparse: [0; 5],
 		}
 	}
 }
+
+/// `VkPhysicalDeviceLimits` as its 126 four-byte words, aligned for the
+/// 64-bit sizes among them; the renderer reads a limit by its index.
+#[repr(C, align(8))]
+#[derive(Clone, Copy)]
+pub(crate) struct Limits(pub [u32; 126]);
+
+/// The indices of `maxImageDimension2D` and `maxImageArrayLayers`.
+pub(crate) const MAX_IMAGE_DIMENSION_2D: usize = 1;
+pub(crate) const MAX_IMAGE_ARRAY_LAYERS: usize = 4;
 
 /// `VkQueueFamilyProperties`.
 #[repr(C)]
@@ -213,6 +226,60 @@ pub(crate) struct MemoryAllocateInfo {
 	pub memory_type_index: u32,
 }
 
+/// `VkImageCreateInfo`.
+#[repr(C)]
+pub(crate) struct ImageCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+	/// `VkImageType`: 1, two-dimensional.
+	pub image_type: i32,
+	/// `VkFormat`.
+	pub format: i32,
+	/// `VkExtent3D`.
+	pub extent: [u32; 3],
+	pub mip_levels: u32,
+	pub array_layers: u32,
+	/// `VkSampleCountFlagBits`.
+	pub samples: u32,
+	/// `VkImageTiling`: 0, optimal for the GPU.
+	pub tiling: i32,
+	/// `VkImageUsageFlags`.
+	pub usage: u32,
+	pub sharing_mode: i32,
+	pub queue_family_index_count: u32,
+	pub queue_family_indices: *const u32,
+	/// `VkImageLayout`: 0, undefined.
+	pub initial_layout: i32,
+}
+
+/// `VkImageSubresourceRange`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SubresourceRange {
+	/// `VkImageAspectFlags`: 1, color.
+	pub aspect_mask: u32,
+	pub base_mip_level: u32,
+	pub level_count: u32,
+	pub base_array_layer: u32,
+	pub layer_count: u32,
+}
+
+/// `VkImageViewCreateInfo`.
+#[repr(C)]
+pub(crate) struct ImageViewCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+	pub image: RawImage,
+	/// `VkImageViewType`.
+	pub view_type: i32,
+	pub format: i32,
+	/// `VkComponentMapping`: 0 for each, the identity.
+	pub components: [i32; 4],
+	pub subresource_range: SubresourceRange,
+}
+
 /// `PFN_vkVoidFunction`: what the loader returns, cast to the real type.
 pub(crate) type VoidFunction = unsafe extern "system" fn();
 pub(crate) type GetInstanceProcAddr =
@@ -267,3 +334,18 @@ pub(crate) type BindBufferMemory =
 	unsafe extern "system" fn(RawDevice, RawBuffer, RawMemory, u64) -> i32;
 pub(crate) type MapMemory =
 	unsafe extern "system" fn(RawDevice, RawMemory, u64, u64, u32, *mut *mut c_void) -> i32;
+pub(crate) type CreateImage =
+	unsafe extern "system" fn(RawDevice, *const ImageCreateInfo, *const c_void, *mut RawImage) -> i32;
+pub(crate) type DestroyImage = unsafe extern "system" fn(RawDevice, RawImage, *const c_void);
+pub(crate) type GetImageMemoryRequirements =
+	unsafe extern "system" fn(RawDevice, RawImage, *mut MemoryRequirements);
+pub(crate) type BindImageMemory =
+	unsafe extern "system" fn(RawDevice, RawImage, RawMemory, u64) -> i32;
+pub(crate) type CreateImageView = unsafe extern "system" fn(
+	RawDevice,
+	*const ImageViewCreateInfo,
+	*const c_void,
+	*mut RawImageView,
+) -> i32;
+pub(crate) type DestroyImageView =
+	unsafe extern "system" fn(RawDevice, RawImageView, *const c_void);

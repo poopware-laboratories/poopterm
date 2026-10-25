@@ -26,6 +26,9 @@ pub(crate) enum Error {
 	Lacks(&'static str),
 	/// No memory type suits the resource and what it is for.
 	NoMemory,
+	/// An image's width, height and layers, beyond what the device allows
+	/// or zero.
+	ImageSize([u32; 3]),
 }
 
 impl fmt::Display for Error {
@@ -40,6 +43,10 @@ impl fmt::Display for Error {
 			Self::Failed(code) => write!(f, "VkResult {code}"),
 			Self::Lacks(feature) => write!(f, "the Vulkan device lacks {feature}"),
 			Self::NoMemory => write!(f, "no Vulkan memory type suits the resource"),
+			Self::ImageSize([width, height, layers]) => write!(
+				f,
+				"the Vulkan device cannot make a {width}×{height} image of {layers} layers"
+			),
 		}
 	}
 }

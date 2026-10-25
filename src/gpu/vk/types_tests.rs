@@ -4,9 +4,10 @@ use super::{
 	memory::MemoryType,
 	types::{
 		ApplicationInfo, BufferCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo,
-		ExtensionProperties, InstanceCreateInfo, MemoryAllocateInfo, MemoryHeap, MemoryProperties,
-		MemoryRequirements, PhysicalDeviceFeatures2, PhysicalDeviceProperties, QueueFamilyProperties,
-		Vulkan12Features, Vulkan13Features,
+		ExtensionProperties, ImageCreateInfo, ImageViewCreateInfo, InstanceCreateInfo, Limits,
+		MemoryAllocateInfo, MemoryHeap, MemoryProperties, MemoryRequirements, PhysicalDeviceFeatures2,
+		PhysicalDeviceProperties, QueueFamilyProperties, SubresourceRange, Vulkan12Features,
+		Vulkan13Features,
 	},
 };
 use std::mem::{align_of, offset_of, size_of, size_of_val};
@@ -260,4 +261,64 @@ fn buffer_and_memory_structures_are_laid_out_as_vulkan_declares_them() {
 		offset_of!(MemoryAllocateInfo, memory_type_index),
 	];
 	assert_eq!(offsets, [0, 8, 16, 24]);
+}
+
+#[test]
+fn image_structures_are_laid_out_as_vulkan_declares_them() {
+	assert_eq!(
+		(size_of::<ImageCreateInfo>(), align_of::<ImageCreateInfo>()),
+		(88, 8)
+	);
+	let offsets = [
+		offset_of!(ImageCreateInfo, s_type),
+		offset_of!(ImageCreateInfo, next),
+		offset_of!(ImageCreateInfo, flags),
+		offset_of!(ImageCreateInfo, image_type),
+		offset_of!(ImageCreateInfo, format),
+		offset_of!(ImageCreateInfo, extent),
+		offset_of!(ImageCreateInfo, mip_levels),
+		offset_of!(ImageCreateInfo, array_layers),
+		offset_of!(ImageCreateInfo, samples),
+		offset_of!(ImageCreateInfo, tiling),
+		offset_of!(ImageCreateInfo, usage),
+		offset_of!(ImageCreateInfo, sharing_mode),
+		offset_of!(ImageCreateInfo, queue_family_index_count),
+		offset_of!(ImageCreateInfo, queue_family_indices),
+		offset_of!(ImageCreateInfo, initial_layout),
+	];
+	assert_eq!(
+		offsets,
+		[0, 8, 16, 20, 24, 28, 40, 44, 48, 52, 56, 60, 64, 72, 80]
+	);
+	assert_eq!(
+		(
+			size_of::<SubresourceRange>(),
+			align_of::<SubresourceRange>()
+		),
+		(20, 4)
+	);
+	assert_eq!(
+		(
+			size_of::<ImageViewCreateInfo>(),
+			align_of::<ImageViewCreateInfo>()
+		),
+		(80, 8)
+	);
+	let offsets = [
+		offset_of!(ImageViewCreateInfo, s_type),
+		offset_of!(ImageViewCreateInfo, next),
+		offset_of!(ImageViewCreateInfo, flags),
+		offset_of!(ImageViewCreateInfo, image),
+		offset_of!(ImageViewCreateInfo, view_type),
+		offset_of!(ImageViewCreateInfo, format),
+		offset_of!(ImageViewCreateInfo, components),
+		offset_of!(ImageViewCreateInfo, subresource_range),
+	];
+	assert_eq!(offsets, [0, 8, 16, 24, 32, 36, 40, 56]);
+}
+
+#[test]
+fn limits_are_vk_physical_device_limits_as_words() {
+	// 126 four-byte words, 8-aligned for the VkDeviceSize limits among them.
+	assert_eq!((size_of::<Limits>(), align_of::<Limits>()), (504, 8));
 }
