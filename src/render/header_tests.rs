@@ -1,5 +1,6 @@
 //! Pixel tests of the header bar: tabs, their parts and the icon buttons.
 use super::{
+	blend::blend,
 	glyphs::FontSet,
 	header::{
 		Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, close_rect, draw_header, pill,
@@ -327,4 +328,160 @@ fn every_size_doubles_at_twice_the_scale() {
 	assert_eq!(drawn.at(170, 4 + 11), COLORS.bar);
 	assert_eq!(drawn.at(0, 4 + 86), COLORS.separator);
 	assert_eq!(drawn.at(0, 4 + 85), COLORS.bar);
+	// The dot doubles too: 12 pixels 24 in (the aliased circle inks the 10
+	// inside), and the title 16 after it.
+	let mut dotted = tab(20, 300, "Hg");
+	dotted.badge = Some(Badge::Dot(0x00ff00));
+	let drawn = draw(&header(2, vec![dotted], Vec::new()));
+	let green: Vec<_> = (20..320)
+		.flat_map(|x| (4..92).map(move |y| (x, y)))
+		.filter(|&(x, y)| drawn.at(x, y) == 0x00ff00)
+		.collect();
+	let span = |values: Vec<usize>| (*values.iter().min().unwrap(), *values.iter().max().unwrap());
+	assert_eq!(span(green.iter().map(|&(x, _)| x).collect()), (45, 54));
+	let rows = span(green.iter().map(|&(_, y)| y).collect());
+	assert_eq!(rows, (4 + 39, 4 + 48), "centered on the header");
+	assert!(!drawn.inked((20, 4, 52, 88)) && drawn.inked((72, 4, 40, 88)));
+}
+
+/// The first column holding text ink.
+fn first_ink(drawn: &Drawn) -> usize {
+	(0..WIDTH).find(|&x| drawn.inked((x, 4, 1, 44))).unwrap()
+}
+
+#[test]
+fn a_bell_badge_moves_the_title_right_past_its_mark() {
+	let plain = draw(&header(1, vec![tab(10, 200, "Hg")], Vec::new()));
+	let mut ringing = tab(10, 200, "Hg");
+	ringing.badge = Some(Badge::Bell(0xff0000));
+	let rung = draw(&header(1, vec![ringing], Vec::new()));
+	// The mark's advance and a 6-pixel gap.
+	assert!(
+		first_ink(&rung) >= first_ink(&plain) + 8,
+		"{} against {}",
+		first_ink(&rung),
+		first_ink(&plain)
+	);
+}
+
+#[test]
+fn without_a_close_button_the_title_runs_to_the_padding() {
+	let long = "cargo build --release --all-targets";
+	let drawn = draw(&header(1, vec![tab(10, 120, long)], Vec::new()));
+	// Into the room a close button would take, never into the last 12.
+	assert!(drawn.inked((10 + 120 - 28, 10, 16, 32)));
+	assert!(!drawn.inked((10 + 120 - 12, 4, 12, 44)));
+}
+
+#[test]
+fn a_hovered_close_button_lights_up_from_the_tab_beneath() {
+	let mut raised = tab(10, 160, "");
+	raised.fill = Some(COLORS.raised);
+	raised.close = Some(true);
+	let drawn = draw(&header(1, vec![raised], Vec::new()));
+	let (x, y, ..) = close_rect(10, 160, (4, 44), 1);
+	let light = drawn.at(x + 11, y + 1);
+	assert_eq!(light, blend(COLORS.raised, COLORS.fg, 40));
+}
+
+#[test]
+fn progress_over_a_hundred_fills_the_track_and_no_more() {
+	let mut busy = tab(10, 224, "");
+	busy.fill = Some(COLORS.raised);
+	busy.progress = Some((Some(250), 0x0000ff));
+	let drawn = draw(&header(1, vec![busy], Vec::new()));
+	let (x, y, w, h) = pill(10, 224, (4, 44), 1);
+	let row = y + h - 3;
+	assert_eq!(drawn.at(x + w - 13, row), 0x0000ff);
+	assert_eq!(drawn.at(x + w - 12, row), COLORS.raised);
+}
+
+#[test]
+fn progress_on_a_plain_tab_draws_its_track_on_the_bar() {
+	let mut idle = tab(10, 224, "");
+	idle.progress = Some((Some(0), 0x0000ff));
+	let drawn = draw(&header(1, vec![idle], Vec::new()));
+	let (x, y, w, h) = pill(10, 224, (4, 44), 1);
+	let track = blend(COLORS.bar, 0x0000ff, 60);
+	// Two rows of nothing done yet, 3 above the tab's bottom.
+	for row in [y + h - 3, y + h - 2] {
+		assert_eq!(drawn.at(x + 12, row), track);
+		assert_eq!(drawn.at(x + w - 13, row), track);
+	}
+	assert_eq!(drawn.at(x + 12, y + h - 1), COLORS.bar);
+	assert_eq!(drawn.at(x + 12, y + h - 4), COLORS.bar);
+}
+
+fn big_button(icon: Icon) -> HeaderButton {
+	HeaderButton {
+		rect: (300, 10, 72, 64),
+		icon,
+		hovered: false,
+		enabled: true,
+	}
+}
+
+#[test]
+fn icons_double_at_twice_the_scale_and_their_strokes_grow_by_half() {
+	let drawn = draw(&header(2, Vec::new(), vec![big_button(Icon::Plus)]));
+	let (cx, cy) = (336, 42);
+	let thickness = (cy - 10..cy + 10)
+		.filter(|&y| drawn.at(cx + 8, y) == COLORS.fg)
+		.count();
+	let length = (300..372).filter(|&x| drawn.at(x, cy) == COLORS.fg).count();
+	assert_eq!((thickness, length), (3, 24));
+	let drawn = draw(&header(2, Vec::new(), vec![big_button(Icon::Menu)]));
+	let rows: Vec<_> = (10..74).filter(|&y| drawn.at(cx, y) == COLORS.fg).collect();
+	assert_eq!(
+		rows,
+		[
+			cy - 11,
+			cy - 10,
+			cy - 9,
+			cy - 1,
+			cy,
+			cy + 1,
+			cy + 9,
+			cy + 10,
+			cy + 11
+		]
+	);
+}
+
+#[test]
+fn a_disabled_icon_is_drawn_in_the_dim_color() {
+	let drawn = draw(&header(
+		1,
+		Vec::new(),
+		vec![button(Icon::Plus, false, false)],
+	));
+	assert_eq!(drawn.at(318, 26), COLORS.dim);
+	assert!(!drawn.any((300, 10, 36, 32), COLORS.fg));
+}
+
+#[test]
+fn each_arrow_points_its_own_way() {
+	for (icon, points_left) in [(Icon::Left, true), (Icon::Right, false)] {
+		let drawn = draw(&header(1, Vec::new(), vec![button(icon, false, true)]));
+		let columns: Vec<_> = (300..336)
+			.filter(|&x| drawn.inked((x, 10, 1, 32)))
+			.collect();
+		let (first, last) = (columns[0], *columns.last().unwrap());
+		let (tip, open) = if points_left {
+			(first, last)
+		} else {
+			(last, first)
+		};
+		// The tip is a point; the open side spans both arms.
+		let span = |x| {
+			let (top, bottom) = drawn.ink_rows((x, 10, 1, 32));
+			bottom - top
+		};
+		assert!(
+			span(tip) < span(open),
+			"{icon:?}: {} against {}",
+			span(tip),
+			span(open)
+		);
+	}
 }

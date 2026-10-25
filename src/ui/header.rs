@@ -125,51 +125,35 @@ pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 	});
 	let height = BUTTON_HEIGHT * scale;
 	let top = input.bounds.0 + input.bounds.1.saturating_sub(height) / 2;
-	let arrows = layout.arrow_w > 0;
-	let last_shown = layout.first_visible + layout.visible_count;
-	let buttons = [
-		(
-			layout.left_arrow_x,
-			layout.arrow_w,
-			Icon::Left,
-			arrows,
-			layout.first_visible > 0,
-		),
-		(
-			layout.right_arrow_x,
-			layout.arrow_w,
-			Icon::Right,
-			arrows,
-			last_shown < input.count,
-		),
-		(
-			layout.plus_x,
-			layout.plus_w,
-			Icon::Plus,
-			layout.plus_w > 0,
-			true,
-		),
-		(
+	let button = |x, width, icon, enabled| {
+		let rect = (x, top, width, height);
+		let hovered = contains(rect, input.cursor);
+		HeaderButton {
+			rect,
+			icon,
+			hovered,
+			enabled,
+		}
+	};
+	let mut buttons = Vec::new();
+	if layout.arrow_w > 0 {
+		let earlier = layout.first_visible > 0;
+		let more = layout.first_visible + layout.visible_count < input.count;
+		let (left, right) = (layout.left_arrow_x, layout.right_arrow_x);
+		buttons.push(button(left, layout.arrow_w, Icon::Left, earlier));
+		buttons.push(button(right, layout.arrow_w, Icon::Right, more));
+	}
+	if layout.plus_w > 0 {
+		buttons.push(button(layout.plus_x, layout.plus_w, Icon::Plus, true));
+	}
+	if layout.settings_w > 0 {
+		buttons.push(button(
 			layout.settings_x,
 			layout.settings_w,
 			Icon::Menu,
-			layout.settings_w > 0,
 			true,
-		),
-	];
-	let buttons =
-		buttons
-			.into_iter()
-			.filter(|button| button.3)
-			.map(|(x, width, icon, _, enabled)| {
-				let rect = (x, top, width, height);
-				HeaderButton {
-					rect,
-					icon,
-					hovered: contains(rect, input.cursor),
-					enabled,
-				}
-			});
+		));
+	}
 	Header {
 		y: input.bounds.0,
 		height: input.bounds.1,
@@ -177,7 +161,7 @@ pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 		px: input.px,
 		colors,
 		tabs: tabs.collect(),
-		buttons: buttons.collect(),
+		buttons,
 	}
 }
 

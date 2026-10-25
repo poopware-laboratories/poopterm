@@ -31,6 +31,7 @@ impl App {
 				.len()
 				.min(layout.first_visible + layout.visible_count);
 		let tabs: Vec<_> = self.sessions[shown].iter().map(tab_info).collect();
+		// pr-check: window glue: hands the window's tab state to the tested header model
 		let header = header(&HeaderInput {
 			layout: &layout,
 			tabs: &tabs,
@@ -42,11 +43,13 @@ impl App {
 			theme: &self.theme,
 		});
 		draw_header(p, &mut self.ui_fonts, &header);
+		// pr-check: end window glue
 	}
 }
 
 /// What the header shows of `session`.
 fn tab_info(session: &Session) -> TabInfo {
+	// pr-check: window glue: copies a live session's state, which needs a running shell
 	// The title locks the terminal itself, so it comes first.
 	let title = session.title();
 	let term = session.term();
@@ -56,4 +59,5 @@ fn tab_info(session: &Session) -> TabInfo {
 		marker: tab_marker(term.bell, term.status.summary(), session.activity),
 		progress: term.status.shown_progress(),
 	}
+	// pr-check: end window glue
 }

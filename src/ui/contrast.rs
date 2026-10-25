@@ -46,17 +46,10 @@ pub(crate) fn readable(color: u32, target: u32, backgrounds: &[u32], min: f64) -
 /// bar's (`render::header`).
 pub(crate) fn tab_backgrounds(theme: &Theme) -> [u32; 7] {
 	let sidebar = [0, 24, 40, 74].map(|shade| blend(theme.bg, theme.border, shade));
-	let header = crate::ui::header::header_colors(theme);
 	let [window, sidebar, hovered, active] = sidebar;
-	[
-		window,
-		sidebar,
-		hovered,
-		active,
-		header.bar,
-		header.hover,
-		header.raised,
-	]
+	let header = crate::ui::header::header_colors(theme);
+	let (bar, hover, raised) = (header.bar, header.hover, header.raised);
+	[window, sidebar, hovered, active, bar, hover, raised]
 }
 
 /// Tab text colors besides the title: dimmed (status text, the activity

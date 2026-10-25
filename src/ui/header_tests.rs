@@ -23,20 +23,47 @@ fn theme() -> Theme {
 	Theme::from_kind(ThemeKind::MacOsDark)
 }
 
+fn options(active: usize, show_buttons: bool) -> TabStripOptions {
+	TabStripOptions {
+		left_reserve: 0,
+		scroll: 0,
+		show_plus: show_buttons,
+		show_settings: show_buttons,
+		active_tab: active,
+		compact_tabs: false,
+	}
+}
+
 fn layout(count: usize, active: usize, show_buttons: bool) -> TabLayout {
-	tab_layout_with_compaction(
-		1000,
-		count,
-		1,
-		TabStripOptions {
-			left_reserve: 0,
-			scroll: 0,
-			show_plus: show_buttons,
-			show_settings: show_buttons,
-			active_tab: active,
-			compact_tabs: false,
-		},
-	)
+	tab_layout_with_compaction(1000, count, 1, options(active, show_buttons))
+}
+
+/// Thirty tabs scrolled to `scroll`, with the visible ones.
+fn scrolled(scroll: usize) -> (TabLayout, Vec<TabInfo>) {
+	let options = TabStripOptions {
+		scroll,
+		..options(0, true)
+	};
+	let layout = tab_layout_with_compaction(1000, 30, 1, options);
+	let tabs = (0..layout.visible_count)
+		.map(|local| info(&format!("tab {}", layout.first_visible + local)))
+		.collect();
+	(layout, tabs)
+}
+
+/// The input for `tabs`, all of them visible, the first active and the
+/// pointer away.
+fn input<'a>(layout: &'a TabLayout, tabs: &'a [TabInfo], theme: &'a Theme) -> HeaderInput<'a> {
+	HeaderInput {
+		layout,
+		tabs,
+		count: tabs.len(),
+		active: 0,
+		cursor: AWAY,
+		bounds: BOUNDS,
+		px: 14.0,
+		theme,
+	}
 }
 
 fn info(title: &str) -> TabInfo {
@@ -320,5 +347,162 @@ fn header_text_is_readable_on_every_header_shade() {
 			}
 		}
 		assert!(ratio(colors.dim, colors.bar) >= 2.0, "{:?}", theme.kind);
+	}
+}
+
+#[test]
+fn two_tabs_are_enough_for_a_close_button() {
+	let (layout, theme) = (layout(2, 0, true), theme());
+	let tabs = [info("one"), info("two")];
+	let header = build(&layout, &tabs, 0, AWAY, &theme);
+	let closes: Vec<_> = header.tabs.iter().map(|tab| tab.close).collect();
+	assert_eq!(closes, [Some(false), None]);
+}
+
+#[test]
+fn a_scrolled_strip_places_and_raises_tabs_by_their_index_among_all() {
+	let theme = theme();
+	let (layout, tabs) = scrolled(10);
+	assert_eq!(layout.first_visible, 10);
+	let header = header(&HeaderInput {
+		count: 30,
+		active: 12,
+		..input(&layout, &tabs, &theme)
+	});
+	assert_eq!(header.tabs[0].x, layout.tab_x(10));
+	assert_eq!(header.tabs[2].x, layout.tab_x(12));
+	let raised: Vec<_> = header.tabs.iter().map(|tab| tab.fill.is_some()).collect();
+	assert_eq!(raised.iter().position(|&raised| raised), Some(2));
+	assert_eq!(raised.iter().filter(|&&raised| raised).count(), 1);
+	assert_eq!(header.tabs[2].close, Some(false));
+}
+
+#[test]
+fn arrows_enable_toward_the_tabs_scrolled_out_of_view() {
+	let theme = theme();
+	for (scroll, expected) in [(0, (false, true)), (10, (true, true)), (29, (true, false))] {
+		let (layout, tabs) = scrolled(scroll);
+		let header = header(&HeaderInput {
+			count: 30,
+			..input(&layout, &tabs, &theme)
+		});
+		let enabled = |icon| {
+			let button = header.buttons.iter().find(|button| button.icon == icon);
+			button.unwrap().enabled
+		};
+		assert_eq!(
+			(enabled(Icon::Left), enabled(Icon::Right)),
+			expected,
+			"scroll {scroll}"
+		);
+	}
+}
+
+#[test]
+fn a_disabled_arrow_under_the_pointer_is_hovered_but_stays_disabled() {
+	let theme = theme();
+	let (layout, tabs) = scrolled(0);
+	let on_left = ((layout.left_arrow_x + 4) as f64, 20.0);
+	let header = header(&HeaderInput {
+		count: 30,
+		cursor: on_left,
+		..input(&layout, &tabs, &theme)
+	});
+	let left = header.buttons[0];
+	assert_eq!(left.icon, Icon::Left);
+	assert!(left.hovered && !left.enabled);
+}
+
+#[test]
+fn a_header_lower_in_the_window_takes_its_buttons_and_hover_along() {
+	let (layout, theme) = (layout(2, 0, true), theme());
+	let tabs = [info("one"), info("two")];
+	let x = (layout.tab_x(1) + 20) as f64;
+	let at = |y| {
+		header(&HeaderInput {
+			bounds: (40, 44),
+			cursor: (x, y),
+			..input(&layout, &tabs, &theme)
+		})
+	};
+	let above = at(30.0);
+	assert_eq!((above.y, above.height), (40, 44));
+	assert_eq!(above.buttons[0].rect.1, 40 + 6);
+	assert_eq!(above.tabs[1].fill, None, "the pointer is above the header");
+	assert_eq!(at(70.0).tabs[1].fill, Some(header_colors(&theme).hover));
+	let (cx, cy, size, _) = close_rect(layout.tab_x(1), layout.tab_width(1), (40, 44), 1);
+	let on_close = header(&HeaderInput {
+		bounds: (40, 44),
+		cursor: ((cx + size / 2) as f64, (cy + size / 2) as f64),
+		..input(&layout, &tabs, &theme)
+	});
+	assert_eq!(on_close.tabs[1].close, Some(true));
+}
+
+#[test]
+fn a_tab_is_hovered_from_its_first_pixel_to_just_before_its_end() {
+	let (layout, theme) = (layout(3, 1, true), theme());
+	let tabs = [info("one"), info("two"), info("three")];
+	let (left, right) = (layout.tab_x(0), layout.tab_x(0) + layout.tab_width(0));
+	let (left, right) = (left as f64, right as f64);
+	let hovered = |cursor| {
+		build(&layout, &tabs, 1, cursor, &theme).tabs[0]
+			.fill
+			.is_some()
+	};
+	assert!(hovered((left, 0.0)));
+	assert!(hovered((right - 0.5, 43.5)));
+	assert!(!hovered((right, 20.0)), "the gap after the tab");
+	assert!(!hovered((left - 0.5, 20.0)));
+	assert!(!hovered((left, 44.0)), "below the header");
+	assert!(!hovered((left, -0.5)), "above the header");
+}
+
+#[test]
+fn either_button_can_show_without_the_other() {
+	let (theme, tabs) = (theme(), [info("one")]);
+	for (show_plus, icon) in [(true, Icon::Plus), (false, Icon::Menu)] {
+		let options = TabStripOptions {
+			show_plus,
+			show_settings: !show_plus,
+			..options(0, true)
+		};
+		let layout = tab_layout_with_compaction(1000, 1, 1, options);
+		let header = header(&input(&layout, &tabs, &theme));
+		let icons: Vec<_> = header.buttons.iter().map(|button| button.icon).collect();
+		assert_eq!(icons, [icon]);
+		assert_eq!(header.buttons[0].rect.2, 36);
+	}
+}
+
+#[test]
+fn buttons_are_centered_in_a_taller_header_at_twice_the_scale() {
+	let theme = theme();
+	let tabs = [info("one")];
+	let layout = tab_layout_with_compaction(2000, 1, 2, options(0, true));
+	let header = header(&HeaderInput {
+		bounds: (0, 88),
+		..input(&layout, &tabs, &theme)
+	});
+	let plus = header.buttons[0].rect;
+	assert_eq!((plus.1, plus.3), (12, 64));
+	assert_eq!(header.scale, 2);
+}
+
+#[test]
+fn disabled_icons_are_dimmer_than_text_yet_visible_in_every_theme() {
+	let mut kind = ThemeKind::MacOsDark;
+	loop {
+		let theme = Theme::from_kind(kind);
+		let colors = header_colors(&theme);
+		let (dim, text) = (ratio(colors.dim, colors.bar), ratio(colors.fg, colors.bar));
+		assert!(
+			dim >= 2.0 && dim < text,
+			"{kind:?}: {dim:.2} against {text:.2}"
+		);
+		kind = kind.next();
+		if kind == ThemeKind::MacOsDark {
+			break;
+		}
 	}
 }
