@@ -2,9 +2,9 @@
 //! the block at a time, so rows redraw alone.
 
 use super::{
-	glyphs::{FontSet, Presentation},
+	glyphs::{FontSet, Presentation, Shape},
 	grid::GridView,
-	painter::Painter,
+	pen::{Ink, Pen},
 };
 use crate::term::multicell::Multicell;
 
@@ -48,7 +48,7 @@ pub(super) fn text_box(part: &Multicell, (cw, ch): (usize, usize)) -> TextBox {
 /// Draws the row of `part`'s block that the cell at `(x0, y0)` starts,
 /// clipped to that row and the block's columns.
 pub(super) fn draw_multicell(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	view: &GridView,
 	part: &Multicell,
@@ -89,7 +89,8 @@ pub(super) fn draw_multicell(
 			pen + glyph.metrics.xmin as f32
 		};
 		let y = baseline - glyph.metrics.ymin - glyph.metrics.height as i32;
-		p.glyph(glyph, (left + x.round() as i32, y), clip, italic, fg);
+		let ink = Ink::Text(Shape::Char(c, presentation), px);
+		p.glyph(glyph, ink, (left + x.round() as i32, y), clip, italic, fg);
 		pen += width as f32 * layout.cell_w;
 	}
 }

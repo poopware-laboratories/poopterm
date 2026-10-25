@@ -1,13 +1,13 @@
 //! Extends the grid's edge cell backgrounds into the padding around it, so
 //! an application's background reaches the window edge instead of stopping
 //! at a frame of the theme color.
-use super::{grid::GridView, painter::Painter};
+use super::{grid::GridView, pen::Pen};
 
 /// Paints the padding next to grid row `row` with its edge cells'
 /// backgrounds, and above or below it for the first and last rows,
 /// corners included. Default backgrounds are left alone; the caller has
 /// already restored the window background there.
-pub(crate) fn extend_padding(p: &mut Painter, view: &GridView, row: usize) {
+pub(crate) fn extend_padding(p: &mut impl Pen, view: &GridView, row: usize) {
 	let Some(area) = view.padding else {
 		return;
 	};
@@ -40,14 +40,14 @@ pub(crate) fn extend_padding(p: &mut Painter, view: &GridView, row: usize) {
 }
 
 /// Paints the padding above the grid with the first row's backgrounds.
-pub(crate) fn extend_above(p: &mut Painter, view: &GridView) {
+pub(crate) fn extend_above(p: &mut impl Pen, view: &GridView) {
 	if let Some(area) = view.padding {
 		extend_row(p, view, 0, (area.y, view.origin.1));
 	}
 }
 
 /// Paints the padding below the grid with the last row's backgrounds.
-pub(crate) fn extend_below(p: &mut Painter, view: &GridView) {
+pub(crate) fn extend_below(p: &mut impl Pen, view: &GridView) {
 	if let Some(area) = view.padding {
 		let bottom = view.origin.1 + view.frame.rows * view.cell.1;
 		let row = view.frame.rows.saturating_sub(1);
@@ -60,7 +60,7 @@ pub(crate) fn extend_below(p: &mut Painter, view: &GridView) {
 /// Only a row colored all the way across extends: a partly colored one,
 /// such as less's reverse-video prompt, would leave a band that looks
 /// like a selected line.
-fn extend_row(p: &mut Painter, view: &GridView, row: usize, ys: (usize, usize)) {
+fn extend_row(p: &mut impl Pen, view: &GridView, row: usize, ys: (usize, usize)) {
 	let (Some(area), Some(cells)) = (
 		view.padding,
 		(row < view.frame.rows).then(|| view.frame.row(row)),
@@ -94,7 +94,7 @@ fn extend_row(p: &mut Painter, view: &GridView, row: usize, ys: (usize, usize)) 
 }
 
 fn fill(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	view: &GridView,
 	(x0, x1): (usize, usize),
 	(y0, y1): (usize, usize),

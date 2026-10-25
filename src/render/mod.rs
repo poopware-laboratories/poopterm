@@ -20,6 +20,9 @@ mod label_tests;
 mod multicell;
 pub(crate) mod padding;
 pub(crate) mod painter;
+pub(crate) mod pen;
+#[cfg(test)]
+mod pen_tests;
 pub(crate) mod popover;
 #[cfg(test)]
 mod popover_tests;
