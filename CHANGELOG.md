@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.104 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw window chrome through a recorded scene (#142) (render).
+
 ## 26.10.103 "Giga Fly" — 2026-10-25
 
 ### Fixed
