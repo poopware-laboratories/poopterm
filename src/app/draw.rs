@@ -161,7 +161,7 @@ impl App {
 	/// that edge cell backgrounds extend into.
 	pub(super) fn padding_area(&self, width: usize, height: usize) -> crate::graphics::Rect {
 		let x = self.border + self.sidebar_width();
-		let y = self.top.saturating_sub(self.margin);
+		let y = self.padding_top;
 		let bottom = height.saturating_sub(self.status_height + self.border);
 		crate::graphics::Rect {
 			x,
