@@ -106,7 +106,7 @@ class Shaders(unittest.TestCase):
         self.assertNotEqual(self.run_script().returncode, 0)
         (self.shaders / 'quad.frag').write_text('invalid\n')
         self.assertNotEqual(self.run_script('--check').returncode, 0)
-        self.assertIn(f'spirv-val --target-env vulkan1.3 {self.temporary}', self.calls()[-1])
+        self.assertIn(f'spirv-val --target-env vulkan1.3 {self.temporary}/shaders.', self.calls()[-1])
 
 
 if __name__ == '__main__':

@@ -19,7 +19,7 @@ fi
 
 out=shaders
 if [ "${1:-}" = --check ]; then
-	out=$(mktemp -d)
+	out=$(mktemp -d "${TMPDIR:-/tmp}/shaders.XXXXXX")
 	trap 'rm -rf "$out"' EXIT
 fi
 
