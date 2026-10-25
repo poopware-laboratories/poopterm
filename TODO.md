@@ -189,11 +189,55 @@ crate it replaces as an oracle (differential tests, and fuzzing for parsers
 of untrusted input), and lands only once it matches it and measures at
 least as fast.
 
-- **`portable-pty` → our own PTY layer** (libc: `posix_openpt`/`openpty`,
-  `fork` + `setsid` + `TIOCSCTTY`, `exec`, `TIOCSWINSZ`, non-blocking fds).
-  It gives us control of read sizes and polling, and drops
-  Windows-oriented abstractions we do not use. Must pass CI on Linux, macOS
-  and FreeBSD.
+- **`portable-pty` → our own PTY layer, complete on Linux, macOS and
+  FreeBSD.** Clean room: written from POSIX (`posix_openpt`, `grantpt`,
+  `unlockpt`, `ptsname`, `setsid`, `tcsetpgrp`, termios) and each system's
+  manual pages (Linux `pty(7)`, `ioctl_tty(2)`; macOS and FreeBSD `pty(4)`,
+  `tty(4)`), never from portable-pty's or any terminal's source. One module
+  per platform where they differ; everything else shared. portable-pty stays
+  a dev-dependency as the oracle until the replacement matches it, then goes.
+  - **Spawning, per POSIX.** Open the master `O_RDWR | O_NOCTTY | O_CLOEXEC`;
+    in the child, a new session (`setsid`), the slave as controlling terminal
+    (`TIOCSCTTY`), stdio on it, every other descriptor closed, signal mask and
+    dispositions reset to default, then `exec` with `argv[0]` kept (`-zsh`
+    for login shells). Report `exec` failures to the parent through a
+    close-on-exec pipe instead of a silent exit. Only async-signal-safe calls
+    between `fork` and `exec`; everything is allocated before forking.
+  - **Join the tab's cgroup before `exec` (Linux).** With the delegated
+    subtree from the cgroups item, the child writes itself into its tab's
+    `cgroup.procs`, or is created there with `clone3(CLONE_INTO_CGROUP)`, so
+    nothing the shell starts escapes its group: the gap of today's
+    after-the-fact move goes to zero.
+  - **termios defaults.** Set `IUTF8` (Backspace erases whole UTF-8
+    characters in canonical mode), sane `VERASE` (DEL), `VINTR`, `VEOF` and
+    speeds, matching what login terminals set on each platform.
+  - **Window size in cells and pixels.** `TIOCSWINSZ` with real
+    `ws_xpixel`/`ws_ypixel` (today they are 0), so Sixel, kitty graphics and
+    image viewers size images correctly; the kernel then sends `SIGWINCH` to
+    the foreground process group.
+  - **Foreground process.** `tcgetpgrp` on the master for the foreground
+    job: tab titles, working-directory discovery and "a program is running,
+    close anyway?" prompts look at it instead of the shell.
+  - **Flow control.** Packet mode (`TIOCPKT`) to notice `^S`/`^Q` (`IXON`)
+    stops and starts, so the UI can show that output is paused instead of
+    looking frozen.
+  - **Exit status.** `waitpid` without a reaper thread per tab: exit codes
+    and signals for `OSC 133` command status and the "process exited" line,
+    and hang-up (`SIGHUP` to the session) when a tab closes.
+  - **Optimization where it matters, measured.** The PTY layer is system
+    calls, not computation, so SIMD has nothing to do here (`src/vt` already
+    has it). Read straight into the `OutputQueue` instead of copying from a
+    64 KiB buffer; tune read sizes; non-blocking descriptors with
+    `poll`/`epoll`/`kqueue` to cut wake-ups during floods; drop portable-pty's
+    boxed traits and Windows-oriented layers. Each change is benchmarked
+    before and after (`docs/performance.md`) and kept only for a
+    reproducible gain.
+  - **Tests.** Side by side with portable-pty: the environment, `argv[0]`,
+    controlling terminal and session, window size seen by the child
+    (`stty size`, `TIOCGWINSZ`), termios flags, exit codes and signals, and
+    byte-identical output for the benchmark corpus. Failure paths: missing
+    shell, `exec` failure, closed master, child killed mid-write. Must pass
+    CI on Linux, macOS and FreeBSD.
 - **`unicode-width` → generated width tables:** done. `scripts/width_table.py`
   turns the Unicode data files into a two-level table (`src/width.bin`,
   13.5 KiB) that `src/width.rs` looks up; an exhaustive test checks every
