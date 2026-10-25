@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.112 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Load vulkan at run time with our own bindings (#151) (gpu).
+- Choose the integrated gpu first and a queue that draws (#152) (gpu).
+
 ## 26.10.111 "Giga Fly" — 2026-10-25
 
 ### Added
