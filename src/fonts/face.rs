@@ -3,7 +3,13 @@
 //! `CFF `). Written from the OpenType specification.
 use std::borrow::Cow;
 
-use super::{cff::Cff, cmap::Cmap, glyf, read::Bytes};
+use super::{
+	cbdt::{Cbdt, ColorBitmap},
+	cff::Cff,
+	cmap::Cmap,
+	glyf,
+	read::Bytes,
+};
 
 /// Receives a glyph outline in font units, y up.
 pub(crate) trait Sink {
@@ -68,6 +74,7 @@ pub(crate) struct Face {
 	pub(crate) glyf: Table,
 	pub(crate) long_loca: bool,
 	cff: Option<Cff>,
+	cbdt: Option<Cbdt>,
 }
 
 /// Why a font could not be loaded.
@@ -133,8 +140,12 @@ impl Face {
 			(None, None) => None,
 		};
 		let glyf = find(b"glyf").unwrap_or_default();
-		if cff.is_none() && glyf.len == 0 {
-			return Err("no glyf or CFF outlines");
+		let cbdt = match (find(b"CBLC"), find(b"CBDT")) {
+			(Some(cblc), Some(cbdt)) => Some(Cbdt { cblc, cbdt }),
+			_ => None,
+		};
+		if cff.is_none() && glyf.len == 0 && cbdt.is_none() {
+			return Err("no glyf or CFF outlines or color bitmaps");
 		}
 		let face = Self {
 			units_per_em,
@@ -149,6 +160,7 @@ impl Face {
 			glyf,
 			long_loca: head.i16_at(50) == Some(1),
 			cff,
+			cbdt,
 			data: Cow::Borrowed(&[]),
 		};
 		Ok(Self { data, ..face })
@@ -178,6 +190,11 @@ impl Face {
 		let hmtx = self.hmtx.bytes(&self.data);
 		let index = glyph.min(self.h_metrics.saturating_sub(1));
 		hmtx.u16_at(4 * usize::from(index)).unwrap_or(0)
+	}
+
+	/// `glyph`'s color bitmap, if the face has one for it.
+	pub(crate) fn color_bitmap(&self, glyph: u16) -> Option<ColorBitmap<'_>> {
+		self.cbdt?.glyph(&self.data, glyph)
 	}
 
 	/// Sends `glyph`'s outline to `sink` and returns its bounds, or `None`

@@ -27,8 +27,11 @@ pub(crate) struct FaceInfo {
 	/// A fixed-pitch text font: every glyph has one width and ASCII letters
 	/// and digits are mapped, which rules out emoji and symbol fonts.
 	pub monospace: bool,
-	/// Has glyph outlines (`glyf`, `CFF ` or `CFF2`), not only bitmaps.
-	pub outlines: bool,
+	/// Has glyphs it can draw: outlines (`glyf`, `CFF `, `CFF2`) or color
+	/// bitmaps (`CBDT`).
+	pub drawable: bool,
+	/// Has color bitmaps (`CBDT`), as emoji fonts do.
+	pub color: bool,
 	/// The Unicode pages its `cmap` maps.
 	pub pages: Pages,
 }
@@ -135,12 +138,13 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 		read_cmap(file, offset, length).unwrap_or_default()
 	});
 	let monospace = fixed_width && latin;
-	let outlines = [b"glyf", b"CFF ", b"CFF2"]
+	let drawable = [b"glyf", b"CFF ", b"CFF2", b"CBDT"]
 		.into_iter()
 		.any(|tag| find(tag).is_some());
 	Ok(Some(FaceInfo {
 		index,
-		outlines,
+		drawable,
+		color: find(b"CBDT").is_some(),
 		pages,
 		postscript: names.get(6).unwrap_or_default(),
 		family,

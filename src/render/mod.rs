@@ -14,3 +14,5 @@ pub(crate) mod painter;
 
 #[cfg(test)]
 mod backend_tests;
+#[cfg(test)]
+mod emoji_tests;

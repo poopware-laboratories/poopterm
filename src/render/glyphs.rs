@@ -1,17 +1,23 @@
 //! Font fallback resolution and the rasterized-glyph cache.
 use std::collections::hash_map::Entry;
 
-use crate::fonts::{Font, Metrics, fallback::SystemFallback};
+use crate::fonts::{
+	Font, Metrics,
+	fallback::{SystemFallback, has},
+};
 
 use super::{boxdraw, fxhash::FxHashMap};
 
 /// Upper bound on cached rasterizations before the cache is reset.
 const MAX_CACHED_GLYPHS: usize = 4096;
 
-/// A rasterized glyph: placement metrics plus an 8-bit coverage bitmap.
+/// A rasterized glyph: placement metrics plus an 8-bit coverage bitmap, or
+/// color pixels for color glyphs (emoji).
 pub(crate) struct Glyph {
 	pub metrics: Metrics,
 	pub coverage: Vec<u8>,
+	/// `0xAARRGGBB` with straight alpha, drawn instead of `coverage`.
+	pub color: Option<Vec<u32>>,
 }
 
 /// The primary font, its fallbacks, and every glyph rasterized so far.
@@ -66,16 +72,25 @@ impl FontSet {
 		match self.cache.entry((ch, px.to_bits())) {
 			Entry::Occupied(entry) => entry.into_mut(),
 			Entry::Vacant(entry) => {
-				let font = if self.primary.lookup_glyph_index(ch) != 0 {
-					&self.primary
-				} else {
-					let found = (self.fallbacks.iter())
-						.position(|font| font.lookup_glyph_index(ch) != 0)
-						.or_else(|| self.system.as_mut()?.find(ch, &mut self.fallbacks));
-					found.map_or(&self.primary, |index| &self.fallbacks[index])
+				let mut find = |color| {
+					(self.fallbacks.iter())
+						.position(|font| has(font, ch, color))
+						.or_else(|| self.system.as_mut()?.find(ch, color, &mut self.fallbacks))
 				};
-				let (metrics, coverage) = font.rasterize(ch, px);
-				entry.insert(Glyph { metrics, coverage })
+				let found = (emoji_presentation(ch).then(|| find(true)).flatten())
+					.or_else(|| (!has(&self.primary, ch, false)).then(|| find(false))?);
+				let font = found.map_or(&self.primary, |index| &self.fallbacks[index]);
+				let color = font.rasterize_color(ch, px);
+				let (metrics, coverage) = match &color {
+					Some((metrics, _)) => (*metrics, Vec::new()),
+					None => font.rasterize(ch, px),
+				};
+				let color = color.map(|(_, pixels)| pixels);
+				entry.insert(Glyph {
+					metrics,
+					coverage,
+					color,
+				})
 			}
 		}
 	}
@@ -118,6 +133,12 @@ impl FontSet {
 	pub(crate) fn cached(&self) -> usize {
 		self.cache.len()
 	}
+}
+
+/// Whether `ch` is shown as an emoji by default (Emoji_Presentation): the
+/// wide characters among symbols, which leaves out CJK.
+pub(crate) fn emoji_presentation(ch: char) -> bool {
+	matches!(u32::from(ch), 0x2300..=0x2bff | 0x1f000..=0x1fbff) && crate::width::width(ch) == 2
 }
 
 #[cfg(test)]
@@ -228,5 +249,89 @@ mod tests {
 			bundled().rasterize('a', 16.0).1
 		);
 		assert_eq!(opened.get(), 0);
+	}
+
+	/// A color font with a red 4×4 bitmap for each of `chars`.
+	fn color(chars: &[char]) -> Font {
+		use crate::fonts::cbdt_tests::{Image, Strike, color_font, png};
+		let image = Image {
+			metrics: [4, 4, 0, 4, 4],
+			png: png(4, 4, &[0xffff0000; 16]),
+		};
+		let strike = Strike {
+			ppem: 16,
+			first: 1,
+			index_format: 1,
+			image_format: 17,
+			images: vec![Some(image); chars.len()],
+		};
+		Font::from_bytes(color_font(chars, &[strike]), 0).unwrap()
+	}
+
+	fn outline(ch: char) -> Font {
+		Font::from_bytes(crate::fonts::fallback_tests::font_with_only(ch), 0).unwrap()
+	}
+
+	#[test]
+	fn emoji_presentation_covers_wide_symbols_but_not_text_or_cjk() {
+		for ch in ['😀', '👍', '🦀', '⚡', '⌚', '☕', '♈', '⬛', '🀄'] {
+			assert!(emoji_presentation(ch), "{ch:?}");
+		}
+		// Text-style symbols, CJK and Hangul are wide or symbolic, not emoji.
+		for ch in [
+			'a',
+			'☃',
+			'♞',
+			'❤',
+			'✔',
+			'⌘',
+			'漢',
+			'한',
+			'＃',
+			'\u{2bff}',
+			'\u{1fc00}',
+		] {
+			assert!(!emoji_presentation(ch), "{ch:?}");
+		}
+	}
+
+	#[test]
+	fn emoji_prefer_a_color_font_over_earlier_outline_fonts() {
+		// The outline font comes first, as symbol fonts loaded at startup do.
+		let mut fonts = FontSet::new(bundled(), vec![outline('👍'), color(&['👍'])]);
+		assert_eq!(fonts.glyph('👍', 16.0).color, Some(vec![0xffff0000; 16]));
+	}
+
+	#[test]
+	fn emoji_without_a_color_font_use_the_outline_one() {
+		let mut fonts = FontSet::new(bundled(), vec![outline('👍')]);
+		let glyph = fonts.glyph('👍', 16.0);
+		assert!(glyph.color.is_none() && glyph.coverage.iter().any(|&c| c > 0));
+	}
+
+	#[test]
+	fn emoji_in_color_win_over_the_primary_font_too() {
+		// The bundled font has a black-and-white ⚡; the emoji is in color.
+		assert_ne!(bundled().lookup_glyph_index('⚡'), 0);
+		let mut fonts = FontSet::new(bundled(), vec![color(&['⚡'])]);
+		assert!(fonts.glyph('⚡', 16.0).color.is_some());
+	}
+
+	#[test]
+	fn text_symbols_keep_the_first_font_that_has_them() {
+		// ☃ defaults to text: the primary font's outline wins over color.
+		let mut fonts = FontSet::new(bundled(), vec![color(&['☃', '漢'])]);
+		assert!(fonts.glyph('☃', 16.0).color.is_none());
+		// A character only a color font has is still drawn, in color.
+		assert!(fonts.glyph('漢', 16.0).color.is_some());
+	}
+
+	#[test]
+	fn color_glyphs_are_cached_per_size() {
+		let mut fonts = FontSet::new(bundled(), vec![color(&['😀'])]);
+		let small = fonts.glyph('😀', 8.0).metrics;
+		let large = fonts.glyph('😀', 32.0).metrics;
+		assert_eq!((small.width, large.width), (2, 8));
+		assert_eq!(fonts.cached(), 2);
 	}
 }

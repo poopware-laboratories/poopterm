@@ -118,7 +118,8 @@ fn face(family: &str, weight: u16, italic: bool, monospace: bool) -> FaceInfo {
 		weight,
 		italic,
 		monospace,
-		outlines: true,
+		drawable: true,
+		color: false,
 		pages: vec![(0, 0)],
 	}
 }
@@ -181,10 +182,10 @@ fn the_cache_keeps_each_faces_pages_and_outline_flag() {
 	fs::write(root.join("one.ttf"), BUNDLED).unwrap();
 	let (mut cache, _) = refresh(std::slice::from_ref(&root), None);
 	let face = &cache.files[0].faces[0];
-	assert!(face.outlines && face.pages.len() > 1, "{face:?}");
+	assert!(face.drawable && face.pages.len() > 1, "{face:?}");
 	let text = encode(&cache);
 	assert_eq!(decode(&text), Some(cache.clone()));
-	cache.files[0].faces[0].outlines = false;
+	cache.files[0].faces[0].drawable = false;
 	cache.files[0].faces[0].pages = vec![(0x1f3, 0x1fa)];
 	let text = encode(&cache);
 	assert!(text.contains("\t0\t1f3-1fa\t"), "{text}");
@@ -194,17 +195,32 @@ fn the_cache_keeps_each_faces_pages_and_outline_flag() {
 
 #[test]
 fn caches_written_before_page_coverage_are_rebuilt() {
-	// A version 2 face line has no outline flag or pages.
+	// A version 2 face line has no drawable or color flags, or pages.
 	let old = "poopterm-fonts 2\nF\t1\t2\t/f.ttf\nf\t0\t400\t0\t1\tMono\tRegular\tMono\tMono\nend\n";
 	assert_eq!(decode(old), None);
-	let current = old.replace("fonts 2", "fonts 3");
+	let current = old.replace("fonts 2", "fonts 4");
 	assert_eq!(
 		decode(&current),
 		None,
 		"the old face line is not read either"
 	);
-	let fixed = current.replace("\t1\tMono\t", "\t1\t1\t0-2\tMono\t");
+	let fixed = current.replace("\t1\tMono\t", "\t1\t1\t0\t0-2\tMono\t");
 	let cache = decode(&fixed).unwrap();
 	assert_eq!(cache.files[0].faces[0].pages, [(0, 2)]);
 	assert_eq!(decode(&fixed.replace("0-2", "2-0")), None, "bad pages");
+}
+
+#[test]
+fn the_cache_keeps_the_color_flag_apart_from_drawable() {
+	let mut cache = synthetic(&[
+		face("Emoji", 400, false, false),
+		face("Mono", 400, false, true),
+	]);
+	cache.files[0].faces[0].color = true;
+	let text = encode(&cache);
+	assert!(text.contains("\t1\t1\t0\tEmoji\t"), "{text}");
+	assert!(text.contains("\t1\t0\t0\tMono\t"), "{text}");
+	assert_eq!(decode(&text), Some(cache));
+	// Caches from before the color flag are rebuilt.
+	assert_eq!(decode(&text.replace("fonts 4", "fonts 3")), None);
 }

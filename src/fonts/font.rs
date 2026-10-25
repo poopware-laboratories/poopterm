@@ -74,6 +74,23 @@ impl Font {
 		self.outline(ch, px).0
 	}
 
+	/// `ch` as color pixels (`0xAARRGGBB`, straight alpha), for fonts that
+	/// store it as a color bitmap.
+	pub(crate) fn rasterize_color(&self, ch: char, px: f32) -> Option<(Metrics, Vec<u32>)> {
+		let bitmap = self.face.color_bitmap(self.face.glyph_index(ch))?;
+		super::color::render(&bitmap, px)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn color_bitmap(&self, ch: char) -> Option<super::cbdt::ColorBitmap<'_>> {
+		self.face.color_bitmap(self.face.glyph_index(ch))
+	}
+
+	/// Whether `ch` is a color bitmap in this font.
+	pub(crate) fn has_color(&self, ch: char) -> bool {
+		self.face.color_bitmap(self.face.glyph_index(ch)).is_some()
+	}
+
 	pub(crate) fn rasterize(&self, ch: char, px: f32) -> (Metrics, Vec<u8>) {
 		let (metrics, path) = self.outline(ch, px);
 		let mut raster = Raster::new(metrics.width, metrics.height);

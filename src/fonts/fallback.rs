@@ -18,16 +18,18 @@ const MAX_FILE: u64 = 64 << 20;
 /// Characters remembered as found nowhere before the list is reset.
 const MAX_MISSING: usize = 4096;
 
-/// The faces that may have `ch`, best first: outline fonts whose pages
-/// cover it, monospace before proportional, upright regular weights first,
-/// then smaller files, which are usually the more specific fonts.
-pub(crate) fn candidates(cache: &Cache, ch: char) -> Vec<(&Path, u32)> {
+/// The faces that may have `ch`, in color if `color`, best first: fonts
+/// whose pages cover it, monospace before proportional, upright regular
+/// weights first, then smaller files, which are usually the more specific
+/// fonts.
+pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u32)> {
 	let mut found: Vec<_> = cache
 		.files
 		.iter()
 		.filter(|file| file.stamp.size <= MAX_FILE)
 		.flat_map(|file| file.faces.iter().map(move |face| (file, face)))
-		.filter(|(_, face)| face.outlines && covers(&face.pages, ch))
+		.filter(|(_, face)| if color { face.color } else { face.drawable })
+		.filter(|(_, face)| covers(&face.pages, ch))
 		.collect();
 	found.sort_by_key(|(file, face)| {
 		(
@@ -51,7 +53,8 @@ pub(crate) struct SystemFallback {
 	cache: Cache,
 	/// Faces already loaded, or that failed to load.
 	tried: HashSet<(PathBuf, u32)>,
-	missing: HashSet<char>,
+	/// Characters, and whether in color, found nowhere.
+	missing: HashSet<(char, bool)>,
 }
 
 impl SystemFallback {
@@ -65,16 +68,16 @@ impl SystemFallback {
 		}
 	}
 
-	/// Loads untried fonts that may have `ch` into `fonts` until one does,
-	/// returning its index there.
-	pub(crate) fn find(&mut self, ch: char, fonts: &mut Vec<Font>) -> Option<usize> {
-		if self.missing.contains(&ch) || self.tried.len() >= MAX_LOADED {
+	/// Loads untried fonts that may have `ch`, in color if `color`, into
+	/// `fonts` until one does, returning its index there.
+	pub(crate) fn find(&mut self, ch: char, color: bool, fonts: &mut Vec<Font>) -> Option<usize> {
+		if self.missing.contains(&(ch, color)) || self.tried.len() >= MAX_LOADED {
 			return None;
 		}
 		if let Some(open) = self.open.take() {
 			self.cache = open();
 		}
-		let untried: Vec<(PathBuf, u32)> = candidates(&self.cache, ch)
+		let untried: Vec<(PathBuf, u32)> = candidates(&self.cache, ch, color)
 			.into_iter()
 			.filter(|&(path, index)| !self.tried.contains(&(path.to_owned(), index)))
 			.take(TRIES_PER_CHAR.min(MAX_LOADED - self.tried.len()))
@@ -88,7 +91,7 @@ impl SystemFallback {
 			// Kept even without `ch`: it may have the next character.
 			if let Some(font) = loaded {
 				fonts.push(font);
-				if fonts.last()?.lookup_glyph_index(ch) != 0 {
+				if has(fonts.last()?, ch, color) {
 					return Some(fonts.len() - 1);
 				}
 			}
@@ -96,7 +99,16 @@ impl SystemFallback {
 		if self.missing.len() >= MAX_MISSING {
 			self.missing.clear();
 		}
-		self.missing.insert(ch);
+		self.missing.insert((ch, color));
 		None
+	}
+}
+
+/// Whether `font` has `ch`, as a color bitmap if `color`.
+pub(crate) fn has(font: &Font, ch: char, color: bool) -> bool {
+	if color {
+		font.has_color(ch)
+	} else {
+		font.lookup_glyph_index(ch) != 0
 	}
 }

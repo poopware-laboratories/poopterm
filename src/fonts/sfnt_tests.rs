@@ -477,19 +477,20 @@ fn unreadable_cmaps_leave_the_face_without_pages() {
 }
 
 #[test]
-fn outline_tables_mark_fonts_that_can_be_drawn() {
-	for tag in [b"glyf", b"CFF ", b"CFF2"] {
-		assert!(covering(None, Some(tag)).outlines, "{tag:?}");
-	}
+fn outline_and_color_bitmap_tables_mark_fonts_that_can_be_drawn() {
 	// Color bitmap fonts like Noto Color Emoji have only CBDT.
-	assert!(!covering(None, Some(b"CBDT")).outlines);
-	assert!(!covering(None, None).outlines);
+	for tag in [b"glyf", b"CFF ", b"CFF2", b"CBDT"] {
+		assert!(covering(None, Some(tag)).drawable, "{tag:?}");
+	}
+	// sbix and SVG emoji are not drawn yet.
+	assert!(!covering(None, Some(b"sbix")).drawable);
+	assert!(!covering(None, None).drawable);
 }
 
 #[test]
 fn the_bundled_font_covers_latin_box_drawing_and_powerline() {
 	let face = &faces(BUNDLED).unwrap()[0];
-	assert!(face.outlines);
+	assert!(face.drawable);
 	let covers = |ch| super::coverage::covers(&face.pages, ch);
 	assert!(['a', 'é', '─', '\u{e0b0}'].into_iter().all(covers));
 	assert!(!covers('漢') && !covers('😀'));
@@ -533,4 +534,13 @@ fn monospace_detection_still_reads_latin_from_a_long_format12_table() {
 	assert!(face.monospace);
 	assert_eq!(face.pages.len(), 301);
 	assert_eq!(face.pages.last(), Some(&(0x356, 0x356)));
+}
+
+#[test]
+fn only_cbdt_marks_a_face_as_color() {
+	assert!(covering(None, Some(b"CBDT")).color);
+	for tag in [b"glyf", b"CFF ", b"sbix", b"COLR"] {
+		assert!(!covering(None, Some(tag)).color, "{tag:?}");
+	}
+	assert!(!faces(BUNDLED).unwrap()[0].color);
 }

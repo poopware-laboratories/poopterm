@@ -1,6 +1,10 @@
 //! Terminal font loading with bundled and system symbol-font fallbacks.
+mod cbdt;
+#[cfg(test)]
+pub(crate) mod cbdt_tests;
 mod cff;
 mod cmap;
+mod color;
 pub(crate) mod coverage;
 pub(crate) mod db;
 #[cfg(test)]

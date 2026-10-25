@@ -241,6 +241,10 @@ and position, and placeholder slices row by row.
   `fonts::fallback::SystemFallback` opens the font database (each face records
   the Unicode pages its `cmap` maps) and loads matching installed fonts, at
   most four per character and 32 in all.
+  Emoji-presentation characters prefer a font with a color bitmap
+  (`fonts::cbdt` reads `CBLC`/`CBDT`, `fonts::color` scales the PNG to the
+  font size); `Glyph::color` holds those pixels, which the painter blends
+  in their own colors, unslanted by italic.
 - `render::grid::draw_grid` draws a `GridView`: cells right to left (so wide
   glyphs paint over their spacer), cursor, selection, search match, underline
   and strike styles, hyperlinks, combining marks and images.
