@@ -7,7 +7,7 @@ use super::{
 		Badge, HeaderButton, HeaderTab, Rect, Style, centered_text, draw_button, draw_progress,
 		draw_tab,
 	},
-	painter::Painter,
+	scene::Scene,
 };
 
 pub(crate) struct SidebarRow<'a> {
@@ -40,7 +40,7 @@ pub(crate) fn rail_close_rect((x, y, width, _): Rect, scale: usize) -> Rect {
 
 /// Draws the whole sidebar. Its background is opaque, so nothing under it
 /// needs restoring first.
-pub(crate) fn draw_sidebar(p: &mut Painter, fonts: &mut FontSet, sidebar: &Sidebar) {
+pub(crate) fn draw_sidebar(p: &mut Scene, fonts: &mut FontSet, sidebar: &Sidebar) {
 	let (x, y, width, height) = sidebar.area;
 	let (style, scale) = (sidebar.style, sidebar.style.scale);
 	p.rect(x, y, width, height, style.colors.bar);
@@ -58,7 +58,7 @@ pub(crate) fn draw_sidebar(p: &mut Painter, fonts: &mut FontSet, sidebar: &Sideb
 	}
 }
 
-fn draw_rail_tab(p: &mut Painter, fonts: &mut FontSet, style: Style, row: &SidebarRow) {
+fn draw_rail_tab(p: &mut Scene, fonts: &mut FontSet, style: Style, row: &SidebarRow) {
 	let (scale, colors, tab) = (style.scale, style.colors, &row.tab);
 	let (x, y, width, height) = row.rect;
 	let surface = tab.fill.unwrap_or(colors.bar);

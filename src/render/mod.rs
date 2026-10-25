@@ -3,6 +3,8 @@ pub(crate) mod backend;
 pub(crate) mod blend;
 pub(crate) mod boxdraw;
 pub(crate) mod cell_joins;
+#[cfg(test)]
+mod chrome_scene_tests;
 pub(crate) mod damage;
 pub(crate) mod fit;
 pub(crate) mod fxhash;
@@ -21,6 +23,9 @@ pub(crate) mod painter;
 pub(crate) mod popover;
 #[cfg(test)]
 mod popover_tests;
+pub(crate) mod scene;
+#[cfg(test)]
+mod scene_tests;
 pub(crate) mod shapes;
 #[cfg(test)]
 mod shapes_tests;

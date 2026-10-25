@@ -1,7 +1,7 @@
 //! Drawing for the optional vertical tab sidebar.
 use super::{draw::UiFont, draw_tabs::tab_info, *};
 use crate::{
-	render::{painter::Painter, sidebar::draw_sidebar},
+	render::{painter::Painter, scene::paint, sidebar::draw_sidebar},
 	ui::{
 		sidebar::{SidebarInput, SidebarState, sidebar, sidebar_target},
 		tabs::VerticalTabLayout,
@@ -71,7 +71,7 @@ impl App {
 			px: ui.px * 0.82,
 			theme: &self.theme,
 		});
-		draw_sidebar(p, &mut self.ui_fonts, &sidebar);
+		paint(p, &mut self.ui_fonts, |s, f| draw_sidebar(s, f, &sidebar));
 		// pr-check: end window glue
 	}
 }

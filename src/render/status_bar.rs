@@ -2,7 +2,7 @@
 use super::{
 	glyphs::FontSet,
 	header::{Rect, Style, line},
-	painter::Painter,
+	scene::Scene,
 };
 use crate::ui::ui_font::{ellipsize_to_width, text_width};
 
@@ -15,7 +15,7 @@ pub(crate) struct StatusBar {
 	pub right: (String, u32),
 }
 
-pub(crate) fn draw_status_bar(p: &mut Painter, fonts: &mut FontSet, bar: &StatusBar) {
+pub(crate) fn draw_status_bar(p: &mut Scene, fonts: &mut FontSet, bar: &StatusBar) {
 	let (x, y, width, height) = bar.rect;
 	let (scale, px, colors) = (bar.style.scale, bar.style.px, bar.style.colors);
 	p.rect(x, y, width, height, colors.bar);

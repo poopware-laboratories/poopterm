@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
 	fonts::{BUNDLED, Font},
-	render::painter::Painter,
+	render::{painter::Painter, scene::paint},
 };
 
 const WIDTH: usize = 400;
@@ -91,11 +91,10 @@ impl Drawn {
 fn draw(popover: &Popover) -> Drawn {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pixels = vec![BACKGROUND; WIDTH * HEIGHT];
-	draw_popover(
-		&mut Painter::new(&mut pixels, WIDTH, HEIGHT),
-		&mut fonts,
-		popover,
-	);
+	let p = &mut Painter::new(&mut pixels, WIDTH, HEIGHT);
+	paint(p, &mut fonts, |scene, fonts| {
+		draw_popover(scene, fonts, popover)
+	});
 	Drawn(pixels)
 }
 
@@ -475,7 +474,9 @@ fn draw_models(
 		] {
 			let mut pixels = vec![fill; window.0 * window.1];
 			let mut painter = Painter::new(&mut pixels, window.0, window.1);
-			draw_popover(&mut painter, &mut fonts, &popover);
+			paint(&mut painter, &mut fonts, |scene, fonts| {
+				draw_popover(scene, fonts, &popover)
+			});
 			check(kind.name(), &popover, &pixels);
 		}
 		kind = kind.next();

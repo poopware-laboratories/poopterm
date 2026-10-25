@@ -3,6 +3,7 @@ use super::{
 	glyphs::FontSet,
 	label::{Label, draw_label},
 	painter::Painter,
+	scene::paint,
 };
 use crate::fonts::{BUNDLED, Font};
 
@@ -30,14 +31,9 @@ fn drawn_in(title: &str, status: Option<&str>, (room, height): (usize, usize)) -
 		status,
 		colors: (TITLE, STATUS),
 	};
-	draw_label(
-		&mut painter,
-		&mut fonts,
-		&label,
-		4,
-		(PX, ASCENT),
-		(10, 4, room, height),
-	);
+	paint(&mut painter, &mut fonts, |scene, fonts| {
+		draw_label(scene, fonts, &label, 4, (PX, ASCENT), (10, 4, room, height));
+	});
 	pixels
 }
 
