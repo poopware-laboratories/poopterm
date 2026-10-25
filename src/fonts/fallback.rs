@@ -2,7 +2,7 @@
 //! database is opened on the first missing character, and only fonts whose
 //! pages cover it are loaded, a few at a time.
 use std::{
-	collections::HashSet,
+	collections::{HashMap, HashSet},
 	fs,
 	path::{Path, PathBuf},
 };
@@ -17,6 +17,8 @@ const MAX_LOADED: usize = 32;
 const MAX_FILE: u64 = 64 << 20;
 /// Characters remembered as found nowhere before the list is reset.
 const MAX_MISSING: usize = 4096;
+/// Pages whose ranked candidates are remembered before the list is reset.
+const MAX_RANKED: usize = 512;
 
 /// The faces that may have `ch`, in color if `color`, best first: fonts
 /// whose pages cover it, monospace before proportional, upright regular
@@ -47,12 +49,18 @@ pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u3
 		.collect()
 }
 
-/// Loads installed fonts on demand for characters no loaded font has.
+/// Picks installed fonts for characters the configured fonts lack, loading
+/// them on demand. The choice depends only on the character: the best
+/// ranked candidate that has it, whatever was loaded before.
 pub(crate) struct SystemFallback {
 	open: Option<Box<dyn FnOnce() -> Cache>>,
 	cache: Cache,
+	/// Candidates by page and color: they depend on nothing else.
+	ranked: HashMap<(u16, bool), Vec<(PathBuf, u32)>>,
 	/// Faces already loaded, or that failed to load.
 	tried: HashSet<(PathBuf, u32)>,
+	/// Where each loaded face is in the caller's list.
+	loaded: HashMap<(PathBuf, u32), usize>,
 	/// Characters, and whether in color, found nowhere.
 	missing: HashSet<(char, bool)>,
 }
@@ -63,37 +71,57 @@ impl SystemFallback {
 		Self {
 			open: Some(Box::new(open)),
 			cache: Cache::default(),
+			ranked: HashMap::new(),
 			tried: HashSet::new(),
+			loaded: HashMap::new(),
 			missing: HashSet::new(),
 		}
 	}
 
-	/// Loads untried fonts that may have `ch`, in color if `color`, into
-	/// `fonts` until one does, returning its index there.
+	/// The index in `fonts` of the best ranked installed font with `ch`,
+	/// in color if `color`, loading untried candidates into `fonts` on the
+	/// way: at most a few per character, and a bounded number in all.
 	pub(crate) fn find(&mut self, ch: char, color: bool, fonts: &mut Vec<Font>) -> Option<usize> {
-		if self.missing.contains(&(ch, color)) || self.tried.len() >= MAX_LOADED {
+		if self.missing.contains(&(ch, color)) {
 			return None;
 		}
 		if let Some(open) = self.open.take() {
 			self.cache = open();
 		}
-		let untried: Vec<(PathBuf, u32)> = candidates(&self.cache, ch, color)
-			.into_iter()
-			.filter(|&(path, index)| !self.tried.contains(&(path.to_owned(), index)))
-			.take(TRIES_PER_CHAR.min(MAX_LOADED - self.tried.len()))
-			.map(|(path, index)| (path.to_owned(), index))
-			.collect();
-		for (path, index) in untried {
-			let loaded = fs::read(&path)
-				.ok()
-				.and_then(|bytes| Font::from_bytes(bytes, index).ok());
-			self.tried.insert((path, index));
-			// Kept even without `ch`: it may have the next character.
-			if let Some(font) = loaded {
-				fonts.push(font);
-				if has(fonts.last()?, ch, color) {
-					return Some(fonts.len() - 1);
+		if self.ranked.len() >= MAX_RANKED {
+			self.ranked.clear();
+		}
+		let page = (u32::from(ch) >> 8) as u16;
+		let cache = &self.cache;
+		let ranked = self.ranked.entry((page, color)).or_insert_with(|| {
+			candidates(cache, ch, color)
+				.into_iter()
+				.map(|(path, index)| (path.to_owned(), index))
+				.collect()
+		});
+		let mut loads = 0;
+		for face in ranked.iter() {
+			let at = match self.loaded.get(face) {
+				Some(&at) => at,
+				None if self.tried.contains(face) => continue,
+				None if loads == TRIES_PER_CHAR || self.tried.len() >= MAX_LOADED => continue,
+				None => {
+					loads += 1;
+					self.tried.insert(face.clone());
+					let Some(font) = fs::read(&face.0)
+						.ok()
+						.and_then(|bytes| Font::from_bytes(bytes, face.1).ok())
+					else {
+						continue;
+					};
+					// Kept even without `ch`: it may have the next character.
+					fonts.push(font);
+					self.loaded.insert(face.clone(), fonts.len() - 1);
+					fonts.len() - 1
 				}
+			};
+			if has(&fonts[at], ch, color) {
+				return Some(at);
 			}
 		}
 		if self.missing.len() >= MAX_MISSING {
@@ -101,6 +129,11 @@ impl SystemFallback {
 		}
 		self.missing.insert((ch, color));
 		None
+	}
+
+	#[cfg(test)]
+	pub(crate) fn ranked_pages(&self) -> usize {
+		self.ranked.len()
 	}
 }
 
