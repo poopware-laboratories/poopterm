@@ -6,12 +6,14 @@ use super::{
 	buffer_tests::Made as MadeBuffer,
 	call::{Error, INCOMPLETE},
 	choose::{Device, GRAPHICS, Kind, QueueFamily, TRANSFER},
+	commands_tests::CommandBuffer,
 	device_tests::{self, Made},
 	entry::Entry,
 	features::Flag,
 	image_tests::{MadeImage, MadeView},
 	memory::MemoryType,
 	memory_driver_tests,
+	submit_types::RawCommandPool,
 	types::*,
 	version::api_version,
 };
@@ -76,8 +78,14 @@ pub(super) struct Driver {
 	pub counters: Vec<u64>,
 	/// Each wait's semaphores, values and timeout.
 	pub waits: Vec<(Vec<RawSemaphore>, Vec<u64>, u64)>,
-	/// Buffers, images, views and semaphores destroyed and memory freed,
-	/// in order.
+	/// The flags and queue family of each command pool made.
+	pub pools: Vec<(u32, u32)>,
+	pub live_pools: Vec<RawCommandPool>,
+	pub command_buffers: Vec<CommandBuffer>,
+	/// Pools reset, and buffers begun, ended and submitted, in order.
+	pub recorded: Vec<String>,
+	/// Buffers, images, views, semaphores and pools destroyed and memory
+	/// freed, in order.
 	pub released: Vec<String>,
 	/// Valid usage rules the bindings broke.
 	pub invalid: Vec<String>,

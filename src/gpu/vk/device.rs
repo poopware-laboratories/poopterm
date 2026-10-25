@@ -1,6 +1,8 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
-use super::{call::Error, entry::cast, instance::Instance, memory::MemoryType, types::*};
+use super::{
+	call::Error, entry::cast, instance::Instance, memory::MemoryType, submit_types::*, types::*,
+};
 use std::{ffi::CStr, ptr, rc::Rc};
 
 /// The device's functions other than `vkDestroyDevice`.
@@ -23,6 +25,13 @@ pub(super) struct Functions {
 	pub destroy_semaphore: DestroySemaphore,
 	pub semaphore_value: GetSemaphoreCounterValue,
 	pub wait_semaphores: WaitSemaphores,
+	pub create_pool: CreateCommandPool,
+	pub destroy_pool: DestroyCommandPool,
+	pub reset_pool: ResetCommandPool,
+	pub allocate_commands: AllocateCommandBuffers,
+	pub begin: BeginCommandBuffer,
+	pub end: EndCommandBuffer,
+	pub submit: QueueSubmit2,
 }
 
 impl Functions {
@@ -50,6 +59,13 @@ impl Functions {
 				destroy_semaphore: cast(function(c"vkDestroySemaphore")?),
 				semaphore_value: cast(function(c"vkGetSemaphoreCounterValue")?),
 				wait_semaphores: cast(function(c"vkWaitSemaphores")?),
+				create_pool: cast(function(c"vkCreateCommandPool")?),
+				destroy_pool: cast(function(c"vkDestroyCommandPool")?),
+				reset_pool: cast(function(c"vkResetCommandPool")?),
+				allocate_commands: cast(function(c"vkAllocateCommandBuffers")?),
+				begin: cast(function(c"vkBeginCommandBuffer")?),
+				end: cast(function(c"vkEndCommandBuffer")?),
+				submit: cast(function(c"vkQueueSubmit2")?),
 			})
 		}
 	}

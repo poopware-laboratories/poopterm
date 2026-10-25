@@ -9,6 +9,7 @@ use super::{
 	buffer::Buffer,
 	call::Error,
 	choose::{GRAPHICS, Kind, choose},
+	commands::Commands,
 	device::Device,
 	entry::Entry,
 	image::Image,
@@ -129,6 +130,12 @@ fn child() {
 					}
 					let waited = Timeline::new(&device).and_then(|timeline| timeline.wait(0, Duration::ZERO));
 					println!("child: timeline waited: {waited:?}");
+					let timeline = Rc::new(Timeline::new(&device).unwrap());
+					let submitted = Commands::new(&timeline).and_then(|mut commands| {
+						let value = commands.record()?.submit()?;
+						commands.finish().map(|()| value)
+					});
+					println!("child: submitted: {submitted:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -372,4 +379,29 @@ fn a_timeline_starts_at_zero_and_waiting_past_it_times_out() {
 	// A timeline outliving its device's last other owner keeps it alive.
 	drop(device);
 	assert_eq!(timeline.reached(), Ok(0));
+}
+
+#[test]
+fn submitted_commands_raise_the_timeline_once_the_gpu_finishes() {
+	let Some(entry) = entry() else { return };
+	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
+	let device = Rc::new(offscreen(instance).expect("device"));
+	let timeline = Rc::new(Timeline::new(&device).expect("timeline"));
+	let mut first = Commands::new(&timeline).expect("commands");
+	let mut second = Commands::new(&timeline).expect("commands");
+	// Each records again once the GPU finished its last submission.
+	for round in 1..=3 {
+		assert_eq!(first.record().unwrap().submit(), Ok(2 * round - 1));
+		assert_eq!(second.record().unwrap().submit(), Ok(2 * round));
+	}
+	assert_eq!(timeline.wait(6, Duration::from_secs(10)), Ok(true));
+	assert_eq!(timeline.reached(), Ok(6));
+	// Dropping waits for the GPU; a recording dropped unsubmitted is
+	// discarded.
+	drop(first);
+	second.record().unwrap();
+	drop(device);
+	assert_eq!(second.record().unwrap().submit(), Ok(7));
+	assert_eq!(second.finish(), Ok(()));
+	assert_eq!(timeline.reached(), Ok(7));
 }

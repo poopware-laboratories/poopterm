@@ -5,7 +5,7 @@ use super::{
 	device::Device,
 	types::*,
 };
-use std::{ptr, rc::Rc, time::Duration};
+use std::{cell::Cell, ptr, rc::Rc, time::Duration};
 
 /// `VK_SEMAPHORE_TYPE_TIMELINE`.
 const TIMELINE: i32 = 1;
@@ -14,8 +14,10 @@ const TIMEOUT: i32 = 2;
 
 pub(crate) struct Timeline {
 	handle: RawSemaphore,
+	/// The last value handed out for work to raise the timeline to.
+	last: Cell<u64>,
 	/// Dropped after the semaphore is destroyed, as it was made from it.
-	device: Rc<Device>,
+	pub(super) device: Rc<Device>,
 }
 
 impl Timeline {
@@ -39,12 +41,20 @@ impl Timeline {
 		check(unsafe { create(device.handle, &info, ptr::null(), &mut handle) })?;
 		Ok(Self {
 			handle,
+			last: Cell::new(0),
 			device: device.clone(),
 		})
 	}
 
 	pub(crate) fn handle(&self) -> RawSemaphore {
 		self.handle
+	}
+
+	/// The value for the next submission to raise the timeline to: above
+	/// every value before, as Vulkan requires.
+	pub(super) fn next(&self) -> u64 {
+		self.last.set(self.last.get() + 1);
+		self.last.get()
 	}
 
 	/// How far the GPU got.
@@ -79,7 +89,9 @@ impl Timeline {
 impl Drop for Timeline {
 	fn drop(&mut self) {
 		let destroy = self.device.functions.destroy_semaphore;
-		// SAFETY: the timeline is the device's, and nothing waits for it.
+		// SAFETY: the timeline is the device's, and nothing waits for it:
+		// the commands that raise it hold an `Rc` of it and wait for the GPU
+		// to finish before they let go.
 		unsafe { destroy(self.device.handle, self.handle, ptr::null()) };
 	}
 }

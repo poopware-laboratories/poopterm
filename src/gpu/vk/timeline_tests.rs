@@ -6,6 +6,7 @@ use super::{
 	buffer_tests::{GARBAGE, INTEL, device},
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
+	commands_tests::Stage,
 	device::Device,
 	driver_tests::{family, finish, install, with, with_devices},
 	timeline::Timeline,
@@ -35,7 +36,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkDestroySemaphore" => transmute::<DestroySemaphore, VoidFunction>(destroy),
 			b"vkGetSemaphoreCounterValue" => transmute::<GetSemaphoreCounterValue, VoidFunction>(counter),
 			b"vkWaitSemaphores" => transmute::<WaitSemaphores, VoidFunction>(wait),
-			_ => return None,
+			_ => return super::commands_tests::function(name),
 		})
 	}
 }
@@ -165,11 +166,21 @@ unsafe extern "system" fn wait(
 				.get(index(semaphore))
 				.is_some_and(|&reached| reached >= value)
 		});
-		driver.waits.push((semaphores, values, timeout));
+		driver
+			.waits
+			.push((semaphores.clone(), values.clone(), timeout));
 		if let Some(code) = driver.failing(c"vkWaitSemaphores") {
 			return code;
 		}
-		// The fake's GPU never moves while the CPU waits.
+		// The fake's GPU finishes only when waited for without a timeout.
+		if timeout == u64::MAX {
+			for (&semaphore, &value) in semaphores.iter().zip(&values) {
+				if let Some(counter) = driver.counters.get_mut(index(semaphore)) {
+					*counter = value.max(*counter);
+				}
+			}
+			return 0;
+		}
 		if reached { 0 } else { TIMEOUT }
 	})
 }
@@ -184,6 +195,13 @@ unsafe extern "system" fn destroy(
 		let live = driver.live_semaphores.contains(&semaphore) && allocator.is_null();
 		driver.require(live, || {
 			format!("vkDestroySemaphore: {semaphore:#x}, which is not live")
+		});
+		let signalled = (driver.command_buffers.iter()).any(|buffer| {
+			matches!(buffer.stage, Stage::Submitted(signalled, _) if signalled == semaphore)
+				&& driver.pending(buffer)
+		});
+		driver.require(!signalled, || {
+			"vkDestroySemaphore while work that signals it is pending".into()
 		});
 		driver.live_semaphores.retain(|&other| other != semaphore);
 		driver.released.push(format!("semaphore {semaphore:#x}"));
@@ -221,10 +239,13 @@ fn waiting_says_whether_the_gpu_reached_the_value_in_time() {
 	assert_eq!(timeline.wait(3, Duration::ZERO), Ok(true));
 	assert_eq!(timeline.wait(0, Duration::from_millis(1)), Ok(true));
 	assert_eq!(timeline.wait(4, Duration::from_nanos(1)), Ok(false));
-	assert_eq!(timeline.wait(u64::MAX, Duration::MAX), Ok(false));
-	// 2^64 ns, just past what Vulkan's timeout holds: as good as forever.
+	// 2^64 ns, just past what Vulkan's timeout holds: as good as forever,
+	// which the fake's GPU answers by finishing.
 	let past = Duration::new(18_446_744_073, 709_551_616);
-	assert_eq!(timeline.wait(4, past), Ok(false));
+	assert_eq!(timeline.wait(4, past), Ok(true));
+	assert_eq!(timeline.reached(), Ok(4));
+	assert_eq!(timeline.wait(u64::MAX, Duration::MAX), Ok(true));
+	assert_eq!(timeline.reached(), Ok(u64::MAX));
 	drop(timeline);
 	drop(device);
 	let waits: Vec<_> = (finish().waits.into_iter())
@@ -235,8 +256,8 @@ fn waiting_says_whether_the_gpu_reached_the_value_in_time() {
 		(one(), 3, 0),
 		(one(), 0, 1_000_000),
 		(one(), 4, 1),
-		(one(), u64::MAX, u64::MAX),
 		(one(), 4, u64::MAX),
+		(one(), u64::MAX, u64::MAX),
 	];
 	assert_eq!(waits, expected);
 }
