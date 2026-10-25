@@ -441,7 +441,10 @@ fn renderer_policy_is_independent_of_unrelated_config_values() {
 		Ok(Value::Metal(107)),
 		Ok(Value::Software(109)),
 	);
-	assert_eq!(preferences.font_size, 26);
+	assert_eq!(
+		preferences.font_size,
+		crate::ui::font_size::FontSize::points(26)
+	);
 	assert!(!preferences.show_tabs);
 	assert_eq!(preferences.padding, 11);
 	assert_eq!(run.attempts, [Backend::Gpu]);

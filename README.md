@@ -185,7 +185,7 @@ tabs. In vertical mode it collapses the sidebar into a narrow icon rail. Click
 
 ```toml
 theme = "catppuccin-mocha"
-font_size = 18           # Logical pixels, 10–32
+font_size = 18           # Logical pixels, 10–32; fractions such as 13.5 work
 scrollback_lines = 5000 # 0–100000; 0 disables history
 restore_sessions = true
 opacity = 100           # macOS main window opacity, 60–100

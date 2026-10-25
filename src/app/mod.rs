@@ -65,7 +65,7 @@ pub(crate) struct App {
 	theme: Theme,
 	preferences: Preferences,
 	/// The terminal font size in points: Settings' size, changed by zoom.
-	font_points: usize,
+	font_points: crate::ui::font_size::FontSize,
 	/// What the vertical tab sidebar last drew, for partial redraws.
 	sidebar_shown: Option<draw_vertical_tabs::SidebarView>,
 	wallpaper: Option<Wallpaper>,

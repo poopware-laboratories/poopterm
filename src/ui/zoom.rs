@@ -3,12 +3,13 @@
 
 use winit::keyboard::Key;
 
+use super::font_size::FontSize;
 use crate::input::{keys::Modifiers, shortcuts::Shortcuts};
 
-/// The smallest and largest font sizes zoom reaches, in points. Settings
-/// offers 10 to 32; zoom goes further for people who need very large text.
-pub(crate) const MIN_POINTS: usize = 6;
-pub(crate) const MAX_POINTS: usize = 72;
+/// The smallest and largest font sizes zoom reaches. Settings offers 10
+/// to 32; zoom goes further for people who need very large text.
+pub(crate) const MIN_POINTS: FontSize = FontSize::points(6);
+pub(crate) const MAX_POINTS: FontSize = FontSize::points(72);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Zoom {
@@ -29,10 +30,12 @@ pub(crate) fn zoom_action(shortcuts: &Shortcuts, key: &Key, mods: Modifiers) -> 
 }
 
 /// The font size after `zoom` from `current`; `configured` is Settings' size.
-pub(crate) fn zoomed(current: usize, configured: usize, zoom: Zoom) -> usize {
+/// Each step is a whole point, and a fractional size snaps to the next one.
+pub(crate) fn zoomed(current: FontSize, configured: FontSize, zoom: Zoom) -> FontSize {
+	let step = FontSize::points(1);
 	match zoom {
-		Zoom::In => (current + 1).min(MAX_POINTS),
-		Zoom::Out => current.saturating_sub(1).max(MIN_POINTS),
+		Zoom::In => current.stepped(step, true, MIN_POINTS, MAX_POINTS),
+		Zoom::Out => current.stepped(step, false, MIN_POINTS, MAX_POINTS),
 		Zoom::Reset => configured,
 	}
 }
@@ -40,6 +43,10 @@ pub(crate) fn zoomed(current: usize, configured: usize, zoom: Zoom) -> usize {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn pt(points: u32) -> FontSize {
+		FontSize::points(points)
+	}
 	use crate::input::shortcuts::{Shortcut, ShortcutAction};
 
 	fn chr(value: &str) -> Key {
@@ -56,39 +63,39 @@ mod tests {
 
 	#[test]
 	fn each_step_changes_the_size_by_one_point() {
-		assert_eq!(zoomed(14, 14, Zoom::In), 15);
-		assert_eq!(zoomed(15, 14, Zoom::In), 16);
-		assert_eq!(zoomed(14, 14, Zoom::Out), 13);
+		assert_eq!(zoomed(pt(14), pt(14), Zoom::In), pt(15));
+		assert_eq!(zoomed(pt(15), pt(14), Zoom::In), pt(16));
+		assert_eq!(zoomed(pt(14), pt(14), Zoom::Out), pt(13));
 	}
 
 	#[test]
 	fn reset_returns_to_the_size_settings_chose() {
-		assert_eq!(zoomed(20, 14, Zoom::Reset), 14);
-		assert_eq!(zoomed(8, 14, Zoom::Reset), 14);
-		assert_eq!(zoomed(14, 14, Zoom::Reset), 14);
+		assert_eq!(zoomed(pt(20), pt(14), Zoom::Reset), pt(14));
+		assert_eq!(zoomed(pt(8), pt(14), Zoom::Reset), pt(14));
+		assert_eq!(zoomed(pt(14), pt(14), Zoom::Reset), pt(14));
 	}
 
 	#[test]
 	fn zoom_reaches_beyond_the_settings_range_but_stays_bounded() {
 		// Settings offers 10 to 32 points; zoom goes further for people who
 		// need very large text, and down to a size that still draws.
-		assert_eq!(zoomed(32, 14, Zoom::In), 33);
-		assert_eq!(zoomed(MAX_POINTS - 1, 14, Zoom::In), MAX_POINTS);
-		assert_eq!(zoomed(MAX_POINTS, 14, Zoom::In), MAX_POINTS);
-		assert_eq!(zoomed(10, 14, Zoom::Out), 9);
-		assert_eq!(zoomed(MIN_POINTS + 1, 14, Zoom::Out), MIN_POINTS);
-		assert_eq!(zoomed(MIN_POINTS, 14, Zoom::Out), MIN_POINTS);
+		assert_eq!(zoomed(pt(32), pt(14), Zoom::In), pt(33));
+		assert_eq!(zoomed(pt(71), pt(14), Zoom::In), MAX_POINTS);
+		assert_eq!(zoomed(MAX_POINTS, pt(14), Zoom::In), MAX_POINTS);
+		assert_eq!(zoomed(pt(10), pt(14), Zoom::Out), pt(9));
+		assert_eq!(zoomed(pt(7), pt(14), Zoom::Out), MIN_POINTS);
+		assert_eq!(zoomed(MIN_POINTS, pt(14), Zoom::Out), MIN_POINTS);
 	}
 
 	#[test]
 	fn repeated_steps_walk_up_and_back_down() {
-		let mut size = 14;
+		let mut size = pt(14);
 		for _ in 0..100 {
-			size = zoomed(size, 14, Zoom::In);
+			size = zoomed(size, pt(14), Zoom::In);
 		}
 		assert_eq!(size, MAX_POINTS);
 		for _ in 0..100 {
-			size = zoomed(size, 14, Zoom::Out);
+			size = zoomed(size, pt(14), Zoom::Out);
 		}
 		assert_eq!(size, MIN_POINTS);
 	}
@@ -259,14 +266,30 @@ mod tests {
 	#[test]
 	fn a_session_of_key_presses_zooms_and_resets() {
 		let shortcuts = Shortcuts::from_config("");
-		let mut size = 14;
+		let mut size = pt(14);
 		for key in ["=", "=", "=", "-", "x"] {
 			if let Some(zoom) = zoom_action(&shortcuts, &chr(key), primary()) {
-				size = zoomed(size, 14, zoom);
+				size = zoomed(size, pt(14), zoom);
 			}
 		}
-		assert_eq!(size, 16);
+		assert_eq!(size, pt(16));
 		let zoom = zoom_action(&shortcuts, &chr("0"), primary()).unwrap();
-		assert_eq!(zoomed(size, 14, zoom), 14);
+		assert_eq!(zoomed(size, pt(14), zoom), pt(14));
+	}
+
+	#[test]
+	fn zoom_from_a_fractional_size_snaps_to_whole_points() {
+		let half = FontSize::parse("13.5").unwrap();
+		assert_eq!(zoomed(half, half, Zoom::In), pt(14));
+		assert_eq!(zoomed(half, half, Zoom::Out), pt(13));
+		assert_eq!(zoomed(pt(16), half, Zoom::Reset), half);
+	}
+
+	#[test]
+	fn fractional_sizes_near_the_zoom_bounds_stop_at_them() {
+		let size = |text| FontSize::parse(text).unwrap();
+		assert_eq!(zoomed(size("71.5"), pt(14), Zoom::In), MAX_POINTS);
+		assert_eq!(zoomed(size("6.5"), pt(14), Zoom::Out), MIN_POINTS);
+		assert_eq!(zoomed(size("6.5"), pt(14), Zoom::In), pt(7));
 	}
 }
