@@ -4,7 +4,7 @@ use crate::input::{
 	keypad::encode_keypad,
 	keys::{KeyModes, encode_key},
 };
-use crate::ui::overlays::palette_matches;
+use crate::ui::overlays::{palette_matches, stays_open};
 use winit::{event::KeyEvent, keyboard::KeyLocation};
 
 impl App {
@@ -38,6 +38,7 @@ impl App {
 		{
 			self.end_search();
 			self.command_palette = true;
+			self.renaming_tab = false;
 			self.command_query.clear();
 			if let Some(window) = &self.window {
 				window.request_redraw();
@@ -80,9 +81,10 @@ impl App {
 					self.command_query.pop();
 				}
 				Key::Named(NamedKey::Enter) => {
-					self.command_palette = false;
-					if let Some(command) = palette_matches(&self.command_query).first() {
-						match *command {
+					let command = palette_matches(&self.command_query).first().copied();
+					self.command_palette = command.is_some_and(stays_open);
+					if let Some(command) = command {
+						match command {
 							"Rename active tab" => {
 								self.renaming_tab = true;
 								let title = self.sessions[self.active].title();

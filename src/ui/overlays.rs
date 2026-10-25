@@ -30,6 +30,12 @@ pub(crate) fn palette_matches(query: &str) -> Vec<&'static str> {
 		.collect()
 }
 
+/// Whether running `command` keeps the palette open: renaming a tab edits
+/// the name in the palette's field.
+pub(crate) fn stays_open(command: &str) -> bool {
+	command == "Rename active tab"
+}
+
 /// Where an overlay floats: the window's size, the top of the terminal
 /// area, and the scale.
 #[derive(Clone, Copy)]

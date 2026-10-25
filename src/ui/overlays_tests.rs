@@ -2,7 +2,7 @@
 //! search box and command palette float and what they show.
 use super::{
 	header::{TabPalette, header_colors},
-	overlays::{PALETTE_COMMANDS, Place, command_palette, palette_matches, search_box},
+	overlays::{PALETTE_COMMANDS, Place, command_palette, palette_matches, search_box, stays_open},
 };
 use crate::{
 	render::{
@@ -366,4 +366,37 @@ fn renaming_with_an_empty_name_shows_the_placeholder_and_the_note() {
 
 fn popover_row(index: usize) -> Rect {
 	(248, 114 + 32 * index, 504, 32)
+}
+
+#[test]
+fn only_renaming_a_tab_keeps_the_palette_open_to_edit_the_name() {
+	for command in PALETTE_COMMANDS {
+		assert_eq!(
+			stays_open(command),
+			command == "Rename active tab",
+			"{command}"
+		);
+	}
+	// The palette then shows the name in its field, not commands.
+	let popover = palette("Shell", true);
+	assert!(popover.rows.is_empty() && popover.field.text == "Shell");
+}
+
+#[test]
+fn what_people_type_to_rename_a_tab_keeps_the_palette_open() {
+	// Enter runs the first match; only the rename command keeps the palette.
+	let enter = |query: &str| palette_matches(query).first().copied();
+	for query in ["rename", "REN", "active", "Rename active tab"] {
+		assert_eq!(enter(query), Some("Rename active tab"), "{query:?}");
+		assert!(enter(query).is_some_and(stays_open), "{query:?}");
+	}
+	// "tab" first matches "New tab", which closes the palette.
+	for query in ["tab", "new", "settings", "close", "copy"] {
+		let command = enter(query).unwrap();
+		assert!(!stays_open(command), "{query:?} runs {command}");
+	}
+	// Nothing matched: Enter closes the palette.
+	assert!(!enter("zzz").is_some_and(stays_open));
+	// Commands are compared whole, as the palette lists them.
+	assert!(!stays_open("rename active tab") && !stays_open("Rename"));
 }
