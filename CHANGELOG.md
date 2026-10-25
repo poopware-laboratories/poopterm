@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.94 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Inventory unsafe code and bring status and numbers up to date (#130).
+
 ## 26.10.93 "Giga Fly" — 2026-10-25
 
 ### Fixed
