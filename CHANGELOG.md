@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.123 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw quads with the vulkan pipeline (#163) (gpu).
+
 ## 26.10.122 "Giga Fly" — 2026-10-25
 
 ### Added
