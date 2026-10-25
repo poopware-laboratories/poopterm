@@ -240,5 +240,50 @@ class Speed(unittest.TestCase):
         self.assertIn('cancel-in-progress: false', release)
 
 
+SHADERS_SCRIPT = (Path(__file__).parents[1] / 'scripts/shaders.sh').read_text()
+
+
+class Shaders(unittest.TestCase):
+    def sdk(self):
+        return re.search(r'^SDK=(\S+)$', SHADERS_SCRIPT, re.M)[1]
+
+    def test_the_linux_check_compares_the_spirv_with_its_source(self):
+        check = job('check')
+        self.assertIn('- name: Check the SPIR-V matches the shaders', check)
+        compare = step('Check the SPIR-V matches the shaders')
+        self.assertIn("if: runner.os == 'Linux'", compare)
+        self.assertIn('scripts/shaders.sh --check', compare)
+        self.assertIn('GLSLC=~/vulkan-sdk/glslc SPIRV_VAL=~/vulkan-sdk/spirv-val', compare)
+        # The compiler is installed before it is used.
+        self.assertLess(check.index('- name: Install the shader compiler'),
+                        check.index('- name: Check the SPIR-V matches the shaders'))
+
+    def test_ci_uses_the_sdk_the_script_names(self):
+        # Another glslc compiles to other bytes, and the check would fail.
+        sdk = self.sdk()
+        install = step('Install the shader compiler')
+        self.assertIn(f'/sdk/download/{sdk}/linux/vulkansdk-linux-x86_64-{sdk}.tar.xz', install)
+        self.assertIn(f'{sdk}/x86_64/bin/glslc {sdk}/x86_64/bin/spirv-val', install)
+        self.assertIn(f'key: vulkan-sdk-{sdk}-', step('Cache the shader compiler'))
+        self.assertEqual(WORKFLOW.count('1.4.'), 5, 'every SDK version is the one checked here')
+
+    def test_the_download_is_checked_before_it_is_unpacked(self):
+        install = step('Install the shader compiler')
+        checksum = re.search(r'echo "([0-9a-f]{64})  /tmp/sdk\.tar\.xz" \| sha256sum -c', install)
+        self.assertIsNotNone(checksum, install)
+        self.assertLess(install.index('sha256sum -c'), install.index('tar -xJf'))
+        # Only on Linux, where it runs, and when the cache missed.
+        self.assertIn("if: runner.os == 'Linux' && steps.shader-tools.outputs.cache-hit != 'true'", install)
+        self.assertIn("if: runner.os == 'Linux'", step('Cache the shader compiler'))
+        self.assertIn('id: shader-tools', step('Cache the shader compiler'))
+
+    def test_the_script_compiles_for_vulkan_1_3_with_warnings_as_errors_and_validates(self):
+        self.assertIn('--target-env=vulkan1.3 -O -Werror', SHADERS_SCRIPT)
+        self.assertIn('"$SPIRV_VAL" --target-env vulkan1.3', SHADERS_SCRIPT)
+        self.assertIn('cmp -s', SHADERS_SCRIPT)
+        self.assertTrue(SHADERS_SCRIPT.startswith('#!/bin/sh\n'))
+        self.assertIn('set -eu', SHADERS_SCRIPT)
+
+
 if __name__ == '__main__':
     unittest.main()

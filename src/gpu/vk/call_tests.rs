@@ -30,6 +30,7 @@ fn errors_say_what_failed() {
 		),
 		(Error::TooOld(1 << 22), "Vulkan 1.0 is older than 1.3"),
 		(Error::Copy, "a Vulkan copy outside what it copies between"),
+		(Error::Spirv, "a shader is not SPIR-V for Vulkan 1.3"),
 	];
 	for (error, text) in cases {
 		assert!(error.to_string().contains(text), "{error:?}: {error}");
