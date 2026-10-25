@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.116 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Give vulkan buffers memory of their own, mapped for the cpu (#156) (gpu).
+
 ## 26.10.115 "Giga Fly" — 2026-10-25
 
 ### Added
