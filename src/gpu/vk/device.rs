@@ -19,6 +19,10 @@ pub(super) struct Functions {
 	pub bind_image: BindImageMemory,
 	pub create_view: CreateImageView,
 	pub destroy_view: DestroyImageView,
+	pub create_semaphore: CreateSemaphore,
+	pub destroy_semaphore: DestroySemaphore,
+	pub semaphore_value: GetSemaphoreCounterValue,
+	pub wait_semaphores: WaitSemaphores,
 }
 
 impl Functions {
@@ -42,6 +46,10 @@ impl Functions {
 				bind_image: cast(function(c"vkBindImageMemory")?),
 				create_view: cast(function(c"vkCreateImageView")?),
 				destroy_view: cast(function(c"vkDestroyImageView")?),
+				create_semaphore: cast(function(c"vkCreateSemaphore")?),
+				destroy_semaphore: cast(function(c"vkDestroySemaphore")?),
+				semaphore_value: cast(function(c"vkGetSemaphoreCounterValue")?),
+				wait_semaphores: cast(function(c"vkWaitSemaphores")?),
 			})
 		}
 	}

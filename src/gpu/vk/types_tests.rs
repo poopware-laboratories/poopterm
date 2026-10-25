@@ -6,8 +6,8 @@ use super::{
 		ApplicationInfo, BufferCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo,
 		ExtensionProperties, ImageCreateInfo, ImageViewCreateInfo, InstanceCreateInfo, Limits,
 		MemoryAllocateInfo, MemoryHeap, MemoryProperties, MemoryRequirements, PhysicalDeviceFeatures2,
-		PhysicalDeviceProperties, QueueFamilyProperties, SubresourceRange, Vulkan12Features,
-		Vulkan13Features,
+		PhysicalDeviceProperties, QueueFamilyProperties, SemaphoreCreateInfo, SemaphoreTypeCreateInfo,
+		SemaphoreWaitInfo, SubresourceRange, Vulkan12Features, Vulkan13Features,
 	},
 };
 use std::mem::{align_of, offset_of, size_of, size_of_val};
@@ -321,4 +321,37 @@ fn image_structures_are_laid_out_as_vulkan_declares_them() {
 fn limits_are_vk_physical_device_limits_as_words() {
 	// 126 four-byte words, 8-aligned for the VkDeviceSize limits among them.
 	assert_eq!((size_of::<Limits>(), align_of::<Limits>()), (504, 8));
+}
+
+#[test]
+fn semaphore_structures_are_laid_out_as_vulkan_declares_them() {
+	let create = (
+		size_of::<SemaphoreCreateInfo>(),
+		align_of::<SemaphoreCreateInfo>(),
+	);
+	assert_eq!(create, (24, 8));
+	assert_eq!(offset_of!(SemaphoreCreateInfo, flags), 16);
+	let kind = (
+		size_of::<SemaphoreTypeCreateInfo>(),
+		align_of::<SemaphoreTypeCreateInfo>(),
+	);
+	assert_eq!(kind, (32, 8));
+	let offsets = [
+		offset_of!(SemaphoreTypeCreateInfo, next),
+		offset_of!(SemaphoreTypeCreateInfo, semaphore_type),
+		offset_of!(SemaphoreTypeCreateInfo, initial_value),
+	];
+	assert_eq!(offsets, [8, 16, 24]);
+	let wait = (
+		size_of::<SemaphoreWaitInfo>(),
+		align_of::<SemaphoreWaitInfo>(),
+	);
+	assert_eq!(wait, (40, 8));
+	let offsets = [
+		offset_of!(SemaphoreWaitInfo, flags),
+		offset_of!(SemaphoreWaitInfo, semaphore_count),
+		offset_of!(SemaphoreWaitInfo, semaphores),
+		offset_of!(SemaphoreWaitInfo, values),
+	];
+	assert_eq!(offsets, [16, 20, 24, 32]);
 }

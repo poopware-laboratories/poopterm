@@ -69,7 +69,15 @@ pub(super) struct Driver {
 	pub bound_images: Vec<(RawImage, RawMemory)>,
 	pub views: Vec<MadeView>,
 	pub live_views: Vec<RawImageView>,
-	/// Buffers, images and views destroyed and memory freed, in order.
+	/// The type and initial value of each semaphore made.
+	pub semaphores: Vec<(i32, u64)>,
+	pub live_semaphores: Vec<RawSemaphore>,
+	/// How far the GPU got on each semaphore, by index.
+	pub counters: Vec<u64>,
+	/// Each wait's semaphores, values and timeout.
+	pub waits: Vec<(Vec<RawSemaphore>, Vec<u64>, u64)>,
+	/// Buffers, images, views and semaphores destroyed and memory freed,
+	/// in order.
 	pub released: Vec<String>,
 	/// Valid usage rules the bindings broke.
 	pub invalid: Vec<String>,
