@@ -2,7 +2,7 @@
 //! shelves, evicted a page at a time by when they were last used, with the
 //! rectangles each page needs uploaded.
 use crate::render::fxhash::FxHashMap;
-use std::hash::Hash;
+use std::{borrow::Borrow, hash::Hash};
 
 /// A rectangle of a page, in pixels: where a bitmap lies, or what the GPU
 /// has not been sent yet.
@@ -113,7 +113,10 @@ impl<K: Hash + Eq> Atlas<K> {
 	}
 
 	/// The slot of `key`, marking its page used this frame.
-	pub(crate) fn get(&mut self, key: &K) -> Option<Slot> {
+	pub(crate) fn get<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<Slot>
+	where
+		K: Borrow<Q>,
+	{
 		let slot = *self.slots.get(key)?;
 		self.pages[slot.page].used = self.frame;
 		Some(slot)
