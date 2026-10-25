@@ -41,6 +41,9 @@ to fix, not a design decision.
   change the palette through OSC 4, 10, 11 and 12.
 - **No blinking.** Blinking cursor shapes (DECSCUSR) and blinking text
   (SGR 5) are drawn steady.
+- **Reduced motion.** `reduce_motion = true` in `config.toml` holds kitty
+  graphics animations on their current frame; programs can still choose a
+  frame themselves.
 - **Input methods.** Text committed by an input method (IME) is sent to the
   shell.
 
@@ -51,7 +54,7 @@ to fix, not a design decision.
 | Screen readers cannot read the window: Poopterm exposes no accessibility tree yet. | Use a terminal or console your screen reader already supports until then; within Poopterm, output can be copied to another app with the selection and clipboard shortcuts. |
 | Input method preedit (the text you compose before committing) is not drawn in the window. | Most input methods show their candidate window; compose there. |
 | Some Settings controls (toggles, font size, scrollback, wallpaper) need a mouse. | Every one is also a `config.toml` key; edit the file and restart. |
-| Kitty graphics animations play with no way to pause them, and there is no reduced-motion setting. | They only play when a program sends them; avoid such programs or disable their images. |
+| `reduce_motion` is not in Settings yet and does not follow the desktop's reduced-motion preference. | Set `reduce_motion = true` in `config.toml`. |
 
 ## Supported environments
 

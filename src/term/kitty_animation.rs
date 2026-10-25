@@ -221,6 +221,9 @@ impl Term {
 	/// Moves running animations to `now`. Returns whether a frame that may
 	/// be on screen changed.
 	pub(crate) fn advance_animations(&mut self, now: Instant) -> bool {
+		if self.reduce_motion {
+			return false;
+		}
 		let changed = self.kitty_images.advance(now);
 		for &id in &changed {
 			self.show_kitty_frame(id);
@@ -230,6 +233,6 @@ impl Term {
 
 	/// When a shown animation changes frame next.
 	pub(crate) fn animation_deadline(&self) -> Option<Instant> {
-		self.kitty_images.deadline(|id| self.kitty_image_shown(id))
+		(!self.reduce_motion).then(|| self.kitty_images.deadline(|id| self.kitty_image_shown(id)))?
 	}
 }

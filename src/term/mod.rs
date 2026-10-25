@@ -246,6 +246,8 @@ pub(crate) struct Term {
 	pub(crate) cell_height: usize,
 	/// Physical pixels per logical point of the window showing the terminal.
 	pub(crate) scale: f32,
+	/// The user asked for reduced motion: animations hold their frame.
+	pub(crate) reduce_motion: bool,
 	/// What frames show during synchronized output.
 	pub(crate) synchronized: Option<Box<Frame>>,
 	/// The last block's frame, kept so the next one reuses its buffers.
@@ -470,6 +472,7 @@ impl Term {
 			cell_width: 10,
 			cell_height: 20,
 			scale: 1.0,
+			reduce_motion: false,
 			synchronized: None,
 			spare_frame: None,
 			sync_deadline: None,

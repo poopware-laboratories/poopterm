@@ -269,5 +269,8 @@ step.
   candidate window there (`Ime::Preedit`, `set_ime_cursor_area`).
 - **Keyboard-only Settings.** Tab and Shift+Tab focus order through every
   control, with a visible focus ring.
-- **Reduced motion.** A setting that pauses kitty animations, following the
-  desktop's reduced-motion preference where the platform exposes one.
+- **Reduced motion.** `reduce_motion` holds kitty animations; still to do:
+  a Settings toggle, following the desktop's preference where the platform
+  exposes one (the settings portal's `org.gnome.desktop.interface`
+  `enable-animations`, `NSWorkspace` on macOS), and holding off screen
+  flashes (DECSCNM toggled back within a moment, the visual bell).
