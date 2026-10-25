@@ -4,6 +4,9 @@
 pub(crate) mod call;
 #[cfg(test)]
 mod call_tests;
+pub(crate) mod choose;
+#[cfg(test)]
+mod choose_tests;
 #[cfg(test)]
 mod driver_tests;
 pub(crate) mod entry;
