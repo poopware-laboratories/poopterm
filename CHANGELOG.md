@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.120 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Copy between vulkan buffers and image layers with barriers (#160) (gpu).
+
 ## 26.10.119 "Giga Fly" — 2026-10-25
 
 ### Added
