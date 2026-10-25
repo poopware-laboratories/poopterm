@@ -26,6 +26,11 @@ mod cpu;
 #[cfg(not(target_os = "macos"))]
 mod dbus;
 mod fonts;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "the GPU renderers read it next (#30)")
+)]
+mod gpu;
 mod graphics;
 mod hugepages;
 mod inflate;
