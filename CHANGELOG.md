@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.71 "Giga Fly" — 2026-10-25
+
+### Maintenance
+
+- Name the canvas pixel tests so the ratio check counts them (#99) (render).
+
 ## 26.10.70 "Giga Fly" — 2026-10-24
 
 ### Fixed
