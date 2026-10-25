@@ -3,9 +3,10 @@
 use super::{
 	memory::MemoryType,
 	types::{
-		ApplicationInfo, DeviceCreateInfo, DeviceQueueCreateInfo, ExtensionProperties,
-		InstanceCreateInfo, MemoryHeap, MemoryProperties, PhysicalDeviceFeatures2,
-		PhysicalDeviceProperties, QueueFamilyProperties, Vulkan12Features, Vulkan13Features,
+		ApplicationInfo, BufferCreateInfo, DeviceCreateInfo, DeviceQueueCreateInfo,
+		ExtensionProperties, InstanceCreateInfo, MemoryAllocateInfo, MemoryHeap, MemoryProperties,
+		MemoryRequirements, PhysicalDeviceFeatures2, PhysicalDeviceProperties, QueueFamilyProperties,
+		Vulkan12Features, Vulkan13Features,
 	},
 };
 use std::mem::{align_of, offset_of, size_of, size_of_val};
@@ -209,4 +210,54 @@ fn memory_properties_are_laid_out_as_vk_physical_device_memory_properties() {
 		offset_of!(MemoryProperties, heaps),
 	];
 	assert_eq!(offsets, [0, 4, 260, 264]);
+}
+
+#[test]
+fn buffer_and_memory_structures_are_laid_out_as_vulkan_declares_them() {
+	// VkDeviceSize is a u64, so the size starts 8-aligned at 24.
+	assert_eq!(
+		(
+			size_of::<BufferCreateInfo>(),
+			align_of::<BufferCreateInfo>()
+		),
+		(56, 8)
+	);
+	let offsets = [
+		offset_of!(BufferCreateInfo, s_type),
+		offset_of!(BufferCreateInfo, next),
+		offset_of!(BufferCreateInfo, flags),
+		offset_of!(BufferCreateInfo, size),
+		offset_of!(BufferCreateInfo, usage),
+		offset_of!(BufferCreateInfo, sharing_mode),
+		offset_of!(BufferCreateInfo, queue_family_index_count),
+		offset_of!(BufferCreateInfo, queue_family_indices),
+	];
+	assert_eq!(offsets, [0, 8, 16, 24, 32, 36, 40, 48]);
+	assert_eq!(
+		(
+			size_of::<MemoryRequirements>(),
+			align_of::<MemoryRequirements>()
+		),
+		(24, 8)
+	);
+	let offsets = [
+		offset_of!(MemoryRequirements, size),
+		offset_of!(MemoryRequirements, alignment),
+		offset_of!(MemoryRequirements, memory_type_bits),
+	];
+	assert_eq!(offsets, [0, 8, 16]);
+	assert_eq!(
+		(
+			size_of::<MemoryAllocateInfo>(),
+			align_of::<MemoryAllocateInfo>()
+		),
+		(32, 8)
+	);
+	let offsets = [
+		offset_of!(MemoryAllocateInfo, s_type),
+		offset_of!(MemoryAllocateInfo, next),
+		offset_of!(MemoryAllocateInfo, allocation_size),
+		offset_of!(MemoryAllocateInfo, memory_type_index),
+	];
+	assert_eq!(offsets, [0, 8, 16, 24]);
 }

@@ -29,7 +29,8 @@ pub(crate) enum Usage {
 	/// it has any.
 	Device,
 	/// Written by the GPU and read by the CPU, such as pixels for tests:
-	/// cached, so reading is fast, then coherent.
+	/// coherent, so reading needs no invalidate, and cached if it can be,
+	/// so reading is fast.
 	Readback,
 }
 
@@ -47,8 +48,8 @@ pub(crate) fn choose_memory(types: &[MemoryType], allowed: u32, usage: Usage) ->
 			),
 			Usage::Device => (true, 2 * !has(DEVICE_LOCAL) as u8 + has(HOST_VISIBLE) as u8),
 			Usage::Readback => (
-				has(HOST_VISIBLE),
-				2 * !has(HOST_CACHED) as u8 + !has(HOST_COHERENT) as u8,
+				has(HOST_VISIBLE) && has(HOST_COHERENT),
+				!has(HOST_CACHED) as u8,
 			),
 		};
 		(usable && wanted).then_some((rank, index as u32))

@@ -63,7 +63,8 @@ fn only_the_types_a_resource_allows_are_chosen() {
 }
 
 #[test]
-fn readback_prefers_cached_then_coherent_and_needs_the_cpu_to_see_it() {
+fn readback_needs_coherent_memory_the_cpu_sees_and_prefers_it_cached() {
+	// Host-visible; + coherent; + cached; + both.
 	let host = types(&[0x2, 0x6, 0xa, 0xe]);
 	let order: Vec<_> = (0..4)
 		.map(|_| ())
@@ -73,8 +74,10 @@ fn readback_prefers_cached_then_coherent_and_needs_the_cpu_to_see_it() {
 			Some(index)
 		})
 		.collect();
-	assert_eq!(order, [3, 2, 1, 0]);
-	// Uploads need coherent memory, so writes need no flush.
+	// Reading needs no invalidate call, so cached memory that is not
+	// coherent is never used.
+	assert_eq!(order, [3, 1]);
+	// Uploads need coherent memory too, so writes need no flush.
 	assert_eq!(choose_memory(&host, 0b101, Usage::Upload), None);
 	assert_eq!(choose_memory(&host, 0b111, Usage::Upload), Some(1));
 }
@@ -120,9 +123,7 @@ fn tiers(usage: Usage) -> Vec<fn(u32) -> bool> {
 		],
 		Usage::Readback => vec![
 			|f| f & (HOST_VISIBLE | HOST_CACHED | HOST_COHERENT) == 14,
-			|f| f & (HOST_VISIBLE | HOST_CACHED) == HOST_VISIBLE | HOST_CACHED,
 			|f| f & (HOST_VISIBLE | HOST_COHERENT) == HOST_VISIBLE | HOST_COHERENT,
-			|f| f & HOST_VISIBLE != 0,
 		],
 	}
 }

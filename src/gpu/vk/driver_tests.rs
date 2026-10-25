@@ -3,6 +3,7 @@
 //! the loader is old, lacks a function or a call fails. The driver checks
 //! the specification's valid usage rules as it is called.
 use super::{
+	buffer_tests::Made as MadeBuffer,
 	call::{Error, INCOMPLETE},
 	choose::{Device, GRAPHICS, Kind, QueueFamily, TRANSFER},
 	device_tests::{self, Made},
@@ -46,6 +47,20 @@ pub(super) struct Driver {
 	pub made: Vec<Made>,
 	pub live_devices: Vec<RawDevice>,
 	pub destroyed_devices: Vec<RawDevice>,
+	/// The memory types buffers may use, as `memoryTypeBits`; `None` for
+	/// every type.
+	pub buffer_bits: Option<u32>,
+	pub buffers: Vec<MadeBuffer>,
+	pub live_buffers: Vec<RawBuffer>,
+	/// Each allocation's size and memory type.
+	pub allocations: Vec<(u64, u32)>,
+	pub live_memory: Vec<RawMemory>,
+	/// Which memory each buffer is bound to.
+	pub bound: Vec<(RawBuffer, RawMemory)>,
+	/// The bytes behind each mapped allocation.
+	pub mapped: Vec<(RawMemory, Box<[u8]>)>,
+	/// Buffers destroyed and memory freed, in order.
+	pub released: Vec<String>,
 	/// Valid usage rules the bindings broke.
 	pub invalid: Vec<String>,
 }
