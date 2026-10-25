@@ -162,22 +162,18 @@ issue before starting a piece.
   - Track it: report peak and settled RSS in the benchmark, and test that
     clearing history releases its memory. Check on macOS (`footprint`,
     `vmmap`) and Linux (`/proc/<pid>/smaps_rollup`).
-- **cgroups v2 per tab (Linux): no-systemd hosts.** Each
-  shell now gets its own systemd scope (`src/cgroup.rs`), with memory and
-  task accounting and `MemoryHigh` at 7/8 of RAM, and the terminal a sibling
-  scope with `CPUWeight=400` so its UI and parser threads stay responsive
-  while a tab floods. Still to do, in order: (1) a delegated subtree: one
-  scope for the terminal with `Delegate=yes` (systemd's cgroup delegation
-  rules), the terminal itself in a `terminal` leaf and one `tab-N` leaf per
-  tab created before its shell starts, controllers enabled in
-  `cgroup.subtree_control`, `memory.high` and `cpu.weight` written there;
-  without systemd, the same layout under our own cgroup when it is already
-  delegated (writable, and ours alone); tests on a fake cgroupfs in a temp
-  directory, including read-only and missing. (2) With our own PTY layer,
-  the shell joins its leaf before `exec`. Moving
-  the shell happens after it starts, so anything it forks in its first
-  milliseconds stays behind; `clone3(CLONE_INTO_CGROUP)` would close that
-  gap once we spawn shells ourselves instead of through portable-pty.
+- **cgroups v2 per tab (Linux): join before `exec`.** The terminal asks
+  systemd for a scope with `Delegate=yes` and lays it out itself
+  (`src/cgroup_tree.rs`): the terminal in a `terminal` leaf with
+  `cpu.weight` 400, each shell in a `tab-<pid>` leaf with `memory.high` at
+  7/8 of RAM, the delegated `cpu`, `memory` and `pids` controllers enabled,
+  and empty leaves of closed tabs removed. Without systemd, our own cgroup
+  is laid out the same way when it is writable and ours alone; a shell no
+  leaf can take gets a systemd scope of its own. Still to do: with our own
+  PTY layer, the shell joins its leaf before `exec`. Moving the shell
+  happens after it starts, so anything it forks in its first milliseconds
+  stays behind; `clone3(CLONE_INTO_CGROUP)` would close that gap once we
+  spawn shells ourselves instead of through portable-pty.
 - **Transparent huge pages for large buffers.** Large, long-lived
   allocations (scrollback rows, image bitmaps, the frame buffer, PTY
   queues) could cause fewer TLB misses on huge pages. Check once at
