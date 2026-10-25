@@ -39,28 +39,6 @@ impl ApplicationHandler<UserEvent> for App {
 		#[cfg(target_os = "macos")]
 		crate::platform::set_window_opacity(&window, Preferences::load().opacity);
 
-		let scale = window.scale_factor() as f32;
-		// A subtle inset frame gives the client area the Ghostty window-border look.
-		// macOS draws its own rim that follows the rounded corners; a drawn
-		// one would be cut off there.
-		self.border = if cfg!(target_os = "macos") {
-			0
-		} else {
-			(2.0 * scale) as usize
-		};
-		self.titlebar_height = if cfg!(target_os = "macos") {
-			(44.0 * scale) as usize
-		} else {
-			0
-		};
-		self.tab_height = (if cfg!(target_os = "macos") {
-			40.0
-		} else {
-			44.0
-		} * scale) as usize;
-
-		self.set_font_px(Preferences::load().font_size as f32 * scale);
-
 		let (cols, rows) = {
 			let term = self.active_term();
 			(term.cols, term.rows)
@@ -70,7 +48,9 @@ impl ApplicationHandler<UserEvent> for App {
 				.expect("failed to create renderer"),
 		);
 		self.window = Some(window);
-		self.update_chrome_layout(self.scale());
+		// pr-check: window glue: runs once the real window exists
+		self.apply_scale();
+		// pr-check: end window glue
 		let size = PhysicalSize::new(
 			(self.cw * cols + self.grid_left() + self.margin) as u32,
 			(self.ch * rows + self.top + self.margin + self.status_height) as u32,
@@ -134,6 +114,12 @@ impl ApplicationHandler<UserEvent> for App {
 				self.handle_mouse_input(event_loop, state, button)
 			}
 			WindowEvent::Resized(size) => self.resize(size.width, size.height),
+			// pr-check: window glue: winit sends this when the window moves to another output or its scale changes
+			WindowEvent::ScaleFactorChanged { .. } => {
+				self.apply_scale();
+				self.resize(self.width, self.height);
+			}
+			// pr-check: end window glue
 			WindowEvent::RedrawRequested => self.draw(),
 			_ => {}
 		}

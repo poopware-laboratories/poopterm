@@ -203,7 +203,6 @@ impl App {
 
 	fn apply_saved_settings(&mut self, preferences: Preferences, font_changed: bool) {
 		self.preferences = preferences;
-		self.update_chrome_layout(self.scale());
 		self.theme = Theme::load();
 		self.shortcuts = Shortcuts::load();
 		self.wallpaper_strength = self.settings_editor.wallpaper_strength;
@@ -228,8 +227,7 @@ impl App {
 			let (font, fallbacks) = crate::fonts::load_fonts();
 			self.fonts = crate::render::glyphs::FontSet::new(font, fallbacks);
 		}
-		let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
-		self.set_font_px(preferences.font_size as f32 * scale);
+		self.apply_scale();
 		self.selection = None;
 		self.end_search();
 		self.resize(self.width, self.height);

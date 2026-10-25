@@ -46,6 +46,7 @@ use crate::{
 	term::{Frame, TermGuard},
 	theme::{Theme, ThemeKind},
 	ui::{
+		scale::{chrome, chrome_scale, font_px},
 		search::find_matches,
 		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
@@ -181,6 +182,19 @@ impl App {
 		self.fonts.clear();
 	}
 
+	/// Sizes the font and the window chrome for the window's scale factor:
+	/// when it opens, when the factor changes, and after settings changes.
+	pub(super) fn apply_scale(&mut self) {
+		let factor = self.factor();
+		// pr-check: window glue: copies the sizes ui::scale computed into App
+		let chrome = chrome(factor, cfg!(target_os = "macos"));
+		(self.border, self.titlebar_height, self.tab_height) =
+			(chrome.border, chrome.titlebar_height, chrome.tab_height);
+		self.set_font_px(font_px(self.preferences.font_size, factor));
+		self.update_chrome_layout(self.scale());
+		// pr-check: end window glue
+	}
+
 	/// Recomputes the areas reserved for window chrome after a settings change.
 	pub(super) fn update_chrome_layout(&mut self, scale: usize) {
 		self.margin = self.border + self.preferences.padding * scale;
@@ -241,10 +255,7 @@ impl App {
 			let mut term = session.term();
 			term.cell_width = self.cw;
 			term.cell_height = self.ch;
-			term.scale = self
-				.window
-				.as_ref()
-				.map_or(1.0, |w| w.scale_factor() as f32);
+			term.scale = self.factor() as f32;
 			if cols != term.cols || rows != term.rows {
 				term.resize(cols, rows);
 				let _ = session.master.resize(PtySize {

@@ -9,19 +9,7 @@ use std::thread;
 
 impl App {
 	pub(super) fn tab_left_reserve(&self) -> usize {
-		if cfg!(target_os = "macos") {
-			(80.0
-				* self
-					.window
-					.as_ref()
-					.map_or(1.0, |window| window.scale_factor())) as usize
-		} else {
-			(112.0
-				* self
-					.window
-					.as_ref()
-					.map_or(1.0, |window| window.scale_factor())) as usize
-		}
+		(if cfg!(target_os = "macos") { 80 } else { 112 }) * self.scale()
 	}
 
 	pub(super) fn tab_y(&self) -> usize {
@@ -39,12 +27,7 @@ impl App {
 		tab_layout_with_compaction(
 			self.width as usize,
 			self.sessions.len(),
-			self
-				.window
-				.as_ref()
-				.map_or(1.0, |w| w.scale_factor())
-				.round()
-				.max(1.0) as usize,
+			self.scale(),
 			TabStripOptions {
 				left_reserve: self.tab_left_reserve(),
 				scroll: self.tab_scroll,
