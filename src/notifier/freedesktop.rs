@@ -322,6 +322,7 @@ fn icon_file(data: &[u8]) -> Option<PathBuf> {
 		os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
 	};
 	let base = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
+	// SAFETY: getuid takes no arguments and cannot fail.
 	let dir = base.join(format!("poopterm-icons-{}", unsafe { libc::getuid() }));
 	std::fs::DirBuilder::new()
 		.recursive(true)
@@ -330,6 +331,7 @@ fn icon_file(data: &[u8]) -> Option<PathBuf> {
 		.ok()?;
 	// The directory may be in a shared place: use it only if it is ours.
 	let owner = std::fs::symlink_metadata(&dir).ok()?;
+	// SAFETY: getuid takes no arguments and cannot fail.
 	if !owner.is_dir() || owner.uid() != unsafe { libc::getuid() } || owner.mode() & 0o077 != 0 {
 		return None;
 	}

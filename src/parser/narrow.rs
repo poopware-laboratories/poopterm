@@ -103,8 +103,9 @@ pub(super) fn print_chunk(
 	let mut multibyte = ends & at_least(b, 0x80).to_bitmask();
 	while multibyte != 0 {
 		let c = chars[multibyte.trailing_zeros() as usize];
-		// SAFETY: as below.
 		if !in_narrow_block(c)
+			// SAFETY: lanes ending a character hold it, and valid UTF-8
+			// never encodes a surrogate.
 			&& crate::width::width(unsafe { char::from_u32_unchecked(c.into()) }) != 1
 		{
 			return None;

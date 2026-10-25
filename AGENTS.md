@@ -155,6 +155,12 @@ Details: [`docs/architecture.md`](docs/architecture.md).
   programs. Keep explicit limits (Sixel size, OSC 52 size, hyperlink count,
   titles) and never answer requests that leak data (OSC 52 reads are ignored
   on purpose).
+- **`unsafe` only where no safe API exists** (SIMD intrinsics, `libc`
+  calls, proven-valid conversions on hot paths), in the smallest block that
+  needs it, behind a safe function. Every block starts with a
+  `// SAFETY:` comment saying why it is sound; clippy's
+  `undocumented_unsafe_blocks` and rustc's `unsafe_op_in_unsafe_fn` are
+  denied in `Cargo.toml`, so CI rejects one without it.
 - **Config compatibility.** `config.toml` keys are user-facing; keep old
   names working (see `ThemeKind::parse`) and preserve unknown keys on save.
 - Match surrounding style: comment density, naming, and the existing `pub(crate)`

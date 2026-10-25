@@ -56,3 +56,10 @@ unicode-width = "^0.2"
 vte = "^0.15"
 # The reference that the font engine (`fonts::font`) is tested against.
 fontdue = "^0.9"
+
+[lints.clippy]
+# Every unsafe block says why it is sound (see AGENTS.md).
+undocumented_unsafe_blocks = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

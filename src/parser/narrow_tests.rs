@@ -199,8 +199,8 @@ fn cell_words_hold_each_field_in_place() {
 			width: width as u8,
 			..style()
 		};
-		// SAFETY: lane 0 holds a valid char.
 		assert_eq!(
+			// SAFETY: lane 0 holds a valid char.
 			unsafe { std::mem::transmute::<u32x4, Cell>(built) },
 			expected
 		);

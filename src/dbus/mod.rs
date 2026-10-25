@@ -108,6 +108,7 @@ impl Connection {
 
 	/// Authenticates as this user and says Hello.
 	fn start(mut stream: UnixStream) -> io::Result<Self> {
+		// SAFETY: getuid takes no arguments and cannot fail.
 		let uid = unsafe { libc::getuid() }.to_string();
 		let hex: String = uid.bytes().map(|byte| format!("{byte:02x}")).collect();
 		stream.write_all(format!("\0AUTH EXTERNAL {hex}\r\n").as_bytes())?;
