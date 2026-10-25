@@ -6,7 +6,7 @@ description: Use when scripts/pr_check.py reports too few test lines for the pro
 # Meeting the 3:1 test ratio
 
 `scripts/pr_check.py` needs three added test lines per added production
-line (non-blank, non-comment). There are no exemptions, and padding is
+line (non-blank, non-comment). The only exemption is marked window glue (see below), and padding is
 rejected in review like any bad test. The ratio is a pressure to test
 behavior you have not pinned yet, not a line count to reach.
 
@@ -43,6 +43,11 @@ The change is too big or too hard to test. Do one of:
 - Pull the logic out of `App`/window code into a pure function taking plain
   data, which takes few lines to test exhaustively.
 - Delete production code: simpler code needs fewer tests.
+
+Only then, for the few lines in `src/app/` that a real window alone runs
+(winit event arms, assigning what a pure function computed), mark a window
+glue region as AGENTS.md shows: `// pr-check: window glue: <reason>` …
+`// pr-check: end window glue`, at most 12 lines, no decisions inside.
 
 ## Red flags: this is padding
 
