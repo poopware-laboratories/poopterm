@@ -112,14 +112,16 @@ The mutable views can write any bits, but a `char` has invalid values
 (surrogates, above U+10FFFF), so writers must keep lane 0 a valid `char`:
 
 - `Cell::fill` writes copies of a real `Cell`, so this holds.
-- **Known gap:** `Cell::words_mut` is a safe `pub(crate)` function whose
-  callers must keep lane 0 valid. Its only caller, `parser/print.rs`,
-  stores characters decoded from validated UTF-8, so the code is sound
-  today. But a safe function should not carry a precondition. It should
-  become an `unsafe fn` with a `# Safety` section, or return a wrapper
-  that only accepts `Cell`s. A compile-time
-  `const _: () = assert!(size_of::<Cell>() == 16)` next to the struct
-  would also be better than the test assert.
+
+> [!WARNING]
+> **Known gap.** `Cell::words_mut` is a safe `pub(crate)` function whose
+> callers must keep lane 0 valid. Its only caller, `parser/print.rs`,
+> stores characters decoded from validated UTF-8, so the code is sound
+> today. But a safe function should not carry a precondition. It should
+> become an `unsafe fn` with a `# Safety` section, or return a wrapper
+> that only accepts `Cell`s. A compile-time
+> `const _: () = assert!(size_of::<Cell>() == 16)` next to the struct
+> would also be better than the test assert.
 
 ### Conversions proven valid earlier
 

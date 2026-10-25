@@ -6,15 +6,21 @@ surface.
 
 ## Data flow
 
-```
-            ┌──────────────────────────── per tab ─────────────────────────────┐
- shell ─pty─┤ reader ──► OutputQueue (1 MiB) ──► parser thread ──► SharedTerm  │
-            │                                     │ replies ──► PtyWriter ─────┼─► shell
-            └─────────────────────────────────────┼──────────────────▲─────────┘
-                                         wake (Output)                │ lock: snapshot / state
- winit events ──────────────────────────►  App (UI thread) ───────────┘
-                                           ├─ input encoders ─► PtyWriter ─► shell
-                                           └─ FramePacer ─► draw: Frame ─► damage ─► canvas ─► softbuffer
+```mermaid
+flowchart LR
+	shell([shell]) -- pty --> reader
+	subgraph tab [per tab]
+		reader[reader thread] --> queue["OutputQueue<br/>(1 MiB, backpressure)"]
+		queue --> parser[parser thread<br/>pty::pump]
+		parser -- 64 KiB chunks --> term[("SharedTerm<br/>Mutex&lt;Term&gt;")]
+		parser -- replies --> writer[PtyWriter]
+	end
+	writer --> shell
+	parser -. "wake: UserEvent::Output" .-> app
+	winit([winit events]) --> app[App<br/>UI thread]
+	app -- input encoders --> writer
+	app -- "lock briefly: state, Frame" --> term
+	app --> pacer[FramePacer] --> draw["draw: Frame → damage → canvas"] --> sb([softbuffer])
 ```
 
 1. **Reading.** `pty::spawn_session` starts a reader thread that appends each
@@ -167,12 +173,24 @@ and erasing, inserting and deleting erase the blocks they would cut.
 - `notifier` delivers notifications through the freedesktop.org service, or
   `osascript` on macOS; it rate limits each session (`rate.rs`) and maps
   desktop notification ids back to the program that asked (`routes.rs`).
-- `cgroup` (Linux) asks systemd on the session bus for a transient scope per
-  shell (`StartTransientUnit`, sent without awaiting a reply), with memory and
-  task accounting and `MemoryHigh` at 7/8 of RAM. The terminal first moves
-  into a sibling scope with `CPUWeight=400`, so a flooding tab cannot slow it. A worker thread checks once
-  for the unified cgroup2 hierarchy; without it, a bus or systemd, nothing
-  changes.
+- `cgroup` (Linux) gives each shell its own cgroup. At startup a worker
+  thread asks systemd on the session bus (`StartTransientUnit`, sent without
+  awaiting a reply) for a delegated scope holding the terminal, and
+  `cgroup_tree` lays it out once the terminal has moved there: a `terminal`
+  leaf with `cpu.weight` 400, so a flooding tab cannot slow the UI and parser
+  threads, and a `tab-<pid>` leaf per shell with `memory.high` at 7/8 of RAM.
+  Without systemd it uses the terminal's own cgroup when that is delegated
+  and holds no other process; a shell no leaf can take gets an
+  `app-poopterm-<pid>.scope` of its own. Without the unified cgroup2
+  hierarchy, nothing changes.
+
+  ```mermaid
+  flowchart TD
+  	scope["app-poopterm-terminal-&lt;pid&gt;.scope<br/>Delegate=yes, controllers: cpu memory pids"]
+  	scope --> terminal["terminal<br/>cpu.weight = 400<br/>(UI, reader, parser threads)"]
+  	scope --> tab1["tab-&lt;pid&gt;<br/>memory.high = 7/8 RAM<br/>cpu.weight = 100"]
+  	scope --> tab2["tab-&lt;pid&gt;<br/>…"]
+  ```
 
 ## Images (`src/graphics`, `src/sixel.rs`, `src/term/kitty*.rs`)
 
@@ -251,6 +269,17 @@ and position, and placeholder slices row by row.
   returns the best ranked one that has it, loading candidates on the way: at
   most four per character and 32 in all. A character's font therefore never
   depends on what was drawn before (#127).
+
+  ```mermaid
+  flowchart LR
+  	c([character]) --> cache{glyph cache}
+  	cache -- hit --> done([glyph])
+  	cache -- miss --> primary["primary font<br/>POOPTERM_FONT, font_path,<br/>font_family or bundled"]
+  	primary -- missing --> bundled["bundled DejaVu Sans Mono<br/>(when the primary is custom)"]
+  	bundled -- missing --> symbols["up to 8 installed Nerd Font,<br/>Symbol and Awesome fonts"]
+  	symbols -- missing --> system["installed fonts covering the page,<br/>ranked: monospace, regular, small"]
+  	primary & bundled & symbols & system -- has it --> done
+  ```
 - Emoji-presentation characters, and those with VS16, prefer a font with a
   color bitmap; VS15 prefers an outline (`glyphs::Presentation`).
   `fonts::cbdt` reads `CBLC`/`CBDT` and `fonts::color` scales the PNG to the
