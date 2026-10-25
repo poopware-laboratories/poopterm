@@ -259,6 +259,11 @@ and position, and placeholder slices row by row.
 
 - `render::painter::Painter` wraps the frame buffer with clipped `rect`,
   `round_rect`, `button`, `text` and `glyph` operations.
+- `render::scene::Scene` records drawing as data, with `Painter`'s method
+  names and arguments. The window chrome (`header`, `sidebar`, `status_bar`,
+  `popover`, `label`) draws into a scene that `scene::paint` replays into
+  the painter, so a GPU renderer can draw the same commands (#30). Tests
+  check that each piece of chrome stays inside its own region.
 - `render::glyphs::FontSet` owns the primary and fallback fonts and caches
   rasterized glyphs by `(char, size, presentation)` in an `FxHashMap`; the
   font is resolved only on a cache miss. The order is fixed: the primary
