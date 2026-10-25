@@ -15,7 +15,8 @@ or on `main` before reporting it.
 
 ## Reporting a vulnerability
 
-**Do not open a public issue for security problems.**
+> [!CAUTION]
+> Do not open a public issue for security problems.
 
 Report privately through GitHub:
 [**Report a vulnerability**](https://github.com/poopware-laboratories/poopterm/security/advisories/new)

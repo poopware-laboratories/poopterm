@@ -7,8 +7,10 @@ shared by human contributors and coding agents alike; this page is the
 short version and the practical steps.
 
 By taking part you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
-Security problems are not reported in public issues; see
-[`SECURITY.md`](SECURITY.md).
+
+> [!IMPORTANT]
+> Security problems are not reported in public issues; see
+> [`SECURITY.md`](SECURITY.md).
 
 ## Getting set up
 
@@ -116,6 +118,26 @@ branch and a pull request.
    packages, CodeQL) and the pull request
    rules must pass. The pull request is then squashed onto `main`, keeping
    your authorship.
+
+## Releases
+
+You never bump versions: every green commit on `main` is released by CI.
+
+```mermaid
+flowchart TD
+	merge([pull request squashed onto main]) --> ci{all CI jobs green?}
+	ci -- no --> stop([no release])
+	ci -- yes --> moved{main still at<br/>the checked commit?}
+	moved -- no --> skip(["skip: the newer commit's run releases"])
+	moved -- yes --> bump["release.py: next YY.M.PATCH, codename,<br/>changelog from Conventional Commits,<br/>Homebrew formula and PKGBUILD"]
+	bump --> push["one atomic push of the commit<br/>and its tag, with the deploy key"]
+	push --> build[PGO build, Debian and RPM packages]
+	build --> draft[draft GitHub release with both packages]
+	draft --> publish([publish, then attest the packages])
+```
+
+A rerun after a failure resumes the same release without bumping again.
+Details are in [AGENTS.md](AGENTS.md#branches-pull-requests-and-commits).
 
 ## Reporting bugs
 
