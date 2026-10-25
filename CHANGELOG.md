@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.78 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw characters the configured fonts lack from installed fonts (#110) (fonts).
+
 ## 26.10.77 "Giga Fly" — 2026-10-25
 
 ### Added
