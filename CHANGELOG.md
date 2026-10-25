@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.105 "Giga Fly" — 2026-10-25
+
+### Added
+
+- Draw the settings window through a recorded scene (#143) (settings).
+
 ## 26.10.104 "Giga Fly" — 2026-10-25
 
 ### Added
