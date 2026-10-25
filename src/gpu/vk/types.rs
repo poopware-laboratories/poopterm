@@ -6,10 +6,19 @@ use std::ffi::{c_char, c_void};
 pub(crate) type RawInstance = *mut c_void;
 /// A `VkPhysicalDevice`.
 pub(crate) type RawPhysicalDevice = *mut c_void;
+/// A `VkDevice`.
+pub(crate) type RawDevice = *mut c_void;
+/// A `VkQueue`.
+pub(crate) type RawQueue = *mut c_void;
 
 /// `VkStructureType` values.
 pub(crate) const STRUCTURE_TYPE_APPLICATION_INFO: i32 = 0;
 pub(crate) const STRUCTURE_TYPE_INSTANCE_CREATE_INFO: i32 = 1;
+pub(crate) const STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO: i32 = 2;
+pub(crate) const STRUCTURE_TYPE_DEVICE_CREATE_INFO: i32 = 3;
+pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: i32 = 51;
+pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES: i32 = 53;
+pub(crate) const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: i32 = 1_000_059_000;
 
 /// `VkApplicationInfo`.
 #[repr(C)]
@@ -88,6 +97,61 @@ pub(crate) struct ExtensionProperties {
 	pub spec_version: u32,
 }
 
+/// `VkPhysicalDeviceFeatures2`, with the 1.0 features as their 55
+/// `VkBool32`s in declaration order.
+#[repr(C)]
+pub(crate) struct PhysicalDeviceFeatures2 {
+	pub s_type: i32,
+	pub next: *mut c_void,
+	pub features: [u32; 55],
+}
+
+/// `VkPhysicalDeviceVulkan12Features`: its 47 `VkBool32`s in declaration
+/// order.
+#[repr(C)]
+pub(crate) struct Vulkan12Features {
+	pub s_type: i32,
+	pub next: *mut c_void,
+	pub flags: [u32; 47],
+}
+
+/// `VkPhysicalDeviceVulkan13Features`: its 15 `VkBool32`s in declaration
+/// order.
+#[repr(C)]
+pub(crate) struct Vulkan13Features {
+	pub s_type: i32,
+	pub next: *mut c_void,
+	pub flags: [u32; 15],
+}
+
+/// `VkDeviceQueueCreateInfo`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct DeviceQueueCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+	pub queue_family_index: u32,
+	pub queue_count: u32,
+	pub queue_priorities: *const f32,
+}
+
+/// `VkDeviceCreateInfo`.
+#[repr(C)]
+pub(crate) struct DeviceCreateInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub flags: u32,
+	pub queue_create_info_count: u32,
+	pub queue_create_infos: *const DeviceQueueCreateInfo,
+	pub enabled_layer_count: u32,
+	pub enabled_layer_names: *const *const c_char,
+	pub enabled_extension_count: u32,
+	pub enabled_extension_names: *const *const c_char,
+	/// `VkPhysicalDeviceFeatures`; null, as the features are chained.
+	pub enabled_features: *const c_void,
+}
+
 /// `PFN_vkVoidFunction`: what the loader returns, cast to the real type.
 pub(crate) type VoidFunction = unsafe extern "system" fn();
 pub(crate) type GetInstanceProcAddr =
@@ -108,3 +172,15 @@ pub(crate) type EnumerateDeviceExtensionProperties = unsafe extern "system" fn(
 	*mut u32,
 	*mut ExtensionProperties,
 ) -> i32;
+pub(crate) type GetPhysicalDeviceFeatures2 =
+	unsafe extern "system" fn(RawPhysicalDevice, *mut PhysicalDeviceFeatures2);
+pub(crate) type CreateDevice = unsafe extern "system" fn(
+	RawPhysicalDevice,
+	*const DeviceCreateInfo,
+	*const c_void,
+	*mut RawDevice,
+) -> i32;
+pub(crate) type GetDeviceProcAddr =
+	unsafe extern "system" fn(RawDevice, *const c_char) -> Option<VoidFunction>;
+pub(crate) type DestroyDevice = unsafe extern "system" fn(RawDevice, *const c_void);
+pub(crate) type GetDeviceQueue = unsafe extern "system" fn(RawDevice, u32, u32, *mut RawQueue);

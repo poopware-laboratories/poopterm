@@ -1,8 +1,9 @@
 //! The layouts of our Vulkan structures against the specification's C
 //! declarations on 64-bit targets: size, alignment and every field's offset.
 use super::types::{
-	ApplicationInfo, ExtensionProperties, InstanceCreateInfo, PhysicalDeviceProperties,
-	QueueFamilyProperties,
+	ApplicationInfo, DeviceCreateInfo, DeviceQueueCreateInfo, ExtensionProperties,
+	InstanceCreateInfo, PhysicalDeviceFeatures2, PhysicalDeviceProperties, QueueFamilyProperties,
+	Vulkan12Features, Vulkan13Features,
 };
 use std::mem::{align_of, offset_of, size_of, size_of_val};
 
@@ -108,4 +109,74 @@ fn queue_family_and_extension_properties_are_laid_out_as_vulkan_declares_them() 
 		offset_of!(ExtensionProperties, spec_version),
 	];
 	assert_eq!(offsets, [0, 256]);
+}
+
+#[test]
+fn device_create_infos_are_laid_out_as_vulkan_declares_them() {
+	assert_eq!(
+		(
+			size_of::<DeviceQueueCreateInfo>(),
+			align_of::<DeviceQueueCreateInfo>()
+		),
+		(40, 8)
+	);
+	let offsets = [
+		offset_of!(DeviceQueueCreateInfo, s_type),
+		offset_of!(DeviceQueueCreateInfo, next),
+		offset_of!(DeviceQueueCreateInfo, flags),
+		offset_of!(DeviceQueueCreateInfo, queue_family_index),
+		offset_of!(DeviceQueueCreateInfo, queue_count),
+		offset_of!(DeviceQueueCreateInfo, queue_priorities),
+	];
+	assert_eq!(offsets, [0, 8, 16, 20, 24, 32]);
+	assert_eq!(
+		(
+			size_of::<DeviceCreateInfo>(),
+			align_of::<DeviceCreateInfo>()
+		),
+		(72, 8)
+	);
+	let offsets = [
+		offset_of!(DeviceCreateInfo, s_type),
+		offset_of!(DeviceCreateInfo, next),
+		offset_of!(DeviceCreateInfo, flags),
+		offset_of!(DeviceCreateInfo, queue_create_info_count),
+		offset_of!(DeviceCreateInfo, queue_create_infos),
+		offset_of!(DeviceCreateInfo, enabled_layer_count),
+		offset_of!(DeviceCreateInfo, enabled_layer_names),
+		offset_of!(DeviceCreateInfo, enabled_extension_count),
+		offset_of!(DeviceCreateInfo, enabled_extension_names),
+		offset_of!(DeviceCreateInfo, enabled_features),
+	];
+	assert_eq!(offsets, [0, 8, 16, 20, 24, 32, 40, 48, 56, 64]);
+}
+
+#[test]
+fn feature_structures_are_laid_out_as_vulkan_declares_them() {
+	// Each is a type, a pointer and its VkBool32s, padded to 8: 55 in
+	// VkPhysicalDeviceFeatures, 47 for 1.2 and 15 for 1.3.
+	let sizes = [
+		(
+			size_of::<PhysicalDeviceFeatures2>(),
+			align_of::<PhysicalDeviceFeatures2>(),
+		),
+		(
+			size_of::<Vulkan12Features>(),
+			align_of::<Vulkan12Features>(),
+		),
+		(
+			size_of::<Vulkan13Features>(),
+			align_of::<Vulkan13Features>(),
+		),
+	];
+	assert_eq!(sizes, [(240, 8), (208, 8), (80, 8)]);
+	let offsets = [
+		offset_of!(PhysicalDeviceFeatures2, next),
+		offset_of!(PhysicalDeviceFeatures2, features),
+		offset_of!(Vulkan12Features, next),
+		offset_of!(Vulkan12Features, flags),
+		offset_of!(Vulkan13Features, next),
+		offset_of!(Vulkan13Features, flags),
+	];
+	assert_eq!(offsets, [8, 16, 8, 16, 8, 16]);
 }

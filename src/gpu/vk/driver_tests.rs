@@ -5,7 +5,9 @@
 use super::{
 	call::{Error, INCOMPLETE},
 	choose::{Device, GRAPHICS, Kind, QueueFamily, TRANSFER},
+	device_tests::{self, Made},
 	entry::Entry,
+	features::Flag,
 	types::*,
 	version::api_version,
 };
@@ -18,25 +20,30 @@ use std::{
 
 /// What the fake driver offers, and what it saw.
 #[derive(Default)]
-struct Driver {
+pub(super) struct Driver {
 	/// The loader's version; `None` for a 1.0 loader, which lacks
 	/// vkEnumerateInstanceVersion.
-	version: Option<u32>,
-	lacks: Vec<&'static CStr>,
+	pub version: Option<u32>,
+	pub lacks: Vec<&'static CStr>,
 	/// Calls that fail, with what they return.
-	fails: Vec<(&'static CStr, i32)>,
-	devices: Vec<RawPhysicalDevice>,
+	pub fails: Vec<(&'static CStr, i32)>,
+	pub devices: Vec<RawPhysicalDevice>,
 	/// The devices there are once the first count was given, if more.
-	grown: Vec<RawPhysicalDevice>,
-	device_calls: u32,
+	pub grown: Vec<RawPhysicalDevice>,
+	pub device_calls: u32,
 	/// What each of `devices` is, by index.
-	described: Vec<Device>,
-	lookups: Vec<(RawInstance, String)>,
+	pub described: Vec<Device>,
+	pub lookups: Vec<(RawInstance, String)>,
 	created: Vec<Created>,
-	live: Vec<RawInstance>,
-	destroyed: Vec<RawInstance>,
+	pub live: Vec<RawInstance>,
+	pub destroyed: Vec<RawInstance>,
+	/// Features the devices lack; they have every other one.
+	pub lacked: Vec<Flag>,
+	pub made: Vec<Made>,
+	pub live_devices: Vec<RawDevice>,
+	pub destroyed_devices: Vec<RawDevice>,
 	/// Valid usage rules the bindings broke.
-	invalid: Vec<String>,
+	pub invalid: Vec<String>,
 }
 
 /// What an instance was created with.
@@ -57,7 +64,7 @@ impl Driver {
 		}
 	}
 
-	fn failing(&self, name: &CStr) -> Option<i32> {
+	pub(super) fn failing(&self, name: &CStr) -> Option<i32> {
 		self
 			.fails
 			.iter()
@@ -67,7 +74,7 @@ impl Driver {
 
 	/// The description of `device`, breaking the test unless the driver
 	/// listed it.
-	fn device(&mut self, device: RawPhysicalDevice, call: &str) -> Option<Device> {
+	pub(super) fn device(&mut self, device: RawPhysicalDevice, call: &str) -> Option<Device> {
 		let index = self.devices.iter().position(|&listed| listed == device);
 		let found = index.and_then(|index| self.described.get(index).cloned());
 		if found.is_none() {
@@ -76,6 +83,16 @@ impl Driver {
 				.push(format!("{call} on {device:?}, which was not listed"));
 		}
 		found
+	}
+
+	/// Breaks the test unless `device` is one the driver made and has not
+	/// destroyed.
+	pub(super) fn check_live_device(&mut self, device: RawDevice, call: &str) {
+		if !self.live_devices.contains(&device) {
+			self
+				.invalid
+				.push(format!("{call} on {device:?}, which is not live"));
+		}
 	}
 
 	/// Breaks the test unless `instance` is one the driver made and has not
@@ -93,12 +110,12 @@ thread_local! {
 	static DRIVER: RefCell<Driver> = RefCell::default();
 }
 
-fn with<T>(f: impl FnOnce(&mut Driver) -> T) -> T {
+pub(super) fn with<T>(f: impl FnOnce(&mut Driver) -> T) -> T {
 	DRIVER.with(|driver| f(&mut driver.borrow_mut()))
 }
 
 /// An entry whose loader is `driver`, for this thread.
-fn install(driver: Driver) -> Entry {
+pub(super) fn install(driver: Driver) -> Entry {
 	with(|installed| *installed = driver);
 	Entry {
 		get_instance_proc_addr,
@@ -107,7 +124,7 @@ fn install(driver: Driver) -> Entry {
 }
 
 /// What the driver saw, checking no valid usage rule was broken.
-fn finish() -> Driver {
+pub(super) fn finish() -> Driver {
 	let driver = with(std::mem::take);
 	assert_eq!(driver.invalid, Vec::<String>::new());
 	driver
@@ -156,6 +173,13 @@ unsafe extern "system" fn get_instance_proc_addr(
 				}
 				b"vkEnumerateDeviceExtensionProperties" => {
 					transmute::<EnumerateDeviceExtensionProperties, VoidFunction>(extensions)
+				}
+				b"vkGetPhysicalDeviceFeatures2" => {
+					transmute::<GetPhysicalDeviceFeatures2, VoidFunction>(device_tests::features2)
+				}
+				b"vkCreateDevice" => transmute::<CreateDevice, VoidFunction>(device_tests::create_device),
+				b"vkGetDeviceProcAddr" => {
+					transmute::<GetDeviceProcAddr, VoidFunction>(device_tests::get_device_proc_addr)
 				}
 				_ => return None,
 			})
@@ -246,6 +270,9 @@ unsafe extern "system" fn destroy_instance(instance: RawInstance, allocator: *co
 			driver
 				.invalid
 				.push("vkDestroyInstance: an allocator".into());
+		}
+		if !driver.live_devices.is_empty() {
+			(driver.invalid).push("vkDestroyInstance while a device is live".into());
 		}
 		driver.live.retain(|&live| live != instance);
 		driver.destroyed.push(instance);
@@ -491,6 +518,9 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 		(handle, "vkGetPhysicalDeviceProperties"),
 		(handle, "vkGetPhysicalDeviceQueueFamilyProperties"),
 		(handle, "vkEnumerateDeviceExtensionProperties"),
+		(handle, "vkGetPhysicalDeviceFeatures2"),
+		(handle, "vkCreateDevice"),
+		(handle, "vkGetDeviceProcAddr"),
 	];
 	let lookups: Vec<_> = driver
 		.lookups
@@ -518,6 +548,9 @@ fn a_function_the_loader_lacks_is_missing_and_the_instance_is_not_kept() {
 		c"vkGetPhysicalDeviceProperties",
 		c"vkGetPhysicalDeviceQueueFamilyProperties",
 		c"vkEnumerateDeviceExtensionProperties",
+		c"vkGetPhysicalDeviceFeatures2",
+		c"vkCreateDevice",
+		c"vkGetDeviceProcAddr",
 	];
 	for name in functions {
 		let mut driver = Driver::offering(api_version(1, 3));
@@ -719,7 +752,7 @@ fn the_fake_driver_reports_broken_rules() {
 }
 
 /// A driver offering 1.3 with `devices`, handles 0x100, 0x200, ….
-fn with_devices(devices: &[Device]) -> Driver {
+pub(super) fn with_devices(devices: &[Device]) -> Driver {
 	let mut driver = Driver::offering(api_version(1, 3));
 	driver.devices = (1..=devices.len())
 		.map(|i| (i << 8) as RawPhysicalDevice)
@@ -728,7 +761,7 @@ fn with_devices(devices: &[Device]) -> Driver {
 	driver
 }
 
-fn family(flags: u32, count: u32) -> QueueFamily {
+pub(super) fn family(flags: u32, count: u32) -> QueueFamily {
 	QueueFamily {
 		flags,
 		count,

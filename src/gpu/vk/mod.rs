@@ -7,9 +7,15 @@ mod call_tests;
 pub(crate) mod choose;
 #[cfg(test)]
 mod choose_tests;
+pub(crate) mod device;
+#[cfg(test)]
+mod device_tests;
 #[cfg(test)]
 mod driver_tests;
 pub(crate) mod entry;
+pub(crate) mod features;
+#[cfg(test)]
+mod features_tests;
 pub(crate) mod instance;
 pub(crate) mod library;
 #[cfg(test)]

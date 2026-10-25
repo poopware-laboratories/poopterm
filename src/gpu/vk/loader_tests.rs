@@ -8,11 +8,13 @@
 use super::{
 	call::Error,
 	choose::{GRAPHICS, Kind, choose},
+	device::Device,
 	entry::Entry,
+	instance::Instance,
 	library::Library,
 	version::major_minor,
 };
-use std::{env, process::Command, ptr};
+use std::{env, process::Command, ptr, rc::Rc};
 
 fn required() -> bool {
 	env::var("POOPTERM_REQUIRE_VULKAN").is_ok_and(|value| value == "1")
@@ -104,12 +106,29 @@ fn child() {
 		return println!("child: no loader");
 	};
 	match entry.create_instance(c"poopterm child") {
-		Ok(instance) => println!(
-			"child: {} devices",
-			instance.physical_devices().unwrap().len()
-		),
+		Ok(instance) => {
+			println!(
+				"child: {} devices",
+				instance.physical_devices().unwrap().len()
+			);
+			match offscreen(Rc::new(instance)) {
+				Ok(device) => println!("child: a device drawing on family {}", device.family()),
+				Err(error) => println!("child: no device: {error}"),
+			}
+		}
 		Err(error) => println!("child: {error}"),
 	}
+}
+
+/// A device on the GPU the renderer would choose to draw offscreen, or on
+/// the CPU when there is no GPU.
+fn offscreen(instance: Rc<Instance>) -> Result<Device, Error> {
+	let handles = instance.physical_devices()?;
+	let devices: Vec<_> = (handles.iter())
+		.map(|&handle| instance.describe(handle))
+		.collect::<Result<_, _>>()?;
+	let choice = choose(&devices, false, true).expect("a device to draw on");
+	Device::new(instance, handles[choice.device], choice.family as u32)
 }
 
 #[test]
@@ -139,6 +158,10 @@ fn instances_pass_the_khronos_validation_layer() {
 	}
 	assert!(
 		output.contains("child: ") && output.contains(" devices"),
+		"{output}"
+	);
+	assert!(
+		output.contains("child: a device drawing on family"),
 		"{output}"
 	);
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
@@ -197,4 +220,17 @@ fn every_device_is_described_and_one_can_draw_offscreen() {
 		instance.describe(handles[choice.device]).as_ref(),
 		Ok(chosen)
 	);
+}
+
+#[test]
+fn a_device_is_made_with_the_needed_features_and_a_queue_that_draws() {
+	let Some(entry) = entry() else { return };
+	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
+	let device = offscreen(instance.clone()).expect("device");
+	assert!(!device.queue().is_null());
+	// A second device on the same GPU is independent of the first.
+	let again = offscreen(instance).expect("device");
+	assert_eq!(again.family(), device.family());
+	drop(device);
+	assert!(!again.queue().is_null());
 }
