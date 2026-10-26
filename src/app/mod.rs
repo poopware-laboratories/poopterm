@@ -104,8 +104,6 @@ pub(crate) struct App {
 	renderer: Option<renderer::Renderer>,
 	settings_window: Option<Arc<Window>>,
 	settings_surface: Option<renderer::Software>,
-	/// The settings window's frame, drawn by the CPU.
-	settings_pixels: Vec<u32>,
 	settings_width: u32,
 	settings_height: u32,
 	settings_cursor_pos: (f64, f64),
@@ -351,7 +349,6 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		renderer: None,
 		settings_window: None,
 		settings_surface: None,
-		settings_pixels: Vec::new(),
 		settings_width: 0,
 		settings_height: 0,
 		settings_cursor_pos: (0.0, 0.0),

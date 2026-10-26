@@ -119,8 +119,7 @@ impl App {
 			return;
 		};
 		let (width, height) = (self.settings_width as usize, self.settings_height as usize);
-		let mut pixels = std::mem::take(&mut self.settings_pixels);
-		pixels.resize(width * height, 0);
+		let mut pixels = vec![0; width * height];
 		// pr-check: window glue: draws the settings window's frame, which needs its window
 		let mut scene = Scene::new(width, height);
 		self.compose_settings(&mut scene, scale);
@@ -130,7 +129,6 @@ impl App {
 		);
 		// pr-check: end window glue
 		let shown = surface.present(&pixels, width, None, false);
-		self.settings_pixels = pixels;
 		let again = || self.redraw_settings();
 		self.settings_surface = after_shown(surface, shown, again, renderer::Software::fallback);
 	}
