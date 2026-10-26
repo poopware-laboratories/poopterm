@@ -33,12 +33,12 @@ const COLOR_ATTACHMENT: u32 = 0x10;
 const TRANSFER_SRC: u32 = 0x1;
 const TRANSFER_DST: u32 = 0x2;
 /// The atlas the pen and the renderer share: four pages 256 pixels square.
-const ATLAS: (usize, usize) = (256, 4);
+pub(super) const ATLAS: (usize, usize) = (256, 4);
 
 /// How many translucent quads blend into each pixel since the last opaque
 /// one covered it: software truncates each blend and the GPU rounds it, so
 /// each may leave them a step apart.
-fn layers(pen: &QuadPen) -> Vec<u32> {
+pub(super) fn layers(pen: &QuadPen) -> Vec<u32> {
 	let (width, height) = pen.size;
 	let mut layers = vec![0; width * height];
 	for quad in &pen.quads {

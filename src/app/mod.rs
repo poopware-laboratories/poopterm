@@ -1,9 +1,13 @@
 //! Application state and the winit event loop.
 mod canvas;
 mod draw;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod draw_gpu;
 mod draw_tabs;
 mod draw_vertical_tabs;
 mod frame_pacer;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod gpu;
 mod handler;
 mod keyboard;
 mod mouse;
