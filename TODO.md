@@ -135,9 +135,13 @@ issue before starting a piece.
 - **Status:** `gpu::vk::Renderer` draws a `QuadPen` frame offscreen, and
   every shared grid scene matches software within one step a channel per
   translucent layer (software truncates each blend, the GPU rounds it), on
-  Intel and llvmpipe. Still to do: frames with images (refused for now,
-  so software draws them), the swapchain and presenting (#24b), and
-  fractional scale.
+  Intel and llvmpipe. `gpu::vk::window::GpuWindow` picks the device for a
+  window's surface and shows frames on a swapchain kept the window's size
+  (passing the Khronos validation layer on a headless surface).
+  `POOPTERM_RENDERER` overrides the configured renderer. Still to do: the
+  app switching windows to it with software fallback, the grid drawn
+  through it, frames with images (refused for now, so software draws
+  them), and fractional scale.
 
 ## Resource management and memory
 

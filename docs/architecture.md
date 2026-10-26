@@ -333,6 +333,16 @@ carries rows changed while every buffer was held over to the next frame.
 `wl_shm`, with libwayland-client opened at run time (`library.rs`) and its
 objects on a private event queue, so winit's event loop never sees them.
 
+**Drawing on the GPU (`src/gpu/vk`).** `gpu::vk::window::GpuWindow` draws a
+window with Vulkan: it makes a surface of the window's handles, picks the
+device whose queue draws and shows on it (`choose::suits` says why each other
+device cannot, which the fallback to software reports), and keeps a swapchain
+of the window's size, remade when the window resizes or the driver says it
+is out of date or suboptimal. A frame the GPU cannot draw yet (images, or
+glyphs the atlas cannot hold) is refused before an image is acquired, so
+software draws it. `render::backend::preference` lets `POOPTERM_RENDERER`
+override the configured renderer for one run.
+
 ## Input (`src/input`)
 
 All encoders are pure functions with unit tests:

@@ -18,12 +18,18 @@ pub(crate) enum RendererPreference {
 }
 
 impl RendererPreference {
-	fn parse(value: Option<String>) -> Self {
-		match value.as_deref() {
-			Some("software") => Self::Software,
-			Some("gpu") => Self::Gpu,
-			_ => Self::Auto,
+	/// The preference `name` names, as `config.toml` writes it.
+	pub(crate) fn named(name: &str) -> Option<Self> {
+		match name {
+			"auto" => Some(Self::Auto),
+			"software" => Some(Self::Software),
+			"gpu" => Some(Self::Gpu),
+			_ => None,
 		}
+	}
+
+	fn parse(value: Option<String>) -> Self {
+		value.as_deref().and_then(Self::named).unwrap_or_default()
 	}
 }
 

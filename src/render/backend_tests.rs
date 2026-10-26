@@ -1,5 +1,5 @@
 //! Exhaustive renderer-selection tests with a window-free fake backend.
-use super::backend::{Backend, Selection, candidates, select};
+use super::backend::{Backend, Selection, candidates, preference, select};
 use crate::config::{Preferences, RendererPreference};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -487,4 +487,27 @@ fn candidate_slices_are_static_and_reused_between_calls() {
 	assert_eq!(first[0], Backend::Gpu);
 	assert_eq!(first[1], Backend::Software);
 	assert_eq!(software[0], Backend::Software);
+}
+
+#[test]
+fn the_environment_overrides_the_configured_renderer_for_one_run() {
+	use RendererPreference::{Auto, Gpu, Software};
+	for configured in [Auto, Gpu, Software] {
+		assert_eq!(preference(configured, None), configured);
+		assert_eq!(preference(configured, Some("software")), Software);
+		assert_eq!(preference(configured, Some("gpu")), Gpu);
+		// `auto` undoes a configured choice.
+		assert_eq!(preference(configured, Some("auto")), Auto);
+	}
+}
+
+#[test]
+fn an_environment_value_naming_no_renderer_leaves_the_configured_one() {
+	for value in ["", "vulkan", "GPU", " gpu", "software\n", "gpu,software"] {
+		assert_eq!(
+			preference(RendererPreference::Software, Some(value)),
+			RendererPreference::Software,
+			"{value:?}"
+		);
+	}
 }

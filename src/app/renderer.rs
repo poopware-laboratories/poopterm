@@ -3,7 +3,7 @@ use super::{Arc, Window, repaint};
 use crate::{
 	config::RendererPreference,
 	render::{
-		backend::{Backend, select},
+		backend::{self, Backend, select},
 		damage::GridDamage,
 	},
 	term::Frame,
@@ -17,6 +17,8 @@ pub(super) struct Renderer {
 
 impl Renderer {
 	pub(super) fn new(window: Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
+		let variable = std::env::var(backend::VARIABLE).ok();
+		let preference = backend::preference(preference, variable.as_deref());
 		let selected = select(preference, |backend| match backend {
 			Backend::Gpu => Err("not available in this build".to_owned()),
 			Backend::Software => {

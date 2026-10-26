@@ -66,7 +66,9 @@ shortcut_close_tab = "super+w"
 `renderer` accepts `auto` (the default), `gpu` and `software`. There is no GPU
 backend yet ([#30](https://github.com/poopware-laboratories/poopterm/issues/30)),
 so all three draw in software today; `auto` and `gpu` will fall back to software
-when GPU startup fails.
+when GPU startup fails. The `POOPTERM_RENDERER` environment variable, set to one
+of the same three values, overrides `renderer` for one run without changing the
+file; any other value is ignored.
 
 ### Theme names and custom colors
 

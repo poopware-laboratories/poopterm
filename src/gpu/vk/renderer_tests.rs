@@ -79,7 +79,7 @@ fn renderer() -> (Renderer, Rc<super::image::Image>) {
 }
 
 /// A glyph `w`×`h`, of coverage `0, 1, 2…`, or in those colors.
-fn glyph(w: usize, h: usize, color: bool) -> Glyph {
+pub(super) fn glyph(w: usize, h: usize, color: bool) -> Glyph {
 	let coverage: Vec<u8> = (0..w * h).map(|i| i as u8).collect();
 	Glyph {
 		metrics: Metrics {

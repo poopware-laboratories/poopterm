@@ -114,6 +114,13 @@ impl Renderer {
 		recorded
 	}
 
+	/// Starts `pen` over, so its next frame uploads every glyph it draws:
+	/// for when a frame's uploads never reached the GPU.
+	pub(crate) fn restart(&self, pen: &mut QuadPen) {
+		let [side, _, pages] = self.atlas.size.map(|n| n as usize);
+		*pen = QuadPen::new(pen.size, (side, pages));
+	}
+
 	fn record(&mut self, pen: &QuadPen, target: &Rc<Image>) -> Result<Recording<'_>, Error> {
 		if !pen.complete || !pen.images.is_empty() {
 			return Err(Error::Draw);
