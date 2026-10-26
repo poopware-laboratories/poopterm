@@ -146,6 +146,8 @@ fn child() {
 					println!("child: quad set: {}", set.is_ok());
 					let drawn = super::draw_gpu_tests::draw_known_quads(&device);
 					println!("child: drawn: {drawn:?}");
+					let unlike = super::renderer_gpu_tests::unlike_software(&device);
+					println!("child: unlike software: {unlike:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -214,6 +216,10 @@ fn instances_pass_the_khronos_validation_layer() {
 	assert!(output.contains("child: quad pipeline: true"), "{output}");
 	assert!(output.contains("child: quad set: true"), "{output}");
 	assert!(output.contains("child: drawn: Ok(true)"), "{output}");
+	assert!(
+		output.contains("child: unlike software: Ok([])"),
+		"{output}"
+	);
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
