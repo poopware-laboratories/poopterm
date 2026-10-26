@@ -9,6 +9,7 @@ use crate::{
 		outside_tests::{
 			FAKE_DISPLAY, fake_broken, fake_client, fake_damage, fake_leaked, fake_lose,
 			fake_refuse_pools, fake_release_all, fake_shown, fake_surface, fake_without_xrgb,
+			on_real_surface,
 		},
 		presenter::{Error, Presenter},
 	},
@@ -159,6 +160,22 @@ fn a_partial_frame_damages_only_its_bands() {
 }
 
 #[test]
+fn a_resize_between_partial_frames_shows_the_new_size_whole() {
+	// The window's bands are of the frame drawn at the new size; the
+	// buffers of the old size hold nothing of it.
+	let mut presenter = opened();
+	present(&mut presenter, &frame(3, 1), WIDTH, None);
+	let taller = frame(5, 2);
+	assert_eq!(
+		present(&mut presenter, &taller, WIDTH, Some(&[(4, 5)])),
+		Shown::Done
+	);
+	assert_eq!(fake_shown().last(), Some(&([WIDTH, 5], taller)));
+	assert_eq!(fake_damage().last().unwrap(), &[[0, 0, WIDTH as i32, 5]]);
+	rules_kept();
+}
+
+#[test]
 fn a_frame_with_every_buffer_held_is_tried_again_and_loses_nothing() {
 	let mut presenter = opened();
 	for number in 1..=3 {
@@ -232,4 +249,40 @@ fn each_failure_says_what_went_wrong() {
 		describe(Error::Memory("4×3 pixels: out of memory".to_owned())),
 		"no shared memory for 4×3 pixels: out of memory"
 	);
+}
+
+#[test]
+fn frames_show_on_a_real_compositor_through_the_system_libwayland() {
+	let shown = on_real_surface(|display, surface| {
+		// SAFETY: the display and surface live until this returns, and the
+		// presenter goes first.
+		let opened = unsafe { open(Some((display, surface)), Client::load) };
+		let mut presenter = opened.expect("a presenter on a real compositor");
+		let mut outcomes = Vec::new();
+		for (number, rows) in [3, 3, 3, 3, 7, 7].into_iter().enumerate() {
+			let bands = (number % 2 == 1).then_some(&[(1, 2)][..]);
+			outcomes.push(present(
+				&mut presenter,
+				&frame(rows, number as u32),
+				WIDTH,
+				bands,
+			));
+		}
+		outcomes
+	});
+	let Some(outcomes) = shown else {
+		return;
+	};
+	// The compositor may still hold buffers, but never fails a frame.
+	let done = outcomes
+		.iter()
+		.filter(|&shown| *shown == Shown::Done)
+		.count();
+	assert!(
+		outcomes
+			.iter()
+			.all(|shown| !matches!(shown, Shown::Failed(_))),
+		"{outcomes:?}"
+	);
+	assert!(done >= 3, "{outcomes:?}");
 }

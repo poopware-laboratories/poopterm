@@ -2,7 +2,7 @@
 use super::*;
 use super::{
 	canvas::{DrawKey, Plan},
-	renderer::Shown,
+	renderer::after_shown,
 	repaint::keeps_contents,
 };
 use crate::{
@@ -106,30 +106,8 @@ impl App {
 			damage_only,
 		);
 		self.canvas.remember(&mut self.frame, key);
-		self.renderer = self.after_shown(renderer, shown);
-	}
-
-	/// The renderer to draw the next frame with, after this one was `shown`.
-	fn after_shown(
-		&mut self,
-		renderer: renderer::Renderer,
-		shown: Shown,
-	) -> Option<renderer::Renderer> {
-		match shown {
-			Shown::Done => Some(renderer),
-			Shown::Retry => {
-				// After the frame interval, as releases take a frame or so.
-				self.schedule_redraw();
-				Some(renderer)
-			}
-			Shown::Failed(error) => {
-				self.request_redraw();
-				renderer
-					.after_presenter(&error)
-					.inspect_err(|error| eprintln!("poopterm: software renderer unavailable: {error}"))
-					.ok()
-			}
-		}
+		let again = || self.schedule_redraw();
+		self.renderer = after_shown(renderer, shown, again, renderer::Renderer::after_presenter);
 	}
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.

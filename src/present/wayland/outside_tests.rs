@@ -76,3 +76,10 @@ pub(crate) fn fake_broken() -> Vec<String> {
 pub(crate) fn fake_leaked() -> usize {
 	with(|wayland| wayland.leaked().len())
 }
+
+/// Runs `f` with the display and a surface of a real compositor, then
+/// requires that no protocol error happened: `None` when there is none to
+/// run on (see `real_tests`).
+pub(crate) fn on_real_surface<R>(f: impl FnOnce(Proxy, Proxy) -> R) -> Option<R> {
+	super::real_tests::on_real_surface(f)
+}

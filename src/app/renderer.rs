@@ -37,6 +37,29 @@ pub(super) enum Shown {
 	Failed(String),
 }
 
+/// The sink to show the next frame with, after this one was `shown`:
+/// `again` asks for another frame, and `fallback` replaces a sink that
+/// failed.
+pub(super) fn after_shown<S>(
+	sink: S,
+	shown: Shown,
+	again: impl FnOnce(),
+	fallback: impl FnOnce(S, &str) -> Result<S, String>,
+) -> Option<S> {
+	match shown {
+		Shown::Done => Some(sink),
+		Shown::Retry => {
+			again();
+			Some(sink)
+		}
+		Shown::Failed(error) => {
+			again();
+			let failed = |error: &String| eprintln!("poopterm: software renderer unavailable: {error}");
+			fallback(sink, &error).inspect_err(failed).ok()
+		}
+	}
+}
+
 /// A window's frames drawn by the CPU, shown through our own presenter on
 /// Wayland and through softbuffer elsewhere.
 pub(super) struct Software {
@@ -94,12 +117,14 @@ impl Software {
 
 	pub(super) fn resize(&mut self, width: u32, height: u32) {
 		match &mut self.sink {
+			// pr-check: window glue: softbuffer's surface is only a real window's
 			Sink::Softbuffer { surface, .. } => {
 				let size = (NonZeroU32::new(width), NonZeroU32::new(height));
 				if let (Some(width), Some(height)) = size {
 					let _ = surface.resize(width, height);
 				}
 			}
+			// pr-check: end window glue
 			// The presenter makes buffers at the size of each frame.
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			Sink::Wayland(_) => {}
@@ -116,12 +141,14 @@ impl Software {
 		damage_only: bool,
 	) -> Shown {
 		match &mut self.sink {
+			// pr-check: window glue: softbuffer's surface is only a real window's
 			Sink::Softbuffer { surface, .. } => {
 				if let Ok(buffer) = surface.buffer_mut() {
 					repaint::present(buffer, pixels, width, bands, damage_only);
 				}
 				Shown::Done
 			}
+			// pr-check: end window glue
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			Sink::Wayland(presenter) => wayland::present(presenter, pixels, width, bands),
 		}
@@ -175,6 +202,7 @@ impl Renderer {
 	// pr-check: end window glue
 
 	/// Softbuffer in place of a presenter that failed with `error`.
+	// pr-check: window glue: hands a real window's software renderer to softbuffer
 	pub(super) fn after_presenter(self, error: &str) -> Result<Self, String> {
 		match self {
 			Self::Software(software) => software.fallback(error).map(Self::Software),
@@ -182,6 +210,7 @@ impl Renderer {
 			gpu @ Self::Gpu(_) => Ok(gpu),
 		}
 	}
+	// pr-check: end window glue
 
 	pub(super) fn resize(&mut self, width: u32, height: u32) {
 		match self {
@@ -241,6 +270,48 @@ mod tests {
 			format_failures(&failures),
 			"gpu renderer unavailable: no device; software renderer unavailable: no window surface"
 		);
+	}
+
+	/// What `after_shown` did: the sink it returned, and whether it asked
+	/// for another frame and fell back, with which error.
+	fn follow(shown: Shown, replacement: Result<u8, String>) -> (Option<u8>, bool, Option<String>) {
+		let mut asked = false;
+		let mut failed = None;
+		let fallback = |sink: u8, error: &str| {
+			assert_eq!(sink, 1, "the failed sink is handed over");
+			failed = Some(error.to_owned());
+			replacement
+		};
+		let next = after_shown(1, shown, || asked = true, fallback);
+		(next, asked, failed)
+	}
+
+	#[test]
+	fn a_frame_shown_keeps_its_sink_and_asks_for_nothing() {
+		assert_eq!(follow(Shown::Done, Ok(2)), (Some(1), false, None));
+	}
+
+	#[test]
+	fn a_frame_waiting_for_a_buffer_keeps_its_sink_and_asks_for_another() {
+		assert_eq!(follow(Shown::Retry, Ok(2)), (Some(1), true, None));
+	}
+
+	#[test]
+	fn a_sink_that_failed_is_replaced_and_the_frame_shown_again() {
+		let shown = Shown::Failed("the connection to the compositor broke".to_owned());
+		let (next, asked, failed) = follow(shown, Ok(2));
+		assert_eq!((next, asked), (Some(2), true));
+		assert_eq!(
+			failed.as_deref(),
+			Some("the connection to the compositor broke")
+		);
+	}
+
+	#[test]
+	fn a_replacement_that_fails_leaves_the_window_without_a_sink() {
+		let shown = Shown::Failed("lost".to_owned());
+		let (next, asked, failed) = follow(shown, Err("no softbuffer".to_owned()));
+		assert_eq!((next, asked, failed.as_deref()), (None, true, Some("lost")));
 	}
 
 	#[test]

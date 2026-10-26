@@ -3,7 +3,7 @@
 //! constants.
 use super::*;
 use super::{
-	renderer::Shown,
+	renderer::after_shown,
 	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
 	settings_pen::Pen,
 };
@@ -131,18 +131,8 @@ impl App {
 		// pr-check: end window glue
 		let shown = surface.present(&pixels, width, None, false);
 		self.settings_pixels = pixels;
-		self.settings_surface = match shown {
-			Shown::Done => Some(surface),
-			Shown::Retry => {
-				self.redraw_settings();
-				Some(surface)
-			}
-			Shown::Failed(error) => {
-				self.redraw_settings();
-				let failed = |error: &String| eprintln!("poopterm: settings window: {error}");
-				surface.fallback(&error).inspect_err(failed).ok()
-			}
-		};
+		let again = || self.redraw_settings();
+		self.settings_surface = after_shown(surface, shown, again, renderer::Software::fallback);
 	}
 
 	fn compose_settings(&mut self, p: &mut Scene, scale: usize) {
