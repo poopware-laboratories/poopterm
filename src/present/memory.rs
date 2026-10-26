@@ -1,6 +1,6 @@
-//! Anonymous shared memory for one window buffer, which the compositor
-//! maps through the file descriptor sent with `wl_shm.create_pool`:
-//! unmapped and closed when dropped.
+//! Anonymous shared memory for one window buffer, which the window system
+//! maps through the file descriptor sent to it (`wl_shm.create_pool`,
+//! MIT-SHM `AttachFd`): unmapped and closed when dropped.
 use std::{
 	io,
 	os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
