@@ -26,6 +26,8 @@ mod settings_pen;
 mod settings_pen_tests;
 mod settings_view;
 mod tabs;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod wayland;
 
 use portable_pty::PtySize;
 use std::{error::Error, num::NonZeroU32, path::PathBuf, sync::Arc};
@@ -101,8 +103,7 @@ pub(crate) struct App {
 	reported_title: String,
 	renderer: Option<renderer::Renderer>,
 	settings_window: Option<Arc<Window>>,
-	_settings_context: Option<softbuffer::Context<Arc<Window>>>,
-	settings_surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
+	settings_surface: Option<renderer::Software>,
 	settings_width: u32,
 	settings_height: u32,
 	settings_cursor_pos: (f64, f64),
@@ -347,7 +348,6 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		reported_title: String::new(),
 		renderer: None,
 		settings_window: None,
-		_settings_context: None,
 		settings_surface: None,
 		settings_width: 0,
 		settings_height: 0,

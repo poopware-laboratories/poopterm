@@ -1,8 +1,9 @@
 # Architecture
 
 Poopterm is one process with a UI thread plus three threads per tab (PTY
-reader, parser, PTY writer). Everything is drawn on the CPU into a softbuffer
-surface.
+reader, parser, PTY writer). The grid is drawn on the GPU where Vulkan can
+draw in the window, and everything else on the CPU, shown through our own
+`wl_shm` presenter on Wayland and through softbuffer elsewhere.
 
 ## Data flow
 
@@ -20,7 +21,7 @@ flowchart LR
 	winit([winit events]) --> app[App<br/>UI thread]
 	app -- input encoders --> writer
 	app -- "lock briefly: state, Frame" --> term
-	app --> pacer[FramePacer] --> draw["draw: Frame → damage → canvas"] --> sb([softbuffer])
+	app --> pacer[FramePacer] --> draw["draw: Frame → damage → canvas"] --> sb(["wl_shm presenter / softbuffer"])
 ```
 
 1. **Reading.** `pty::spawn_session` starts a reader thread that appends each
@@ -323,8 +324,9 @@ clipped to their row so rows can be redrawn independently. X11 windows get
 the whole image each present (they lose contents when exposed); Wayland and
 macOS get damage rectangles.
 
-**Presenting (`src/present`).** Our own replacement for softbuffer, under
-way. `present::pool::Pool` picks the window buffer each frame goes into
+**Presenting (`src/present`).** Our own replacement for softbuffer, which
+shows both windows' software frames on Wayland (`app::wayland`); X11 and
+macOS still use softbuffer. `present::pool::Pool` picks the window buffer each frame goes into
 (at most three, reused once the compositor releases them) and how many
 frames old its contents are; `present::copy::History` turns that age and
 the changed pixel rows into the rows to copy and the damage to report, and
@@ -332,6 +334,9 @@ carries rows changed while every buffer was held over to the next frame.
 `present::wayland::Presenter` shows frames on a `wl_surface` through
 `wl_shm`, with libwayland-client opened at run time (`library.rs`) and its
 objects on a private event queue, so winit's event loop never sees them.
+`app::renderer::Software` holds it or softbuffer; a frame that finds every
+buffer held is drawn again after the frame interval, and a presenter that
+fails hands the window to softbuffer (`renderer::after_shown`).
 
 **Drawing on the GPU (`src/gpu/vk`).** `gpu::vk::window::GpuWindow` draws a
 window with Vulkan: it makes a surface of the window's handles, picks the

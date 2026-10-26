@@ -67,12 +67,14 @@ unsafe extern "C" fn global(
 	0
 }
 
-#[test]
-fn frames_show_on_a_real_compositor_without_a_protocol_error() {
+/// Runs `f` with a connected display and a surface of its compositor,
+/// then requires that no protocol error happened: `None`, having run
+/// nothing, without `WAYLAND_DISPLAY`, unless a compositor is required.
+pub(super) fn on_real_surface<R>(f: impl FnOnce(Proxy, Proxy) -> R) -> Option<R> {
 	let required = std::env::var_os("POOPTERM_REQUIRE_WAYLAND").is_some();
 	if std::env::var_os("WAYLAND_DISPLAY").is_none() && !required {
 		eprintln!("skipped: no WAYLAND_DISPLAY");
-		return;
+		return None;
 	}
 	let client = Client::load().expect("libwayland-client");
 	let extra = extra();
@@ -109,21 +111,7 @@ fn frames_show_on_a_real_compositor_without_a_protocol_error() {
 		let surface = marshal(compositor, 0, interface, version, 0, new.as_mut_ptr());
 		assert!(!surface.is_null());
 
-		let mut presenter = Presenter::new(client, display, surface, [64, 48]).expect("wl_shm");
-		let sizes = [[64, 48], [64, 48], [32, 80], [32, 80], [32, 80]];
-		let mut shown = 0;
-		for (number, size) in sizes.into_iter().enumerate() {
-			let pixels = vec![0x00ff_8000 + number as u32; (size[0] * size[1]) as usize];
-			let bands = (number % 2 == 1).then_some(&[(3, 9)][..]);
-			match presenter.present(&pixels, size, bands).expect("presented") {
-				Presented::Shown => shown += 1,
-				Presented::Busy => {}
-			}
-			assert!((extra.roundtrip)(display) >= 0);
-		}
-		// At least as many as the presenter may make buffers for.
-		assert!(shown >= 3, "{shown} frames shown");
-		drop(presenter);
+		let result = f(display, surface);
 		assert!((extra.roundtrip)(display) >= 0);
 		assert_eq!((extra.error)(display), 0, "protocol error");
 		// wl_surface.destroy is request 0; the registry and wl_compositor
@@ -139,5 +127,32 @@ fn frames_show_on_a_real_compositor_without_a_protocol_error() {
 		destroy_proxy(compositor);
 		destroy_proxy(registry);
 		(extra.disconnect)(display);
+		Some(result)
 	}
+}
+
+#[test]
+fn frames_show_on_a_real_compositor_without_a_protocol_error() {
+	on_real_surface(|display, surface| {
+		let client = Client::load().expect("libwayland-client");
+		let roundtrip = extra().roundtrip;
+		// SAFETY: the display and surface live until `f` returns, and the
+		// presenter is dropped before.
+		let mut presenter =
+			unsafe { Presenter::new(client, display, surface, [64, 48]) }.expect("wl_shm");
+		let sizes = [[64, 48], [64, 48], [32, 80], [32, 80], [32, 80]];
+		let mut shown = 0;
+		for (number, size) in sizes.into_iter().enumerate() {
+			let pixels = vec![0x00ff_8000 + number as u32; (size[0] * size[1]) as usize];
+			let bands = (number % 2 == 1).then_some(&[(3, 9)][..]);
+			match presenter.present(&pixels, size, bands).expect("presented") {
+				Presented::Shown => shown += 1,
+				Presented::Busy => {}
+			}
+			// SAFETY: the display is connected.
+			assert!(unsafe { roundtrip(display) } >= 0);
+		}
+		// At least as many as the presenter may make buffers for.
+		assert!(shown >= 3, "{shown} frames shown");
+	});
 }

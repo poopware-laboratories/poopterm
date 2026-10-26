@@ -202,6 +202,7 @@ The layouts and the enumeration logic are unit-tested without a driver;
 |-------|------|-----------------|
 | `client.rs` | `cast` of each `dlsym` result | Each name is a function wayland-client-core.h declares with the type of the field it goes to, or an exported `wl_interface`, only ever passed back by address; `cast` checks at compile time that the target is pointer-sized. Requests use `wl_proxy_marshal_array_flags` and events `wl_proxy_add_dispatcher`, so no variadic call crosses the boundary. |
 | `presenter.rs` | Requests, dispatching and destroying proxies | `Presenter::new` is an `unsafe fn`: its caller vouches that the `wl_display` and `wl_surface` outlive the presenter and are used from its thread. Every request passes a `wl_argument` array matching its signature in wayland.xml, and a new proxy's version as libwayland's own wrappers would. Our proxies live on our own queue, made through a display wrapper (destroyed right after the registry is made), so only `present` and `new` dispatch their events. The events go to a boxed `Events` whose address stays put; it is freed only in `Drop`, after every proxy on the queue is destroyed (buffers and pools with their destructor requests, `wl_shm` with `release` from version 2) and then the queue. A buffer destroyed while the compositor holds it is allowed by the protocol, which keeps what it shows. |
+| `app/wayland.rs` | `open_for` and `open`, making a presenter for a window's `wl_display` and `wl_surface` | `open` is an `unsafe fn` with `Presenter::new`'s contract. `open_for` passes the winit window's own handles, from the UI thread, which alone draws; the window's `Software` holds the presenter in its sink, declared before a clone of the window's `Arc`, so the presenter goes before the window and its connection. |
 | `memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `ftruncate`, `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized before it is mapped, the size is at most `i32::MAX` bytes (what `create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor reads it only between a commit and the release, and the pool never draws into a held buffer. |
 
 The pool and the rows each frame copies are pure and unit-tested;
@@ -230,9 +231,10 @@ a real compositor (headless weston in CI).
   function pointers; they read requests' arguments by each request's
   signature, duplicate and `pread` the pool's descriptor as a compositor
   would, and call the dispatcher with the event's arguments.
-- `present/wayland/real_tests.rs`: connects to the compositor, binds
-  `wl_compositor`, makes a surface for the presenter and destroys it before
-  disconnecting.
+- `present/wayland/real_tests.rs` (`on_real_surface`, which
+  `app/wayland_tests.rs` uses through `outside_tests.rs`): connects to the
+  compositor, binds `wl_compositor`, makes a surface for the presenter and
+  destroys it before disconnecting.
 - `present/wayland/memory_tests.rs`: `fstat`, `pread` and `fcntl` on the
   memory's own descriptor.
 

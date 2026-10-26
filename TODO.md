@@ -299,8 +299,9 @@ least as fast.
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
   damage handling are designed once. Done: `present::{pool, copy}` (buffer
   ages, rows to copy and damage) and `present::wayland` (libwayland-client
-  opened at run time, `wl_shm` on our own event queue). Next: show Wayland
-  windows through it, then X11 MIT-SHM, macOS CALayer, and drop the crate.
+  opened at run time, `wl_shm` on our own event queue), which shows both
+  windows' software frames on Wayland. Next: X11 MIT-SHM, macOS CALayer,
+  and drop the crate.
 
 Kept for now: `winit` (windowing, IME and DPI are too much risk for the
 gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rfd`.

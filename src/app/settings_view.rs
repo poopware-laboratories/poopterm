@@ -3,6 +3,7 @@
 //! constants.
 use super::*;
 use super::{
+	renderer::after_shown,
 	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
 	settings_pen::Pen,
 };
@@ -117,19 +118,19 @@ impl App {
 		let Some(mut surface) = self.settings_surface.take() else {
 			return;
 		};
-		if let Ok(mut buffer) = surface.buffer_mut() {
-			let (width, height) = (self.settings_width as usize, self.settings_height as usize);
-			// pr-check: window glue: draws the settings window's buffer, which needs its surface
-			let mut scene = Scene::new(width, height);
-			self.compose_settings(&mut scene, scale);
-			scene.replay(
-				&mut Painter::new(&mut buffer, width, height),
-				&mut self.ui_fonts,
-			);
-			// pr-check: end window glue
-			let _ = buffer.present();
-		}
-		self.settings_surface = Some(surface);
+		let (width, height) = (self.settings_width as usize, self.settings_height as usize);
+		let mut pixels = vec![0; width * height];
+		// pr-check: window glue: draws the settings window's frame, which needs its window
+		let mut scene = Scene::new(width, height);
+		self.compose_settings(&mut scene, scale);
+		scene.replay(
+			&mut Painter::new(&mut pixels, width, height),
+			&mut self.ui_fonts,
+		);
+		// pr-check: end window glue
+		let shown = surface.present(&pixels, width, None, false);
+		let again = || self.redraw_settings();
+		self.settings_surface = after_shown(surface, shown, again, renderer::Software::fallback);
 	}
 
 	fn compose_settings(&mut self, p: &mut Scene, scale: usize) {

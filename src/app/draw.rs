@@ -2,6 +2,7 @@
 use super::*;
 use super::{
 	canvas::{DrawKey, Plan},
+	renderer::after_shown,
 	repaint::keeps_contents,
 };
 use crate::{
@@ -96,7 +97,7 @@ impl App {
 			Plan::Partial(damage) => Some(damage),
 		};
 		let damage_only = self.window.as_deref().is_some_and(keeps_contents);
-		renderer.present(
+		let shown = renderer.present(
 			&self.frame,
 			damage,
 			&self.canvas.pixels,
@@ -105,7 +106,8 @@ impl App {
 			damage_only,
 		);
 		self.canvas.remember(&mut self.frame, key);
-		self.renderer = Some(renderer);
+		let again = || self.schedule_redraw();
+		self.renderer = after_shown(renderer, shown, again, renderer::Renderer::after_presenter);
 	}
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.
