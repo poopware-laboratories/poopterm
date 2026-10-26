@@ -78,8 +78,8 @@ unsafe extern "C" fn dispatch(
 			events
 				.globals
 				.push((argument(0).uint, interface, argument(2).uint));
-		} else if target == events.shm && opcode == 0 {
-			// format.
+		} else if target == events.shm {
+			// format, wl_shm's only event.
 			events.xrgb |= argument(0).uint == XRGB8888;
 		} else if target != events.registry && target != events.shm && opcode == 0 {
 			// A buffer's release.

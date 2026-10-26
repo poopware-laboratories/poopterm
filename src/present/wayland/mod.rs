@@ -5,6 +5,8 @@ pub(crate) mod client;
 mod client_tests;
 mod events;
 #[cfg(test)]
+mod events_tests;
+#[cfg(test)]
 mod fake_rules_tests;
 #[cfg(test)]
 mod fake_tests;

@@ -247,6 +247,27 @@ impl Wayland {
 		}
 	}
 
+	/// Queues event `opcode` for `target` on `queue`, with these arguments.
+	pub(super) fn event(
+		&mut self,
+		queue: usize,
+		target: usize,
+		opcode: u32,
+		uints: &[u32],
+		text: Option<&CStr>,
+	) {
+		let mut values: Vec<Value> = uints.iter().map(|&uint| Value::Uint(uint)).collect();
+		if let Some(text) = text {
+			values.insert(1, Value::Text(text.into()));
+		}
+		self.events.push(Event {
+			queue,
+			target,
+			opcode,
+			values,
+		});
+	}
+
 	pub(super) fn release_all(&mut self) {
 		for buffer in self.held() {
 			self.release(buffer);

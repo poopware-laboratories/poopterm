@@ -184,3 +184,76 @@ fn a_surface_proxy_is_never_used_after_the_presenter_drops() {
 		.all(|&surface| wayland.objects[&(surface as usize)].live)));
 	rules_kept();
 }
+
+#[test]
+fn a_window_minimized_to_no_area_frees_its_buffers_and_comes_back_whole() {
+	install();
+	let mut presenter = presenter().unwrap();
+	presenter.present(&frame(SIZE, 1), SIZE, None).unwrap();
+	presenter.present(&frame(SIZE, 2), SIZE, None).unwrap();
+	let shown = with(|wayland| wayland.held());
+	with(|wayland| wayland.release_all());
+	// The resize leaves both to go once released, and the dispatch in the
+	// same frame learns they are: both go before it returns.
+	let requests = with(|wayland| wayland.requests);
+	assert_eq!(
+		presenter.present(&[], [SIZE[0], 0], Some(&[])),
+		Ok(Presented::Busy)
+	);
+	assert!(with(|wayland| shown
+		.iter()
+		.all(|buffer| !wayland.objects[buffer].live)));
+	assert_eq!(
+		with(|wayland| wayland.requests) - requests,
+		4,
+		"only destructors"
+	);
+	let pixels = frame(SIZE, 3);
+	assert_eq!(
+		presenter.present(&pixels, SIZE, Some(&[])),
+		Ok(Presented::Shown)
+	);
+	let commit = with(|wayland| wayland.commits.last().cloned().unwrap());
+	assert!(!shown.contains(&commit.buffer), "a new buffer");
+	assert_eq!(commit.pixels, pixels);
+	assert_eq!(commit.damage, [(9, [0, 0, 8, 6])]);
+	drop(presenter);
+	nothing_left();
+	rules_kept();
+}
+
+#[test]
+fn resizing_while_the_compositor_holds_every_buffer_still_shows_at_once() {
+	install();
+	let mut presenter = presenter().unwrap();
+	for number in 1..=3 {
+		presenter.present(&frame(SIZE, number), SIZE, None).unwrap();
+	}
+	assert_eq!(
+		presenter.present(&frame(SIZE, 4), SIZE, None),
+		Ok(Presented::Busy)
+	);
+	// Buffers of the old size no longer count: a new one is made.
+	let size = [10, 3];
+	let pixels = frame(size, 5);
+	assert_eq!(
+		presenter.present(&pixels, size, Some(&[])),
+		Ok(Presented::Shown)
+	);
+	assert_eq!(last_pixels(), pixels);
+	let old = with(|wayland| wayland.held());
+	assert_eq!(old.len(), 4);
+	// The old ones go as the compositor lets them go, not before.
+	with(|wayland| wayland.release_all());
+	presenter.present(&pixels, size, Some(&[])).unwrap();
+	let live = with(|wayland| {
+		old
+			.iter()
+			.filter(|&&buffer| wayland.objects[&buffer].live)
+			.count()
+	});
+	assert_eq!(live, 1, "only the buffer of the new size is left");
+	drop(presenter);
+	nothing_left();
+	rules_kept();
+}
