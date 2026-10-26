@@ -3,6 +3,7 @@
 //! constants.
 use super::*;
 use super::{
+	renderer::Shown,
 	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
 	settings_pen::Pen,
 };
@@ -117,19 +118,31 @@ impl App {
 		let Some(mut surface) = self.settings_surface.take() else {
 			return;
 		};
-		if let Ok(mut buffer) = surface.buffer_mut() {
-			let (width, height) = (self.settings_width as usize, self.settings_height as usize);
-			// pr-check: window glue: draws the settings window's buffer, which needs its surface
-			let mut scene = Scene::new(width, height);
-			self.compose_settings(&mut scene, scale);
-			scene.replay(
-				&mut Painter::new(&mut buffer, width, height),
-				&mut self.ui_fonts,
-			);
-			// pr-check: end window glue
-			let _ = buffer.present();
-		}
-		self.settings_surface = Some(surface);
+		let (width, height) = (self.settings_width as usize, self.settings_height as usize);
+		let mut pixels = std::mem::take(&mut self.settings_pixels);
+		pixels.resize(width * height, 0);
+		// pr-check: window glue: draws the settings window's frame, which needs its window
+		let mut scene = Scene::new(width, height);
+		self.compose_settings(&mut scene, scale);
+		scene.replay(
+			&mut Painter::new(&mut pixels, width, height),
+			&mut self.ui_fonts,
+		);
+		// pr-check: end window glue
+		let shown = surface.present(&pixels, width, None, false);
+		self.settings_pixels = pixels;
+		self.settings_surface = match shown {
+			Shown::Done => Some(surface),
+			Shown::Retry => {
+				self.redraw_settings();
+				Some(surface)
+			}
+			Shown::Failed(error) => {
+				self.redraw_settings();
+				let failed = |error: &String| eprintln!("poopterm: settings window: {error}");
+				surface.fallback(&error).inspect_err(failed).ok()
+			}
+		};
 	}
 
 	fn compose_settings(&mut self, p: &mut Scene, scale: usize) {

@@ -123,19 +123,12 @@ impl App {
 				.create_window(attributes)
 				.expect("failed to create settings window"),
 		);
-		let context = softbuffer::Context::new(window.clone()).expect("settings context");
-		let mut surface = softbuffer::Surface::new(&context, window.clone()).expect("settings surface");
+		let mut surface = renderer::Software::new(window.clone()).expect("settings surface");
 		let size = window.inner_size();
-		if let (Some(width), Some(height)) = (
-			NonZeroU32::new(size.width.max(1)),
-			NonZeroU32::new(size.height.max(1)),
-		) {
-			let _ = surface.resize(width, height);
-		}
+		surface.resize(size.width.max(1), size.height.max(1));
 		self.settings_width = size.width;
 		self.settings_height = size.height;
 		self.settings_surface = Some(surface);
-		self._settings_context = Some(context);
 		self.settings_window = Some(window.clone());
 		window.request_redraw();
 	}
@@ -143,7 +136,6 @@ impl App {
 	pub(super) fn close_settings_window(&mut self) {
 		self.settings_window = None;
 		self.settings_surface = None;
-		self._settings_context = None;
 	}
 
 	pub(super) fn redraw_settings(&self) {
@@ -247,12 +239,8 @@ impl App {
 			WindowEvent::Resized(size) => {
 				self.settings_width = size.width.max(1);
 				self.settings_height = size.height.max(1);
-				if let Some(surface) = self.settings_surface.as_mut()
-					&& let (Some(width), Some(height)) = (
-						NonZeroU32::new(self.settings_width),
-						NonZeroU32::new(self.settings_height),
-					) {
-					let _ = surface.resize(width, height);
+				if let Some(surface) = self.settings_surface.as_mut() {
+					surface.resize(self.settings_width, self.settings_height);
 				}
 				self.draw_settings();
 			}

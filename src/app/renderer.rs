@@ -1,8 +1,11 @@
 //! Window renderer boundary: the GPU where it can draw in the window, else
-//! the software backend.
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use super::gpu::Gpu;
+//! the software backend, whose frames our own presenter shows on Wayland
+//! and softbuffer elsewhere.
 use super::{Arc, Window, repaint};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use super::{gpu::Gpu, wayland};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use crate::present::wayland::presenter::Presenter;
 use crate::{
 	config::RendererPreference,
 	render::{
@@ -19,22 +22,110 @@ pub(super) enum Renderer {
 	Gpu(Box<Gpu>),
 }
 
+/// What showing a software frame came to.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(
+	not(any(target_os = "linux", target_os = "freebsd")),
+	allow(dead_code, reason = "only Wayland windows wait or fail")
+)]
+pub(super) enum Shown {
+	Done,
+	/// The window system holds every buffer: show the frame again soon.
+	/// What changed is kept for then.
+	Retry,
+	/// Showing failed, as said: show frames through softbuffer from now on.
+	Failed(String),
+}
+
+/// A window's frames drawn by the CPU, shown through our own presenter on
+/// Wayland and through softbuffer elsewhere.
 pub(super) struct Software {
-	_context: softbuffer::Context<Arc<Window>>,
-	surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+	/// Dropped before the window it shows frames in.
+	sink: Sink,
+	window: Arc<Window>,
+}
+
+enum Sink {
+	Softbuffer {
+		_context: softbuffer::Context<Arc<Window>>,
+		surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+	},
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	Wayland(Box<Presenter>),
 }
 
 impl Software {
-	// pr-check: window glue: softbuffer draws only in a real window
-	fn new(window: Arc<Window>) -> Result<Self, String> {
-		let context = softbuffer::Context::new(window.clone()).map_err(|e| e.to_string())?;
-		let surface = softbuffer::Surface::new(&context, window).map_err(|e| e.to_string())?;
-		Ok(Self {
-			_context: context,
-			surface,
-		})
+	// pr-check: window glue: shows frames only in a real window
+	pub(super) fn new(window: Arc<Window>) -> Result<Self, String> {
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		if let Some(presenter) = wayland::open_for(&window) {
+			let sink = Sink::Wayland(Box::new(presenter));
+			return Ok(Self { sink, window });
+		}
+		Self::softbuffer(window)
 	}
 	// pr-check: end window glue
+
+	// pr-check: window glue: softbuffer shows frames only in a real window
+	fn softbuffer(window: Arc<Window>) -> Result<Self, String> {
+		let context = softbuffer::Context::new(window.clone()).map_err(|e| e.to_string())?;
+		let surface = softbuffer::Surface::new(&context, window.clone()).map_err(|e| e.to_string())?;
+		let sink = Sink::Softbuffer {
+			_context: context,
+			surface,
+		};
+		Ok(Self { sink, window })
+	}
+	// pr-check: end window glue
+
+	/// Softbuffer for the window whose presenter failed with `error`.
+	// pr-check: window glue: hands a real window from its failed presenter to softbuffer
+	pub(super) fn fallback(self, error: &str) -> Result<Self, String> {
+		let window = self.window.clone();
+		// Its buffers go before softbuffer attaches its own.
+		drop(self);
+		eprintln!("poopterm: wayland presenter failed: {error}; using softbuffer");
+		let size = window.inner_size();
+		let mut software = Self::softbuffer(window)?;
+		software.resize(size.width, size.height);
+		Ok(software)
+	}
+	// pr-check: end window glue
+
+	pub(super) fn resize(&mut self, width: u32, height: u32) {
+		match &mut self.sink {
+			Sink::Softbuffer { surface, .. } => {
+				let size = (NonZeroU32::new(width), NonZeroU32::new(height));
+				if let (Some(width), Some(height)) = size {
+					let _ = surface.resize(width, height);
+				}
+			}
+			// The presenter makes buffers at the size of each frame.
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			Sink::Wayland(_) => {}
+		}
+	}
+
+	/// Shows `pixels`, rows `width` wide: all of them, or only `bands` of
+	/// pixel rows, reported as the only damage with `damage_only`.
+	pub(super) fn present(
+		&mut self,
+		pixels: &[u32],
+		width: usize,
+		bands: Option<&[(usize, usize)]>,
+		damage_only: bool,
+	) -> Shown {
+		match &mut self.sink {
+			Sink::Softbuffer { surface, .. } => {
+				if let Ok(buffer) = surface.buffer_mut() {
+					repaint::present(buffer, pixels, width, bands, damage_only);
+				}
+				Shown::Done
+			}
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			Sink::Wayland(presenter) => wayland::present(presenter, pixels, width, bands),
+		}
+	}
 }
 
 impl Renderer {
@@ -83,14 +174,18 @@ impl Renderer {
 	}
 	// pr-check: end window glue
 
+	/// Softbuffer in place of a presenter that failed with `error`.
+	pub(super) fn after_presenter(self, error: &str) -> Result<Self, String> {
+		match self {
+			Self::Software(software) => software.fallback(error).map(Self::Software),
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			gpu @ Self::Gpu(_) => Ok(gpu),
+		}
+	}
+
 	pub(super) fn resize(&mut self, width: u32, height: u32) {
 		match self {
-			Self::Software(software) => {
-				let size = (NonZeroU32::new(width), NonZeroU32::new(height));
-				if let (Some(width), Some(height)) = size {
-					let _ = software.surface.resize(width, height);
-				}
-			}
+			Self::Software(software) => software.resize(width, height),
 			// The GPU makes its swapchain at the size of each frame.
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			Self::Gpu(_) => {}
@@ -105,16 +200,12 @@ impl Renderer {
 		width: usize,
 		bands: Option<&[(usize, usize)]>,
 		damage_only: bool,
-	) {
+	) -> Shown {
 		match self {
-			Self::Software(software) => {
-				if let Ok(buffer) = software.surface.buffer_mut() {
-					repaint::present(buffer, pixels, width, bands, damage_only);
-				}
-			}
+			Self::Software(software) => software.present(pixels, width, bands, damage_only),
 			// The GPU shows its frames as it draws them.
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-			Self::Gpu(_) => {}
+			Self::Gpu(_) => Shown::Done,
 		}
 	}
 }
