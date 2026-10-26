@@ -262,6 +262,10 @@ fn a_driver_reporting_impossible_limits_gets_a_plan_not_a_panic() {
 	);
 	capabilities.min_images = u32::MAX;
 	assert_eq!(planned(&capabilities, [300, 300]).unwrap().images, u32::MAX);
+	// More images needed than allowed: the limit wins, and the driver says
+	// what it thinks of that.
+	(capabilities.min_images, capabilities.max_images) = (5, 3);
+	assert_eq!(planned(&capabilities, [300, 300]).unwrap().images, 3);
 }
 
 /// `VK_COLOR_SPACE_PASS_THROUGH_EXT`.
