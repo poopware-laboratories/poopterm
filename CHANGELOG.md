@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.126 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Make vulkan surfaces for wayland, xlib and headless windows (#166) (gpu).
+
 ## 26.10.125 "Giga Fly" — 2026-10-26
 
 ### Fixed
