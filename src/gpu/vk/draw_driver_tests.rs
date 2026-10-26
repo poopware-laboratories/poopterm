@@ -69,7 +69,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkCmdBindDescriptorSets" => transmute::<CmdBindDescriptorSets, VoidFunction>(bind_sets),
 			b"vkCmdPushConstants" => transmute::<CmdPushConstants, VoidFunction>(push),
 			b"vkCmdDraw" => transmute::<CmdDraw, VoidFunction>(draw),
-			_ => return None,
+			_ => return super::swapchain_driver_tests::function(name),
 		})
 	}
 }

@@ -148,11 +148,13 @@ impl Instance {
 	}
 
 	/// A new device on `physical`, one of this instance's, with one queue
-	/// of `family` and the features the renderer needs, or why not.
+	/// of `family`, the features the renderer needs and `extensions`, or
+	/// why not.
 	pub(super) fn create_device(
 		&self,
 		physical: RawPhysicalDevice,
 		family: u32,
+		extensions: &[&'static CStr],
 	) -> Result<RawDevice, Error> {
 		// Older devices know nothing of the 1.3 features.
 		let api = self.properties(physical).api_version;
@@ -166,6 +168,7 @@ impl Instance {
 			return Err(Error::Lacks(feature));
 		}
 		let enabled = Features::needed();
+		let names: Vec<_> = extensions.iter().map(|name| name.as_ptr()).collect();
 		let priority = 1.0;
 		let queue = DeviceQueueCreateInfo {
 			s_type: STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -183,8 +186,8 @@ impl Instance {
 			queue_create_infos: &queue,
 			enabled_layer_count: 0,
 			enabled_layer_names: ptr::null(),
-			enabled_extension_count: 0,
-			enabled_extension_names: ptr::null(),
+			enabled_extension_count: names.len() as u32,
+			enabled_extension_names: names.as_ptr(),
 			enabled_features: ptr::null(),
 		};
 		let mut handle = ptr::null_mut();
