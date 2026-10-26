@@ -337,3 +337,15 @@ fn pass_through_color_is_not_taken_for_srgb() {
 	let made = plan(&wayland(), &formats, &[FIFO], [10, 10]);
 	assert_eq!(made, Err(Unfit::Format));
 }
+
+#[test]
+fn undefined_alone_suits_only_in_srgb_nonlinear_color() {
+	// Any format, but in the color space given: the swapchain would show
+	// software's values as pass-through color.
+	let any = SurfaceFormat {
+		format: 0,
+		color_space: PASS_THROUGH,
+	};
+	let made = plan(&wayland(), &[any], &[FIFO], [10, 10]);
+	assert_eq!(made, Err(Unfit::Format));
+}

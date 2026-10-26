@@ -90,9 +90,11 @@ pub(crate) fn plan(
 		.into_iter()
 		.find(|&alpha| capabilities.alpha & alpha != 0)
 		.ok_or(Unfit::Alpha)?;
-	let format = if let [only] = formats
-		&& only.format == UNDEFINED
-	{
+	let any = SurfaceFormat {
+		format: UNDEFINED,
+		color_space: SRGB_NONLINEAR,
+	};
+	let format = if formats == [any] {
 		Format::Bgra
 	} else {
 		[Format::Bgra, Format::Rgba]
