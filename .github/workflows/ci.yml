@@ -30,7 +30,7 @@ jobs:
         # zsh and fish run the shell hooks' tests, which skip missing shells;
         # Mesa's software Vulkan driver and the validation layer run the
         # Vulkan tests; weston, headless, the Wayland presenter's.
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers weston
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers weston
 
       # The checked-in SPIR-V must be what the GLSL compiles to with the
       # pinned glslc; scripts/shaders.sh names the SDK it comes from.
@@ -156,7 +156,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Linux and Debian packaging libraries
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev dpkg-dev ncurses-bin
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev dpkg-dev ncurses-bin
 
       - name: Install nightly Rust
         run: rustup toolchain install nightly --profile minimal
@@ -273,7 +273,7 @@ jobs:
           # bypass, so the release commits can land there.
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
       - name: Install Linux, Debian and RPM packaging libraries
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev dpkg-dev ncurses-bin rpm
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev dpkg-dev ncurses-bin rpm
       - name: Install nightly Rust
         # llvm-tools holds the llvm-profdata that matches rustc's LLVM.
         run: rustup toolchain install nightly --profile minimal --component llvm-tools
