@@ -26,7 +26,7 @@ use crate::{
 use std::{rc::Rc, sync::Arc};
 
 /// The atlas: four pages of 64 pixels square.
-const ATLAS: (usize, usize) = (64, 4);
+pub(super) const ATLAS: (usize, usize) = (64, 4);
 
 fn slot(page: usize, x: usize, y: usize, w: usize, h: usize) -> Slot {
 	Slot { page, x, y, w, h }
@@ -66,11 +66,15 @@ fn quads_encode_as_the_shaders_read_them() {
 /// A renderer on a fake device, with the pipeline and timeline it draws
 /// with, and a 40×30 target.
 fn renderer() -> (Renderer, Rc<super::image::Image>) {
+	// `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` and `_TRANSFER_SRC_BIT`.
+	renderer_for(0x10 | 0x1)
+}
+
+/// A renderer, and a 40×30 target of `usage` to draw on.
+pub(super) fn renderer_for(usage: u32) -> (Renderer, Rc<super::image::Image>) {
 	let device = device(&INTEL, |_| {});
 	let pipeline = Rc::new(QuadPipeline::new(&device, Format::Bgra).unwrap());
 	let timeline = Rc::new(Timeline::new(&device).unwrap());
-	// `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` and `_TRANSFER_SRC_BIT`.
-	let usage = 0x10 | 0x1;
 	let target = super::image::Image::new(&device, Format::Bgra, [40, 30, 1], usage).unwrap();
 	(
 		Renderer::new(&pipeline, &timeline, ATLAS).unwrap(),
@@ -98,7 +102,7 @@ pub(super) fn glyph(w: usize, h: usize, color: bool) -> Glyph {
 }
 
 /// A frame of a background, a 3×2 coverage glyph and a 2×2 color one.
-fn frame(pen: &mut QuadPen) {
+pub(super) fn frame(pen: &mut QuadPen) {
 	pen.begin_frame((40, 30));
 	pen.rect(0, 0, 40, 30, 0x10_1010);
 	let whole = (0, 0, 40, 30);
@@ -121,7 +125,7 @@ fn frame(pen: &mut QuadPen) {
 }
 
 /// The uploads and draws recorded.
-fn drawn(driver: &Driver) -> Vec<&str> {
+pub(super) fn drawn(driver: &Driver) -> Vec<&str> {
 	let recorded = driver.recorded.iter().map(String::as_str);
 	recorded
 		.filter(|call| call.starts_with("upload") || call.starts_with("draw"))

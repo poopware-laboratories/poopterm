@@ -55,6 +55,8 @@ pub(crate) mod memory;
 mod memory_driver_tests;
 #[cfg(test)]
 mod memory_tests;
+#[cfg(test)]
+pub(crate) mod outside_tests;
 pub(crate) mod pipeline;
 #[cfg(test)]
 mod pipeline_driver_tests;
@@ -72,6 +74,10 @@ pub(crate) mod recording;
 #[cfg(test)]
 mod recording_tests;
 pub(crate) mod renderer;
+#[cfg(test)]
+mod renderer_backdrop_gpu_tests;
+#[cfg(test)]
+mod renderer_backdrop_tests;
 #[cfg(test)]
 mod renderer_gpu_tests;
 #[cfg(test)]
@@ -112,6 +118,8 @@ pub(crate) mod types;
 mod types_tests;
 pub(crate) mod version;
 pub(crate) mod window;
+#[cfg(test)]
+mod window_frame_tests;
 #[cfg(test)]
 mod window_gpu_tests;
 #[cfg(test)]

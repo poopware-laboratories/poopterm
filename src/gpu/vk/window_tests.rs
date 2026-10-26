@@ -53,7 +53,7 @@ pub(super) fn pen(size: [u32; 2]) -> QuadPen {
 }
 
 pub(super) fn draw(window: &mut GpuWindow, size: [u32; 2]) -> Result<Drawn, Error> {
-	window.draw(&mut pen(size), size)
+	window.draw(&mut pen(size), size, None)
 }
 
 /// Each swapchain made so far: its size and whether it retired another.
@@ -171,17 +171,17 @@ fn a_window_without_area_skips_frames_and_keeps_its_swapchain() {
 }
 
 #[test]
-fn an_out_of_date_swapchain_skips_the_frame_and_is_remade_for_the_next() {
+fn an_out_of_date_swapchain_asks_for_the_frame_again_and_is_remade_for_it() {
 	let mut window = open(showing(), false).unwrap();
 	draw(&mut window, SIZE).unwrap();
 	with(|driver| driver.acquire_answers = vec![OUT_OF_DATE]);
-	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Skipped));
+	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Again));
 	assert_eq!(swapchains().len(), 1);
 	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Shown));
 	assert_eq!(swapchains(), [(SIZE, false), (SIZE, true)]);
 	// Out of date when presented: not shown, and remade as well.
 	with(|driver| driver.present_answers = vec![OUT_OF_DATE]);
-	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Skipped));
+	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Again));
 	draw(&mut window, SIZE).unwrap();
 	assert_eq!(swapchains().len(), 3);
 	// Four asked to be shown, one of them refused.
@@ -204,11 +204,11 @@ fn a_suboptimal_swapchain_shows_the_frame_and_is_remade_after() {
 }
 
 #[test]
-fn no_image_coming_free_in_time_skips_the_frame_only() {
+fn no_image_coming_free_in_time_asks_for_the_frame_again() {
 	let mut window = open(showing(), false).unwrap();
 	draw(&mut window, SIZE).unwrap();
 	with(|driver| driver.acquire_answers = vec![TIMEOUT]);
-	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Skipped));
+	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Again));
 	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Shown));
 	assert_eq!(swapchains().len(), 1);
 	assert_eq!(presents(), 2);
@@ -220,7 +220,7 @@ fn a_frame_the_gpu_cannot_draw_is_refused_before_taking_an_image() {
 	let mut window = open(showing(), false).unwrap();
 	let mut lacking = pen(SIZE);
 	lacking.complete = false;
-	assert_eq!(window.draw(&mut lacking, SIZE), Err(Error::Draw));
+	assert_eq!(window.draw(&mut lacking, SIZE, None), Err(Error::Draw));
 	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
 	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Shown));
 	close(window);
@@ -286,7 +286,7 @@ fn a_frame_with_images_is_refused_before_taking_an_image() {
 	};
 	let placement = Placement::natural(bitmap, 0, 0);
 	pictured.placement(whole, &placement, (0, 0), (8, 16));
-	assert_eq!(window.draw(&mut pictured, SIZE), Err(Error::Draw));
+	assert_eq!(window.draw(&mut pictured, SIZE, None), Err(Error::Draw));
 	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
 	close(window);
 }
@@ -341,7 +341,7 @@ fn a_surface_lost_when_presenting_is_an_error_and_the_swapchain_is_remade() {
 }
 
 /// The glyph uploads recorded since the last call.
-fn uploads() -> usize {
+pub(super) fn uploads() -> usize {
 	with(|driver| {
 		let uploads = driver
 			.recorded
@@ -361,7 +361,7 @@ fn a_glyph_is_uploaded_once_and_again_after_a_failed_frame() {
 		pen.begin_frame((40, 30));
 		let ink = Ink::Drawn('a', (3, 2));
 		pen.glyph(&glyph(3, 2, false), ink, (1, 1), (0, 0, 40, 30), false, 0);
-		window.draw(&mut pen, SIZE)
+		window.draw(&mut pen, SIZE, None)
 	};
 	assert_eq!(frame(&mut window), Ok(Drawn::Shown));
 	assert_eq!(uploads(), 1);

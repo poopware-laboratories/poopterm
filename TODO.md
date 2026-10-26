@@ -137,11 +137,14 @@ issue before starting a piece.
   translucent layer (software truncates each blend, the GPU rounds it), on
   Intel and llvmpipe. `gpu::vk::window::GpuWindow` picks the device for a
   window's surface and shows frames on a swapchain kept the window's size
-  (passing the Khronos validation layer on a headless surface).
-  `POOPTERM_RENDERER` overrides the configured renderer. Still to do: the
-  app switching windows to it with software fallback, the grid drawn
-  through it, frames with images (refused for now, so software draws
-  them), and fractional scale.
+  (passing the Khronos validation layer on a headless surface). The main
+  window draws its grid through it on Linux and FreeBSD, over the chrome
+  software paints (copied in as a backdrop each frame), falling back to
+  software for good if the GPU fails. `POOPTERM_RENDERER` overrides the
+  configured renderer. Still to do: frames with images (painted whole by
+  software for now), repainting and uploading only the chrome that changed
+  (a full backdrop each frame costs about 6% more CPU in a flood), the
+  chrome on the GPU, and fractional scale.
 
 ## Resource management and memory
 

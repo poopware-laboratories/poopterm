@@ -9,7 +9,7 @@ use super::{
 	image::Format,
 	pipeline::QuadPipeline,
 	present::{Acquired, Presented},
-	renderer::Renderer,
+	renderer::{Backdrop, Renderer},
 	surface::{Surface, Window},
 	swapchain::Swapchain,
 	swapchain_plan::Unfit,
@@ -29,9 +29,11 @@ const REMAKE: [u32; 2] = [0; 2];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Drawn {
 	Shown,
-	/// Nothing shown, as the window has no area, no image came free in
-	/// time, or the swapchain was out of date: draw again later.
+	/// Nothing shown, as the window has no area: draw once it has some.
 	Skipped,
+	/// Nothing shown, as no image came free in time or the swapchain was
+	/// out of date: draw again now.
+	Again,
 }
 
 pub(crate) struct GpuWindow {
@@ -100,11 +102,19 @@ impl GpuWindow {
 		&self.name
 	}
 
-	/// Draws `pen`'s frame in the window, now `size` pixels large, and
-	/// shows it. A frame the GPU cannot draw (lacking glyphs, or with
-	/// images) is refused with `Error::Draw` before anything is done.
-	pub(crate) fn draw(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
+	/// Draws `pen`'s frame in the window, now `size` pixels large, over
+	/// `backdrop`, and shows it. A frame the GPU cannot draw (lacking
+	/// glyphs, or with images) is refused with `Error::Draw` before
+	/// anything is done, and the pen started over.
+	pub(crate) fn draw(
+		&mut self,
+		pen: &mut QuadPen,
+		size: [u32; 2],
+		backdrop: Option<Backdrop>,
+	) -> Result<Drawn, Error> {
 		if !pen.complete || !pen.images.is_empty() {
+			// The glyphs it added never reach the GPU.
+			self.renderer.restart(pen);
 			return Err(Error::Draw);
 		}
 		// Not left to the plan: a Wayland surface takes any size, so the
@@ -135,21 +145,24 @@ impl GpuWindow {
 			Acquired::Frame(frame) => frame,
 			Acquired::OutOfDate => {
 				self.made_for = REMAKE;
-				return Ok(Drawn::Skipped);
+				return Ok(Drawn::Again);
 			}
-			Acquired::Timeout => return Ok(Drawn::Skipped),
+			Acquired::Timeout => return Ok(Drawn::Again),
 		};
 		let suboptimal = frame.suboptimal;
 		let image = frame.image().clone();
 		// A frame dropped unpresented keeps its image: remake the swapchain.
 		self.made_for = REMAKE;
-		let presented = self.renderer.frame(pen, &image)?.present(frame);
+		let presented = self
+			.renderer
+			.frame_over(pen, &image, backdrop)?
+			.present(frame);
 		let presented = presented.inspect_err(|_| self.renderer.restart(pen))?;
 		if !suboptimal && presented == Presented::Shown {
 			self.made_for = size;
 		}
 		Ok(match presented {
-			Presented::OutOfDate => Drawn::Skipped,
+			Presented::OutOfDate => Drawn::Again,
 			Presented::Shown | Presented::Suboptimal => Drawn::Shown,
 		})
 	}

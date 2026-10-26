@@ -1,4 +1,7 @@
-//! Window renderer boundary and the software backend.
+//! Window renderer boundary: the GPU where it can draw in the window, else
+//! the software backend.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use super::gpu::Gpu;
 use super::{Arc, Window, repaint};
 use crate::{
 	config::RendererPreference,
@@ -10,9 +13,28 @@ use crate::{
 };
 use std::num::NonZeroU32;
 
-pub(super) struct Renderer {
+pub(super) enum Renderer {
+	Software(Software),
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	Gpu(Box<Gpu>),
+}
+
+pub(super) struct Software {
 	_context: softbuffer::Context<Arc<Window>>,
 	surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+}
+
+impl Software {
+	// pr-check: window glue: softbuffer draws only in a real window
+	fn new(window: Arc<Window>) -> Result<Self, String> {
+		let context = softbuffer::Context::new(window.clone()).map_err(|e| e.to_string())?;
+		let surface = softbuffer::Surface::new(&context, window).map_err(|e| e.to_string())?;
+		Ok(Self {
+			_context: context,
+			surface,
+		})
+	}
+	// pr-check: end window glue
 }
 
 impl Renderer {
@@ -20,16 +42,8 @@ impl Renderer {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(preference, variable.as_deref());
 		let selected = select(preference, |backend| match backend {
-			Backend::Gpu => Err("not available in this build".to_owned()),
-			Backend::Software => {
-				let context = softbuffer::Context::new(window.clone()).map_err(|e| e.to_string())?;
-				let surface =
-					softbuffer::Surface::new(&context, window.clone()).map_err(|e| e.to_string())?;
-				Ok(Self {
-					_context: context,
-					surface,
-				})
-			}
+			Backend::Gpu => Self::gpu(&window, preference),
+			Backend::Software => Software::new(window.clone()).map(Self::Software),
 		})
 		.map_err(|failures| format_failures(&failures))?;
 		if !selected.failures.is_empty() {
@@ -42,9 +56,44 @@ impl Renderer {
 		Ok(selected.value)
 	}
 
+	// pr-check: window glue: the GPU draws in a real window's surface
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	fn gpu(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
+		Gpu::new(window, preference).map(|gpu| Self::Gpu(Box::new(gpu)))
+	}
+
+	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+	fn gpu(_: &Arc<Window>, _: RendererPreference) -> Result<Self, String> {
+		Err("not available on this system yet".to_owned())
+	}
+	// pr-check: end window glue
+
+	/// The software renderer, for a window whose GPU failed with `error`.
+	// pr-check: window glue: hands a real window from its failed GPU to softbuffer
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	pub(super) fn after_gpu(gpu: Box<Gpu>, error: &str) -> Result<Self, String> {
+		let window = gpu.window().clone();
+		// Its swapchain goes before software presents in the window.
+		drop(gpu);
+		eprintln!("poopterm: gpu renderer failed: {error}; using software renderer");
+		let size = window.inner_size();
+		let mut renderer = Software::new(window).map(Self::Software)?;
+		renderer.resize(size.width, size.height);
+		Ok(renderer)
+	}
+	// pr-check: end window glue
+
 	pub(super) fn resize(&mut self, width: u32, height: u32) {
-		if let (Some(width), Some(height)) = (NonZeroU32::new(width), NonZeroU32::new(height)) {
-			let _ = self.surface.resize(width, height);
+		match self {
+			Self::Software(software) => {
+				let size = (NonZeroU32::new(width), NonZeroU32::new(height));
+				if let (Some(width), Some(height)) = size {
+					let _ = software.surface.resize(width, height);
+				}
+			}
+			// The GPU makes its swapchain at the size of each frame.
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			Self::Gpu(_) => {}
 		}
 	}
 
@@ -57,8 +106,15 @@ impl Renderer {
 		bands: Option<&[(usize, usize)]>,
 		damage_only: bool,
 	) {
-		if let Ok(buffer) = self.surface.buffer_mut() {
-			repaint::present(buffer, pixels, width, bands, damage_only);
+		match self {
+			Self::Software(software) => {
+				if let Ok(buffer) = software.surface.buffer_mut() {
+					repaint::present(buffer, pixels, width, bands, damage_only);
+				}
+			}
+			// The GPU shows its frames as it draws them.
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			Self::Gpu(_) => {}
 		}
 	}
 }

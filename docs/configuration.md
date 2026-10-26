@@ -63,10 +63,15 @@ shortcut_search = "super+f"
 shortcut_close_tab = "super+w"
 ```
 
-`renderer` accepts `auto` (the default), `gpu` and `software`. There is no GPU
-backend yet ([#30](https://github.com/poopware-laboratories/poopterm/issues/30)),
-so all three draw in software today; `auto` and `gpu` will fall back to software
-when GPU startup fails. The `POOPTERM_RENDERER` environment variable, set to one
+`renderer` accepts `auto` (the default), `gpu` and `software`. On Linux and
+FreeBSD, `auto` and `gpu` draw the terminal grid with Vulkan on Wayland and Xlib
+windows, while software paints the wallpaper, tabs and bars around it; elsewhere
+all three draw in software for now
+([#30](https://github.com/poopware-laboratories/poopterm/issues/30)). `auto`
+leaves the window to software when the only Vulkan device is drawn by the CPU
+(llvmpipe), which is slower than our software renderer; `gpu` uses it. Both fall
+back to software, with a message on standard error, when no device suits the
+window or the GPU fails while drawing. The `POOPTERM_RENDERER` environment variable, set to one
 of the same three values, overrides `renderer` for one run without changing the
 file; any other value is ignored.
 

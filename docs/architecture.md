@@ -343,6 +343,15 @@ glyphs the atlas cannot hold) is refused before an image is acquired, so
 software draws it. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 
+`app::gpu::Gpu` puts the main window on it (`app::renderer::Renderer::Gpu`).
+Each frame, software paints the wallpaper, tab bar and status bar into the
+canvas, `draw_grid` draws the grid on a `QuadPen`, and the GPU copies the
+canvas into the swapchain image as a backdrop (`vk::renderer::Backdrop`)
+before drawing the quads over it. When the search box or command palette
+covers the grid, or the GPU refuses the grid, software paints the whole
+frame and the GPU shows it over an empty pen. Any other GPU error switches
+the window to softbuffer for good (`Renderer::after_gpu`).
+
 ## Input (`src/input`)
 
 All encoders are pure functions with unit tests:

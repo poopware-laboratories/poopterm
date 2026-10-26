@@ -70,6 +70,16 @@ pub(crate) struct Renderer {
 	/// and written only once the GPU is done with the last frame.
 	pub(super) quads: Rc<Buffer>,
 	pub(super) staging: Rc<Buffer>,
+	/// The backdrop, packed to the target's width; made for the first.
+	pub(super) backdrop: Option<Rc<Buffer>>,
+}
+
+/// Pixels software painted, which a frame's quads are drawn over: rows of
+/// `width` pixels from the top left corner.
+#[derive(Clone, Copy)]
+pub(crate) struct Backdrop<'p> {
+	pub pixels: &'p [u32],
+	pub width: usize,
 }
 
 impl Renderer {
@@ -93,6 +103,7 @@ impl Renderer {
 			)?),
 			quads: buffer(device, QUAD * 4, STORAGE)?,
 			staging: buffer(device, 4, TRANSFER_SRC)?,
+			backdrop: None,
 		})
 	}
 
@@ -106,8 +117,19 @@ impl Renderer {
 		pen: &mut QuadPen,
 		target: &Rc<Image>,
 	) -> Result<Recording<'_>, Error> {
+		self.frame_over(pen, target, None)
+	}
+
+	/// Records `pen`'s frame as [`Self::frame`] does, over `backdrop`, which
+	/// is first copied into the part of `target` it covers.
+	pub(crate) fn frame_over(
+		&mut self,
+		pen: &mut QuadPen,
+		target: &Rc<Image>,
+		backdrop: Option<Backdrop>,
+	) -> Result<Recording<'_>, Error> {
 		let [side, _, pages] = self.atlas.size.map(|n| n as usize);
-		let recorded = self.record(pen, target);
+		let recorded = self.record(pen, target, backdrop);
 		if recorded.is_err() {
 			*pen = QuadPen::new(pen.size, (side, pages));
 		}
@@ -121,7 +143,12 @@ impl Renderer {
 		*pen = QuadPen::new(pen.size, (side, pages));
 	}
 
-	fn record(&mut self, pen: &QuadPen, target: &Rc<Image>) -> Result<Recording<'_>, Error> {
+	fn record(
+		&mut self,
+		pen: &QuadPen,
+		target: &Rc<Image>,
+		backdrop: Option<Backdrop>,
+	) -> Result<Recording<'_>, Error> {
 		if !pen.complete || !pen.images.is_empty() {
 			return Err(Error::Draw);
 		}
@@ -159,6 +186,30 @@ impl Renderer {
 			};
 			recording.upload(&self.staging, offset, &self.atlas, region)?;
 			offset += upload.pixels.len() as u64 * 4;
+		}
+		if let Some(Backdrop { pixels, width }) = backdrop {
+			let [columns, rows] = [
+				width.min(target.size[0] as usize),
+				(pixels.len().checked_div(width).unwrap_or(0)).min(target.size[1] as usize),
+			];
+			if columns * rows > 0 {
+				let bytes = columns * rows * 4;
+				let backdrop = match &mut self.backdrop {
+					Some(backdrop) => backdrop,
+					None => self.backdrop.insert(buffer(device, bytes, TRANSFER_SRC)?),
+				};
+				let words = writable(backdrop, device, (columns * rows, 4), TRANSFER_SRC)?;
+				let packed = pixels.chunks_exact(width).flat_map(|row| &row[..columns]);
+				for (chunk, &pixel) in words.iter_mut().zip(packed) {
+					*chunk = pixel.to_ne_bytes();
+				}
+				let region = Region {
+					layer: 0,
+					at: [0, 0],
+					size: [columns as u32, rows as u32],
+				};
+				recording.upload(backdrop, 0, target, region)?;
+			}
 		}
 		recording.draw(Draw {
 			set: &self.set,

@@ -8,6 +8,7 @@ use crate::{
 	render::{
 		grid::{GridView, draw_grid},
 		painter::{ButtonStyle, Painter},
+		pen::Pen,
 		popover::draw_popover,
 		scene::paint,
 		status_bar::draw_status_bar,
@@ -66,6 +67,11 @@ impl App {
 		let size = (self.width as usize, self.height as usize);
 		self.sessions[self.active].term().snapshot(&mut self.frame);
 		let key = self.draw_key();
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		if let renderer::Renderer::Gpu(gpu) = renderer {
+			self.renderer = self.draw_on_gpu(gpu, key, size);
+			return;
+		}
 		let plan = self
 			.canvas
 			.plan(&self.frame, key, size, self.wallpaper.is_none());
@@ -120,11 +126,19 @@ impl App {
 	}
 
 	pub(super) fn compose(&mut self, p: &mut Painter) {
+		self.compose_around(p, true);
+	}
+
+	/// Composes the frame, with the grid only when `grid`: else the GPU
+	/// draws it over the rest.
+	pub(super) fn compose_around(&mut self, p: &mut Painter, grid: bool) {
 		let scale = self.scale();
 		let ui = self.ui_font(18.0 * scale as f32);
 		self.restore_background(p, 0, p.height);
 		self.draw_tab_bar(p, ui);
-		self.draw_terminal(p, scale, None);
+		if grid {
+			self.draw_terminal(p, scale, None);
+		}
 		if self.search_active {
 			self.draw_search_box(p, scale, ui);
 		}
@@ -148,7 +162,8 @@ impl App {
 		}
 	}
 
-	pub(super) fn draw_terminal(&mut self, p: &mut Painter, scale: usize, rows: Option<&[bool]>) {
+	pub(super) fn draw_terminal(&mut self, p: &mut impl Pen, scale: usize, rows: Option<&[bool]>) {
+		let (width, height) = p.size();
 		let view = GridView {
 			frame: &self.frame,
 			origin: (self.grid_left(), self.top),
@@ -163,7 +178,7 @@ impl App {
 			selection: self.selection_rows(),
 			search_match: self.search_matches.get(self.search_match_index).copied(),
 			focused: self.focused,
-			padding: Some(self.padding_area(p.width, p.height)),
+			padding: Some(self.padding_area(width, height)),
 		};
 		draw_grid(p, &mut self.fonts, &view, rows);
 		if rows.is_some() {
