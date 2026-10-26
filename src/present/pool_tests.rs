@@ -151,8 +151,7 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 	// copied as `History` plans for the age the pool gives: every frame
 	// shown must equal the one drawn, no held buffer is ever drawn into,
 	// and every buffer made is destroyed once. Rows changed while every
-	// buffer is held are carried to the next frame shown, as the window
-	// system's present path must.
+	// buffer is held carry over to the next frame shown.
 	use super::copy::{History, Rows};
 	use std::collections::HashMap;
 	let mut rng = crate::bench::corpus::Rng::new(0xb0ff_e125);
@@ -162,8 +161,6 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 	let mut held: Vec<u64> = Vec::new();
 	let (mut destroyed, mut made) = (Vec::new(), 0);
 	let mut drawn = vec![0u32; 16];
-	// The rows changed since the last frame shown; `None` for all.
-	let mut pending: Option<Vec<(usize, usize)>> = None;
 	for frame in 1..2000u32 {
 		match rng.below(10) {
 			// The compositor lets go of a buffer it holds.
@@ -181,22 +178,20 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 				if drawn.len() != rows {
 					history.clear();
 				}
+				history.changed(None);
 				for id in gone {
 					assert!(!held.contains(&id), "{id} destroyed while held");
 					buffers.remove(&id);
 					destroyed.push(id);
 				}
 				drawn = vec![frame; rows];
-				pending = None;
 			}
 			_ => {
 				let rows = drawn.len();
 				let start = rng.below(rows + 1);
 				let band = (start, (start + rng.below(4)).min(rows));
 				drawn[band.0..band.1].fill(frame);
-				if let Some(pending) = &mut pending {
-					pending.push(band);
-				}
+				history.changed(Some(&[band]));
 				let (id, age) = match pool.next() {
 					Pick::Wait => continue,
 					Pick::Make { id } => {
@@ -210,7 +205,7 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 				assert!(!held.contains(&id), "{id} drawn into while held");
 				let buffer = buffers.get_mut(&id).unwrap();
 				assert_eq!(buffer.len(), rows, "a buffer of the window's size");
-				match history.copy(age, pending.as_deref(), rows) {
+				match history.copy(age, rows) {
 					Rows::All => buffer.copy_from_slice(&drawn),
 					Rows::Some(copied) => {
 						for (start, end) in copied {
@@ -220,8 +215,7 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 				}
 				assert_eq!(*buffer, drawn, "frame {frame} into {id} at age {age}");
 				pool.presented(id);
-				history.shown(pending.as_deref());
-				pending = Some(Vec::new());
+				history.shown();
 				held.push(id);
 				let current = buffers.keys().filter(|id| !destroyed.contains(id)).count();
 				assert!(current <= pool.live());

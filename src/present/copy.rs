@@ -1,6 +1,7 @@
 //! Which pixel rows a frame copies into a window buffer: the rows that
 //! changed since the frame the buffer holds, which its age tells, so a
-//! buffer that missed frames still ends up equal to the newest one.
+//! buffer that missed frames still ends up equal to the newest one. Rows
+//! changed while no buffer was free carry over to the next frame shown.
 use std::collections::VecDeque;
 
 /// How many frames' changed rows are kept: enough for any buffer of the
@@ -15,31 +16,43 @@ pub(crate) enum Rows {
 	Some(Vec<(usize, usize)>),
 }
 
+#[derive(Clone)]
 pub(crate) struct History {
 	/// The rows each recent frame changed, oldest first; `None` for every
 	/// row.
 	frames: VecDeque<Option<Vec<(usize, usize)>>>,
+	/// The rows changed since the last frame shown, as for `frames`.
+	pending: Option<Vec<(usize, usize)>>,
 }
 
 impl History {
 	pub(crate) fn new() -> Self {
 		Self {
 			frames: VecDeque::with_capacity(KEPT + 1),
+			pending: None,
 		}
 	}
 
-	/// The rows to copy into a buffer of `rows` rows and age `age`, for a
-	/// frame that changed `bands` of the last one, or every row.
-	pub(crate) fn copy(&self, age: u8, bands: Option<&[(usize, usize)]>, rows: usize) -> Rows {
+	/// The frame drawn changed `bands` of the last one, or every row.
+	pub(crate) fn changed(&mut self, bands: Option<&[(usize, usize)]>) {
+		match (&mut self.pending, bands) {
+			(Some(pending), Some(bands)) => pending.extend_from_slice(bands),
+			_ => self.pending = None,
+		}
+	}
+
+	/// The rows to copy into a buffer of `rows` rows and age `age`: what
+	/// changed since the frame it holds, or every row.
+	pub(crate) fn copy(&self, age: u8, rows: usize) -> Rows {
 		let age = usize::from(age);
 		// The frame the buffer holds must be one of those kept.
-		let (Some(bands), 1..) = (bands, age) else {
+		let (Some(bands), 1..) = (&self.pending, age) else {
 			return Rows::All;
 		};
 		if age > self.frames.len() {
 			return Rows::All;
 		}
-		let mut copied = bands.to_vec();
+		let mut copied = bands.clone();
 		for missed in self.frames.iter().rev().take(age - 1) {
 			match missed {
 				Some(missed) => copied.extend_from_slice(missed),
@@ -49,17 +62,29 @@ impl History {
 		Rows::Some(merge(copied, rows))
 	}
 
-	/// A frame that changed `bands` of the last one, or every row, was shown.
-	pub(crate) fn shown(&mut self, bands: Option<&[(usize, usize)]>) {
-		self.frames.push_back(bands.map(<[_]>::to_vec));
+	/// The rows of `rows` that changed since the last frame shown, to tell
+	/// the compositor.
+	pub(crate) fn damage(&self, rows: usize) -> Rows {
+		match &self.pending {
+			Some(bands) => Rows::Some(merge(bands.clone(), rows)),
+			None => Rows::All,
+		}
+	}
+
+	/// The frame drawn was shown.
+	pub(crate) fn shown(&mut self) {
+		let pending = self.pending.replace(Vec::new());
+		self.frames.push_back(pending);
 		if self.frames.len() > KEPT {
 			self.frames.pop_front();
 		}
 	}
 
-	/// Forgets every frame, as when the buffers are remade.
+	/// Forgets every frame, as when the buffers are remade, and redraws
+	/// every row.
 	pub(crate) fn clear(&mut self) {
 		self.frames.clear();
+		self.pending = None;
 	}
 }
 
