@@ -65,7 +65,7 @@ fn planned(capabilities: &Capabilities, window: [u32; 2]) -> Result<Plan, Unfit>
 }
 
 #[test]
-fn a_wayland_surface_takes_the_windows_size_and_one_image_more_than_needed() {
+fn a_wayland_surface_takes_the_windows_size_and_three_images() {
 	let expected = Plan {
 		format: Format::Bgra,
 		mode: MAILBOX,
@@ -82,7 +82,7 @@ fn an_x11_surface_keeps_its_own_size_whatever_the_window_reports() {
 	// The window's size may lag behind a resize the server already made.
 	let made = planned(&x11([800, 600]), [801, 599]).unwrap();
 	assert_eq!(made.extent, [800, 600]);
-	assert_eq!(made.images, 4);
+	assert_eq!(made.images, 3);
 }
 
 #[test]
@@ -125,15 +125,16 @@ fn only_one_axis_left_to_the_swapchain_still_takes_the_surfaces_size() {
 }
 
 #[test]
-fn image_counts_stay_within_the_surfaces_limits() {
+fn three_images_unless_the_surface_needs_more_or_allows_fewer() {
 	let cases = [
 		// (min, max, planned)
-		(1, 0, 2),
+		(1, 0, 3),
 		(2, 0, 3),
 		(2, 2, 2),
-		(2, 3, 3),
-		(3, 8, 4),
-		(4, 4, 4),
+		(1, 2, 2),
+		(3, 8, 3),
+		(4, 0, 4),
+		(5, 8, 5),
 	];
 	for (min, max, images) in cases {
 		let mut capabilities = wayland();
@@ -261,4 +262,78 @@ fn a_driver_reporting_impossible_limits_gets_a_plan_not_a_panic() {
 	);
 	capabilities.min_images = u32::MAX;
 	assert_eq!(planned(&capabilities, [300, 300]).unwrap().images, u32::MAX);
+}
+
+/// `VK_COLOR_SPACE_PASS_THROUGH_EXT`.
+const PASS_THROUGH: i32 = 1_000_104_013;
+
+/// What Mesa 26 reports for an Intel ADL-N on sway, as vulkaninfo shows
+/// it: sRGB formats first, 16-bit and 10-bit ones, and each again with
+/// pass-through color.
+fn mesa_wayland_formats() -> Vec<SurfaceFormat> {
+	let formats = [50, 44, 43, 37, 2, 3, 4, 5, 6, 7, 8, 58, 64, 91, 97];
+	let spaces = [SRGB_NONLINEAR, PASS_THROUGH];
+	(spaces.iter())
+		.flat_map(|&color_space| {
+			(formats.iter()).map(move |&format| SurfaceFormat {
+				format,
+				color_space,
+			})
+		})
+		.collect()
+}
+
+#[test]
+fn mesa_on_wayland_gets_bgra_mailbox_and_four_images() {
+	let capabilities = Capabilities {
+		min_images: 4,
+		max_images: 0,
+		current_extent: [u32::MAX; 2],
+		min_extent: [1, 1],
+		max_extent: [16384, 16384],
+		current_transform: 1,
+		alpha: OPAQUE | PRE_MULTIPLIED,
+		usage: 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x80 | 0x0800_0000,
+	};
+	let modes = [MAILBOX, FIFO, IMMEDIATE];
+	let made = plan(&capabilities, &mesa_wayland_formats(), &modes, [2232, 1432]);
+	let expected = Plan {
+		format: Format::Bgra,
+		mode: MAILBOX,
+		extent: [2232, 1432],
+		images: 4,
+		transform: 1,
+		alpha: OPAQUE,
+	};
+	assert_eq!(made, Ok(expected));
+}
+
+#[test]
+fn mesa_on_x11_gets_bgra_at_the_windows_size_with_three_images() {
+	let mut capabilities = x11([256, 256]);
+	capabilities.max_images = 0;
+	let formats = [BGRA_SRGB, BGRA];
+	let modes = [IMMEDIATE, MAILBOX, FIFO, FIFO_RELAXED];
+	let made = plan(&capabilities, &formats, &modes, [256, 256]);
+	let expected = Plan {
+		format: Format::Bgra,
+		mode: MAILBOX,
+		extent: [256, 256],
+		images: 3,
+		transform: 1,
+		alpha: OPAQUE,
+	};
+	assert_eq!(made, Ok(expected));
+}
+
+#[test]
+fn pass_through_color_is_not_taken_for_srgb() {
+	// The same formats in another color space: values would reach the
+	// display unconverted, unlike what software shows.
+	let formats: Vec<_> = (mesa_wayland_formats().into_iter())
+		.filter(|format| format.color_space == PASS_THROUGH)
+		.collect();
+	assert_eq!(formats.len(), 15);
+	let made = plan(&wayland(), &formats, &[FIFO], [10, 10]);
+	assert_eq!(made, Err(Unfit::Format));
 }

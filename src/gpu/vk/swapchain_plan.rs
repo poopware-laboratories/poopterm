@@ -106,7 +106,9 @@ pub(crate) fn plan(
 			})
 			.ok_or(Unfit::Format)?
 	};
-	let images = capabilities.min_images.saturating_add(1);
+	// Three let mailbox replace a queued frame while one shows; more only
+	// take memory, a full window each.
+	let images = capabilities.min_images.max(3);
 	let max = capabilities.max_images;
 	Ok(Plan {
 		format,
