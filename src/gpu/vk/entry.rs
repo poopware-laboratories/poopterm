@@ -3,12 +3,12 @@
 use super::{
 	call::{Error, check, enumerate, fixed_string},
 	instance::Instance,
-	library::Library,
 	surface::Platform,
 	surface_types::EnumerateInstanceExtensionProperties,
 	types::*,
 	version::{api_version, requested},
 };
+use crate::library::Library;
 use std::{
 	ffi::CStr,
 	mem::{size_of, transmute_copy},
@@ -27,7 +27,7 @@ pub(crate) struct Entry {
 impl Entry {
 	/// The system's loader.
 	pub(crate) fn load() -> Result<Self, Error> {
-		Self::from_library(Library::open(LOADER)?)
+		Self::from_library(Library::open(LOADER).map_err(Error::NoLoader)?)
 	}
 
 	pub(crate) fn from_library(library: Library) -> Result<Self, Error> {

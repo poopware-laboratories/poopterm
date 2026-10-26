@@ -46,7 +46,6 @@ pub(crate) mod image;
 #[cfg(test)]
 mod image_tests;
 pub(crate) mod instance;
-pub(crate) mod library;
 #[cfg(test)]
 mod loader_tests;
 pub(crate) mod memory;

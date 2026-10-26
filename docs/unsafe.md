@@ -155,7 +155,7 @@ through a buffer in three calls; this does one `ptr::read`, one
 | `graphics/kitty/media.rs` | `shm_open`, `OwnedFd::from_raw_fd`, `shm_unlink` | The name is a valid C string. A non-negative result is a new descriptor that the `OwnedFd` then owns and closes. The object is unlinked straight away, as the kitty protocol requires, whatever happens next. |
 | `graphics/kitty/media.rs` (macOS) | `mmap`, `munmap` | macOS cannot `read` shared memory. The mapping is fresh, read-only and `offset + size` bytes, within the size the descriptor reports; the bytes are copied out and the mapping is removed before returning. |
 | `hugepages.rs` (Linux) | `madvise(MADV_HUGEPAGE)` | The range lies inside the buffer. The hint only changes how the kernel backs the pages, never their contents, and failures are ignored. |
-| `gpu/vk/library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when the `Entry` that owns it drops, after the instance made from it is destroyed. |
+| `library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when its owner drops: the Vulkan `Entry`, after the instance made from it is destroyed, or the Wayland `Client`, after every proxy made through it. |
 | `platform.rs` (macOS) | Objective-C `window`, then `setAlphaValue:` | `view` is the live `NSView` winit gave for the window; `window` returns its `NSWindow` or nil, checked before use, and both selectors take and return the types written. |
 
 The size and range checks (`range()` in `media.rs`, the kitty size limits)
@@ -190,6 +190,23 @@ function pointers the loader returns, which is `unsafe` by language rule.
 The layouts and the enumeration logic are unit-tested without a driver;
 `loader_tests.rs` creates real instances, on Mesa's software driver in CI.
 
+### Wayland
+
+`present/wayland` (Linux and FreeBSD) shows software frames through
+`wl_shm`, calling libwayland-client through function pointers from
+`dlsym`, and maps the shared memory it hands the compositor.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `client.rs` | `cast` of each `dlsym` result | Each name is a function wayland-client-core.h declares with the type of the field it goes to, or an exported `wl_interface`, only ever passed back by address; `cast` checks at compile time that the target is pointer-sized. Requests use `wl_proxy_marshal_array_flags` and events `wl_proxy_add_dispatcher`, so no variadic call crosses the boundary. |
+| `presenter.rs` | Requests, dispatching and destroying proxies | `Presenter::new` is an `unsafe fn`: its caller vouches that the `wl_display` and `wl_surface` outlive the presenter and are used from its thread. Every request passes a `wl_argument` array matching its signature in wayland.xml, and a new proxy's version as libwayland's own wrappers would. Our proxies live on our own queue, made through a display wrapper (destroyed right after the registry is made), so only `present` and `new` dispatch their events. The events go to a boxed `Events` whose address stays put; it is freed only in `Drop`, after every proxy on the queue is destroyed (buffers and pools with their destructor requests, `wl_shm` with `release` from version 2) and then the queue. A buffer destroyed while the compositor holds it is allowed by the protocol, which keeps what it shows. |
+| `memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `ftruncate`, `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized before it is mapped, the size is at most `i32::MAX` bytes (what `create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor reads it only between a commit and the release, and the pool never draws into a held buffer. |
+
+The pool and the rows each frame copies are pure and unit-tested;
+`fake_tests.rs` is a fake libwayland and compositor that checks each request
+against the protocol's rules, and `real_tests.rs` runs the presenter against
+a real compositor (headless weston in CI).
+
 ### Test-only
 
 - `parser/dispatch_tests.rs`, `vt/tests.rs`, `render/painter.rs`
@@ -202,6 +219,16 @@ The layouts and the enumeration logic are unit-tested without a driver;
   pass, and writes through their output pointers, as a real driver would.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
+- `present/wayland/fake_tests.rs`, `fake_rules_tests.rs`: the fake
+  libwayland's functions are `extern "C"`, called through the presenter's
+  function pointers; they read requests' arguments by each request's
+  signature, duplicate and `pread` the pool's descriptor as a compositor
+  would, and call the dispatcher with the event's arguments.
+- `present/wayland/real_tests.rs`: connects to the compositor, binds
+  `wl_compositor`, makes a surface for the presenter and destroys it before
+  disconnecting.
+- `present/wayland/memory_tests.rs`: `fstat`, `pread` and `fcntl` on the
+  memory's own descriptor.
 
 ## Adding unsafe code
 

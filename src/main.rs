@@ -35,9 +35,16 @@ mod graphics;
 mod hugepages;
 mod inflate;
 mod input;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod library;
 mod notifier;
 mod parser;
 mod platform;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "the Wayland present path uses it next")
+)]
+mod present;
 mod pty;
 mod render;
 mod session_store;

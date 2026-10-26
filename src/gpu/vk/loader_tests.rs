@@ -14,7 +14,6 @@ use super::{
 	entry::Entry,
 	image::{Format, Image},
 	instance::Instance,
-	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
 	present::{Acquired, Presented},
 	surface::{Platform, Surface, Window},
@@ -23,6 +22,7 @@ use super::{
 	timeline::Timeline,
 	version::major_minor,
 };
+use crate::library::Library;
 use std::{
 	env,
 	io::Read,
@@ -51,7 +51,7 @@ pub(super) fn entry() -> Option<Entry> {
 
 #[test]
 fn a_missing_library_is_an_error_that_names_it() {
-	let Err(Error::NoLoader(message)) = Library::open(c"libpoopterm-no-such-library.so.9") else {
+	let Err(message) = Library::open(c"libpoopterm-no-such-library.so.9") else {
 		panic!("opened a library that does not exist");
 	};
 	assert!(
