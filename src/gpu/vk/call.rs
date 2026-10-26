@@ -1,7 +1,7 @@
 //! Calling Vulkan: result codes as errors, the two-call pattern that lists
 //! objects (count first, then the items), and the fixed-size strings it
 //! writes.
-use super::swapchain_plan::Unfit;
+use super::{choose::Unsuited, swapchain_plan::Unfit};
 use std::{
 	ffi::{CStr, c_char},
 	fmt,
@@ -47,6 +47,8 @@ pub(crate) enum Error {
 	Foreign,
 	/// A swapchain on a surface the device's queue cannot show on.
 	Unshown,
+	/// No device draws in the window: each one's name, and why.
+	NoDevice(Vec<(String, Unsuited)>),
 }
 
 impl fmt::Display for Error {
@@ -82,6 +84,23 @@ impl fmt::Display for Error {
 			Self::Unfit(Unfit::Alpha) => write!(f, "the Vulkan surface reports no composite alpha"),
 			Self::Foreign => write!(f, "a Vulkan device and surface of different instances"),
 			Self::Unshown => write!(f, "the Vulkan device cannot show on the window's surface"),
+			Self::NoDevice(devices) if devices.is_empty() => write!(f, "no Vulkan device"),
+			Self::NoDevice(devices) => {
+				write!(f, "no Vulkan device suits")?;
+				for (index, (name, why)) in devices.iter().enumerate() {
+					write!(f, "{}{name} ", if index == 0 { ": " } else { "; " })?;
+					match why {
+						&Unsuited::TooOld(version) => {
+							let (major, minor) = super::version::major_minor(version);
+							write!(f, "is Vulkan {major}.{minor}, older than 1.3")
+						}
+						Unsuited::Cpu => write!(f, "draws on the CPU, slower than software"),
+						Unsuited::NoSwapchain => write!(f, "cannot show in windows"),
+						Unsuited::NoQueue => write!(f, "has no queue that draws and shows in the window"),
+					}?;
+				}
+				Ok(())
+			}
 		}
 	}
 }

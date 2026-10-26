@@ -9,6 +9,8 @@ pub(crate) mod call;
 mod call_tests;
 pub(crate) mod choose;
 #[cfg(test)]
+mod choose_reason_tests;
+#[cfg(test)]
 mod choose_tests;
 pub(crate) mod commands;
 #[cfg(test)]
@@ -109,3 +111,10 @@ pub(crate) mod types;
 #[cfg(test)]
 mod types_tests;
 pub(crate) mod version;
+pub(crate) mod window;
+#[cfg(test)]
+mod window_gpu_tests;
+#[cfg(test)]
+mod window_open_tests;
+#[cfg(test)]
+mod window_tests;

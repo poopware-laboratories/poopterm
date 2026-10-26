@@ -24,6 +24,20 @@ pub(crate) const fn candidates(preference: RendererPreference) -> &'static [Back
 	}
 }
 
+/// The variable that sets the renderer for one run, over `config.toml`.
+pub(crate) const VARIABLE: &str = "POOPTERM_RENDERER";
+
+/// The renderer to use: the one `value`, that of [`VARIABLE`], names, else
+/// the `configured` one.
+pub(crate) fn preference(
+	configured: RendererPreference,
+	value: Option<&str>,
+) -> RendererPreference {
+	value
+		.and_then(RendererPreference::named)
+		.unwrap_or(configured)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Selection<T, E> {
 	pub(crate) backend: Backend,

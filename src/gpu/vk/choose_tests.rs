@@ -2,7 +2,7 @@
 //! never one too old or without a queue that can draw (and show, for a
 //! window), and a CPU device only when asked for one.
 use super::{
-	choose::{Choice, Device, GRAPHICS, Kind, QueueFamily, TRANSFER, choose},
+	choose::{Choice, Device, GRAPHICS, Kind, QueueFamily, TRANSFER, choose, suits},
 	version::api_version,
 };
 
@@ -207,6 +207,13 @@ fn random_machines_get_the_device_the_rules_pick() {
 		for (window, software) in [(true, false), (false, false), (true, true), (false, true)] {
 			let answer = choose(&devices, window, software);
 			assert_eq!(answer, expected(&devices, window, software), "{devices:#?}");
+			// What `suits` says of each device agrees with the choice.
+			let suited = |device| suits(device, window, software);
+			if let Some(Choice { device, family }) = answer {
+				assert_eq!(suited(&devices[device]), Ok(family));
+			} else {
+				assert!(devices.iter().all(|device| suited(device).is_err()));
+			}
 		}
 	}
 }

@@ -59,21 +59,45 @@ pub(crate) struct Choice {
 	pub family: usize,
 }
 
+/// Why a device cannot draw, in the order [`suits`] checks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Unsuited {
+	/// Its Vulkan version, older than 1.3.
+	TooOld(u32),
+	/// It draws on the CPU, and software was not asked for.
+	Cpu,
+	/// It lacks `VK_KHR_swapchain`, and draws for a window.
+	NoSwapchain,
+	/// No queue family draws (and shows, for a window).
+	NoQueue,
+}
+
+/// The queue family `device` draws on, for a window or offscreen, allowing
+/// a CPU device when `software`; else why it cannot.
+pub(crate) fn suits(device: &Device, window: bool, software: bool) -> Result<usize, Unsuited> {
+	if major_minor(device.api) < (1, 3) {
+		return Err(Unsuited::TooOld(device.api));
+	}
+	if device.kind == Kind::Cpu && !software {
+		return Err(Unsuited::Cpu);
+	}
+	if window && !device.swapchain {
+		return Err(Unsuited::NoSwapchain);
+	}
+	(device.families.iter())
+		.position(|family| {
+			family.count > 0 && family.flags & GRAPHICS != 0 && (family.present || !window)
+		})
+		.ok_or(Unsuited::NoQueue)
+}
+
 /// The device to draw on, for a window or offscreen, allowing a CPU device
 /// when `software`: the preferred kind, then the newest version, then the
-/// first listed; `None` when no device is Vulkan 1.3 with a family that
-/// draws (and shows, for a window).
+/// first listed; `None` when no device [`suits`].
 pub(crate) fn choose(devices: &[Device], window: bool, software: bool) -> Option<Choice> {
 	let usable = devices.iter().enumerate().filter_map(|(index, device)| {
-		let version = major_minor(device.api);
-		let kind_allowed = device.kind != Kind::Cpu || software;
-		if version < (1, 3) || !kind_allowed || (window && !device.swapchain) {
-			return None;
-		}
-		let family = (device.families.iter()).position(|family| {
-			family.count > 0 && family.flags & GRAPHICS != 0 && (family.present || !window)
-		})?;
-		Some((device.kind, Reverse(version), index, family))
+		let family = suits(device, window, software).ok()?;
+		Some((device.kind, Reverse(major_minor(device.api)), index, family))
 	});
 	let (.., device, family) = usable.min()?;
 	Some(Choice { device, family })

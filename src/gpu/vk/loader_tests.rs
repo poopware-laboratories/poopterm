@@ -33,7 +33,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-fn required() -> bool {
+pub(super) fn required() -> bool {
 	env::var("POOPTERM_REQUIRE_VULKAN").is_ok_and(|value| value == "1")
 }
 
@@ -206,6 +206,13 @@ fn child() {
 	if let Ok(entry) = Entry::load() {
 		println!("child: headless shows: {:?}", headless_shows(entry));
 	}
+	if let Ok(entry) = Entry::load() {
+		let drawn = super::window_gpu_tests::headless_window(entry);
+		let expected = drawn
+			.as_ref()
+			.map(|drawn| super::window_gpu_tests::as_expected(drawn));
+		println!("child: gpu window as expected: {expected:?}");
+	}
 }
 
 /// The swapchain planned for a 64×48 headless window on each device with
@@ -353,6 +360,9 @@ fn instances_pass_the_khronos_validation_layer() {
 	let headless = output.contains("child: headless shows: Ok(true)");
 	let unsupported = output.contains("child: headless shows: Err(Missing(");
 	assert!(headless || (unsupported && !required()), "{output}");
+	let window = output.contains("child: gpu window as expected: Ok(true)");
+	let unsupported = output.contains("child: gpu window as expected: Err(Missing(");
+	assert!(window || (unsupported && !required()), "{output}");
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}
