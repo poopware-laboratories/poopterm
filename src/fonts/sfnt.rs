@@ -9,7 +9,7 @@
 //! untrusted: every count and offset is bounds-checked and reads are capped.
 use std::io::{self, Read, Seek, SeekFrom};
 
-use super::coverage::{Pages, pages};
+use super::coverage::{Ranges, Shared, ranges};
 
 /// What the database needs to know about one face of a font file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,8 +32,8 @@ pub(crate) struct FaceInfo {
 	pub drawable: bool,
 	/// Has color bitmaps (`CBDT`), as emoji fonts do.
 	pub color: bool,
-	/// The Unicode pages its `cmap` maps.
-	pub pages: Pages,
+	/// The code points its `cmap` maps to a glyph other than 0.
+	pub coverage: Shared,
 }
 
 /// More faces than any real collection has.
@@ -134,7 +134,7 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 			_ => false,
 		};
 	// Emoji and symbol fonts are fixed pitch too; a terminal font needs text.
-	let (latin, pages) = find(b"cmap").map_or_else(Default::default, |(offset, length)| {
+	let (latin, coverage) = find(b"cmap").map_or_else(Default::default, |(offset, length)| {
 		read_cmap(file, offset, length).unwrap_or_default()
 	});
 	let monospace = fixed_width && latin;
@@ -145,7 +145,7 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 		index,
 		drawable,
 		color: find(b"CBDT").is_some(),
-		pages,
+		coverage: coverage.into(),
 		postscript: names.get(6).unwrap_or_default(),
 		family,
 		style,
@@ -235,9 +235,9 @@ fn latin() -> impl Iterator<Item = u32> {
 }
 
 /// Whether the `cmap` table at `offset` maps every [`latin`] character to
-/// a glyph, and the pages it maps, from its best Unicode subtable (format
-/// 12 or format 4).
-fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Result<(bool, Pages)> {
+/// a glyph, and the code points it maps to glyphs other than 0, from its
+/// best Unicode subtable (format 12 or format 4).
+fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Result<(bool, Ranges)> {
 	let header = read_at(file, offset, 4)?;
 	let count = usize::from(be16(&header, 2)).min(256);
 	let records = read_at(file, offset + 4, 8 * count)?;
@@ -264,15 +264,9 @@ fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Resu
 		4 => {
 			let size = usize::from(be16(&head, 2)).min((length - at) as usize);
 			let table = read_at(file, start, size)?;
-			let get = |at: usize| Some(u32::from(be16(table.get(at..at + 2)?, 0)));
-			let segments = get(6).map_or(0, |count| count as usize / 2);
-			// The last segment, 0xFFFF alone, only ends the table.
-			let ranges = (0..segments)
-				.map_while(|i| Some((get(16 + 2 * segments + 2 * i)?, get(14 + 2 * i)?)))
-				.filter(|&(first, _)| first != 0xffff);
 			(
 				latin().all(|ch| format4_glyph(&table, ch).is_some_and(|glyph| glyph != 0)),
-				pages(ranges),
+				format4_coverage(&table),
 			)
 		}
 		12 => {
@@ -288,10 +282,12 @@ fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Resu
 					(first..=last).contains(&ch) && be32(group, 8).wrapping_add(ch - first) != 0
 				})
 			});
-			(
-				latin,
-				pages(groups.iter().map(|group| (be32(group, 0), be32(group, 4)))),
-			)
+			// A group starting at glyph 0 maps its first character to nothing.
+			let mapped = groups.iter().map(|group| {
+				let (first, last) = (be32(group, 0), be32(group, 4));
+				(first.saturating_add(u32::from(be32(group, 8) == 0)), last)
+			});
+			(latin, ranges(mapped))
 		}
 		_ => (false, Vec::new()),
 	})
@@ -299,30 +295,67 @@ fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Resu
 
 /// The glyph a format 4 `cmap` subtable maps `ch` to; `None` if malformed.
 fn format4_glyph(table: &[u8], ch: u32) -> Option<u16> {
-	let get = |at: usize| {
-		table
-			.get(at..at + 2)
-			.map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
-	};
 	let ch = u16::try_from(ch).ok()?;
-	let segments = usize::from(get(6)? / 2);
-	let (ends, starts) = (14, 16 + 2 * segments);
-	let (deltas, ranges) = (starts + 2 * segments, starts + 4 * segments);
-	let segment = (0..segments).find(|&i| get(ends + 2 * i).is_some_and(|end| end >= ch))?;
-	let start = get(starts + 2 * segment)?;
+	let segments = usize::from(get16(table, 6)? / 2);
+	let segment = (0..segments).find(|&i| get16(table, 14 + 2 * i).is_some_and(|end| end >= ch))?;
+	let start = get16(table, 16 + 2 * segments + 2 * segment)?;
 	if ch < start {
 		return Some(0);
 	}
-	let delta = get(deltas + 2 * segment)?;
-	let range = get(ranges + 2 * segment)?;
+	segment_glyph(table, segments, segment, ch)
+}
+
+/// The code points a format 4 `cmap` subtable maps to glyphs other than 0.
+/// Segments are walked character by character, as glyph arrays can map
+/// some of a segment's characters to glyph 0; a malformed segment ends
+/// where it can no longer be read.
+fn format4_coverage(table: &[u8]) -> Ranges {
+	let segments = get16(table, 6).map_or(0, |count| usize::from(count / 2));
+	let mut runs: Vec<(u32, u32)> = Vec::new();
+	for segment in 0..segments {
+		let bounds = get16(table, 16 + 2 * segments + 2 * segment).zip(get16(table, 14 + 2 * segment));
+		let Some((start, end)) = bounds else { break };
+		// The last segment, 0xFFFF alone, only ends the table.
+		if start == 0xffff {
+			continue;
+		}
+		for ch in start..=end {
+			match segment_glyph(table, segments, segment, ch) {
+				None => break,
+				Some(0) => {}
+				Some(_) => match runs.last_mut() {
+					Some((_, last)) if *last + 1 == u32::from(ch) => *last += 1,
+					_ => runs.push((ch.into(), ch.into())),
+				},
+			}
+		}
+	}
+	ranges(runs)
+}
+
+/// The glyph `segment` of a format 4 subtable with `segments` segments
+/// maps `ch` to, for `ch` at or after the segment's start.
+fn segment_glyph(table: &[u8], segments: usize, segment: usize, ch: u16) -> Option<u16> {
+	let starts = 16 + 2 * segments;
+	let (deltas, ranges) = (starts + 2 * segments, starts + 4 * segments);
+	let start = get16(table, starts + 2 * segment)?;
+	let delta = get16(table, deltas + 2 * segment)?;
+	let range = get16(table, ranges + 2 * segment)?;
 	if range == 0 {
 		return Some(ch.wrapping_add(delta));
 	}
 	let at = ranges + 2 * segment + usize::from(range) + 2 * usize::from(ch - start);
-	Some(match get(at)? {
+	Some(match get16(table, at)? {
 		0 => 0,
 		glyph => glyph.wrapping_add(delta),
 	})
+}
+
+/// The big-endian `u16` at `at` in `table`, if it is there.
+fn get16(table: &[u8], at: usize) -> Option<u16> {
+	table
+		.get(at..at + 2)
+		.map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
 /// Whether every non-zero advance width among the `len` bytes of `hmtx`

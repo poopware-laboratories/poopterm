@@ -298,7 +298,7 @@ mod tests {
 					monospace: false,
 					drawable: true,
 					color: false,
-					pages: Default::default(),
+					coverage: Default::default(),
 				}],
 			}
 		});

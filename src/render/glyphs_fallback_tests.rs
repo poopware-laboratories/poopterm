@@ -7,12 +7,12 @@ use crate::fonts::fallback::SystemFallback;
 /// A system fallback whose only installed font has `ch`, counting how
 /// often the font database is opened.
 fn system_with(ch: char, name: &str) -> (SystemFallback, std::rc::Rc<std::cell::Cell<u32>>) {
-	use crate::fonts::{coverage::pages, db, fallback_tests::font_with_only};
+	use crate::fonts::{coverage::ranges, db, fallback_tests::font_with_only};
 	let dir = std::env::temp_dir().join(format!("poopterm-glyphs-{}-{name}", std::process::id()));
 	std::fs::create_dir_all(&dir).unwrap();
 	std::fs::write(dir.join("only.ttf"), font_with_only(ch)).unwrap();
 	let (mut cache, _) = db::refresh(&[dir], None);
-	cache.files[0].faces[0].pages = pages([(0, 0x10ffff)]);
+	cache.files[0].faces[0].coverage = ranges([(0, 0x10ffff)]).into();
 	let opened = std::rc::Rc::new(std::cell::Cell::new(0));
 	let counter = opened.clone();
 	let system = SystemFallback::new(move || {
@@ -89,13 +89,13 @@ fn the_primary_font_wins_over_installed_fonts_that_also_have_a_character() {
 /// Installed fonts for 漢: 0.ttf, the smaller and so ranked first, draws
 /// it as 'A'; 1.ttf draws it as 'C', and is the only one with ア.
 fn ranked(name: &str) -> (SystemFallback, std::path::PathBuf) {
-	use crate::fonts::{coverage::pages, fallback_tests::*};
+	use crate::fonts::{coverage::ranges, fallback_tests::*};
 	let fonts = [
 		font_mapping(&[('漢', 'A')]),
 		font_mapping(&[('ア', 'B'), ('漢', 'C')]),
 	];
 	let (dir, mut cache) = installed(&format!("glyphs-{name}"), &fonts, &[HAN]);
-	cache.files[1].faces[0].pages = pages([KANA, HAN]);
+	cache.files[1].faces[0].coverage = ranges([KANA, HAN]).into();
 	(SystemFallback::new(move || cache), dir)
 }
 

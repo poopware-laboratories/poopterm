@@ -418,29 +418,32 @@ fn covering(cmap: Option<Vec<u8>>, outline: Option<&'static [u8; 4]>) -> FaceInf
 }
 
 #[test]
-fn faces_record_the_pages_their_cmap_maps() {
+fn faces_record_the_code_points_their_cmap_maps() {
 	let bmp = cmap(
 		3,
 		1,
 		format4(&[(0x20, 0x7e), (0x2500, 0x257f), (0x4e00, 0x9fff)]),
 	);
 	assert_eq!(
-		covering(Some(bmp), None).pages,
-		[(0, 0), (0x25, 0x25), (0x4e, 0x9f)]
+		*covering(Some(bmp), None).coverage,
+		[(0x20, 0x7e), (0x2500, 0x257f), (0x4e00, 0x9fff)]
 	);
 	let full = cmap(3, 10, format12(&[(0x20, 0x7e), (0x1f600, 0x1f64f)]));
-	assert_eq!(covering(Some(full), None).pages, [(0, 0), (0x1f6, 0x1f6)]);
-	assert_eq!(covering(None, None).pages, []);
+	assert_eq!(
+		*covering(Some(full), None).coverage,
+		[(0x20, 0x7e), (0x1f600, 0x1f64f)]
+	);
+	assert_eq!(*covering(None, None).coverage, []);
 }
 
 #[test]
 fn the_format4_end_marker_is_not_coverage() {
 	// Every format 4 table ends with a 0xFFFF segment; it maps nothing.
 	let face = covering(Some(cmap(3, 1, format4(&[(0x41, 0x5a)]))), None);
-	assert_eq!(face.pages, [(0, 0)]);
+	assert_eq!(*face.coverage, [(0x41, 0x5a)]);
 	// A real segment reaching 0xFFFF still counts.
 	let face = covering(Some(cmap(3, 1, format4(&[(0xff00, 0xffef)]))), None);
-	assert_eq!(face.pages, [(0xff, 0xff)]);
+	assert_eq!(*face.coverage, [(0xff00, 0xffef)]);
 }
 
 #[test]
@@ -453,27 +456,30 @@ fn the_full_repertoire_subtable_wins_over_the_bmp_one() {
 	table.extend((20 + bmp.len() as u32).to_be_bytes());
 	table.extend(bmp);
 	table.extend(format12(&[(0x20, 0x7e), (0x1f300, 0x1f3ff)]));
-	assert_eq!(covering(Some(table), None).pages, [(0, 0), (0x1f3, 0x1f3)]);
+	assert_eq!(
+		*covering(Some(table), None).coverage,
+		[(0x20, 0x7e), (0x1f300, 0x1f3ff)]
+	);
 }
 
 #[test]
-fn unreadable_cmaps_leave_the_face_without_pages() {
+fn unreadable_cmaps_leave_the_face_without_coverage() {
 	let mut cut = cmap(3, 1, format4(&[(0x20, 0x7e), (0x400, 0x4ff)]));
 	cut.truncate(24);
 	let face = covering(Some(cut), None);
-	assert_eq!((face.family.as_str(), face.pages.len()), ("Glyphs", 0));
+	assert_eq!((face.family.as_str(), face.coverage.len()), ("Glyphs", 0));
 	// A segment count larger than the table is not read past its end.
 	let mut lying = cmap(3, 1, format4(&[(0x20, 0x7e)]));
 	lying[12 + 6..12 + 8].copy_from_slice(&400u16.to_be_bytes());
-	assert_eq!(covering(Some(lying), None).pages, []);
+	assert_eq!(*covering(Some(lying), None).coverage, []);
 	// So is a format 12 group count.
 	let mut groups = cmap(3, 10, format12(&[(0x20, 0x7e)]));
 	groups[12 + 12..12 + 16].copy_from_slice(&u32::MAX.to_be_bytes());
-	assert_eq!(covering(Some(groups), None).pages, [(0, 0)]);
+	assert_eq!(*covering(Some(groups), None).coverage, [(0x20, 0x7e)]);
 	// Formats without ranges give none.
 	let mut format6 = vec![0; 12];
 	format6[1] = 6;
-	assert_eq!(covering(Some(cmap(3, 1, format6)), None).pages, []);
+	assert_eq!(*covering(Some(cmap(3, 1, format6)), None).coverage, []);
 }
 
 #[test]
@@ -491,13 +497,13 @@ fn outline_and_color_bitmap_tables_mark_fonts_that_can_be_drawn() {
 fn the_bundled_font_covers_latin_box_drawing_and_powerline() {
 	let face = &faces(BUNDLED).unwrap()[0];
 	assert!(face.drawable);
-	let covers = |ch| super::coverage::covers(&face.pages, ch);
+	let covers = |ch| super::coverage::covers(&face.coverage, ch);
 	assert!(['a', 'é', '─', '\u{e0b0}'].into_iter().all(covers));
 	assert!(!covers('漢') && !covers('😀'));
 }
 
 #[test]
-fn each_face_of_a_collection_has_its_own_pages() {
+fn each_face_of_a_collection_has_its_own_coverage() {
 	let face = |ranges: &'static [(u16, u16)]| {
 		move |base| {
 			let tables = [
@@ -509,18 +515,18 @@ fn each_face_of_a_collection_has_its_own_pages() {
 	};
 	let (latin, han) = (face(&[(0x20, 0x7e)]), face(&[(0x4e00, 0x9fff)]));
 	let found = faces(&collection(&[&latin, &han])).unwrap();
-	assert_eq!(found[0].pages, [(0, 0)]);
-	assert_eq!(found[1].pages, [(0x4e, 0x9f)]);
+	assert_eq!(*found[0].coverage, [(0x20, 0x7e)]);
+	assert_eq!(*found[1].coverage, [(0x4e00, 0x9fff)]);
 }
 
 #[test]
-fn reversed_format4_segments_add_no_pages() {
+fn reversed_format4_segments_add_no_coverage() {
 	// A malformed segment whose start is after its end maps nothing.
 	let face = covering(
 		Some(cmap(3, 1, format4(&[(0x500, 0x400), (0x20, 0x7e)]))),
 		None,
 	);
-	assert_eq!(face.pages, [(0, 0)]);
+	assert_eq!(*face.coverage, [(0x20, 0x7e)]);
 }
 
 #[test]
@@ -532,8 +538,8 @@ fn monospace_detection_still_reads_latin_from_a_long_format12_table() {
 		.unwrap()
 		.remove(0);
 	assert!(face.monospace);
-	assert_eq!(face.pages.len(), 301);
-	assert_eq!(face.pages.last(), Some(&(0x356, 0x356)));
+	assert_eq!(face.coverage.len(), 301);
+	assert_eq!(face.coverage.last(), Some(&(0x35600, 0x35610)));
 }
 
 #[test]
@@ -543,4 +549,54 @@ fn only_cbdt_marks_a_face_as_color() {
 		assert!(!covering(None, Some(tag)).color, "{tag:?}");
 	}
 	assert!(!faces(BUNDLED).unwrap()[0].color);
+}
+
+/// A format 4 subtable with one segment from `start`, mapped through a
+/// glyph array of `glyphs` (0 for unmapped), and the 0xFFFF end segment.
+fn format4_array(start: u16, glyphs: &[u16]) -> Vec<u8> {
+	let end = start + glyphs.len() as u16 - 1;
+	let mut table = Vec::new();
+	for value in [
+		4, 0, 0, 4, 0, 0, 0, end, 0xffff, 0, start, 0xffff, 0, 1, 4, 0,
+	] {
+		table.extend(u16::to_be_bytes(value));
+	}
+	glyphs
+		.iter()
+		.for_each(|glyph| table.extend(glyph.to_be_bytes()));
+	let length = table.len() as u16;
+	table[2..4].copy_from_slice(&length.to_be_bytes());
+	table
+}
+
+#[test]
+fn characters_a_glyph_array_maps_to_glyph_0_are_not_coverage() {
+	// U+23F0 to U+23F7 with U+23F2, U+23F5 and U+23F6 unmapped, as a font
+	// that has only some of a block's symbols lists them.
+	let glyphs = [5, 6, 0, 7, 8, 0, 0, 9];
+	let face = covering(Some(cmap(3, 1, format4_array(0x23f0, &glyphs))), None);
+	assert_eq!(
+		*face.coverage,
+		[(0x23f0, 0x23f1), (0x23f3, 0x23f4), (0x23f7, 0x23f7)]
+	);
+	let covers = |ch| super::coverage::covers(&face.coverage, ch);
+	assert!(covers('⏴') && !covers('⏵') && !covers('⏶'));
+	// A glyph array cut short ends the segment where it can be read.
+	let mut cut = cmap(3, 1, format4_array(0x23f0, &glyphs));
+	cut.truncate(cut.len() - 8);
+	let length = (cut.len() - 12) as u16;
+	cut[12 + 2..12 + 4].copy_from_slice(&length.to_be_bytes());
+	let face = covering(Some(cut), None);
+	assert_eq!(*face.coverage, [(0x23f0, 0x23f1), (0x23f3, 0x23f3)]);
+}
+
+#[test]
+fn a_format12_group_starting_at_glyph_0_does_not_cover_its_first_character() {
+	let mut table = format12(&[(0x23f4, 0x23f6), (0x2600, 0x2600)]);
+	// Both groups start at glyph 0: the first loses U+23F4, the second
+	// maps nothing at all.
+	table[16 + 8..16 + 12].copy_from_slice(&0u32.to_be_bytes());
+	table[28 + 8..28 + 12].copy_from_slice(&0u32.to_be_bytes());
+	let face = covering(Some(cmap(3, 10, table)), None);
+	assert_eq!(*face.coverage, [(0x23f5, 0x23f6)]);
 }

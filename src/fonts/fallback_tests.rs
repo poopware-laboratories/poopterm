@@ -2,7 +2,7 @@
 //! are candidates and in what order, and the bounds on what is loaded.
 use super::{
 	Font,
-	coverage::pages,
+	coverage::ranges,
 	db::{Cache, FontFile, Stamp},
 	fallback::*,
 	sfnt::FaceInfo,
@@ -84,7 +84,7 @@ fn face(index: u32, ranges: &[(u32, u32)], weight: u16, monospace: bool) -> Face
 		monospace,
 		drawable: true,
 		color: false,
-		pages: pages(ranges.iter().copied()),
+		coverage: super::coverage::ranges(ranges.iter().copied()).into(),
 	}
 }
 
@@ -235,7 +235,7 @@ fn a_covering_font_is_loaded_and_returned() {
 }
 
 #[test]
-fn fonts_whose_pages_promise_more_than_they_have_are_kept_for_later() {
+fn fonts_whose_coverage_promises_more_than_they_have_are_kept_for_later() {
 	// Both claim the whole Han block; only the second has '字'.
 	let (dir, fonts) = installed(
 		"kept",
@@ -502,7 +502,7 @@ fn the_best_ranked_font_wins_over_one_loaded_earlier() {
 		],
 		&[HAN],
 	);
-	fonts.files[1].faces[0].pages = pages([KANA, HAN]);
+	fonts.files[1].faces[0].coverage = ranges([KANA, HAN]).into();
 	let mut system = SystemFallback::new(move || fonts);
 	let mut loaded = Vec::new();
 	assert_eq!(
@@ -523,11 +523,11 @@ fn the_best_ranked_font_wins_over_one_loaded_earlier() {
 }
 
 #[test]
-fn ranked_lists_are_shared_by_the_characters_of_a_page() {
-	// Every character of a page has the same candidates: a font that
-	// lacks one is still asked about the next.
+fn a_font_lacking_one_character_is_still_asked_about_the_next() {
+	// The cache says both fonts map all of Han; 0.ttf lacks 七 but is
+	// still the first choice for 丁.
 	let (dir, fonts) = installed(
-		"pages",
+		"asked",
 		&[
 			font_mapping(&[('丁', 'A')]),
 			font_mapping(&[('七', 'B'), ('丁', 'C')]),
@@ -553,7 +553,7 @@ fn loaded_fonts_still_serve_once_no_more_may_load() {
 	bytes.insert(0, font_with_only('字'));
 	let (dir, mut fonts) = installed("full", &bytes, &[HAN]);
 	fonts.files[0].stamp.size = 0;
-	fonts.files[0].faces[0].pages = pages([(0x5b00, 0x5bff)]);
+	fonts.files[0].faces[0].coverage = ranges([(0x5b00, 0x5bff)]).into();
 	let mut system = SystemFallback::new(move || fonts);
 	let mut loaded = Vec::new();
 	for ch in (0x4e00..0x4e20).map(|c| char::from_u32(c).unwrap()) {
@@ -569,16 +569,45 @@ fn loaded_fonts_still_serve_once_no_more_may_load() {
 }
 
 #[test]
-fn ranked_lists_are_kept_for_at_most_512_pages() {
+fn ranked_lists_are_kept_for_at_most_512_characters() {
 	let mut system = SystemFallback::new(Cache::default);
 	let mut loaded = Vec::new();
-	let pages = (0x100..).step_by(0x100).filter_map(char::from_u32);
-	for (count, ch) in pages.take(512).enumerate() {
+	// Neighbours on one page each get their own list.
+	for (count, ch) in ('\u{2300}'..).take(512).enumerate() {
 		system.find(ch, false, &mut loaded);
-		assert_eq!(system.ranked_pages(), count + 1);
+		assert_eq!(system.ranked_chars(), count + 1);
 	}
 	system.find('\u{10ff00}', false, &mut loaded);
-	assert_eq!(system.ranked_pages(), 1, "reset, then the new page");
+	assert_eq!(system.ranked_chars(), 1, "reset, then the new character");
 	system.find('\u{10ff00}', true, &mut loaded);
-	assert_eq!(system.ranked_pages(), 2, "color has its own list");
+	assert_eq!(system.ranked_chars(), 2, "color has its own list");
+}
+
+#[test]
+fn fonts_sharing_the_page_but_lacking_the_character_are_not_tried() {
+	// Four smaller fonts map ⏴ only, so they rank first for its page;
+	// ⏵ is in the fifth, past the fonts one character may load.
+	let mut bytes = vec![font_mapping(&[('⏴', 'A')]); 4];
+	bytes.push(font_mapping(&[('⏴', 'A'), ('⏵', 'B')]));
+	let dir = std::env::temp_dir().join(format!("poopterm-fallback-{}-exact", std::process::id()));
+	let _ = fs::remove_dir_all(&dir);
+	fs::create_dir_all(&dir).unwrap();
+	for (i, bytes) in bytes.iter().enumerate() {
+		fs::write(dir.join(format!("{i}.ttf")), bytes).unwrap();
+	}
+	let (fonts, _) = super::db::refresh(std::slice::from_ref(&dir), None);
+	assert_eq!(candidates(&fonts, '⏵', false).len(), 1);
+	assert_eq!(candidates(&fonts, '⏴', false).len(), 5);
+	assert_eq!(candidates(&fonts, '⏶', false), []);
+	let mut system = SystemFallback::new(move || fonts);
+	let mut loaded = Vec::new();
+	let found = system.find('⏵', false, &mut loaded).expect("4.ttf has ⏵");
+	assert_eq!(loaded.len(), 1, "only the font with ⏵ loads");
+	assert_eq!(
+		loaded[found].lookup_glyph_index('⏵'),
+		Font::from_bytes(BUNDLED, 0)
+			.unwrap()
+			.lookup_glyph_index('B')
+	);
+	fs::remove_dir_all(dir).unwrap();
 }
