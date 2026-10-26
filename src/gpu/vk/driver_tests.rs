@@ -17,6 +17,7 @@ use super::{
 	submit_types::RawCommandPool,
 	surface_driver_tests::{self, MadeSurface},
 	surface_types::{EnumerateInstanceExtensionProperties, RawSurface},
+	swapchain_plan::{Capabilities, SurfaceFormat},
 	types::*,
 	version::api_version,
 };
@@ -94,6 +95,12 @@ pub(super) struct Driver {
 	/// last one for an image counting.
 	pub image_layouts: Vec<(RawImage, i32)>,
 	pub surfaces: Vec<MadeSurface>,
+	/// What surfaces support, if not as Mesa does on Wayland.
+	pub surface_capabilities: Option<Capabilities>,
+	pub surface_formats: Option<Vec<SurfaceFormat>>,
+	pub present_modes: Option<Vec<i32>>,
+	/// The surface queries made, in order.
+	pub surface_queries: Vec<&'static str>,
 	pub live_surfaces: Vec<(RawInstance, RawSurface)>,
 	pub pipeline_objects: Objects,
 	/// Buffers, images, views, semaphores, pools, shader modules, samplers,
@@ -441,7 +448,7 @@ unsafe extern "system" fn enumerate_physical_devices(
 ///
 /// `count` is writable, and when `items` is not null it is readable and
 /// `items` has room for that many.
-unsafe fn answer<T: Copy>(all: &[T], count: *mut u32, items: *mut T) -> i32 {
+pub(super) unsafe fn answer<T: Copy>(all: &[T], count: *mut u32, items: *mut T) -> i32 {
 	if items.is_null() {
 		// SAFETY: writable, the caller says.
 		unsafe { count.write(all.len() as u32) };

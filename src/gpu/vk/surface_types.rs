@@ -1,7 +1,10 @@
 //! The Vulkan types for window surfaces (`VK_KHR_surface` and the
 //! Wayland, Xlib and headless extensions that make them), laid out as the
 //! specification's C declarations, and the types of their functions.
-use super::types::{ExtensionProperties, RawInstance, RawPhysicalDevice};
+use super::{
+	swapchain_plan::{Capabilities, SurfaceFormat},
+	types::{ExtensionProperties, RawInstance, RawPhysicalDevice},
+};
 use std::ffi::{c_char, c_ulong, c_void};
 
 pub(crate) type RawSurface = u64;
@@ -52,3 +55,9 @@ pub(crate) type CreateSurface =
 pub(crate) type DestroySurface = unsafe extern "system" fn(RawInstance, RawSurface, *const c_void);
 pub(crate) type GetPhysicalDeviceSurfaceSupport =
 	unsafe extern "system" fn(RawPhysicalDevice, u32, RawSurface, *mut u32) -> i32;
+pub(crate) type GetPhysicalDeviceSurfaceCapabilities =
+	unsafe extern "system" fn(RawPhysicalDevice, RawSurface, *mut Capabilities) -> i32;
+pub(crate) type GetPhysicalDeviceSurfaceFormats =
+	unsafe extern "system" fn(RawPhysicalDevice, RawSurface, *mut u32, *mut SurfaceFormat) -> i32;
+pub(crate) type GetPhysicalDeviceSurfacePresentModes =
+	unsafe extern "system" fn(RawPhysicalDevice, RawSurface, *mut u32, *mut i32) -> i32;

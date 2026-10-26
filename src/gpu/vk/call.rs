@@ -1,6 +1,7 @@
 //! Calling Vulkan: result codes as errors, the two-call pattern that lists
 //! objects (count first, then the items), and the fixed-size strings it
 //! writes.
+use super::swapchain_plan::Unfit;
 use std::{
 	ffi::{CStr, c_char},
 	fmt,
@@ -40,6 +41,8 @@ pub(crate) enum Error {
 	/// A quad set already drawn with in the recording, or by commands the
 	/// GPU has yet to finish.
 	Busy,
+	/// No swapchain suits the window's surface, or not for now.
+	Unfit(Unfit),
 }
 
 impl fmt::Display for Error {
@@ -62,6 +65,17 @@ impl fmt::Display for Error {
 			Self::Spirv => write!(f, "a shader is not SPIR-V for Vulkan 1.3"),
 			Self::Draw => write!(f, "a Vulkan draw of quads it cannot draw"),
 			Self::Busy => write!(f, "a Vulkan quad set still in use"),
+			Self::Unfit(Unfit::Hidden) => write!(f, "the window has no area to draw in"),
+			Self::Unfit(Unfit::Format) => {
+				write!(f, "the Vulkan surface offers no 8-bit UNORM sRGB format")
+			}
+			Self::Unfit(Unfit::Usage) => {
+				write!(
+					f,
+					"Vulkan swapchain images cannot be drawn to or copied into"
+				)
+			}
+			Self::Unfit(Unfit::Alpha) => write!(f, "the Vulkan surface reports no composite alpha"),
 		}
 	}
 }

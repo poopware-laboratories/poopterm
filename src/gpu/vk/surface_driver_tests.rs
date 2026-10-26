@@ -10,6 +10,7 @@ use super::{
 	entry::Entry,
 	instance::Instance,
 	surface::{Platform, Surface, Window},
+	surface_query_tests,
 	surface_types::*,
 	types::*,
 	version::api_version,
@@ -46,6 +47,16 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkDestroySurfaceKHR" => transmute::<DestroySurface, VoidFunction>(destroy_surface),
 			b"vkGetPhysicalDeviceSurfaceSupportKHR" => {
 				transmute::<GetPhysicalDeviceSurfaceSupport, VoidFunction>(surface_support)
+			}
+			b"vkGetPhysicalDeviceSurfaceCapabilitiesKHR" => transmute::<
+				GetPhysicalDeviceSurfaceCapabilities,
+				VoidFunction,
+			>(surface_query_tests::capabilities),
+			b"vkGetPhysicalDeviceSurfaceFormatsKHR" => {
+				transmute::<GetPhysicalDeviceSurfaceFormats, VoidFunction>(surface_query_tests::formats)
+			}
+			b"vkGetPhysicalDeviceSurfacePresentModesKHR" => {
+				transmute::<GetPhysicalDeviceSurfacePresentModes, VoidFunction>(surface_query_tests::modes)
 			}
 			_ => return None,
 		})
@@ -240,16 +251,16 @@ const DISPLAY: NonNull<c_void> =
 	NonNull::without_provenance(std::num::NonZero::new(0xd15).unwrap());
 const WL_SURFACE: NonNull<c_void> =
 	NonNull::without_provenance(std::num::NonZero::new(0x5ace).unwrap());
-const WAYLAND: Window = Window::Wayland {
+pub(super) const WAYLAND: Window = Window::Wayland {
 	display: DISPLAY,
 	surface: WL_SURFACE,
 };
-const XLIB: Window = Window::Xlib {
+pub(super) const XLIB: Window = Window::Xlib {
 	display: DISPLAY,
 	window: 0x0420_0007 as c_ulong,
 };
 
-fn window_instance(entry: Entry, platform: Platform) -> Rc<Instance> {
+pub(super) fn window_instance(entry: Entry, platform: Platform) -> Rc<Instance> {
 	Rc::new(
 		entry
 			.create_window_instance(c"poopterm", platform)
@@ -257,12 +268,12 @@ fn window_instance(entry: Entry, platform: Platform) -> Rc<Instance> {
 	)
 }
 
-fn surface(instance: &Rc<Instance>, window: Window) -> Result<Surface, Error> {
+pub(super) fn surface(instance: &Rc<Instance>, window: Window) -> Result<Surface, Error> {
 	// SAFETY: the fake driver only records the handles.
 	unsafe { Surface::new(instance, window) }
 }
 
-fn present(flags: u32, present: bool) -> QueueFamily {
+pub(super) fn present(flags: u32, present: bool) -> QueueFamily {
 	QueueFamily {
 		flags,
 		count: 1,
@@ -270,7 +281,7 @@ fn present(flags: u32, present: bool) -> QueueFamily {
 	}
 }
 
-fn gpu(kind: Kind, families: Vec<QueueFamily>) -> Device {
+pub(super) fn gpu(kind: Kind, families: Vec<QueueFamily>) -> Device {
 	Device {
 		name: format!("{kind:?}"),
 		kind,
@@ -427,6 +438,9 @@ fn a_surface_function_the_driver_lacks_is_missing_before_anything_is_made() {
 	let lacked = [
 		c"vkDestroySurfaceKHR",
 		c"vkGetPhysicalDeviceSurfaceSupportKHR",
+		c"vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+		c"vkGetPhysicalDeviceSurfaceFormatsKHR",
+		c"vkGetPhysicalDeviceSurfacePresentModesKHR",
 		c"vkCreateXlibSurfaceKHR",
 	];
 	for name in lacked {
@@ -623,6 +637,7 @@ fn surface_functions_are_looked_up_once_per_surface_not_per_query() {
 	let mut described = instance.describe(physical).unwrap();
 	for _ in 0..3 {
 		made.mark_present(physical, &mut described).unwrap();
+		made.plan(physical, [64, 48]).unwrap();
 	}
 	assert_eq!(with(|driver| driver.lookups.len()), looked_up);
 	drop((made, instance));
@@ -634,6 +649,9 @@ fn surface_functions_are_looked_up_once_per_surface_not_per_query() {
 	let expected = [
 		"vkDestroySurfaceKHR",
 		"vkGetPhysicalDeviceSurfaceSupportKHR",
+		"vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+		"vkGetPhysicalDeviceSurfaceFormatsKHR",
+		"vkGetPhysicalDeviceSurfacePresentModesKHR",
 		"vkCreateHeadlessSurfaceEXT",
 	];
 	assert_eq!(names, expected);
