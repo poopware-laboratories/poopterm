@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.130 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Acquire and present swapchain images (#170) (gpu).
+
 ## 26.10.129 "Giga Fly" — 2026-10-26
 
 ### Added
