@@ -49,6 +49,8 @@ pub(crate) enum Layout {
 	ShaderReadOnly = 5,
 	TransferSrc = 6,
 	TransferDst = 7,
+	/// Shown by the presentation engine.
+	Present = 1_000_001_002,
 }
 
 impl Layout {
@@ -61,6 +63,10 @@ impl Layout {
 			Self::ShaderReadOnly => (FRAGMENT, SAMPLED_READ),
 			Self::TransferSrc => (ALL_TRANSFER, TRANSFER_READ),
 			Self::TransferDst => (ALL_TRANSFER, TRANSFER_WRITE),
+			// Nothing on the GPU reads it, but the frame drawn after it waits
+			// at the stages that write images for the presentation engine to
+			// let go, and its first barrier must come after that wait.
+			Self::Present => (COLOR_OUTPUT | ALL_TRANSFER, 0),
 		}
 	}
 }
@@ -202,7 +208,12 @@ impl<'a> Recording<'a> {
 			.rev()
 			.find(|(made, _)| Rc::ptr_eq(made, image));
 		let from = pending.map_or(image.layout.get(), |&(_, layout)| layout);
-		let (src_stage_mask, src_access_mask) = from.scope();
+		// A swapchain image is never written before it is acquired.
+		let after = match from {
+			Layout::Undefined if image.presentable() => Layout::Present,
+			from => from,
+		};
+		let (src_stage_mask, src_access_mask) = after.scope();
 		let (dst_stage_mask, dst_access_mask) = layout.scope();
 		let barrier = ImageMemoryBarrier2 {
 			s_type: STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -251,6 +262,16 @@ impl<'a> Recording<'a> {
 	/// timeline to once finished. The layouts they leave images in take
 	/// effect.
 	pub(crate) fn submit(self) -> Result<u64, Error> {
+		self.submit_with(None, None)
+	}
+
+	/// Submits as [`Self::submit`] does, waiting for `wait` before the
+	/// commands start and signalling `signal` too once they are done.
+	pub(super) fn submit_with(
+		self,
+		wait: Option<&SemaphoreSubmitInfo>,
+		signal: Option<&SemaphoreSubmitInfo>,
+	) -> Result<u64, Error> {
 		let commands = self.commands;
 		let functions = &commands.device.functions;
 		// SAFETY: the buffer is being recorded.
@@ -263,7 +284,7 @@ impl<'a> Recording<'a> {
 			command_buffer: commands.buffer,
 			device_mask: 0,
 		};
-		let signal = SemaphoreSubmitInfo {
+		let timeline = SemaphoreSubmitInfo {
 			s_type: STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
 			next: ptr::null(),
 			semaphore: commands.timeline.handle(),
@@ -271,16 +292,20 @@ impl<'a> Recording<'a> {
 			stage_mask: ALL_COMMANDS,
 			device_index: 0,
 		};
+		let signals: Vec<_> = [Some(timeline), signal.copied()]
+			.into_iter()
+			.flatten()
+			.collect();
 		let info = SubmitInfo2 {
 			s_type: STRUCTURE_TYPE_SUBMIT_INFO_2,
 			next: ptr::null(),
 			flags: 0,
-			wait_semaphore_info_count: 0,
-			wait_semaphore_infos: ptr::null(),
+			wait_semaphore_info_count: wait.is_some().into(),
+			wait_semaphore_infos: wait.map_or(ptr::null(), ptr::from_ref),
 			command_buffer_info_count: 1,
 			command_buffer_infos: &buffer,
-			signal_semaphore_info_count: 1,
-			signal_semaphore_infos: &signal,
+			signal_semaphore_info_count: signals.len() as u32,
+			signal_semaphore_infos: signals.as_ptr(),
 		};
 		// SAFETY: the queue is the device's and used from this thread alone,
 		// the buffer is executable, `value` is above every value the timeline

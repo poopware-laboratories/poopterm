@@ -2,7 +2,7 @@
 //! specification's C declarations, and the types of their functions.
 use super::{
 	surface_types::RawSurface,
-	types::{RawDevice, RawImage},
+	types::{RawDevice, RawImage, RawQueue, RawSemaphore},
 };
 use std::ffi::c_void;
 
@@ -45,3 +45,24 @@ pub(crate) type DestroySwapchain =
 	unsafe extern "system" fn(RawDevice, RawSwapchain, *const c_void);
 pub(crate) type GetSwapchainImages =
 	unsafe extern "system" fn(RawDevice, RawSwapchain, *mut u32, *mut RawImage) -> i32;
+
+pub(crate) const STRUCTURE_TYPE_PRESENT_INFO: i32 = 1_000_001_001;
+
+/// `VkPresentInfoKHR`.
+#[repr(C)]
+pub(crate) struct PresentInfo {
+	pub s_type: i32,
+	pub next: *const c_void,
+	pub wait_semaphore_count: u32,
+	pub wait_semaphores: *const RawSemaphore,
+	pub swapchain_count: u32,
+	pub swapchains: *const RawSwapchain,
+	pub image_indices: *const u32,
+	/// Each swapchain's result; null when one is enough.
+	pub results: *mut i32,
+}
+
+pub(crate) type AcquireNextImage =
+	unsafe extern "system" fn(RawDevice, RawSwapchain, u64, RawSemaphore, u64, *mut u32) -> i32;
+pub(crate) type QueuePresent = unsafe extern "system" fn(RawQueue, *const PresentInfo) -> i32;
+pub(crate) type QueueWaitIdle = unsafe extern "system" fn(RawQueue) -> i32;

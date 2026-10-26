@@ -19,6 +19,7 @@ use super::{
 	surface_types::{EnumerateInstanceExtensionProperties, RawSurface},
 	swapchain_driver_tests::{LiveSwapchain, MadeSwapchain},
 	swapchain_plan::{Capabilities, SurfaceFormat},
+	swapchain_types::RawSwapchain,
 	types::*,
 	version::api_version,
 };
@@ -105,6 +106,19 @@ pub(super) struct Driver {
 	pub live_surfaces: Vec<(RawInstance, RawSurface)>,
 	pub swapchains: Vec<MadeSwapchain>,
 	pub live_swapchains: Vec<LiveSwapchain>,
+	/// What acquiring images answers instead of success, first first.
+	pub acquire_answers: Vec<i32>,
+	/// What presenting answers instead of success, first first.
+	pub present_answers: Vec<i32>,
+	/// The images presented, of which swapchains.
+	pub presents: Vec<(RawSwapchain, u32)>,
+	/// Binary semaphores signalled and waited for, in order.
+	pub semaphore_ops: Vec<String>,
+	/// Whether something was presented since the queue was last idle.
+	pub presenting: bool,
+	pub idle_waits: u32,
+	/// The timeout of each image acquisition, in nanoseconds.
+	pub acquire_timeouts: Vec<u64>,
 	pub pipeline_objects: Objects,
 	/// Buffers, images, views, semaphores, pools, shader modules, samplers,
 	/// layouts and pipelines destroyed and memory freed, in order.

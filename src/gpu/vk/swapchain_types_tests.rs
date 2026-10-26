@@ -36,3 +36,22 @@ fn swapchain_create_info_is_laid_out_as_vk_swapchain_create_info_khr() {
 	];
 	assert_eq!(offsets, expected);
 }
+
+#[test]
+fn present_info_is_laid_out_as_vk_present_info_khr() {
+	assert_eq!(
+		(size_of::<PresentInfo>(), align_of::<PresentInfo>()),
+		(64, 8)
+	);
+	let offsets = [
+		offset_of!(PresentInfo, s_type),
+		offset_of!(PresentInfo, next),
+		offset_of!(PresentInfo, wait_semaphore_count),
+		offset_of!(PresentInfo, wait_semaphores),
+		offset_of!(PresentInfo, swapchain_count),
+		offset_of!(PresentInfo, swapchains),
+		offset_of!(PresentInfo, image_indices),
+		offset_of!(PresentInfo, results),
+	];
+	assert_eq!(offsets, [0, 8, 16, 24, 32, 40, 48, 56]);
+}

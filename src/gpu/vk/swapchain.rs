@@ -1,10 +1,13 @@
 //! A window's swapchain: the images its surface shows, made to a plan with
 //! a view each, remade when the window changes, destroyed when dropped.
+//! Acquiring and presenting its images is in `present`.
 use super::{
 	call::{Error, check, enumerate},
 	device::{Device, SWAPCHAIN},
 	entry::cast,
 	image::Image,
+	present::Acquire,
+	semaphore::Semaphore,
 	surface::Surface,
 	swapchain_plan::{Plan, SRGB_NONLINEAR, USAGE},
 	swapchain_types::*,
@@ -13,10 +16,13 @@ use std::{ffi::CStr, ptr, rc::Rc};
 
 /// The device's swapchain functions.
 #[derive(Clone, Copy)]
-struct Functions {
+pub(super) struct Functions {
 	create: CreateSwapchain,
 	destroy: DestroySwapchain,
 	images: GetSwapchainImages,
+	pub acquire: AcquireNextImage,
+	pub present: QueuePresent,
+	wait_idle: QueueWaitIdle,
 }
 
 impl Functions {
@@ -29,6 +35,9 @@ impl Functions {
 				create: cast(function(c"vkCreateSwapchainKHR")?),
 				destroy: cast(function(c"vkDestroySwapchainKHR")?),
 				images: cast(function(c"vkGetSwapchainImagesKHR")?),
+				acquire: cast(function(c"vkAcquireNextImageKHR")?),
+				present: cast(function(c"vkQueuePresentKHR")?),
+				wait_idle: cast(function(c"vkQueueWaitIdle")?),
 			})
 		}
 	}
@@ -36,10 +45,10 @@ impl Functions {
 
 /// The swapchain itself, destroyed when dropped; the views of its images
 /// hold it, so it goes after them.
-struct Chain {
-	handle: RawSwapchain,
+pub(super) struct Chain {
+	pub handle: RawSwapchain,
 	destroy: DestroySwapchain,
-	device: Rc<Device>,
+	pub device: Rc<Device>,
 	/// Destroyed after the swapchain, which shows on it.
 	_surface: Rc<Surface>,
 }
@@ -52,12 +61,21 @@ impl Drop for Chain {
 	}
 }
 
+/// Dropped once the queue is idle, so the GPU and the presentation engine
+/// are done with its images and semaphores.
 pub(crate) struct Swapchain {
-	functions: Functions,
+	pub(super) functions: Functions,
 	plan: Plan,
 	/// In the order the swapchain lists them, which acquiring indexes.
-	images: Vec<Image>,
-	chain: Rc<Chain>,
+	images: Vec<Rc<Image>>,
+	/// One for each image, signalled when its frame is drawn and waited for
+	/// by its presentation; the image is acquired again only after that
+	/// wait, so the semaphore is free whenever its image is.
+	pub(super) drawn: Vec<Semaphore>,
+	/// Signalled when an image is acquired, and waited for by the frame
+	/// drawn into it.
+	pub(super) acquires: Vec<Acquire>,
+	pub(super) chain: Rc<Chain>,
 }
 
 impl Swapchain {
@@ -78,8 +96,8 @@ impl Swapchain {
 	}
 
 	/// The swapchain remade to `plan`, as when the window changes size; the
-	/// old one is retired, even if that fails, and destroyed once its images
-	/// are dropped.
+	/// old one is retired, even if that fails, and destroyed once the queue
+	/// is idle.
 	pub(crate) fn recreate(self, plan: Plan) -> Result<Self, Error> {
 		let (device, surface) = (&self.chain.device, &self.chain._surface);
 		Self::make(self.functions, device, surface, plan, self.chain.handle)
@@ -129,14 +147,18 @@ impl Swapchain {
 			unsafe { (functions.images)(device.handle, handle, count, images) }
 		})?;
 		let made = (plan.format, plan.extent, USAGE);
-		let images = handles
-			.into_iter()
-			.map(|image| Image::presented(device, image, made, chain.clone()))
+		let images = (handles.iter())
+			.map(|&image| Image::presented(device, image, made, chain.clone()).map(Rc::new))
+			.collect::<Result<_, _>>()?;
+		let drawn = (handles.iter())
+			.map(|_| Semaphore::new(device))
 			.collect::<Result<_, _>>()?;
 		Ok(Self {
 			functions,
 			plan,
 			images,
+			drawn,
+			acquires: Vec::new(),
 			chain,
 		})
 	}
@@ -145,7 +167,16 @@ impl Swapchain {
 		&self.plan
 	}
 
-	pub(crate) fn images(&self) -> &[Image] {
+	pub(crate) fn images(&self) -> &[Rc<Image>] {
 		&self.images
+	}
+}
+
+impl Drop for Swapchain {
+	fn drop(&mut self) {
+		let device = &self.chain.device;
+		// A lost device has finished everything.
+		// SAFETY: the queue is the device's and used from this thread alone.
+		let _ = unsafe { (self.functions.wait_idle)(device.queue()) };
 	}
 }
