@@ -2,7 +2,7 @@
 //! are candidates and in what order, and the bounds on what is loaded.
 use super::{
 	Font,
-	coverage::ranges,
+	coverage::tests::ranges,
 	db::{Cache, FontFile, Stamp},
 	fallback::*,
 	sfnt::FaceInfo,
@@ -89,7 +89,7 @@ fn face(index: u32, ranges: &[(u32, u32)], weight: u16, monospace: bool) -> Face
 		monospace,
 		drawable: true,
 		color: false,
-		coverage: super::coverage::ranges(ranges.iter().copied()).into(),
+		coverage: super::coverage::tests::ranges(ranges.iter().copied()).into(),
 	}
 }
 

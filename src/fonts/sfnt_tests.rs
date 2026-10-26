@@ -544,7 +544,7 @@ fn drawn(subtable: &[u8]) -> Vec<(u32, u32)> {
 	let table = cmap(3, 1, subtable.to_vec());
 	let engine = super::cmap::Cmap::parse(&table, 0).unwrap();
 	let mapped = (0..0xffffu32).filter(|&ch| engine.glyph(&table, ch) != 0);
-	super::coverage::ranges(mapped.map(|ch| (ch, ch)))
+	super::coverage::tests::ranges(mapped.map(|ch| (ch, ch)))
 }
 
 #[test]

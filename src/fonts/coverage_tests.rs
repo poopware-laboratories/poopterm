@@ -4,7 +4,7 @@
 use super::{
 	Font,
 	cmap::Cmap,
-	coverage::{Ranges, covers, ranges},
+	coverage::{Ranges, covers, tests::ranges},
 	db,
 	fallback::{SystemFallback, candidates},
 	fallback_tests::{font_mapping, with_cmap},

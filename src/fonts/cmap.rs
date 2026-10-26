@@ -1,9 +1,6 @@
 //! Character to glyph mapping (`cmap`): choosing the best Unicode subtable
 //! and looking characters up in formats 0, 4, 6 and 12.
-use super::{
-	coverage::{Ranges, ranges},
-	read::Bytes,
-};
+use super::{coverage::Ranges, read::Bytes};
 
 /// A Unicode subtable inside the font data: its offset and format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,8 +56,8 @@ impl Cmap {
 	/// `glyphs` (`maxp.numGlyphs`), so exactly those [`Cmap::glyph`] draws.
 	/// Sorted tables are walked segment by segment, which is what the
 	/// lookup's binary search finds for each character; others look every
-	/// listed character up, merged and clamped to Unicode first, which
-	/// bounds the walk for malformed tables.
+	/// character up. U+FFFF, a noncharacter only format 4's end segment
+	/// lists, is left out.
 	pub(crate) fn coverage(&self, data: &[u8], glyphs: u16) -> Ranges {
 		let table = &data[self.offset.min(data.len())..];
 		let mut runs: Ranges = Vec::new();
@@ -100,38 +97,13 @@ impl Cmap {
 				}
 			}
 		} else {
-			for (first, last) in ranges(self.listed(table)) {
-				for ch in first..=last {
-					add(ch, self.glyph(data, ch));
-				}
+			// Malformed or small tables: every character the format can map.
+			let end = if self.format == 12 { LAST } else { 0xffff };
+			for ch in (0..=end).filter(|&ch| ch != 0xffff) {
+				add(ch, self.glyph(data, ch));
 			}
 		}
 		runs
-	}
-
-	/// The ranges of characters the subtable lists; it may map some of
-	/// them to glyph 0.
-	fn listed(&self, table: &[u8]) -> Vec<(u32, u32)> {
-		match self.format {
-			0 => vec![(0, 0xff)],
-			4 => segments(table)
-				.into_iter()
-				// The last segment, 0xFFFF alone, only ends the table.
-				.filter(|&(first, _)| first != 0xffff)
-				.map(|(first, last)| (first.into(), last.into()))
-				.collect(),
-			6 => match (table.u16_at(6), table.u16_at(8)) {
-				(Some(first), Some(count @ 1..)) => {
-					vec![(first.into(), u32::from(first) + u32::from(count) - 1)]
-				}
-				_ => Vec::new(),
-			},
-			12 => groups(table)
-				.into_iter()
-				.map(|(first, last, _)| (first, last))
-				.collect(),
-			_ => Vec::new(),
-		}
 	}
 }
 

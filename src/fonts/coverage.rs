@@ -13,25 +13,6 @@ pub(crate) type Shared = Arc<[(u32, u32)]>;
 /// The last code point.
 const LAST: u32 = 0x10_FFFF;
 
-/// Inclusive code point `ranges`, in any order, sorted and merged; reversed
-/// ranges are dropped and ranges past Unicode clamped.
-pub(crate) fn ranges(ranges: impl IntoIterator<Item = (u32, u32)>) -> Ranges {
-	let mut spans: Ranges = ranges
-		.into_iter()
-		.filter(|&(first, last)| first <= last && first <= LAST)
-		.map(|(first, last)| (first, last.min(LAST)))
-		.collect();
-	spans.sort_unstable();
-	let mut merged: Ranges = Vec::with_capacity(spans.len());
-	for (first, last) in spans {
-		match merged.last_mut() {
-			Some((_, end)) if first <= end.saturating_add(1) => *end = (*end).max(last),
-			_ => merged.push((first, last)),
-		}
-	}
-	merged
-}
-
 /// Whether `ch` falls in one of `ranges`.
 pub(crate) fn covers(ranges: &[(u32, u32)], ch: char) -> bool {
 	let ch = u32::from(ch);
@@ -150,8 +131,27 @@ impl Reader {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use super::*;
+
+	/// Inclusive code point `ranges`, in any order, sorted and merged; reversed
+	/// ranges are dropped and ranges past Unicode clamped.
+	pub(crate) fn ranges(ranges: impl IntoIterator<Item = (u32, u32)>) -> Ranges {
+		let mut spans: Ranges = ranges
+			.into_iter()
+			.filter(|&(first, last)| first <= last && first <= LAST)
+			.map(|(first, last)| (first, last.min(LAST)))
+			.collect();
+		spans.sort_unstable();
+		let mut merged: Ranges = Vec::with_capacity(spans.len());
+		for (first, last) in spans {
+			match merged.last_mut() {
+				Some((_, end)) if first <= end.saturating_add(1) => *end = (*end).max(last),
+				_ => merged.push((first, last)),
+			}
+		}
+		merged
+	}
 
 	#[test]
 	fn ranges_are_sorted_and_merged() {
