@@ -6,7 +6,7 @@ use crate::library::Library;
 use std::{
 	ffi::{CStr, c_char, c_int, c_void},
 	mem::transmute_copy,
-	ptr::NonNull,
+	ptr::{self, NonNull},
 };
 
 /// The library's name on Linux and FreeBSD.
@@ -35,6 +35,21 @@ pub(crate) union Argument {
 	pub fd: i32,
 	/// Room for the `wl_array` pointer and fixed-point forms.
 	pub _wide: u64,
+}
+
+impl Argument {
+	/// The slot of a request's new object, which libwayland fills.
+	pub(crate) const NEW: Self = Self {
+		object: ptr::null_mut(),
+	};
+
+	pub(crate) fn int(value: i32) -> Self {
+		Self { int: value }
+	}
+
+	pub(crate) fn uint(value: u32) -> Self {
+		Self { uint: value }
+	}
 }
 
 /// `wl_dispatcher_func_t`: called for each event on a proxy.
@@ -125,6 +140,50 @@ impl Client {
 				buffer: interface(c"wl_buffer_interface")?,
 				_library: None,
 			})
+		}
+	}
+}
+
+impl Client {
+	/// Sends request `opcode` on `proxy` at its version: the new object of
+	/// `interface` it makes, or null.
+	///
+	/// # Safety
+	///
+	/// The proxy is live, `arguments` match the request's signature, and
+	/// `interface` is the new object's, or null when it makes none.
+	pub(crate) unsafe fn send(
+		&self,
+		proxy: Proxy,
+		opcode: u32,
+		interface: *const Interface,
+		arguments: &mut [Argument],
+	) -> Proxy {
+		// SAFETY: as the caller vouches.
+		unsafe {
+			let version = (self.version)(proxy);
+			(self.marshal)(proxy, opcode, interface, version, 0, arguments.as_mut_ptr())
+		}
+	}
+
+	/// Sends `proxy`'s destructor request `opcode`, which takes no
+	/// arguments, and destroys the proxy.
+	///
+	/// # Safety
+	///
+	/// The proxy is live, and `opcode` is its interface's destructor.
+	pub(crate) unsafe fn destroy(&self, proxy: Proxy, opcode: u32) {
+		// SAFETY: as the caller vouches; no arguments are read.
+		unsafe {
+			let version = (self.version)(proxy);
+			(self.marshal)(
+				proxy,
+				opcode,
+				ptr::null(),
+				version,
+				DESTROY,
+				ptr::null_mut(),
+			);
 		}
 	}
 }

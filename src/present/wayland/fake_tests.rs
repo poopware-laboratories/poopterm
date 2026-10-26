@@ -87,6 +87,9 @@ pub(super) struct Wayland {
 	pub lost: bool,
 	/// `wl_display_create_queue` fails.
 	pub no_queue: bool,
+	/// Requests, by the kind of proxy and opcode, that make no object, as
+	/// when libwayland runs out of memory; `(Wrapper, 0)` for wrappers.
+	pub refuse: Vec<(Kind, u32)>,
 	pub requests: usize,
 	/// Requests sent since the last flush, which the compositor has not
 	/// seen.
@@ -110,6 +113,7 @@ impl Default for Wayland {
 			broken: Vec::new(),
 			lost: false,
 			no_queue: false,
+			refuse: Vec::new(),
 			requests: 0,
 			unflushed: 0,
 		}
@@ -326,6 +330,13 @@ impl Wayland {
 		};
 		if flags & DESTROY != 0 {
 			self.objects.get_mut(&id).expect("live").live = false;
+		}
+		if self.refuse.contains(&(kind, opcode)) {
+			// Refused before the compositor saw it: nothing was made.
+			if let Some(made) = made {
+				self.objects.remove(&made);
+			}
+			return ptr::null_mut();
 		}
 		made.map_or(ptr::null_mut(), |made| made as Proxy)
 	}
@@ -573,6 +584,9 @@ unsafe extern "C" fn create_wrapper(display: Proxy) -> Proxy {
 	with(|wayland| {
 		if display != DISPLAY {
 			wayland.broke("wrapped something not the display".into());
+		}
+		if wayland.refuse.contains(&(Kind::Wrapper, 0)) {
+			return ptr::null_mut();
 		}
 		// The display is version 0, and so are its wrappers.
 		wayland.make(Kind::Wrapper, 0, DEFAULT_QUEUE) as Proxy

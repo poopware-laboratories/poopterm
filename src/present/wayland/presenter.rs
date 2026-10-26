@@ -4,22 +4,16 @@
 //! live on our own event queue, so the window system's event loop never
 //! dispatches their events; we do, before each frame.
 use super::{
-	client::{Argument, Client, DESTROY, Proxy, Queue},
+	client::{Argument, Client, Proxy, Queue},
+	events::{Listener, XRGB8888},
 	memory::Memory,
 };
 use crate::present::{
 	copy::{History, Rows},
 	pool::{Pick, Pool},
 };
-use std::{
-	ffi::{CStr, c_int, c_void},
-	io,
-	ptr::{self, NonNull},
-};
+use std::{io, ptr};
 
-/// `WL_SHM_FORMAT_XRGB8888`: our pixels, `0x00RRGGBB` in native order.
-/// Every compositor must offer it.
-const XRGB8888: u32 = 1;
 // Request opcodes, from wayland.xml.
 const GET_REGISTRY: u32 = 1;
 const BIND: u32 = 0;
@@ -56,18 +50,6 @@ pub(crate) enum Presented {
 	Busy,
 }
 
-/// What our event queue's events told us; written by `dispatch` alone,
-/// and read only between dispatches.
-#[derive(Default)]
-struct Events {
-	registry: Proxy,
-	shm: Proxy,
-	/// Each global's name, interface and version.
-	globals: Vec<(u32, Vec<u8>, u32)>,
-	xrgb: bool,
-	released: Vec<Proxy>,
-}
-
 struct Buffer {
 	id: u64,
 	proxy: Proxy,
@@ -84,9 +66,8 @@ pub(crate) struct Presenter {
 	buffers: Vec<Buffer>,
 	pool: Pool,
 	history: History,
-	/// Boxed, so its address stays put while proxies point to it; freed on
-	/// drop, after them.
-	events: NonNull<Events>,
+	/// Dropped after `Drop` destroyed every proxy that writes to it.
+	listener: Listener,
 }
 
 impl Presenter {
@@ -108,7 +89,6 @@ impl Presenter {
 		if queue.is_null() {
 			return Err(Error::Lost);
 		}
-		let events = NonNull::from(Box::leak(Box::default()));
 		let mut presenter = Self {
 			client,
 			display,
@@ -118,7 +98,7 @@ impl Presenter {
 			buffers: Vec::new(),
 			pool: Pool::new(size),
 			history: History::new(),
-			events,
+			listener: Listener::new(),
 		};
 		presenter.bind_shm()?;
 		Ok(presenter)
@@ -127,61 +107,43 @@ impl Presenter {
 	/// Binds the compositor's `wl_shm` on our queue, and learns its formats.
 	fn bind_shm(&mut self) -> Result<(), Error> {
 		let client = &self.client;
-		// SAFETY: the display is live; the wrapper sends from our queue
-		// without moving the display off the window system's.
-		let wrapper = unsafe { (client.create_wrapper)(self.display) };
-		if wrapper.is_null() {
-			return Err(Error::Lost);
-		}
-		// SAFETY: the wrapper and queue are live, the argument array matches
-		// `get_registry`'s signature (one new id), and the wrapper is
-		// destroyed after, which leaves the registry alone.
+		// SAFETY: the display is live. The wrapper sends from our queue
+		// without moving the display off the window system's, and goes once
+		// it made the registry, which stays on our queue.
 		let registry = unsafe {
+			let wrapper = (client.create_wrapper)(self.display);
+			if wrapper.is_null() {
+				return Err(Error::Lost);
+			}
 			(client.set_queue)(wrapper, self.queue);
-			let version = (client.version)(wrapper);
-			let mut new = [Argument {
-				object: ptr::null_mut(),
-			}];
-			let registry = (client.marshal)(
-				wrapper,
-				GET_REGISTRY,
-				client.registry,
-				version,
-				0,
-				new.as_mut_ptr(),
-			);
+			let registry = client.send(wrapper, GET_REGISTRY, client.registry, &mut [Argument::NEW]);
 			(client.destroy_wrapper)(wrapper);
 			registry
 		};
 		if registry.is_null() {
 			return Err(Error::Lost);
 		}
-		self.listen(registry);
-		// SAFETY: written only by `dispatch`, which runs inside the roundtrip.
-		unsafe { (*self.events.as_ptr()).registry = registry };
+		// SAFETY: the registry is ours, on our queue, destroyed below.
+		unsafe { self.listener.listen(client, registry) };
+		self.listener.events().registry = registry;
 		let found = self.roundtrip().map(|()| {
-			// SAFETY: as above; the roundtrip is over.
-			let globals = unsafe { &(*self.events.as_ptr()).globals };
-			globals
+			let globals = &self.listener.events().globals;
+			let shm = globals
 				.iter()
-				.find(|(_, interface, _)| interface == b"wl_shm")
-				.map(|&(name, _, version)| (name, version.min(RELEASE_SHM_SINCE)))
+				.find(|(_, interface, _)| interface == b"wl_shm");
+			shm.map(|&(name, _, version)| (name, version.min(RELEASE_SHM_SINCE)))
 		});
-		let shm = found.map(|name| {
-			name.map(|(name, version)| {
-				let mut arguments = [
-					Argument { uint: name },
-					Argument {
-						string: c"wl_shm".as_ptr(),
-					},
-					Argument { uint: version },
-					Argument {
-						object: ptr::null_mut(),
-					},
-				];
+		let client = &self.client;
+		let shm = found.map(|found| {
+			found.map(|(name, version)| {
+				let interface = Argument {
+					string: c"wl_shm".as_ptr(),
+				};
+				let uint = Argument::uint;
+				let mut arguments = [uint(name), interface, uint(version), Argument::NEW];
 				// SAFETY: the registry is live; the arguments match `bind`'s
-				// signature for a new object of an interface named in it,
-				// at a version it offers that we know.
+				// signature, for a global it offers at a version it offers,
+				// which is also the new object's.
 				unsafe {
 					(client.marshal)(
 						registry,
@@ -195,19 +157,16 @@ impl Presenter {
 			})
 		});
 		// SAFETY: the registry has no destructor request; its proxy goes,
-		// and `dispatch` forgets it.
-		unsafe {
-			(client.destroy_proxy)(registry);
-			(*self.events.as_ptr()).registry = ptr::null_mut();
-		}
+		// and the listener forgets it.
+		unsafe { (client.destroy_proxy)(registry) };
+		self.listener.events().registry = ptr::null_mut();
 		let shm = shm?.filter(|shm| !shm.is_null()).ok_or(Error::NoShm)?;
 		self.shm = shm;
-		self.listen(shm);
-		// SAFETY: as above.
-		unsafe { (*self.events.as_ptr()).shm = shm };
+		// SAFETY: wl_shm is ours, on our queue, destroyed on drop.
+		unsafe { self.listener.listen(&self.client, shm) };
+		self.listener.events().shm = shm;
 		self.roundtrip()?;
-		// SAFETY: as above.
-		match unsafe { (*self.events.as_ptr()).xrgb } {
+		match self.listener.events().xrgb {
 			true => Ok(()),
 			false => Err(Error::NoShm),
 		}
@@ -232,9 +191,7 @@ impl Presenter {
 		if unsafe { (self.client.dispatch_pending)(self.display, self.queue) } < 0 {
 			return Err(Error::Lost);
 		}
-		// SAFETY: dispatching is over.
-		let released = std::mem::take(unsafe { &mut (*self.events.as_ptr()).released });
-		for proxy in released {
+		for proxy in std::mem::take(&mut self.listener.events().released) {
 			let buffer = self.buffers.iter().find(|buffer| buffer.proxy == proxy);
 			if let Some(id) = buffer.map(|buffer| buffer.id)
 				&& self.pool.released(id)
@@ -259,22 +216,14 @@ impl Presenter {
 			.iter_mut()
 			.find(|buffer| buffer.id == id)
 			.expect("made");
-		let proxy = buffer.proxy;
 		let target = buffer.memory.pixels();
-		let rows = match self.history.copy(age, height) {
-			Rows::All => vec![(0, height)],
-			Rows::Some(rows) => rows,
-		};
 		let end = target.len().min(pixels.len());
-		for (start, stop) in rows {
+		for (start, stop) in all_rows(self.history.copy(age, height), height) {
 			let range = (start * width).min(end)..(stop * width).min(end);
 			target[range.clone()].copy_from_slice(&pixels[range]);
 		}
-		let damage = match self.history.damage(height) {
-			Rows::All => vec![(0, height)],
-			Rows::Some(rows) => rows,
-		};
-		self.show(proxy, width, &damage);
+		let proxy = buffer.proxy;
+		self.show(proxy, width, &all_rows(self.history.damage(height), height));
 		self.pool.presented(id);
 		self.history.shown();
 		Ok(Presented::Shown)
@@ -283,31 +232,14 @@ impl Presenter {
 	/// Attaches `buffer` to the surface with `damage` rows of `width`
 	/// pixels changed, commits, and sends it.
 	fn show(&self, buffer: Proxy, width: usize, damage: &[(usize, usize)]) {
-		let client = &self.client;
-		let surface = self.surface;
-		let send = |opcode, arguments: &mut [Argument]| {
-			// SAFETY: the surface is live (`new`'s contract), and each call
-			// below passes the arguments of its request's signature.
-			unsafe {
-				let version = (client.version)(surface);
-				(client.marshal)(
-					surface,
-					opcode,
-					ptr::null(),
-					version,
-					0,
-					arguments.as_mut_ptr(),
-				)
-			};
+		let (client, surface) = (&self.client, self.surface);
+		// SAFETY: the surface is live (`new`'s contract), and each request
+		// passes the arguments of its signature.
+		let send = |opcode, arguments: &mut [Argument]| unsafe {
+			client.send(surface, opcode, ptr::null(), arguments);
 		};
-		send(
-			ATTACH,
-			&mut [
-				Argument { object: buffer },
-				Argument { int: 0 },
-				Argument { int: 0 },
-			],
-		);
+		let int = Argument::int;
+		send(ATTACH, &mut [Argument { object: buffer }, int(0), int(0)]);
 		// SAFETY: the surface is live.
 		let damage_opcode = match unsafe { (client.version)(surface) } {
 			DAMAGE_BUFFER_SINCE.. => DAMAGE_BUFFER,
@@ -315,10 +247,8 @@ impl Presenter {
 			// coordinates as the window system leaves the buffer scale at 1.
 			_ => DAMAGE,
 		};
+		let side = |value: usize| int(value.min(i32::MAX as usize) as i32);
 		for &(start, end) in damage {
-			let side = |value: usize| Argument {
-				int: value.min(i32::MAX as usize) as i32,
-			};
 			send(
 				damage_opcode,
 				&mut [side(0), side(start), side(width), side(end - start)],
@@ -335,66 +265,38 @@ impl Presenter {
 		let [width, height] = size.map(|side| side as usize);
 		// `Memory` keeps the size within what the protocol's `int` holds.
 		let failed = |error| Error::Memory(format!("{width}×{height} pixels: {error}"));
-		let pixels = width
-			.checked_mul(height)
-			.ok_or_else(|| failed(io::ErrorKind::InvalidInput.into()))?;
+		let pixels = width.checked_mul(height);
+		let pixels = pixels.ok_or_else(|| failed(io::ErrorKind::InvalidInput.into()))?;
 		let memory = Memory::new(pixels).map_err(failed)?;
-		let bytes = pixels * 4;
-		let client = &self.client;
-		let mut arguments = [
-			Argument {
-				object: ptr::null_mut(),
-			},
-			Argument { fd: memory.fd() },
-			Argument { int: bytes as i32 },
-		];
+		let (client, int) = (&self.client, |value: usize| Argument::int(value as i32));
+		let mut arguments = [Argument::NEW, Argument { fd: memory.fd() }, int(pixels * 4)];
 		// SAFETY: `wl_shm` is live; the arguments match `create_pool`'s
 		// signature, and sending duplicates the descriptor, which `memory`
 		// keeps open meanwhile.
-		let pool = unsafe {
-			let version = (client.version)(self.shm);
-			(client.marshal)(
-				self.shm,
-				CREATE_POOL,
-				client.shm_pool,
-				version,
-				0,
-				arguments.as_mut_ptr(),
-			)
-		};
+		let pool = unsafe { client.send(self.shm, CREATE_POOL, client.shm_pool, &mut arguments) };
 		if pool.is_null() {
 			return Err(Error::Lost);
 		}
-		let side = |value: usize| Argument { int: value as i32 };
+		let format = Argument::uint(XRGB8888);
+		let shape = [int(0), int(width), int(height), int(width * 4)];
 		let mut arguments = [
-			Argument {
-				object: ptr::null_mut(),
-			},
-			side(0),
-			side(width),
-			side(height),
-			side(width * 4),
-			Argument { uint: XRGB8888 },
+			Argument::NEW,
+			shape[0],
+			shape[1],
+			shape[2],
+			shape[3],
+			format,
 		];
 		// SAFETY: the pool was just made; the arguments match
 		// `create_buffer`'s signature, for a buffer that fills the pool.
-		let proxy = unsafe {
-			let version = (client.version)(pool);
-			(client.marshal)(
-				pool,
-				CREATE_BUFFER,
-				client.buffer,
-				version,
-				0,
-				arguments.as_mut_ptr(),
-			)
-		};
+		let proxy = unsafe { client.send(pool, CREATE_BUFFER, client.buffer, &mut arguments) };
 		if proxy.is_null() {
 			// SAFETY: the pool is live and nothing else uses it.
-			unsafe { destroy(client, pool, DESTROY_POOL) };
+			unsafe { client.destroy(pool, DESTROY_POOL) };
 			return Err(Error::Lost);
 		}
-		self.listen(proxy);
+		// SAFETY: the buffer is ours, on our queue, destroyed by `destroy`.
+		unsafe { self.listener.listen(client, proxy) };
 		self.buffers.push(Buffer {
 			id,
 			proxy,
@@ -414,23 +316,9 @@ impl Presenter {
 		// of a buffer destroyed while it holds it, and its own mapping of
 		// the memory, which is unmapped here.
 		unsafe {
-			destroy(&self.client, buffer.proxy, DESTROY_BUFFER);
-			destroy(&self.client, buffer.pool, DESTROY_POOL);
+			self.client.destroy(buffer.proxy, DESTROY_BUFFER);
+			self.client.destroy(buffer.pool, DESTROY_POOL);
 		}
-	}
-
-	/// Dispatches `proxy`'s events to `dispatch`.
-	fn listen(&self, proxy: Proxy) {
-		// SAFETY: the proxy is live and on our queue; `events` outlives it,
-		// as every proxy is destroyed before it is freed.
-		unsafe {
-			(self.client.add_dispatcher)(
-				proxy,
-				dispatch,
-				self.events.as_ptr().cast_const().cast(),
-				ptr::null_mut(),
-			)
-		};
 	}
 
 	/// Sends what is pending and dispatches our queue until the compositor
@@ -444,6 +332,14 @@ impl Presenter {
 	}
 }
 
+/// `rows` of a buffer `height` rows high, as bands.
+fn all_rows(rows: Rows, height: usize) -> Vec<(usize, usize)> {
+	match rows {
+		Rows::All => vec![(0, height)],
+		Rows::Some(rows) => rows,
+	}
+}
+
 impl Drop for Presenter {
 	fn drop(&mut self) {
 		while let Some(buffer) = self.buffers.last() {
@@ -451,68 +347,16 @@ impl Drop for Presenter {
 		}
 		let client = &self.client;
 		// SAFETY: every proxy on the queue is destroyed first, as libwayland
-		// requires, and nothing dispatches to `events` after.
+		// requires; the listener is freed after this, with nothing left to
+		// write to it.
 		unsafe {
 			if !self.shm.is_null() {
 				match (client.version)(self.shm) {
-					RELEASE_SHM_SINCE.. => destroy(client, self.shm, RELEASE_SHM),
+					RELEASE_SHM_SINCE.. => client.destroy(self.shm, RELEASE_SHM),
 					_ => (client.destroy_proxy)(self.shm),
 				}
 			}
 			(client.destroy_queue)(self.queue);
-			drop(Box::from_raw(self.events.as_ptr()));
 		}
 	}
-}
-
-/// Sends `proxy`'s destructor request `opcode`, which takes no arguments,
-/// and destroys the proxy.
-///
-/// # Safety
-///
-/// The proxy is live, and `opcode` is its interface's destructor.
-unsafe fn destroy(client: &Client, proxy: Proxy, opcode: u32) {
-	// SAFETY: as the caller vouches; no arguments are read.
-	unsafe {
-		let version = (client.version)(proxy);
-		(client.marshal)(
-			proxy,
-			opcode,
-			ptr::null(),
-			version,
-			DESTROY,
-			ptr::null_mut(),
-		);
-	}
-}
-
-/// Records each event on our proxies in the `Events` at `data`.
-unsafe extern "C" fn dispatch(
-	data: *const c_void,
-	target: Proxy,
-	opcode: u32,
-	_message: *const c_void,
-	arguments: *mut Argument,
-) -> c_int {
-	// SAFETY: `data` is the presenter's `Events`, which nothing else
-	// borrows while our queue dispatches; the arguments follow each event's
-	// signature in wayland.xml.
-	unsafe {
-		let events = &mut *data.cast_mut().cast::<Events>();
-		let argument = |index| *arguments.add(index);
-		if target == events.registry && opcode == 0 {
-			// global: name, interface, version.
-			let interface = CStr::from_ptr(argument(1).string).to_bytes().to_vec();
-			events
-				.globals
-				.push((argument(0).uint, interface, argument(2).uint));
-		} else if target == events.shm && opcode == 0 {
-			// format.
-			events.xrgb |= argument(0).uint == XRGB8888;
-		} else if target != events.registry && target != events.shm && opcode == 0 {
-			// A buffer's release.
-			events.released.push(target);
-		}
-	}
-	0
 }
