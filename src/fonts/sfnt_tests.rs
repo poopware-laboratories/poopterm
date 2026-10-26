@@ -364,6 +364,7 @@ fn fixed_with(cmap: Option<Vec<u8>>) -> Vec<u8> {
 	let mut tables = vec![
 		(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])),
 		(b"post", post(true)),
+		maxp(),
 	];
 	tables.extend(cmap.map(|table| (b"cmap", table)));
 	sfnt(&tables, 0)
@@ -409,9 +410,15 @@ fn monospace_fonts_must_map_latin_letters_and_digits() {
 	assert!(!monospace(&fixed_with(Some(cut))));
 }
 
-/// A font named "Glyphs" with `cmap` and, if given, an outline table.
+/// A `maxp` table with `numGlyphs` 0xFFFF, so no glyph is out of range.
+fn maxp() -> (&'static [u8; 4], Vec<u8>) {
+	(b"maxp", vec![0, 0, 0x50, 0, 0xff, 0xff])
+}
+
+/// A font named "Glyphs" with `maxp`, `cmap` and, if given, an outline
+/// table.
 fn covering(cmap: Option<Vec<u8>>, outline: Option<&'static [u8; 4]>) -> FaceInfo {
-	let mut tables = vec![(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")]))];
+	let mut tables = vec![(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])), maxp()];
 	tables.extend(cmap.map(|table| (b"cmap", table)));
 	tables.extend(outline.map(|tag| (tag, vec![0; 4])));
 	faces(&sfnt(&tables, 0)).unwrap().remove(0)
@@ -509,6 +516,7 @@ fn each_face_of_a_collection_has_its_own_coverage() {
 			let tables = [
 				(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])),
 				(b"cmap", cmap(3, 1, format4(ranges))),
+				maxp(),
 			];
 			sfnt(&tables, base)
 		}
@@ -523,10 +531,42 @@ fn each_face_of_a_collection_has_its_own_coverage() {
 fn reversed_format4_segments_add_no_coverage() {
 	// A malformed segment whose start is after its end maps nothing.
 	let face = covering(
-		Some(cmap(3, 1, format4(&[(0x500, 0x400), (0x20, 0x7e)]))),
+		Some(cmap(3, 1, format4(&[(0x7f, 0x7e), (0x80, 0xff)]))),
 		None,
 	);
-	assert_eq!(*face.coverage, [(0x20, 0x7e)]);
+	assert_eq!(*face.coverage, [(0x80, 0xff)]);
+}
+
+/// The characters of the BMP the font engine draws from `subtable`,
+/// looked up one by one. U+FFFF, a noncharacter that only the end segment
+/// lists, is left out as coverage leaves it out.
+fn drawn(subtable: &[u8]) -> Vec<(u32, u32)> {
+	let table = cmap(3, 1, subtable.to_vec());
+	let engine = super::cmap::Cmap::parse(&table, 0).unwrap();
+	let mapped = (0..0xffffu32).filter(|&ch| engine.glyph(&table, ch) != 0);
+	super::coverage::ranges(mapped.map(|ch| (ch, ch)))
+}
+
+#[test]
+fn coverage_is_what_the_lookup_draws_even_from_malformed_format4_tables() {
+	let tables = [
+		// endCode must be sorted; the lookup's binary search then misses
+		// segments, and draws nothing here.
+		format4(&[(0x300, 0x400), (0x20, 0x7e)]),
+		format4(&[(0x20, 0x7e), (0x300, 0x400), (0x100, 0x1ff)]),
+		// Overlapping segments: the first one ending after a character
+		// is the one that maps it.
+		format4(&[(0x20, 0x7e), (0x40, 0x17f)]),
+		// Neighbours merge into one range.
+		format4(&[(0x41, 0x4f), (0x50, 0x5a)]),
+		format4_array(0x23f0, &[5, 6, 0, 7, 8, 0, 0, 9]),
+	];
+	for subtable in &tables {
+		let face = covering(Some(cmap(3, 1, subtable.clone())), None);
+		assert_eq!(*face.coverage, drawn(subtable), "{subtable:02x?}");
+	}
+	assert_eq!(drawn(&tables[0]), []);
+	assert_eq!(drawn(&tables[3]), [(0x41, 0x5a)]);
 }
 
 #[test]
@@ -599,4 +639,38 @@ fn a_format12_group_starting_at_glyph_0_does_not_cover_its_first_character() {
 	table[28 + 8..28 + 12].copy_from_slice(&0u32.to_be_bytes());
 	let face = covering(Some(cmap(3, 10, table)), None);
 	assert_eq!(*face.coverage, [(0x23f5, 0x23f6)]);
+}
+
+#[test]
+fn coverage_stops_at_the_glyph_count_and_needs_maxp() {
+	// Glyphs 1 to 26 for A to Z; with 11 glyphs only A to J can be drawn.
+	let tables = |count: Option<u16>| {
+		let mut tables = vec![
+			(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])),
+			(b"cmap", cmap(3, 1, format4(&[(0x41, 0x5a)]))),
+		];
+		tables.extend(count.map(|count| {
+			let mut table = vec![0, 0, 0x50, 0];
+			table.extend(count.to_be_bytes());
+			(b"maxp", table)
+		}));
+		faces(&sfnt(&tables, 0)).unwrap().remove(0)
+	};
+	assert_eq!(*tables(Some(11)).coverage, [(0x41, 0x4a)]);
+	assert_eq!(*tables(Some(27)).coverage, [(0x41, 0x5a)]);
+	assert_eq!(
+		*tables(Some(26)).coverage,
+		[(0x41, 0x59)],
+		"glyph 26 is past the last"
+	);
+	assert_eq!(*tables(Some(1)).coverage, [], "only .notdef");
+	// The font engine refuses fonts without maxp: nothing is drawn.
+	assert_eq!(*tables(None).coverage, []);
+	// A maxp too short to hold numGlyphs is no better.
+	let mut short = vec![
+		(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])),
+		(b"cmap", cmap(3, 1, format4(&[(0x41, 0x5a)]))),
+	];
+	short.push((b"maxp", vec![0, 0, 0x50, 0, 0xff]));
+	assert_eq!(*faces(&sfnt(&short, 0)).unwrap()[0].coverage, []);
 }

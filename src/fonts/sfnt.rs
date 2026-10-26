@@ -2,14 +2,17 @@
 //! names, weight, slant and spacing, for the font database.
 //!
 //! Written from the OpenType specification. Only the table directory and the
-//! small `name`, `OS/2`, `post`, `head` and `hhea` tables are read, by
-//! seeking, plus `cmap` and, for fonts whose flags do not say monospace,
+//! small `name`, `OS/2`, `post`, `head`, `hhea` and `maxp` tables are read,
+//! by seeking, plus `cmap` and, for fonts whose flags do not say monospace,
 //! `hmtx`, so
 //! listing a 20 MB CJK font costs a few kilobytes of I/O. Font files are
 //! untrusted: every count and offset is bounds-checked and reads are capped.
 use std::io::{self, Read, Seek, SeekFrom};
 
-use super::coverage::{Ranges, Shared, ranges};
+use super::{
+	cmap::Cmap,
+	coverage::{Ranges, Shared},
+};
 
 /// What the database needs to know about one face of a font file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,8 +44,8 @@ const MAX_FACES: u32 = 256;
 const MAX_TABLES: u16 = 512;
 /// Name tables of large CJK families reach a few hundred kilobytes.
 const MAX_NAME_TABLE: u32 = 1 << 20;
-/// More `cmap` groups than any real font has.
-const MAX_GROUPS: usize = 1 << 17;
+/// `cmap` tables of the largest CJK fonts are under a megabyte.
+const MAX_CMAP: u32 = 4 << 20;
 
 /// Lists the faces in a font file. A collection skips faces it cannot read;
 /// a single font that cannot be read is an error. Faces without a family
@@ -134,8 +137,13 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 			_ => false,
 		};
 	// Emoji and symbol fonts are fixed pitch too; a terminal font needs text.
+	// Glyphs at or past maxp.numGlyphs are drawn as .notdef; without maxp
+	// the font does not load.
+	let glyphs = find(b"maxp")
+		.and_then(|(offset, length)| (length >= 6).then(|| read_at(file, offset, 6).ok())?)
+		.map_or(0, |maxp| be16(&maxp, 4));
 	let (latin, coverage) = find(b"cmap").map_or_else(Default::default, |(offset, length)| {
-		read_cmap(file, offset, length).unwrap_or_default()
+		read_cmap(file, offset, length, glyphs).unwrap_or_default()
 	});
 	let monospace = fixed_width && latin;
 	let drawable = [b"glyf", b"CFF ", b"CFF2", b"CBDT"]
@@ -235,127 +243,20 @@ fn latin() -> impl Iterator<Item = u32> {
 }
 
 /// Whether the `cmap` table at `offset` maps every [`latin`] character to
-/// a glyph, and the code points it maps to glyphs other than 0, from its
-/// best Unicode subtable (format 12 or format 4).
-fn read_cmap<R: Read + Seek>(file: &mut R, offset: u64, length: u32) -> io::Result<(bool, Ranges)> {
-	let header = read_at(file, offset, 4)?;
-	let count = usize::from(be16(&header, 2)).min(256);
-	let records = read_at(file, offset + 4, 8 * count)?;
-	let best = records
-		.as_chunks::<8>()
-		.0
-		.iter()
-		.filter_map(|record| {
-			let rank = match (be16(record, 0), be16(record, 2)) {
-				(3, 10) | (0, 4 | 6) => 0,
-				(3, 1) | (0, 0..=3) => 1,
-				_ => return None,
-			};
-			Some((rank, be32(record, 4)))
-		})
-		.filter(|&(_, at)| at < length)
-		.min();
-	let Some((_, at)) = best else {
+/// a glyph, and the characters it maps to glyphs below `glyphs`, read from
+/// the subtable the font engine uses, so the two agree exactly.
+fn read_cmap<R: Read + Seek>(
+	file: &mut R,
+	offset: u64,
+	length: u32,
+	glyphs: u16,
+) -> io::Result<(bool, Ranges)> {
+	let table = read_at(file, offset, length.min(MAX_CMAP) as usize)?;
+	let Some(cmap) = Cmap::parse(&table, 0) else {
 		return Ok((false, Vec::new()));
 	};
-	let start = offset + u64::from(at);
-	let head = read_at(file, start, 4)?;
-	Ok(match be16(&head, 0) {
-		4 => {
-			let size = usize::from(be16(&head, 2)).min((length - at) as usize);
-			let table = read_at(file, start, size)?;
-			(
-				latin().all(|ch| format4_glyph(&table, ch).is_some_and(|glyph| glyph != 0)),
-				format4_coverage(&table),
-			)
-		}
-		12 => {
-			let head = read_at(file, start, 16)?;
-			let groups = (be32(&head, 12) as usize)
-				.min(MAX_GROUPS)
-				.min(((length - at) as usize).saturating_sub(16) / 12);
-			let groups = read_at(file, start + 16, 12 * groups)?;
-			let groups = groups.as_chunks::<12>().0;
-			let latin = latin().all(|ch| {
-				groups.iter().any(|group| {
-					let (first, last) = (be32(group, 0), be32(group, 4));
-					(first..=last).contains(&ch) && be32(group, 8).wrapping_add(ch - first) != 0
-				})
-			});
-			// A group starting at glyph 0 maps its first character to nothing.
-			let mapped = groups.iter().map(|group| {
-				let (first, last) = (be32(group, 0), be32(group, 4));
-				(first.saturating_add(u32::from(be32(group, 8) == 0)), last)
-			});
-			(latin, ranges(mapped))
-		}
-		_ => (false, Vec::new()),
-	})
-}
-
-/// The glyph a format 4 `cmap` subtable maps `ch` to; `None` if malformed.
-fn format4_glyph(table: &[u8], ch: u32) -> Option<u16> {
-	let ch = u16::try_from(ch).ok()?;
-	let segments = usize::from(get16(table, 6)? / 2);
-	let segment = (0..segments).find(|&i| get16(table, 14 + 2 * i).is_some_and(|end| end >= ch))?;
-	let start = get16(table, 16 + 2 * segments + 2 * segment)?;
-	if ch < start {
-		return Some(0);
-	}
-	segment_glyph(table, segments, segment, ch)
-}
-
-/// The code points a format 4 `cmap` subtable maps to glyphs other than 0.
-/// Segments are walked character by character, as glyph arrays can map
-/// some of a segment's characters to glyph 0; a malformed segment ends
-/// where it can no longer be read.
-fn format4_coverage(table: &[u8]) -> Ranges {
-	let segments = get16(table, 6).map_or(0, |count| usize::from(count / 2));
-	let mut runs: Vec<(u32, u32)> = Vec::new();
-	for segment in 0..segments {
-		let bounds = get16(table, 16 + 2 * segments + 2 * segment).zip(get16(table, 14 + 2 * segment));
-		let Some((start, end)) = bounds else { break };
-		// The last segment, 0xFFFF alone, only ends the table.
-		if start == 0xffff {
-			continue;
-		}
-		for ch in start..=end {
-			match segment_glyph(table, segments, segment, ch) {
-				None => break,
-				Some(0) => {}
-				Some(_) => match runs.last_mut() {
-					Some((_, last)) if *last + 1 == u32::from(ch) => *last += 1,
-					_ => runs.push((ch.into(), ch.into())),
-				},
-			}
-		}
-	}
-	ranges(runs)
-}
-
-/// The glyph `segment` of a format 4 subtable with `segments` segments
-/// maps `ch` to, for `ch` at or after the segment's start.
-fn segment_glyph(table: &[u8], segments: usize, segment: usize, ch: u16) -> Option<u16> {
-	let starts = 16 + 2 * segments;
-	let (deltas, ranges) = (starts + 2 * segments, starts + 4 * segments);
-	let start = get16(table, starts + 2 * segment)?;
-	let delta = get16(table, deltas + 2 * segment)?;
-	let range = get16(table, ranges + 2 * segment)?;
-	if range == 0 {
-		return Some(ch.wrapping_add(delta));
-	}
-	let at = ranges + 2 * segment + usize::from(range) + 2 * usize::from(ch - start);
-	Some(match get16(table, at)? {
-		0 => 0,
-		glyph => glyph.wrapping_add(delta),
-	})
-}
-
-/// The big-endian `u16` at `at` in `table`, if it is there.
-fn get16(table: &[u8], at: usize) -> Option<u16> {
-	table
-		.get(at..at + 2)
-		.map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+	let latin = latin().all(|ch| cmap.glyph(&table, ch) != 0);
+	Ok((latin, cmap.coverage(&table, glyphs)))
 }
 
 /// Whether every non-zero advance width among the `len` bytes of `hmtx`

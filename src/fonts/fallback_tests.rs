@@ -36,6 +36,11 @@ pub(crate) fn font_mapping(pairs: &[(char, char)]) -> Vec<u8> {
 			cmap.extend(value.to_be_bytes());
 		}
 	}
+	with_cmap(&cmap)
+}
+
+/// The bundled font with its `cmap` table replaced by `cmap`.
+pub(crate) fn with_cmap(cmap: &[u8]) -> Vec<u8> {
 	let be = |at: usize, len: usize| {
 		BUNDLED[at..at + len]
 			.iter()
@@ -55,7 +60,7 @@ pub(crate) fn font_mapping(pairs: &[(char, char)]) -> Vec<u8> {
 	tables
 		.iter_mut()
 		.filter(|(tag, _)| tag == b"cmap")
-		.for_each(|(_, table)| *table = cmap.clone());
+		.for_each(|(_, table)| *table = cmap.to_vec());
 	let mut out = BUNDLED[..12].to_vec();
 	let mut offset = 12 + 16 * count;
 	let mut data = Vec::new();
