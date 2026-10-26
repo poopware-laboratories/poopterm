@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.10.131 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Show software frames on Wayland through our own wl_shm presenter (#171) (present).
+- Choose the renderer and draw a window on the GPU (#172) (gpu).
+
 ## 26.10.130 "Giga Fly" — 2026-10-26
 
 ### Added
