@@ -302,3 +302,37 @@ fn a_swapchain_waits_for_the_queue_before_it_or_its_semaphores_go() {
 	drop((commands, device, surface));
 	finish();
 }
+
+#[test]
+fn an_acquire_semaphore_that_cannot_be_made_is_an_error_and_acquires_nothing() {
+	let mut window = window(showing());
+	// VK_ERROR_OUT_OF_HOST_MEMORY.
+	with(|driver| driver.fails = vec![(c"vkCreateSemaphore", -1)]);
+	let acquired = window.swapchain.acquire(Duration::MAX).err();
+	assert_eq!(acquired, Some(Error::Failed(-1)));
+	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
+	// Nothing was left half made: the next try starts afresh.
+	with(|driver| driver.fails.clear());
+	assert_eq!(window.frame(), Ok(Presented::Shown));
+	assert_eq!(with(|driver| driver.semaphores.len()), 6);
+	window.close();
+}
+
+#[test]
+fn a_swapchain_whose_semaphores_cannot_be_made_releases_its_views_and_itself() {
+	let instance = window_instance(install(showing()), Platform::Wayland);
+	let physical = instance.physical_devices().unwrap()[0];
+	let device = Rc::new(Device::for_windows(instance.clone(), physical, 0).unwrap());
+	let surface = Rc::new(surface(&instance, WAYLAND).unwrap());
+	with(|driver| driver.fails = vec![(c"vkCreateSemaphore", -2)]);
+	let made = Swapchain::new(&device, &surface, plan()).err();
+	assert_eq!(made, Some(Error::Failed(-2)));
+	// The views first, as they hold the swapchain, and no idle wait, as
+	// nothing could have used it.
+	let views = (1..=4).map(|n| format!("view {:#x}", 0xf0_0000 + n));
+	let expected: Vec<_> = views.chain(["swapchain 0x60001".into()]).collect();
+	let driver = with(|driver| (driver.released.clone(), driver.idle_waits));
+	assert_eq!(driver, (expected, 0));
+	drop((device, surface));
+	assert!(finish().live_swapchains.is_empty());
+}
