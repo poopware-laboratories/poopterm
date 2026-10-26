@@ -83,3 +83,17 @@ pub(crate) fn fake_leaked() -> usize {
 pub(crate) fn on_real_surface<R>(f: impl FnOnce(Proxy, Proxy) -> R) -> Option<R> {
 	super::real_tests::on_real_surface(f)
 }
+
+/// The compositor offers no `wl_shm` at all.
+pub(crate) fn fake_without_shm() {
+	with(|wayland| {
+		wayland
+			.globals
+			.retain(|&(_, interface, _)| interface != c"wl_shm")
+	});
+}
+
+/// Making proxy wrappers fails, as when libwayland runs out of memory.
+pub(crate) fn fake_refuse_wrappers() {
+	with(|wayland| wayland.refuse.push((Kind::Wrapper, 0)));
+}

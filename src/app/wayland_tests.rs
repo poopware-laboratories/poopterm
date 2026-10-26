@@ -8,8 +8,8 @@ use crate::{
 		client::{Client, Proxy},
 		outside_tests::{
 			FAKE_DISPLAY, fake_broken, fake_client, fake_damage, fake_leaked, fake_lose,
-			fake_refuse_pools, fake_release_all, fake_shown, fake_surface, fake_without_xrgb,
-			on_real_surface,
+			fake_refuse_pools, fake_refuse_wrappers, fake_release_all, fake_shown, fake_surface,
+			fake_without_shm, fake_without_xrgb, on_real_surface,
 		},
 		presenter::{Error, Presenter},
 	},
@@ -108,6 +108,48 @@ fn a_compositor_without_our_pixel_format_leaves_nothing_behind() {
 }
 
 #[test]
+fn a_compositor_without_shared_memory_or_wrappers_leaves_nothing_behind() {
+	for fail in [fake_without_shm, fake_refuse_wrappers] {
+		let client = fake_client();
+		let surface = fake_surface(6);
+		fail();
+		// SAFETY: the fake's display and surface live as long as the thread.
+		let presenter = unsafe { open(Some((FAKE_DISPLAY, surface)), || Ok(client)) };
+		assert!(presenter.is_none());
+		assert_eq!(fake_leaked(), 0);
+		rules_kept();
+	}
+}
+
+#[test]
+fn a_new_presenters_first_frame_is_copied_whole_even_with_bands() {
+	// As after the GPU fails: the window's canvas goes on in part, but
+	// nothing of it was ever shown through this presenter.
+	let mut presenter = opened();
+	let pixels = frame(3, 1);
+	assert_eq!(
+		present(&mut presenter, &pixels, WIDTH, Some(&[(1, 2)])),
+		Shown::Done
+	);
+	assert_eq!(fake_shown(), [([WIDTH, 3], pixels)]);
+	assert_eq!(fake_damage(), [vec![[0, 0, WIDTH as i32, 3]]]);
+	rules_kept();
+}
+
+#[test]
+fn bands_past_the_bottom_damage_only_rows_of_the_frame() {
+	let mut presenter = opened();
+	present(&mut presenter, &frame(3, 1), WIDTH, None);
+	let bands = [(2, 9), (12, 20)];
+	assert_eq!(
+		present(&mut presenter, &frame(3, 2), WIDTH, Some(&bands)),
+		Shown::Done
+	);
+	assert_eq!(fake_damage().last().unwrap(), &[[0, 2, WIDTH as i32, 1]]);
+	rules_kept();
+}
+
+#[test]
 fn a_whole_frame_is_shown_at_the_height_its_pixels_make() {
 	let mut presenter = opened();
 	let pixels = frame(3, 1);
@@ -201,6 +243,30 @@ fn a_frame_with_every_buffer_held_is_tried_again_and_loses_nothing() {
 	assert_eq!(fake_shown().last(), Some(&([WIDTH, 3], expected)));
 	let damage = fake_damage().pop().unwrap();
 	assert_eq!(damage, [[0, 0, WIDTH as i32, 1], [0, 2, WIDTH as i32, 1]]);
+	rules_kept();
+}
+
+#[test]
+fn a_resize_shows_at_once_while_the_old_buffers_are_held() {
+	let mut presenter = opened();
+	for number in 1..=3 {
+		present(&mut presenter, &frame(3, number), WIDTH, None);
+	}
+	assert_eq!(
+		present(&mut presenter, &frame(3, 4), WIDTH, None),
+		Shown::Retry
+	);
+	let shorter = frame(2, 5);
+	assert_eq!(present(&mut presenter, &shorter, WIDTH, None), Shown::Done);
+	assert_eq!(fake_shown().last(), Some(&([WIDTH, 2], shorter)));
+	// The old buffers go as the compositor lets go of them.
+	fake_release_all();
+	assert_eq!(
+		present(&mut presenter, &frame(2, 6), WIDTH, None),
+		Shown::Done
+	);
+	drop(presenter);
+	assert_eq!(fake_leaked(), 0);
 	rules_kept();
 }
 
