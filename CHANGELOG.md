@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.124 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Draw the grid with the vulkan renderer (#164) (gpu).
+
 ## 26.10.123 "Giga Fly" — 2026-10-25
 
 ### Added
