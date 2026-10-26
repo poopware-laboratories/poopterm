@@ -269,10 +269,12 @@ and position, and placeholder slices row by row.
   font is resolved only on a cache miss. The order is fixed: the primary
   font, the configured fallbacks, then installed fonts. For those,
   `fonts::fallback::SystemFallback` opens the font database on the first
-  missing character (each face records the Unicode pages its `cmap` maps),
-  ranks the faces that cover the character's page (memoized per page), and
-  returns the best ranked one that has it, loading candidates on the way: at
-  most four per character and 32 in all. A character's font therefore never
+  missing character (each face records the exact characters its `cmap` maps
+  to glyphs it has, read through the same `fonts::cmap::Cmap` lookup that
+  draws them, and the cache stores each distinct set once), ranks the faces
+  that have the character (memoized per character), and returns the best
+  ranked one, loading candidates on the way: at most four per character and
+  32 in all. A character's font therefore never
   depends on what was drawn before (#127).
 
   ```mermaid
@@ -282,7 +284,7 @@ and position, and placeholder slices row by row.
   	cache -- miss --> primary["primary font<br/>POOPTERM_FONT, font_path,<br/>font_family or bundled"]
   	primary -- missing --> bundled["bundled DejaVu Sans Mono<br/>(when the primary is custom)"]
   	bundled -- missing --> symbols["up to 8 installed Nerd Font,<br/>Symbol and Awesome fonts"]
-  	symbols -- missing --> system["installed fonts covering the page,<br/>ranked: monospace, regular, small"]
+  	symbols -- missing --> system["installed fonts that map it,<br/>ranked: monospace, regular, small"]
   	primary & bundled & symbols & system -- has it --> done
   ```
 - Emoji-presentation characters, and those with VS16, prefer a font with a
