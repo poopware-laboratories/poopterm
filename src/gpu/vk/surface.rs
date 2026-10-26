@@ -169,15 +169,22 @@ impl Surface {
 		device: &mut Device,
 	) -> Result<(), Error> {
 		for (index, family) in device.families.iter_mut().enumerate() {
-			let mut supported = 0;
-			// SAFETY: `physical` is one of the instance's devices, `index` one
-			// of its families, the surface is live and `supported` writable.
-			check(unsafe {
-				(self.functions.support)(physical, index as u32, self.handle, &mut supported)
-			})?;
-			family.present = supported != 0;
+			family.present = self.shows(physical, index as u32)?;
 		}
 		Ok(())
+	}
+
+	/// Whether queues of `family`, one of `physical`'s, can show on it.
+	pub(crate) fn shows(&self, physical: RawPhysicalDevice, family: u32) -> Result<bool, Error> {
+		let mut supported = 0;
+		// SAFETY: `physical` is one of the instance's devices, `family` one
+		// of its families, the surface is live and `supported` writable.
+		check(unsafe { (self.functions.support)(physical, family, self.handle, &mut supported) })?;
+		Ok(supported != 0)
+	}
+
+	pub(super) fn handle(&self) -> RawSurface {
+		self.handle
 	}
 
 	/// The swapchain to make on `physical`, one of the instance's devices,

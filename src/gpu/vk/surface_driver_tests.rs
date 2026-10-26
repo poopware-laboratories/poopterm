@@ -203,6 +203,9 @@ unsafe extern "system" fn destroy_surface(
 		if !allocator.is_null() {
 			(driver.invalid).push("vkDestroySurfaceKHR: an allocator".into());
 		}
+		if (driver.live_swapchains.iter()).any(|live| live.surface == surface) {
+			(driver.invalid).push("vkDestroySurfaceKHR while its swapchain is live".into());
+		}
 		let before = driver.live_surfaces.len();
 		(driver.live_surfaces).retain(|&live| live != (instance, surface));
 		if driver.live_surfaces.len() == before {

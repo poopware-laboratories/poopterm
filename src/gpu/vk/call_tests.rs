@@ -33,6 +33,14 @@ fn errors_say_what_failed() {
 		(Error::Spirv, "a shader is not SPIR-V for Vulkan 1.3"),
 		(Error::Draw, "a Vulkan draw of quads it cannot draw"),
 		(Error::Busy, "a Vulkan quad set still in use"),
+		(
+			Error::Foreign,
+			"a Vulkan device and surface of different instances",
+		),
+		(
+			Error::Unshown,
+			"the Vulkan device cannot show on the window's surface",
+		),
 	];
 	for (error, text) in cases {
 		assert!(error.to_string().contains(text), "{error:?}: {error}");

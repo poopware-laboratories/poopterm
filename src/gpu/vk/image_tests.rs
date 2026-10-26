@@ -281,6 +281,10 @@ unsafe extern "system" fn destroy_image(
 		driver.require(live, || {
 			format!("vkDestroyImage: {image:#x}, which is not live")
 		});
+		let ours = !driver.presentable(image);
+		driver.require(ours, || {
+			format!("vkDestroyImage: {image:#x}, a swapchain's")
+		});
 		driver.live_images.retain(|&other| other != image);
 		driver.released.push(format!("image {image:#x}"));
 	})

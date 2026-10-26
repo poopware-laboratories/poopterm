@@ -6,6 +6,8 @@ use super::{
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
+pub(crate) const SWAPCHAIN: &CStr = c"VK_KHR_swapchain";
+
 /// The device's functions other than `vkDestroyDevice`.
 pub(super) struct Functions {
 	pub get_queue: GetDeviceQueue,
@@ -131,20 +133,43 @@ pub(crate) struct Device {
 	pub(super) image_limits: [u32; 2],
 	queue: RawQueue,
 	family: u32,
+	pub(super) physical: RawPhysicalDevice,
+	/// Whether it was made to show in windows, with `VK_KHR_swapchain`.
+	pub(super) swapchain: bool,
 	destroy: DestroyDevice,
 	/// Dropped after the device is destroyed, as it was made from it.
-	_instance: Rc<Instance>,
+	pub(super) instance: Rc<Instance>,
 }
 
 impl Device {
 	/// A device on `physical`, one of the instance's, with one queue of
-	/// `family`.
+	/// `family`, drawing offscreen.
 	pub(crate) fn new(
 		instance: Rc<Instance>,
 		physical: RawPhysicalDevice,
 		family: u32,
 	) -> Result<Self, Error> {
-		let handle = instance.create_device(physical, family)?;
+		Self::make(instance, physical, family, false)
+	}
+
+	/// A device as [`Self::new`] makes, that also shows in windows: its
+	/// family must show on their surfaces.
+	pub(crate) fn for_windows(
+		instance: Rc<Instance>,
+		physical: RawPhysicalDevice,
+		family: u32,
+	) -> Result<Self, Error> {
+		Self::make(instance, physical, family, true)
+	}
+
+	fn make(
+		instance: Rc<Instance>,
+		physical: RawPhysicalDevice,
+		family: u32,
+		swapchain: bool,
+	) -> Result<Self, Error> {
+		let extensions: &[_] = if swapchain { &[SWAPCHAIN] } else { &[] };
+		let handle = instance.create_device(physical, family, extensions)?;
 		// A driver without it is broken, and the device leaks.
 		// SAFETY: the function the driver returned for this name has this type.
 		let destroy: DestroyDevice =
@@ -172,8 +197,10 @@ impl Device {
 			],
 			queue,
 			family,
+			physical,
+			swapchain,
 			destroy,
-			_instance: instance,
+			instance,
 		})
 	}
 

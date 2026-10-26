@@ -17,6 +17,7 @@ use super::{
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
 	surface::{Platform, Surface, Window},
+	swapchain::Swapchain,
 	swapchain_plan::Plan,
 	timeline::Timeline,
 	version::major_minor,
@@ -162,32 +163,41 @@ fn child() {
 }
 
 /// The swapchain planned for a 64×48 headless window on each device with
-/// a family that shows on it.
-fn headless_plans(entry: Entry) -> Result<Vec<Plan>, Error> {
+/// a family that shows on it, and how many images it has once made and
+/// remade at 32×24.
+fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize)>, Error> {
 	let instance = Rc::new(entry.create_window_instance(c"poopterm tests", Platform::Headless)?);
 	// SAFETY: a headless surface has no window handles to keep live.
-	let surface = unsafe { Surface::new(&instance, Window::Headless) }?;
-	let mut plans = Vec::new();
+	let surface = Rc::new(unsafe { Surface::new(&instance, Window::Headless) }?);
+	let mut made = Vec::new();
 	for physical in instance.physical_devices()? {
 		let mut device = instance.describe(physical)?;
 		surface.mark_present(physical, &mut device)?;
-		if device.families.iter().any(|family| family.present) {
-			plans.push(surface.plan(physical, [64, 48])?);
-		}
+		let Some(family) = device.families.iter().position(|family| family.present) else {
+			continue;
+		};
+		let device = Rc::new(Device::for_windows(
+			instance.clone(),
+			physical,
+			family as u32,
+		)?);
+		let plan = surface.plan(physical, [64, 48])?;
+		let swapchain = Swapchain::new(&device, &surface, plan.clone())?;
+		let smaller = surface.plan(physical, [32, 24])?;
+		let swapchain = swapchain.recreate(smaller)?;
+		made.push((plan, swapchain.images().len()));
 	}
-	Ok(plans)
+	Ok(made)
 }
 
-/// Whether some device shows on a headless surface, and its swapchain
-/// takes the window's size.
+/// Whether some device shows on a headless surface, its swapchain takes
+/// the window's size, and it has at least the images asked for.
 fn headless_shows(entry: Entry) -> Result<bool, Error> {
-	let plans = headless_plans(entry)?;
-	Ok(
-		!plans.is_empty()
-			&& plans
-				.iter()
-				.all(|plan| plan.extent == [64, 48] && plan.images >= 2),
-	)
+	let made = headless_swapchains(entry)?;
+	let fits = |(plan, images): &(Plan, usize)| {
+		plan.extent == [64, 48] && plan.images >= 2 && *images >= plan.images as usize
+	};
+	Ok(!made.is_empty() && made.iter().all(fits))
 }
 
 #[test]

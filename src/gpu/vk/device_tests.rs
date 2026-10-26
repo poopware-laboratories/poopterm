@@ -27,6 +27,7 @@ pub(super) struct Made {
 	pub priorities: Vec<f32>,
 	/// The features turned on: the structure's type and the flag's index.
 	pub enabled: Vec<(i32, usize)>,
+	pub extensions: Vec<String>,
 }
 
 /// One structure of a `pNext` chain, as every Vulkan structure begins.
@@ -148,7 +149,10 @@ pub(super) unsafe extern "system" fn create_device(
 			),
 			(one_queue, "one queue create info"),
 			(info.enabled_layer_count == 0, "no layers"),
-			(info.enabled_extension_count == 0, "no extensions"),
+			(
+				info.enabled_extension_count == 0 || !info.enabled_extension_names.is_null(),
+				"ppEnabledExtensionNames",
+			),
 			(
 				info.enabled_features.is_null(),
 				"pEnabledFeatures with a chain",
@@ -158,6 +162,18 @@ pub(super) unsafe extern "system" fn create_device(
 		(driver.invalid).extend(broken.map(|(_, rule)| format!("vkCreateDevice: {rule}")));
 		if !one_queue {
 			return -3;
+		}
+		let extensions: Vec<String> = (0..info.enabled_extension_count as usize)
+			.filter(|_| !info.enabled_extension_names.is_null())
+			// SAFETY: as many C strings as the count says.
+			.map(|index| unsafe { CStr::from_ptr(*info.enabled_extension_names.add(index)) })
+			.map(|name| name.to_string_lossy().into())
+			.collect();
+		let offered = |name: &String| device.swapchain && name == "VK_KHR_swapchain";
+		if let Some(name) = extensions.iter().find(|name| !offered(name)) {
+			(driver.invalid).push(format!("vkCreateDevice: {name}, which the device lacks"));
+			// VK_ERROR_EXTENSION_NOT_PRESENT.
+			return -7;
 		}
 		// SAFETY: checked non-null; it lives across the call.
 		let queue = unsafe { &*info.queue_create_infos };
@@ -219,6 +235,7 @@ pub(super) unsafe extern "system" fn create_device(
 			family: queue.queue_family_index,
 			priorities,
 			enabled,
+			extensions,
 		});
 		let device = (0x5000 + 0x100 * driver.made.len()) as RawDevice;
 		driver.live_devices.push(device);
@@ -262,6 +279,9 @@ unsafe extern "system" fn destroy_device(device: RawDevice, allocator: *const c_
 		}
 		if !driver.live_images.is_empty() || !driver.live_views.is_empty() {
 			(driver.invalid).push("vkDestroyDevice while images or views are live".into());
+		}
+		if !driver.live_swapchains.is_empty() {
+			(driver.invalid).push("vkDestroyDevice while swapchains are live".into());
 		}
 		if !driver.live_semaphores.is_empty() {
 			(driver.invalid).push("vkDestroyDevice while semaphores are live".into());
@@ -334,10 +354,51 @@ fn a_device_turns_on_exactly_the_needed_features_with_one_queue() {
 		family: 1,
 		priorities: vec![1.0],
 		enabled: vec![(51, 37), (53, 9), (53, 12)],
+		extensions: vec![],
 	};
 	assert_eq!(driver.made, [made]);
 	assert_eq!(driver.destroyed_devices, handle);
 	assert_eq!(driver.destroyed.len(), 1);
+}
+
+#[test]
+fn a_device_for_windows_turns_on_the_swapchain_extension_alone() {
+	let (instance, physical) = open(with_devices(&[drawing(api_version(1, 3))]));
+	let offscreen = Device::new(instance.clone(), physical, 1).unwrap();
+	let windows = Device::for_windows(instance, physical, 1).unwrap();
+	assert_eq!((offscreen.swapchain, windows.swapchain), (false, true));
+	assert_eq!(windows.physical, physical);
+	drop((offscreen, windows));
+	let made = finish().made;
+	let extensions: Vec<_> = made.iter().map(|made| made.extensions.clone()).collect();
+	assert_eq!(extensions, [vec![], vec!["VK_KHR_swapchain".to_string()]]);
+	// Both have the same features and queue.
+	assert_eq!(
+		(&made[0].enabled, made[0].family),
+		(&made[1].enabled, made[1].family)
+	);
+}
+
+#[test]
+fn a_device_that_cannot_show_in_windows_is_not_made_for_them() {
+	let lacking = Described {
+		swapchain: false,
+		..drawing(api_version(1, 3))
+	};
+	let (instance, physical) = open(with_devices(&[lacking]));
+	// VK_ERROR_EXTENSION_NOT_PRESENT, from a driver as it must answer.
+	let error = Device::for_windows(instance.clone(), physical, 1).err();
+	assert_eq!(error, Some(Error::Failed(-7)));
+	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
+	assert_eq!(
+		invalid,
+		["vkCreateDevice: VK_KHR_swapchain, which the device lacks"]
+	);
+	// Offscreen it still draws.
+	assert!(Device::new(instance, physical, 1).is_ok());
+	let driver = finish();
+	assert_eq!(driver.made.len(), 1);
+	assert_eq!(driver.destroyed_devices.len(), 1);
 }
 
 #[test]
@@ -593,6 +654,27 @@ fn the_fake_driver_reports_broken_device_rules() {
 		..device_info(&good, ptr::null())
 	};
 	assert_eq!(create(&layers, physical[0]).1, one("no layers"));
+	let unnamed = DeviceCreateInfo {
+		enabled_extension_count: 1,
+		..device_info(&good, ptr::null())
+	};
+	assert_eq!(
+		create(&unnamed, physical[0]).1,
+		one("ppEnabledExtensionNames")
+	);
+	let names = [
+		c"VK_KHR_swapchain".as_ptr(),
+		c"VK_KHR_maintenance9".as_ptr(),
+	];
+	let unknown = DeviceCreateInfo {
+		enabled_extension_count: 2,
+		enabled_extension_names: names.as_ptr(),
+		..device_info(&good, ptr::null())
+	};
+	assert_eq!(
+		create(&unknown, physical[0]),
+		(-7, one("VK_KHR_maintenance9, which the device lacks"))
+	);
 	let queues = [
 		(
 			DeviceQueueCreateInfo {

@@ -17,17 +17,17 @@ use super::{
 };
 use std::rc::Rc;
 
-const BGRA: SurfaceFormat = SurfaceFormat {
+pub(super) const BGRA: SurfaceFormat = SurfaceFormat {
 	format: 44,
 	color_space: SRGB_NONLINEAR,
 };
-const BGRA_SRGB: SurfaceFormat = SurfaceFormat {
+pub(super) const BGRA_SRGB: SurfaceFormat = SurfaceFormat {
 	format: 50,
 	color_space: SRGB_NONLINEAR,
 };
 
 /// Mesa's answer on Wayland for an Intel ADL-N.
-fn mesa_wayland() -> Capabilities {
+pub(super) fn mesa_wayland() -> Capabilities {
 	Capabilities {
 		min_images: 4,
 		max_images: 0,

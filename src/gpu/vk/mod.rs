@@ -86,9 +86,17 @@ mod surface_query_tests;
 pub(crate) mod surface_types;
 #[cfg(test)]
 mod surface_types_tests;
+pub(crate) mod swapchain;
+#[cfg(test)]
+mod swapchain_driver_tests;
 pub(crate) mod swapchain_plan;
 #[cfg(test)]
 mod swapchain_plan_tests;
+#[cfg(test)]
+mod swapchain_tests;
+pub(crate) mod swapchain_types;
+#[cfg(test)]
+mod swapchain_types_tests;
 pub(crate) mod timeline;
 #[cfg(test)]
 mod timeline_tests;

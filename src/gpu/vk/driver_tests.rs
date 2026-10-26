@@ -17,6 +17,7 @@ use super::{
 	submit_types::RawCommandPool,
 	surface_driver_tests::{self, MadeSurface},
 	surface_types::{EnumerateInstanceExtensionProperties, RawSurface},
+	swapchain_driver_tests::{LiveSwapchain, MadeSwapchain},
 	swapchain_plan::{Capabilities, SurfaceFormat},
 	types::*,
 	version::api_version,
@@ -102,6 +103,8 @@ pub(super) struct Driver {
 	/// The surface queries made, in order.
 	pub surface_queries: Vec<&'static str>,
 	pub live_surfaces: Vec<(RawInstance, RawSurface)>,
+	pub swapchains: Vec<MadeSwapchain>,
+	pub live_swapchains: Vec<LiveSwapchain>,
 	pub pipeline_objects: Objects,
 	/// Buffers, images, views, semaphores, pools, shader modules, samplers,
 	/// layouts and pipelines destroyed and memory freed, in order.
@@ -206,6 +209,12 @@ pub(super) fn with<T>(f: impl FnOnce(&mut Driver) -> T) -> T {
 /// An entry whose loader is `driver`, for this thread.
 pub(super) fn install(driver: Driver) -> Entry {
 	with(|installed| *installed = driver);
+	installed()
+}
+
+/// Another entry whose loader is the driver installed, as a second
+/// instance in one process uses it.
+pub(super) fn installed() -> Entry {
 	Entry {
 		get_instance_proc_addr,
 		_library: None,

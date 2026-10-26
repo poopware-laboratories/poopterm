@@ -43,6 +43,10 @@ pub(crate) enum Error {
 	Busy,
 	/// No swapchain suits the window's surface, or not for now.
 	Unfit(Unfit),
+	/// A swapchain on a device and surface of different instances.
+	Foreign,
+	/// A swapchain on a surface the device's queue cannot show on.
+	Unshown,
 }
 
 impl fmt::Display for Error {
@@ -76,6 +80,8 @@ impl fmt::Display for Error {
 				)
 			}
 			Self::Unfit(Unfit::Alpha) => write!(f, "the Vulkan surface reports no composite alpha"),
+			Self::Foreign => write!(f, "a Vulkan device and surface of different instances"),
+			Self::Unshown => write!(f, "the Vulkan device cannot show on the window's surface"),
 		}
 	}
 }
