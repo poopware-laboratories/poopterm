@@ -78,6 +78,12 @@ mod shader_tests;
 pub(crate) mod submit_types;
 #[cfg(test)]
 mod submit_types_tests;
+pub(crate) mod surface;
+#[cfg(test)]
+mod surface_driver_tests;
+pub(crate) mod surface_types;
+#[cfg(test)]
+mod surface_types_tests;
 pub(crate) mod timeline;
 #[cfg(test)]
 mod timeline_tests;

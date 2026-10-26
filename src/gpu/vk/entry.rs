@@ -1,9 +1,11 @@
 //! The Vulkan loader's entry point, which finds every other function, and
 //! the instance it creates.
 use super::{
-	call::{Error, check},
+	call::{Error, check, enumerate, fixed_string},
 	instance::Instance,
 	library::Library,
+	surface::Platform,
+	surface_types::EnumerateInstanceExtensionProperties,
 	types::*,
 	version::{api_version, requested},
 };
@@ -65,14 +67,64 @@ impl Entry {
 		Ok(version)
 	}
 
+	/// The instance extensions the loader and its drivers offer.
+	pub(crate) fn instance_extensions(&self) -> Result<Vec<String>, Error> {
+		let function = self.function(ptr::null_mut(), c"vkEnumerateInstanceExtensionProperties")?;
+		// SAFETY: the function the loader returned for this name has this type.
+		let list: EnumerateInstanceExtensionProperties = unsafe { cast(function) };
+		let none = ExtensionProperties {
+			extension_name: [0; 256],
+			spec_version: 0,
+		};
+		let extensions = enumerate(none, |count, extensions| {
+			// SAFETY: `enumerate` passes room for `count` extensions, and no
+			// layer.
+			unsafe { list(ptr::null(), count, extensions) }
+		})?;
+		Ok(
+			(extensions.iter())
+				.map(|extension| fixed_string(&extension.extension_name))
+				.collect(),
+		)
+	}
+
 	/// An instance named `application`, asking for the newest version the
-	/// renderer uses.
+	/// renderer uses, that draws offscreen.
 	pub(crate) fn create_instance(self, application: &CStr) -> Result<Instance, Error> {
+		self.create(application, None)
+	}
+
+	/// An instance as [`Self::create_instance`] makes, that also makes
+	/// surfaces for windows of `platform`; `Error::Missing` names the first
+	/// extension for it that the loader lacks.
+	pub(crate) fn create_window_instance(
+		self,
+		application: &CStr,
+		platform: Platform,
+	) -> Result<Instance, Error> {
+		let offered = self.instance_extensions()?;
+		let lacked = (platform.extensions().into_iter()).find(|name| {
+			!offered
+				.iter()
+				.any(|offered| offered.as_bytes() == name.to_bytes())
+		});
+		if let Some(name) = lacked {
+			return Err(Error::Missing(name));
+		}
+		self.create(application, Some(platform))
+	}
+
+	fn create(self, application: &CStr, platform: Option<Platform>) -> Result<Instance, Error> {
 		let loader = self.version()?;
 		let api = requested(loader).ok_or(Error::TooOld(loader))?;
 		// SAFETY: the function the loader returned for this name has this type.
 		let create: CreateInstance =
 			unsafe { cast(self.function(ptr::null_mut(), c"vkCreateInstance")?) };
+		let extensions = platform.map_or(Vec::new(), |platform| {
+			(platform.extensions().iter())
+				.map(|name| name.as_ptr())
+				.collect()
+		});
 		let application = ApplicationInfo {
 			s_type: STRUCTURE_TYPE_APPLICATION_INFO,
 			next: ptr::null(),
@@ -89,14 +141,14 @@ impl Entry {
 			application_info: &application,
 			enabled_layer_count: 0,
 			enabled_layer_names: ptr::null(),
-			enabled_extension_count: 0,
-			enabled_extension_names: ptr::null(),
+			enabled_extension_count: extensions.len() as u32,
+			enabled_extension_names: extensions.as_ptr(),
 		};
 		let mut handle = ptr::null_mut();
 		// SAFETY: `info` and the strings it points to outlive the call, and
 		// `handle` is writable.
 		check(unsafe { create(&info, ptr::null(), &mut handle) })?;
-		Instance::new(self, handle, api)
+		Instance::new(self, handle, api, platform)
 	}
 }
 

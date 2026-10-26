@@ -16,6 +16,7 @@ use super::{
 	instance::Instance,
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
+	surface::{Platform, Surface, Window},
 	timeline::Timeline,
 	version::major_minor,
 };
@@ -154,6 +155,53 @@ fn child() {
 		}
 		Err(error) => println!("child: {error}"),
 	}
+	if let Ok(entry) = Entry::load() {
+		println!("child: headless shows: {:?}", headless_shows(entry));
+	}
+}
+
+/// Whether a family of some device shows on a headless surface.
+fn headless_shows(entry: Entry) -> Result<bool, Error> {
+	let instance = Rc::new(entry.create_window_instance(c"poopterm tests", Platform::Headless)?);
+	// SAFETY: a headless surface has no window handles to keep live.
+	let surface = unsafe { Surface::new(&instance, Window::Headless) }?;
+	let mut shows = false;
+	for physical in instance.physical_devices()? {
+		let mut device = instance.describe(physical)?;
+		surface.mark_present(physical, &mut device)?;
+		shows |= device.families.iter().any(|family| family.present);
+	}
+	Ok(shows)
+}
+
+#[test]
+fn a_headless_surface_shows_on_a_device() {
+	let Some(entry) = entry() else { return };
+	let offered = entry.instance_extensions().expect("extensions");
+	assert!(
+		offered.iter().any(|name| name == "VK_KHR_surface"),
+		"{offered:?}"
+	);
+	if !offered.iter().any(|name| name == "VK_EXT_headless_surface") {
+		assert!(!required(), "no headless surfaces: {offered:?}");
+		return eprintln!("skipped: no headless surfaces");
+	}
+	assert_eq!(headless_shows(entry), Ok(true));
+}
+
+#[test]
+fn a_window_instance_for_a_platform_the_loader_offers_is_made() {
+	for platform in [Platform::Wayland, Platform::Xlib] {
+		let Some(entry) = entry() else { return };
+		let offered = entry.instance_extensions().expect("extensions");
+		let all = (platform.extensions().iter()).all(|name| {
+			offered
+				.iter()
+				.any(|offered| offered.as_bytes() == name.to_bytes())
+		});
+		let made = entry.create_window_instance(c"poopterm tests", platform);
+		assert_eq!(made.is_ok(), all, "{platform:?} with {offered:?}");
+	}
 }
 
 /// A device on the GPU the renderer would choose to draw offscreen, or on
@@ -220,6 +268,9 @@ fn instances_pass_the_khronos_validation_layer() {
 		output.contains("child: unlike software: Ok([])"),
 		"{output}"
 	);
+	let headless = output.contains("child: headless shows: Ok(true)");
+	let unsupported = output.contains("child: headless shows: Err(Missing(");
+	assert!(headless || (unsupported && !required()), "{output}");
 	for problem in ["Validation Error", "Validation Warning", "VUID-"] {
 		assert!(!output.contains(problem), "{output}");
 	}

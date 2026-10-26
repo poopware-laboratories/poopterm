@@ -6,6 +6,7 @@ use super::{
 	entry::{Entry, cast},
 	features::Features,
 	memory::MemoryType,
+	surface::Platform,
 	types::*,
 	version::major_minor,
 };
@@ -46,15 +47,23 @@ impl Functions {
 pub(crate) struct Instance {
 	handle: RawInstance,
 	api: u32,
+	/// The window system it makes surfaces for, if any.
+	pub(super) platform: Option<Platform>,
 	destroy: DestroyInstance,
 	functions: Functions,
 	/// Dropped after the instance is destroyed, keeping the loader open.
-	_entry: Entry,
+	entry: Entry,
 }
 
 impl Instance {
-	/// Takes ownership of `handle`, created for version `api`.
-	pub(super) fn new(entry: Entry, handle: RawInstance, api: u32) -> Result<Self, Error> {
+	/// Takes ownership of `handle`, created for version `api` and with the
+	/// extensions of `platform`.
+	pub(super) fn new(
+		entry: Entry,
+		handle: RawInstance,
+		api: u32,
+		platform: Option<Platform>,
+	) -> Result<Self, Error> {
 		// A driver without it is broken, and the instance leaks.
 		// SAFETY: the function the loader returned for this name has this type.
 		let destroy: DestroyInstance = unsafe { cast(entry.function(handle, c"vkDestroyInstance")?) };
@@ -62,9 +71,10 @@ impl Instance {
 			Ok(functions) => Ok(Self {
 				handle,
 				api,
+				platform,
 				destroy,
 				functions,
-				_entry: entry,
+				entry,
 			}),
 			Err(error) => {
 				// SAFETY: the instance is live, and nothing was made from it.
@@ -77,6 +87,15 @@ impl Instance {
 	/// The version the instance was created for.
 	pub(crate) fn api_version(&self) -> u32 {
 		self.api
+	}
+
+	pub(super) fn handle(&self) -> RawInstance {
+		self.handle
+	}
+
+	/// The instance function `name`.
+	pub(super) fn function(&self, name: &'static CStr) -> Result<VoidFunction, Error> {
+		self.entry.function(self.handle, name)
 	}
 
 	pub(crate) fn physical_devices(&self) -> Result<Vec<RawPhysicalDevice>, Error> {
