@@ -1,7 +1,7 @@
 # Maintainer: Poopterm Labs <poopterm-labs@users.noreply.github.com>
 # Builds the tagged release from source; each release bumps pkgver.
 pkgname=poopterm
-pkgver=26.10.128
+pkgver=26.10.129
 pkgrel=1
 pkgdesc='Fast software-rendered terminal emulator'
 arch=('x86_64' 'aarch64')

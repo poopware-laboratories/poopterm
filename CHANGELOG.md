@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.129 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Make a window's swapchain and view its images (#169) (gpu).
+
 ## 26.10.128 "Giga Fly" — 2026-10-26
 
 ### Added
