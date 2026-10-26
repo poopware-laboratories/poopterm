@@ -15,6 +15,8 @@ use super::{
 	memory_driver_tests,
 	pipeline_driver_tests::Objects,
 	submit_types::RawCommandPool,
+	surface_driver_tests::{self, MadeSurface},
+	surface_types::{EnumerateInstanceExtensionProperties, RawSurface},
 	types::*,
 	version::api_version,
 };
@@ -41,7 +43,9 @@ pub(super) struct Driver {
 	/// What each of `devices` is, by index.
 	pub described: Vec<Device>,
 	pub lookups: Vec<(RawInstance, String)>,
-	created: Vec<Created>,
+	/// The instance extensions offered, if not [`OFFERED`].
+	pub instance_extensions: Option<Vec<&'static str>>,
+	pub(super) created: Vec<Created>,
 	pub live: Vec<RawInstance>,
 	pub destroyed: Vec<RawInstance>,
 	/// The memory types of every device.
@@ -89,6 +93,8 @@ pub(super) struct Driver {
 	/// The layout each image was left in by the submissions so far, the
 	/// last one for an image counting.
 	pub image_layouts: Vec<(RawImage, i32)>,
+	pub surfaces: Vec<MadeSurface>,
+	pub live_surfaces: Vec<(RawInstance, RawSurface)>,
 	pub pipeline_objects: Objects,
 	/// Buffers, images, views, semaphores, pools, shader modules, samplers,
 	/// layouts and pipelines destroyed and memory freed, in order.
@@ -97,14 +103,24 @@ pub(super) struct Driver {
 	pub invalid: Vec<String>,
 }
 
+/// The instance extensions a loader offers unless a test says otherwise.
+pub(super) const OFFERED: [&str; 5] = [
+	"VK_KHR_surface",
+	"VK_EXT_debug_utils",
+	"VK_KHR_wayland_surface",
+	"VK_KHR_xlib_surface",
+	"VK_EXT_headless_surface",
+];
+
 /// What an instance was created with.
 #[derive(Debug, PartialEq)]
-struct Created {
+pub(super) struct Created {
+	pub handle: RawInstance,
 	application: String,
 	engine: String,
 	api: u32,
 	layers: u32,
-	extensions: u32,
+	pub extensions: Vec<String>,
 }
 
 impl Driver {
@@ -156,9 +172,14 @@ impl Driver {
 		}
 	}
 
+	/// The instance extensions offered.
+	pub(super) fn offered(&self) -> Vec<&'static str> {
+		self.instance_extensions.clone().unwrap_or(OFFERED.to_vec())
+	}
+
 	/// Breaks the test unless `instance` is one the driver made and has not
 	/// destroyed.
-	fn check_live(&mut self, instance: RawInstance, call: &str) {
+	pub(super) fn check_live(&mut self, instance: RawInstance, call: &str) {
 		if !self.live.contains(&instance) {
 			self
 				.invalid
@@ -203,7 +224,9 @@ unsafe extern "system" fn get_instance_proc_addr(
 			.push((instance, name.to_string_lossy().into()));
 		let global = matches!(
 			name.to_bytes(),
-			b"vkEnumerateInstanceVersion" | b"vkCreateInstance"
+			b"vkEnumerateInstanceVersion"
+				| b"vkEnumerateInstanceExtensionProperties"
+				| b"vkCreateInstance"
 		);
 		if global && !instance.is_null() {
 			driver
@@ -220,6 +243,9 @@ unsafe extern "system" fn get_instance_proc_addr(
 			Some(match name.to_bytes() {
 				b"vkEnumerateInstanceVersion" if driver.version.is_some() => {
 					transmute::<EnumerateInstanceVersion, VoidFunction>(enumerate_instance_version)
+				}
+				b"vkEnumerateInstanceExtensionProperties" => {
+					transmute::<EnumerateInstanceExtensionProperties, VoidFunction>(instance_extensions)
 				}
 				b"vkCreateInstance" => transmute::<CreateInstance, VoidFunction>(create_instance),
 				b"vkDestroyInstance" => transmute::<DestroyInstance, VoidFunction>(destroy_instance),
@@ -246,9 +272,32 @@ unsafe extern "system" fn get_instance_proc_addr(
 				b"vkGetDeviceProcAddr" => {
 					transmute::<GetDeviceProcAddr, VoidFunction>(device_tests::get_device_proc_addr)
 				}
-				_ => return None,
+				_ => return surface_driver_tests::function(name),
 			})
 		}
+	})
+}
+
+unsafe extern "system" fn instance_extensions(
+	layer: *const c_char,
+	count: *mut u32,
+	extensions: *mut ExtensionProperties,
+) -> i32 {
+	with(|driver| {
+		if !layer.is_null() {
+			(driver.invalid).push("vkEnumerateInstanceExtensionProperties: a layer".into());
+		}
+		if let Some(code) = driver.failing(c"vkEnumerateInstanceExtensionProperties") {
+			return code;
+		}
+		let all: Vec<_> = (driver.offered().iter())
+			.map(|name| ExtensionProperties {
+				extension_name: field(name),
+				spec_version: 1,
+			})
+			.collect();
+		// SAFETY: passed on as the bindings gave them.
+		unsafe { answer(&all, count, extensions) }
 	})
 }
 
@@ -306,12 +355,19 @@ unsafe extern "system" fn create_instance(
 			// apiVersion must be 0 or at least 1.0.
 			let api = application.api_version;
 			rules.push((api == 0 || api >= api_version(1, 0), "apiVersion"));
+			let named = !info.enabled_extension_names.is_null();
+			let names = (0..extensions as usize * usize::from(named)).map(|i| {
+				// SAFETY: the bindings pass `extensions` C strings.
+				string(unsafe { *info.enabled_extension_names.add(i) })
+			});
 			driver.created.push(Created {
+				// Distinct, never null, and never reused.
+				handle: (0x1010 + 0x10 * driver.created.len()) as RawInstance,
 				application: string(application.application_name),
 				engine: string(application.engine_name),
 				api,
 				layers,
-				extensions,
+				extensions: names.collect(),
 			});
 		}
 		let broken = rules.iter().filter(|(holds, _)| !holds);
@@ -319,8 +375,15 @@ unsafe extern "system" fn create_instance(
 		if let Some(code) = driver.failing(c"vkCreateInstance") {
 			return code;
 		}
-		// Distinct, never null, and never reused.
-		let handle = (0x1000 + 0x10 * driver.created.len()) as RawInstance;
+		let Some(created) = driver.created.last() else {
+			return -3;
+		};
+		let offered = driver.offered();
+		if !(created.extensions.iter()).all(|name| offered.contains(&name.as_str())) {
+			// VK_ERROR_EXTENSION_NOT_PRESENT
+			return -7;
+		}
+		let handle = created.handle;
 		driver.live.push(handle);
 		// SAFETY: the bindings pass a writable handle.
 		unsafe { instance.write(handle) };
@@ -338,6 +401,9 @@ unsafe extern "system" fn destroy_instance(instance: RawInstance, allocator: *co
 		}
 		if !driver.live_devices.is_empty() {
 			(driver.invalid).push("vkDestroyInstance while a device is live".into());
+		}
+		if driver.live_surfaces.iter().any(|&(of, _)| of == instance) {
+			(driver.invalid).push("vkDestroyInstance while a surface is live".into());
 		}
 		driver.live.retain(|&live| live != instance);
 		driver.destroyed.push(instance);
@@ -502,11 +568,12 @@ fn instances_ask_for_the_newest_version_used_and_enable_nothing_yet() {
 		drop(instance);
 		let driver = finish();
 		let created = Created {
+			handle: 0x1010 as RawInstance,
 			application: "poopterm".into(),
 			engine: "poopterm".into(),
 			api: asked,
 			layers: 0,
-			extensions: 0,
+			extensions: Vec::new(),
 		};
 		assert_eq!(driver.created, [created]);
 		assert_eq!((driver.live.len(), driver.destroyed.len()), (0, 1));
