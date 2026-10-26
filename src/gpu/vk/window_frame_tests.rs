@@ -1,13 +1,15 @@
 //! Tests of what a window drawn by the GPU puts in its swapchain images,
 //! against the fake driver of `driver_tests`: the backdrop under the quads,
-//! and the glyphs of a frame it refused uploaded by the next one.
+//! in the image of the swapchain the window has now, and the glyphs of a
+//! frame it refused uploaded by the next one.
 use super::{
 	call::Error,
 	driver_tests::with,
+	present_driver_tests::OUT_OF_DATE,
 	renderer::Backdrop,
 	renderer_tests::glyph,
 	window::{Drawn, GpuWindow},
-	window_tests::{ATLAS, SIZE, close, open, pen, showing, uploads},
+	window_tests::{ATLAS, SIZE, close, open, pen, showing, swapchains, uploads},
 };
 use crate::{
 	gpu::quads::QuadPen,
@@ -92,5 +94,44 @@ fn a_window_without_area_copies_no_backdrop_and_takes_no_image() {
 	}
 	assert!(with(|driver| driver.recorded.is_empty()));
 	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
+	close(window);
+}
+
+/// Draws a frame over a whole backdrop, and says where its copies went.
+fn copied(window: &mut GpuWindow, backdrop: bool) -> (Result<Drawn, Error>, Vec<String>) {
+	let pixels = vec![0x30_5070; 40 * 30];
+	let under = backdrop.then_some(Backdrop {
+		pixels: &pixels,
+		width: 40,
+	});
+	let drawn = window.draw(&mut pen(SIZE), SIZE, under);
+	let calls = with(|driver| std::mem::take(&mut driver.recorded));
+	let copies = calls.into_iter().filter(|call| call.starts_with("upload"));
+	(
+		drawn,
+		copies
+			.map(|call| call[call.find(" of ").unwrap()..].to_owned())
+			.collect(),
+	)
+}
+
+#[test]
+fn a_frame_without_a_backdrop_copies_none_into_its_image() {
+	let mut window = open(showing(), false).unwrap();
+	assert_eq!(copied(&mut window, true).1.len(), 1);
+	assert_eq!(copied(&mut window, false), (Ok(Drawn::Shown), vec![]));
+	close(window);
+}
+
+#[test]
+fn after_a_remake_the_backdrop_goes_into_the_new_swapchains_image() {
+	let mut window = open(showing(), false).unwrap();
+	let (_, before) = copied(&mut window, true);
+	with(|driver| driver.present_answers = vec![OUT_OF_DATE]);
+	assert_eq!(copied(&mut window, true).0, Ok(Drawn::Again));
+	let (drawn, after) = copied(&mut window, true);
+	assert_eq!(drawn, Ok(Drawn::Shown));
+	assert_eq!(swapchains().len(), 2);
+	assert_ne!(after, before, "an image of the new swapchain");
 	close(window);
 }
