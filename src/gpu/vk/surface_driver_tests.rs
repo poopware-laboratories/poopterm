@@ -37,13 +37,11 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 	unsafe {
 		Some(match name.to_bytes() {
 			b"vkCreateWaylandSurfaceKHR" => {
-				transmute::<CreateWaylandSurface, VoidFunction>(create_wayland_surface)
+				transmute::<CreateSurface, VoidFunction>(create_wayland_surface)
 			}
-			b"vkCreateXlibSurfaceKHR" => {
-				transmute::<CreateXlibSurface, VoidFunction>(create_xlib_surface)
-			}
+			b"vkCreateXlibSurfaceKHR" => transmute::<CreateSurface, VoidFunction>(create_xlib_surface),
 			b"vkCreateHeadlessSurfaceEXT" => {
-				transmute::<CreateHeadlessSurface, VoidFunction>(create_headless_surface)
+				transmute::<CreateSurface, VoidFunction>(create_headless_surface)
 			}
 			b"vkDestroySurfaceKHR" => transmute::<DestroySurface, VoidFunction>(destroy_surface),
 			b"vkGetPhysicalDeviceSurfaceSupportKHR" => {
@@ -92,12 +90,12 @@ fn create(
 
 unsafe extern "system" fn create_wayland_surface(
 	instance: RawInstance,
-	info: *const WaylandSurfaceCreateInfo,
+	info: *const c_void,
 	allocator: *const c_void,
 	surface: *mut RawSurface,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info that lives across the call.
-	let info = unsafe { &*info };
+	// SAFETY: the bindings pass this create info, live across the call.
+	let info = unsafe { &*info.cast::<WaylandSurfaceCreateInfo>() };
 	with(|driver| {
 		if !allocator.is_null() {
 			(driver.invalid).push("vkCreateWaylandSurfaceKHR: an allocator".into());
@@ -123,12 +121,12 @@ unsafe extern "system" fn create_wayland_surface(
 
 unsafe extern "system" fn create_xlib_surface(
 	instance: RawInstance,
-	info: *const XlibSurfaceCreateInfo,
+	info: *const c_void,
 	allocator: *const c_void,
 	surface: *mut RawSurface,
 ) -> i32 {
 	// SAFETY: as above.
-	let info = unsafe { &*info };
+	let info = unsafe { &*info.cast::<XlibSurfaceCreateInfo>() };
 	with(|driver| {
 		if !allocator.is_null() {
 			(driver.invalid).push("vkCreateXlibSurfaceKHR: an allocator".into());
@@ -154,12 +152,12 @@ unsafe extern "system" fn create_xlib_surface(
 
 unsafe extern "system" fn create_headless_surface(
 	instance: RawInstance,
-	info: *const HeadlessSurfaceCreateInfo,
+	info: *const c_void,
 	allocator: *const c_void,
 	surface: *mut RawSurface,
 ) -> i32 {
 	// SAFETY: as above.
-	let info = unsafe { &*info };
+	let info = unsafe { &*info.cast::<HeadlessSurfaceCreateInfo>() };
 	with(|driver| {
 		if !allocator.is_null() {
 			(driver.invalid).push("vkCreateHeadlessSurfaceEXT: an allocator".into());
@@ -510,8 +508,7 @@ fn a_window_draws_on_the_device_whose_family_shows_on_its_surface() {
 fn the_fake_driver_reports_broken_surface_rules() {
 	let instance = window_instance(install(with_devices(&[])), Platform::Wayland);
 	// SAFETY: the fake's function for this name has this type.
-	let create: CreateWaylandSurface =
-		unsafe { transmute(function(c"vkCreateWaylandSurfaceKHR").unwrap()) };
+	let create: CreateSurface = unsafe { transmute(function(c"vkCreateWaylandSurfaceKHR").unwrap()) };
 	let info = WaylandSurfaceCreateInfo {
 		s_type: STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO,
 		next: ptr::null(),
@@ -521,7 +518,14 @@ fn the_fake_driver_reports_broken_surface_rules() {
 	};
 	let mut handle = 0;
 	// SAFETY: the fake reads the info and writes the handle.
-	unsafe { create(instance.handle(), &info, ptr::null(), &mut handle) };
+	unsafe {
+		create(
+			instance.handle(),
+			(&raw const info).cast(),
+			ptr::null(),
+			&mut handle,
+		)
+	};
 	// SAFETY: as above.
 	let destroy: DestroySurface = unsafe { transmute(function(c"vkDestroySurfaceKHR").unwrap()) };
 	// SAFETY: the fake only records the call.
@@ -570,5 +574,138 @@ fn the_fake_driver_reports_surfaces_left_live_and_support_out_of_range() {
 			"vkDestroyInstance while a surface is live",
 		]
 	);
+	finish();
+}
+
+#[test]
+fn each_window_gets_its_own_surface_destroyed_once_before_the_instance() {
+	let instance = window_instance(install(with_devices(&[])), Platform::Wayland);
+	let first = surface(&instance, WAYLAND).unwrap();
+	let second = surface(&instance, WAYLAND).unwrap();
+	drop(instance);
+	drop(first);
+	with(|driver| {
+		assert_eq!(driver.live_surfaces, [(0x1010 as RawInstance, 0x50001)]);
+		assert_eq!(
+			driver.live.len(),
+			1,
+			"the second surface keeps the instance"
+		);
+	});
+	drop(second);
+	let driver = finish();
+	assert_eq!(driver.released, ["surface 0x50000", "surface 0x50001"]);
+	assert_eq!(driver.destroyed, [0x1010 as RawInstance]);
+}
+
+#[test]
+fn a_device_without_queue_families_is_asked_nothing_and_shows_nothing() {
+	let driver = with_devices(&[gpu(Kind::Virtual, Vec::new())]);
+	let instance = window_instance(install(driver), Platform::Xlib);
+	let made = surface(&instance, XLIB).unwrap();
+	let physical = instance.physical_devices().unwrap()[0];
+	let mut described = instance.describe(physical).unwrap();
+	// The fake breaks the test on a family index it lacks.
+	made.mark_present(physical, &mut described).unwrap();
+	assert_eq!(described.families, []);
+	assert_eq!(choose(std::slice::from_ref(&described), true, false), None);
+	drop((made, instance));
+	finish();
+}
+
+#[test]
+fn surface_functions_are_looked_up_once_per_surface_not_per_query() {
+	let devices = [gpu(Kind::Integrated, vec![present(GRAPHICS, true)])];
+	let instance = window_instance(install(with_devices(&devices)), Platform::Headless);
+	let made = surface(&instance, Window::Headless).unwrap();
+	let physical = instance.physical_devices().unwrap()[0];
+	let looked_up = with(|driver| driver.lookups.len());
+	let mut described = instance.describe(physical).unwrap();
+	for _ in 0..3 {
+		made.mark_present(physical, &mut described).unwrap();
+	}
+	assert_eq!(with(|driver| driver.lookups.len()), looked_up);
+	drop((made, instance));
+	let driver = finish();
+	let names: Vec<_> = (driver.lookups.iter())
+		.map(|(_, name)| name.as_str())
+		.filter(|name| name.contains("Surface"))
+		.collect();
+	let expected = [
+		"vkDestroySurfaceKHR",
+		"vkGetPhysicalDeviceSurfaceSupportKHR",
+		"vkCreateHeadlessSurfaceEXT",
+	];
+	assert_eq!(names, expected);
+}
+
+#[test]
+fn a_missing_surface_extension_reads_as_what_vulkan_lacks() {
+	let mut driver = with_devices(&[]);
+	driver.instance_extensions = Some(vec!["VK_KHR_surface", "VK_KHR_xlib_surface"]);
+	let entry = install(driver);
+	let error = entry
+		.create_window_instance(c"poopterm", Platform::Wayland)
+		.err()
+		.unwrap();
+	// The app prints this when it falls back to software.
+	assert_eq!(error.to_string(), "Vulkan lacks VK_KHR_wayland_surface");
+	finish();
+}
+
+#[test]
+fn a_window_instance_the_driver_refuses_is_an_error_and_nothing_is_live() {
+	let mut driver = with_devices(&[]);
+	// VK_ERROR_EXTENSION_NOT_PRESENT, as from a driver that listed the
+	// extensions through a layer since removed.
+	driver.fails = vec![(c"vkCreateInstance", -7)];
+	let entry = install(driver);
+	let made = entry.create_window_instance(c"poopterm", Platform::Xlib);
+	assert_eq!(made.err(), Some(Error::Failed(-7)));
+	let driver = finish();
+	assert_eq!(
+		driver.created[0].extensions,
+		["VK_KHR_surface", "VK_KHR_xlib_surface"]
+	);
+	assert_eq!((driver.live, driver.destroyed), (vec![], vec![]));
+}
+
+#[test]
+fn the_fake_driver_reports_surfaces_on_instances_without_their_extension() {
+	let mut driver = with_devices(&[]);
+	driver.instance_extensions = Some(vec!["VK_KHR_surface", "VK_KHR_xlib_surface"]);
+	let entry = install(driver);
+	// Past the bindings' own check, as a loader that lied about its list.
+	let instance = entry
+		.create_window_instance(c"poopterm", Platform::Xlib)
+		.unwrap();
+	let create: CreateSurface = {
+		let found = function(c"vkCreateWaylandSurfaceKHR").unwrap();
+		// SAFETY: the fake's function for this name has this type.
+		unsafe { transmute::<VoidFunction, CreateSurface>(found) }
+	};
+	let info = WaylandSurfaceCreateInfo {
+		s_type: STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO,
+		next: ptr::null(),
+		flags: 0,
+		display: DISPLAY.as_ptr(),
+		surface: WL_SURFACE.as_ptr(),
+	};
+	let mut handle = 0;
+	// SAFETY: the fake reads the info and writes the handle.
+	let code = unsafe {
+		create(
+			instance.handle(),
+			(&raw const info).cast(),
+			ptr::null(),
+			&mut handle,
+		)
+	};
+	assert_eq!(code, 0);
+	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
+	let rule = "vkCreateWaylandSurfaceKHR: an instance without the extension";
+	assert_eq!(invalid, [rule]);
+	with(|driver| driver.live_surfaces.clear());
+	drop(instance);
 	finish();
 }

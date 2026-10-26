@@ -44,24 +44,11 @@ pub(crate) struct HeadlessSurfaceCreateInfo {
 
 pub(crate) type EnumerateInstanceExtensionProperties =
 	unsafe extern "system" fn(*const c_char, *mut u32, *mut ExtensionProperties) -> i32;
-pub(crate) type CreateWaylandSurface = unsafe extern "system" fn(
-	RawInstance,
-	*const WaylandSurfaceCreateInfo,
-	*const c_void,
-	*mut RawSurface,
-) -> i32;
-pub(crate) type CreateXlibSurface = unsafe extern "system" fn(
-	RawInstance,
-	*const XlibSurfaceCreateInfo,
-	*const c_void,
-	*mut RawSurface,
-) -> i32;
-pub(crate) type CreateHeadlessSurface = unsafe extern "system" fn(
-	RawInstance,
-	*const HeadlessSurfaceCreateInfo,
-	*const c_void,
-	*mut RawSurface,
-) -> i32;
+/// `vkCreateWaylandSurfaceKHR`, `vkCreateXlibSurfaceKHR` and
+/// `vkCreateHeadlessSurfaceEXT`, which differ only in the type their
+/// create info points to.
+pub(crate) type CreateSurface =
+	unsafe extern "system" fn(RawInstance, *const c_void, *const c_void, *mut RawSurface) -> i32;
 pub(crate) type DestroySurface = unsafe extern "system" fn(RawInstance, RawSurface, *const c_void);
 pub(crate) type GetPhysicalDeviceSurfaceSupport =
 	unsafe extern "system" fn(RawPhysicalDevice, u32, RawSurface, *mut u32) -> i32;

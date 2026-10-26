@@ -96,50 +96,46 @@ impl Surface {
 				cast::<GetPhysicalDeviceSurfaceSupport>(function(c"vkGetPhysicalDeviceSurfaceSupportKHR")?),
 			)
 		};
-		let mut handle = 0;
-		let code = match window {
+		let (wayland, xlib, headless);
+		let (name, info): (&'static CStr, *const c_void) = match window {
 			Window::Wayland { display, surface } => {
-				// SAFETY: as above.
-				let create: CreateWaylandSurface = unsafe { cast(function(c"vkCreateWaylandSurfaceKHR")?) };
-				let info = WaylandSurfaceCreateInfo {
+				wayland = WaylandSurfaceCreateInfo {
 					s_type: STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO,
 					next: ptr::null(),
 					flags: 0,
 					display: display.as_ptr(),
 					surface: surface.as_ptr(),
 				};
-				// SAFETY: the instance is live, `info` outlives the call, the
-				// caller vouches for the handles, and `handle` is writable.
-				unsafe { create(instance.handle(), &info, ptr::null(), &mut handle) }
+				(c"vkCreateWaylandSurfaceKHR", (&raw const wayland).cast())
 			}
 			Window::Xlib { display, window } => {
-				// SAFETY: as above.
-				let create: CreateXlibSurface = unsafe { cast(function(c"vkCreateXlibSurfaceKHR")?) };
-				let info = XlibSurfaceCreateInfo {
+				xlib = XlibSurfaceCreateInfo {
 					s_type: STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO,
 					next: ptr::null(),
 					flags: 0,
 					display: display.as_ptr(),
 					window,
 				};
-				// SAFETY: as above.
-				unsafe { create(instance.handle(), &info, ptr::null(), &mut handle) }
+				(c"vkCreateXlibSurfaceKHR", (&raw const xlib).cast())
 			}
 			Window::Headless => {
-				// SAFETY: as above.
-				let create: CreateHeadlessSurface =
-					unsafe { cast(function(c"vkCreateHeadlessSurfaceEXT")?) };
-				let info = HeadlessSurfaceCreateInfo {
+				headless = HeadlessSurfaceCreateInfo {
 					s_type: STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO,
 					next: ptr::null(),
 					flags: 0,
 				};
-				// SAFETY: the instance is live, `info` outlives the call, and
-				// `handle` is writable.
-				unsafe { create(instance.handle(), &info, ptr::null(), &mut handle) }
+				(c"vkCreateHeadlessSurfaceEXT", (&raw const headless).cast())
 			}
 		};
-		check(code)?;
+		// SAFETY: the function the loader returned for this name has this
+		// type but for the pointee of its info, and pointers to sized types
+		// are passed alike.
+		let create: CreateSurface = unsafe { cast(function(name)?) };
+		let mut handle = 0;
+		// SAFETY: the instance is live, `info` is the structure `create`
+		// takes and outlives the call, the caller vouches for the handles,
+		// and `handle` is writable.
+		check(unsafe { create(instance.handle(), info, ptr::null(), &mut handle) })?;
 		Ok(Self {
 			handle,
 			destroy,
