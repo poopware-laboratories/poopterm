@@ -6,8 +6,8 @@
 use super::{
 	client::{Argument, Client, Proxy, Queue},
 	events::{Listener, XRGB8888},
-	memory::Memory,
 };
+use crate::present::memory::Memory;
 use crate::present::{
 	copy::{History, Rows},
 	pool::{Pick, Pool},

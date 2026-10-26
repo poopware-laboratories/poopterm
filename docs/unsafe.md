@@ -196,18 +196,39 @@ The layouts and the enumeration logic are unit-tested without a driver;
 
 `present/wayland` (Linux and FreeBSD) shows software frames through
 `wl_shm`, calling libwayland-client through function pointers from
-`dlsym`, and maps the shared memory it hands the compositor.
+`dlsym`, in shared memory from `present/memory.rs` (below).
 
 | Where | What | Why it is sound |
 |-------|------|-----------------|
 | `client.rs` | `cast` of each `dlsym` result | Each name is a function wayland-client-core.h declares with the type of the field it goes to, or an exported `wl_interface`, only ever passed back by address; `cast` checks at compile time that the target is pointer-sized. Requests use `wl_proxy_marshal_array_flags` and events `wl_proxy_add_dispatcher`, so no variadic call crosses the boundary. |
 | `presenter.rs` | Requests, dispatching and destroying proxies | `Presenter::new` is an `unsafe fn`: its caller vouches that the `wl_display` and `wl_surface` outlive the presenter and are used from its thread. Every request passes a `wl_argument` array matching its signature in wayland.xml, and a new proxy's version as libwayland's own wrappers would. Our proxies live on our own queue, made through a display wrapper (destroyed right after the registry is made), so only `present` and `new` dispatch their events. The events go to a boxed `Events` whose address stays put; it is freed only in `Drop`, after every proxy on the queue is destroyed (buffers and pools with their destructor requests, `wl_shm` with `release` from version 2) and then the queue. A buffer destroyed while the compositor holds it is allowed by the protocol, which keeps what it shows. |
-| `memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `ftruncate`, `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized before it is mapped, the size is at most `i32::MAX` bytes (what `create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor reads it only between a commit and the release, and the pool never draws into a held buffer. |
 
 The pool and the rows each frame copies are pure and unit-tested;
 `fake_tests.rs` is a fake libwayland and compositor that checks each request
 against the protocol's rules, and `real_tests.rs` runs the presenter against
-a real compositor (headless weston in CI).
+a real compositor (headless weston in CI). `x11/fake_tests.rs` is a fake
+libxcb and X server that serves requests when told to, reads shared memory
+only then, and checks each request; `x11/real_tests.rs` reads frames back
+from a real server (Xvfb in CI).
+
+### X11
+
+`present/x11` (Linux and FreeBSD) shows software frames on an X11 window
+through libxcb, opened at run time, on the connection under winit's Xlib
+display: in memory shared with the server (MIT-SHM 1.2, by descriptor), or
+in `PutImage` requests.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `client.rs` | `cast` of each `dlsym` result | Each name is a function xcb.h, xproto.h, shm.h or Xlib-xcb.h declares with the type of the field it goes to, or `xcb_shm_id`, only ever passed back by address; `cast` checks at compile time that the target is pointer-sized. Reply and cookie structures are `#[repr(C)]` as xproto.h and shm.h lay them out. |
+| `presenter.rs` | Requests, replies and the setup | `Presenter::new` is an `unsafe fn`: its caller vouches that the Xlib display and window outlive the presenter and are used from its thread. The setup is read only as long as its own length field says. Each request passes what its xproto.h declaration takes: a `PutImage` holds exactly its rows' pixels and fits the server's maximum request length (`put_rows`); a `ShmPutImage` names a segment the server attached, holding the whole frame. Replies and errors come from `malloc` and are freed once read. A buffer is written only once the round trip sent after its last put is answered, as the server has read it by then; the descriptor given to `AttachFd` is a duplicate, which libxcb closes. `Drop` detaches every segment, discarding unanswered round trips, and frees the GC. |
+
+### Shared memory
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `present/memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `ftruncate`, `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized before it is mapped, the size is at most `i32::MAX` bytes (what `wl_shm.create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor or X server reads it only between a commit or put and its release, and the pool never draws into a held buffer. |
+
 
 ### Test-only
 
@@ -233,8 +254,14 @@ a real compositor (headless weston in CI).
 - `present/wayland/real_tests.rs`: connects to the compositor, binds
   `wl_compositor`, makes a surface for the presenter and destroys it before
   disconnecting.
-- `present/wayland/memory_tests.rs`: `fstat`, `pread` and `fcntl` on the
+- `present/memory_tests.rs`: `fstat`, `pread` and `fcntl` on the
   memory's own descriptor.
+- `present/x11/fake_tests.rs`: the fake libxcb's functions are
+  `extern "C"`, called through the presenter's function pointers; they read
+  `PutImage` pixels by the length given, take ownership of the descriptor
+  `AttachFd` sends as libxcb does, and return replies from `malloc`.
+- `present/x11/real_tests.rs`: opens a display, makes and maps a window of
+  the root's depth, and reads it back with `GetImage`, freeing each reply.
 
 ## Adding unsafe code
 

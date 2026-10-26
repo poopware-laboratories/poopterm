@@ -332,6 +332,12 @@ carries rows changed while every buffer was held over to the next frame.
 `present::wayland::Presenter` shows frames on a `wl_surface` through
 `wl_shm`, with libwayland-client opened at run time (`library.rs`) and its
 objects on a private event queue, so winit's event loop never sees them.
+`present::x11::Presenter` puts whole frames in an X11 window through libxcb,
+opened at run time, on the connection under winit's Xlib display: from
+memory shared with the server (MIT-SHM 1.2, attached by descriptor), where
+a buffer is reused once a round trip sent after its put is answered, or in
+`PutImage` requests sized to the server's maximum, over a network.
+`present::memory` makes the shared memory both use.
 
 **Drawing on the GPU (`src/gpu/vk`).** `gpu::vk::window::GpuWindow` draws a
 window with Vulkan: it makes a surface of the window's handles, picks the

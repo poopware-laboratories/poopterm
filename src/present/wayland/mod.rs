@@ -10,9 +10,6 @@ mod events_tests;
 mod fake_rules_tests;
 #[cfg(test)]
 mod fake_tests;
-pub(crate) mod memory;
-#[cfg(test)]
-mod memory_tests;
 pub(crate) mod presenter;
 #[cfg(test)]
 mod presenter_edge_tests;

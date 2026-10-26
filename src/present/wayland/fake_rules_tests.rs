@@ -4,8 +4,8 @@
 use super::{
 	client::{Argument, Client, DESTROY, Proxy, Queue},
 	fake_tests::{DISPLAY, client, install, with},
-	memory::Memory,
 };
+use crate::present::memory::Memory;
 use std::ptr;
 
 /// The objects a well-behaved client makes, up to a buffer on a surface.
