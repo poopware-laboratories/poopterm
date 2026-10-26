@@ -74,6 +74,15 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 }
 
 impl Driver {
+	/// Whether the live binary semaphore `semaphore` is signalled, or
+	/// about to be; `None` if it is not one.
+	pub(super) fn binary(&self, semaphore: RawSemaphore) -> Option<bool> {
+		let index = semaphore.wrapping_sub(0xc0_0001) as usize;
+		let made = self.semaphores.get(index)?;
+		let live = self.live_semaphores.contains(&semaphore);
+		(live && made.0 == 0).then(|| self.counters[index] != 0)
+	}
+
 	/// How far the GPU got on `semaphore`.
 	pub(super) fn reached(&self, semaphore: RawSemaphore) -> u64 {
 		let index = semaphore.wrapping_sub(0xc0_0001) as usize;
@@ -308,14 +317,15 @@ unsafe extern "system" fn submit(
 ) -> i32 {
 	// SAFETY: the bindings pass one submission whose arrays live across the
 	// call, each as long as its count, or null and empty.
-	let (info, buffers, signals) = unsafe {
+	let (info, buffers, waits, signals) = unsafe {
 		let info = &*submits;
 		let buffers = read(info.command_buffer_infos, info.command_buffer_info_count);
+		let waits = read(info.wait_semaphore_infos, info.wait_semaphore_info_count);
 		let signals = read(
 			info.signal_semaphore_infos,
 			info.signal_semaphore_info_count,
 		);
-		(info, buffers, signals)
+		(info, buffers, waits, signals)
 	};
 	with(|driver| {
 		let before = driver.invalid.len();
@@ -327,10 +337,9 @@ unsafe extern "system" fn submit(
 			(count == 1 && fence == 0, "one submission, no fence"),
 			(info.s_type == STRUCTURE_TYPE_SUBMIT_INFO_2, "sType"),
 			(info.next.is_null() && info.flags == 0, "pNext and flags"),
-			(info.wait_semaphore_info_count == 0, "no waits"),
 			(
-				buffers.len() == 1 && signals.len() == 1,
-				"one buffer, one signal",
+				buffers.len() == 1 && !signals.is_empty(),
+				"one buffer, the timeline signalled first",
 			),
 		];
 		for (holds, rule) in rules {
@@ -375,11 +384,45 @@ unsafe extern "system" fn submit(
 		for (holds, rule) in rules {
 			driver.require(holds, || format!("vkQueueSubmit2: {rule}"));
 		}
+		// Binary semaphores: waited for once signalled, signalled once not.
+		let binary = |driver: &mut Driver, info: &SemaphoreSubmitInfo, signalled| {
+			let state = driver.binary(info.semaphore);
+			let sound = info.s_type == STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO
+				&& info.next.is_null()
+				&& info.device_index == 0
+				&& info.stage_mask != 0;
+			driver.require(sound && state == Some(signalled), || {
+				let what = if signalled { "wait for" } else { "signal" };
+				format!("vkQueueSubmit2: {what} {:#x}", info.semaphore)
+			});
+		};
+		for wait in waits {
+			binary(driver, wait, true);
+		}
+		for signal in &signals[1..] {
+			binary(driver, signal, false);
+		}
 		if driver.invalid.len() > before {
 			return VALIDATION_FAILED;
 		}
 		if let Some(code) = driver.failing(c"vkQueueSubmit2") {
 			return code;
+		}
+		let waited = waits.iter().map(|wait| (wait.semaphore, 0));
+		let signalled = signals[1..].iter().map(|signal| (signal.semaphore, 1));
+		for (semaphore, state) in waited.chain(signalled) {
+			driver.counters[semaphore.wrapping_sub(0xc0_0001) as usize] = state;
+		}
+		if !(waits.is_empty() && signals.len() == 1) {
+			let names = |infos: &[SemaphoreSubmitInfo]| {
+				(infos.iter())
+					.map(|info| format!("{:#x} at {:#x}", info.semaphore, info.stage_mask))
+					.collect::<Vec<_>>()
+			};
+			let (waits, signals) = (names(waits), names(&signals[1..]));
+			driver
+				.semaphore_ops
+				.push(format!("submit waits {waits:?} signals {signals:?}"));
 		}
 		if let Some(submitted) = driver.command_buffer(buffer.command_buffer) {
 			submitted.stage = Stage::Submitted(signal.semaphore, signal.value);

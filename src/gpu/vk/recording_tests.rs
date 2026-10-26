@@ -67,9 +67,15 @@ fn scope(layout: i32) -> (u64, u64) {
 		// Written as a color attachment, and sampled by fragment shaders.
 		2 => (0x400, 0x80 | 0x100),
 		5 => (0x80, 0x1_0000_0000),
+		// Shown: the next frame's barrier waits where its acquisition is
+		// waited for, at the stages that write the image.
+		PRESENT => (0x400 | 0x1000, 0),
 		_ => (0, 0),
 	}
 }
+
+/// `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`.
+pub(super) const PRESENT: i32 = 1_000_001_002;
 
 impl Driver {
 	/// The layout `image` is in where `buffer` has got to: what its own
@@ -208,6 +214,13 @@ unsafe extern "system" fn barrier(buffer: RawCommandBuffer, info: *const Depende
 			let made = driver.made_image(barrier.image);
 			let range = barrier.subresource_range;
 			let (from, to) = (barrier.old_layout, barrier.new_layout);
+			let presentable = driver.presentable(barrier.image);
+			// A swapchain image is never used before it is acquired.
+			let after = if presentable && from == UNDEFINED {
+				PRESENT
+			} else {
+				from
+			};
 			let rules = [
 				(
 					barrier.s_type == STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 && barrier.next.is_null(),
@@ -234,7 +247,11 @@ unsafe extern "system" fn barrier(buffer: RawCommandBuffer, info: *const Depende
 				(from == UNDEFINED || from == current, "the layout it is in"),
 				(to != UNDEFINED, "a new layout"),
 				(
-					(barrier.src_stage_mask, barrier.src_access_mask) == scope(from),
+					to != PRESENT || presentable,
+					"presenting a swapchain's image",
+				),
+				(
+					(barrier.src_stage_mask, barrier.src_access_mask) == scope(after),
 					"after what used it",
 				),
 				(

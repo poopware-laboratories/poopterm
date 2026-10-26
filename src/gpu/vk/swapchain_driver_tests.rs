@@ -38,6 +38,8 @@ pub(super) struct LiveSwapchain {
 	/// Made the old swapchain of a newer one: it no longer gives images.
 	pub retired: bool,
 	pub images: Vec<RawImage>,
+	/// The indices of the images acquired and not yet presented.
+	pub acquired: Vec<u32>,
 }
 
 /// The fake's swapchain function `name`, if it has it.
@@ -48,7 +50,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkCreateSwapchainKHR" => transmute::<CreateSwapchain, VoidFunction>(create_swapchain),
 			b"vkDestroySwapchainKHR" => transmute::<DestroySwapchain, VoidFunction>(destroy_swapchain),
 			b"vkGetSwapchainImagesKHR" => transmute::<GetSwapchainImages, VoidFunction>(images),
-			_ => return None,
+			_ => return super::present_driver_tests::function(name),
 		})
 	}
 }
@@ -213,6 +215,7 @@ unsafe extern "system" fn create_swapchain(
 			surface: info.surface,
 			retired: false,
 			images,
+			acquired: Vec::new(),
 		});
 		// SAFETY: the bindings pass a writable handle.
 		unsafe { swapchain.write(handle) };
@@ -257,6 +260,7 @@ unsafe extern "system" fn destroy_swapchain(
 			(allocator.is_null(), "an allocator"),
 			(live.device == device, "another device's swapchain"),
 			(!viewed, "views of its images are live"),
+			(!driver.presenting, "presentation may be pending"),
 		];
 		for (holds, rule) in rules {
 			driver.require(holds, || format!("vkDestroySwapchainKHR: {rule}"));
@@ -511,6 +515,12 @@ fn the_fake_driver_reports_swapchains_misused_around_their_images() {
 		["vkDestroySwapchainKHR: views of its images are live"]
 	);
 	drop(view);
+	// So does presentation that may still be pending, until the queue idles.
+	let (_, swapchain, _) = create(handle, &good(surface.handle(), 0));
+	with(|driver| driver.presenting = true);
+	let pending = ["vkDestroySwapchainKHR: presentation may be pending"];
+	assert_eq!(destroy(handle, swapchain), pending);
+	with(|driver| driver.presenting = false);
 	// Destroying a swapchain's image, or its surface before it, is broken.
 	let (_, swapchain, _) = create(handle, &good(surface.handle(), 0));
 	let image = with(|driver| driver.swapchain(swapchain).unwrap().images[0]);

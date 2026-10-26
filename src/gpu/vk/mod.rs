@@ -62,6 +62,11 @@ mod pipeline_tests;
 pub(crate) mod pipeline_types;
 #[cfg(test)]
 mod pipeline_types_tests;
+pub(crate) mod present;
+#[cfg(test)]
+mod present_driver_tests;
+#[cfg(test)]
+mod present_tests;
 pub(crate) mod recording;
 #[cfg(test)]
 mod recording_tests;
@@ -72,6 +77,7 @@ mod renderer_gpu_tests;
 mod renderer_tests;
 #[cfg(test)]
 mod round_trip_tests;
+pub(crate) mod semaphore;
 pub(crate) mod shader;
 #[cfg(test)]
 mod shader_tests;

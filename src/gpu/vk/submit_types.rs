@@ -54,6 +54,7 @@ pub(crate) struct CommandBufferBeginInfo {
 
 /// `VkSemaphoreSubmitInfo`.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub(crate) struct SemaphoreSubmitInfo {
 	pub s_type: i32,
 	pub next: *const c_void,

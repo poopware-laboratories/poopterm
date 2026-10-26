@@ -16,13 +16,22 @@ use super::{
 	instance::Instance,
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
+	present::{Acquired, Presented},
 	surface::{Platform, Surface, Window},
 	swapchain::Swapchain,
 	swapchain_plan::Plan,
 	timeline::Timeline,
 	version::major_minor,
 };
-use std::{env, num::NonZeroUsize, process::Command, ptr, rc::Rc, time::Duration};
+use std::{
+	env,
+	io::Read,
+	num::NonZeroUsize,
+	process::{Command, Stdio},
+	ptr,
+	rc::Rc,
+	time::{Duration, Instant},
+};
 
 fn required() -> bool {
 	env::var("POOPTERM_REQUIRE_VULKAN").is_ok_and(|value| value == "1")
@@ -92,16 +101,53 @@ fn an_instance_asks_for_the_newest_version_used_and_sees_a_device() {
 /// What `child` does, run in a new process with `vars` set, as the loader
 /// reads its settings only from the environment.
 fn run_child(vars: &[(&str, &str)]) -> String {
-	let output = Command::new(env::current_exe().unwrap())
+	let mut child = Command::new(env::current_exe().unwrap())
 		.args(["--exact", "gpu::vk::loader_tests::child", "--nocapture"])
 		.env("POOPTERM_VK_CHILD", "1")
 		.envs(vars.iter().copied())
-		.output()
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
 		.expect("test binary runs");
-	let text = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
-	assert!(output.status.success(), "{text}");
+	// Read both pipes while waiting, so a chatty child never blocks on them.
+	let read = |pipe: Option<Box<dyn Read + Send>>| {
+		std::thread::spawn(move || {
+			let mut text = Vec::new();
+			pipe
+				.unwrap()
+				.read_to_end(&mut text)
+				.map(|_| text)
+				.unwrap_or_default()
+		})
+	};
+	let stdout = read(child.stdout.take().map(|pipe| Box::new(pipe) as _));
+	let stderr = read(child.stderr.take().map(|pipe| Box::new(pipe) as _));
+	// A frame waiting for a semaphore nothing signals hangs the driver: fail
+	// instead of hanging the test run.
+	let started = Instant::now();
+	let status = loop {
+		if let Some(status) = child.try_wait().expect("child waited for") {
+			break Some(status);
+		}
+		if started.elapsed() > CHILD_DEADLINE {
+			child.kill().expect("hung child killed");
+			child.wait().expect("killed child reaped");
+			break None;
+		}
+		std::thread::sleep(Duration::from_millis(20));
+	};
+	let (stdout, stderr) = (stdout.join().unwrap(), stderr.join().unwrap());
+	let text = String::from_utf8_lossy(&stdout) + String::from_utf8_lossy(&stderr);
+	assert!(
+		status.is_some(),
+		"the child hung for {CHILD_DEADLINE:?}: {text}"
+	);
+	assert!(status.unwrap().success(), "{text}");
 	text.into_owned()
 }
+
+/// How long [`run_child`] lets the child run.
+const CHILD_DEADLINE: Duration = Duration::from_secs(120);
 
 /// Run by [`run_child`] only: creates an instance, lists its devices, and
 /// prints how that went.
@@ -163,9 +209,9 @@ fn child() {
 }
 
 /// The swapchain planned for a 64×48 headless window on each device with
-/// a family that shows on it, and how many images it has once made and
-/// remade at 32×24.
-fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize)>, Error> {
+/// a family that shows on it, how many images it has once made and remade
+/// at 32×24, and what presenting a few frames on it came to.
+fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize, Vec<Presented>)>, Error> {
 	let instance = Rc::new(entry.create_window_instance(c"poopterm tests", Platform::Headless)?);
 	// SAFETY: a headless surface has no window handles to keep live.
 	let surface = Rc::new(unsafe { Surface::new(&instance, Window::Headless) }?);
@@ -184,8 +230,17 @@ fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize)>, Error> {
 		let plan = surface.plan(physical, [64, 48])?;
 		let swapchain = Swapchain::new(&device, &surface, plan.clone())?;
 		let smaller = surface.plan(physical, [32, 24])?;
-		let swapchain = swapchain.recreate(smaller)?;
-		made.push((plan, swapchain.images().len()));
+		let mut swapchain = swapchain.recreate(smaller)?;
+		let mut commands = Commands::new(&Rc::new(Timeline::new(&device)?))?;
+		// More frames than images, so each image and semaphore is reused.
+		let mut shown = Vec::new();
+		for _ in 0..swapchain.images().len() * 2 {
+			let Acquired::Frame(frame) = swapchain.acquire(Duration::from_secs(5))? else {
+				return Err(Error::Failed(2));
+			};
+			shown.push(commands.record()?.present(frame)?);
+		}
+		made.push((plan, swapchain.images().len(), shown));
 	}
 	Ok(made)
 }
@@ -194,8 +249,9 @@ fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize)>, Error> {
 /// the window's size, and it has at least the images asked for.
 fn headless_shows(entry: Entry) -> Result<bool, Error> {
 	let made = headless_swapchains(entry)?;
-	let fits = |(plan, images): &(Plan, usize)| {
-		plan.extent == [64, 48] && plan.images >= 2 && *images >= plan.images as usize
+	let fits = |(plan, images, shown): &(Plan, usize, Vec<Presented>)| {
+		let all = shown.len() == images * 2 && shown.iter().all(|&shown| shown == Presented::Shown);
+		plan.extent == [64, 48] && plan.images >= 2 && *images >= plan.images as usize && all
 	};
 	Ok(!made.is_empty() && made.iter().all(fits))
 }

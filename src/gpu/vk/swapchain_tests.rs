@@ -103,7 +103,9 @@ fn the_views_go_before_the_swapchain_and_the_swapchain_before_its_surface() {
 	drop(swapchain);
 	let driver = finish();
 	let views = (1..=4).map(|n| format!("view {:#x}", 0xf0_0000 + n));
-	let mut expected: Vec<_> = views.collect();
+	// Then its drawn semaphores, once the queue is idle.
+	let semaphores = (1..=4).map(|n| format!("semaphore {:#x}", 0xc0_0000 + n));
+	let mut expected: Vec<_> = views.chain(semaphores).collect();
 	expected.extend(["swapchain 0x60001".into(), "surface 0x50000".into()]);
 	assert_eq!(
 		driver.released, expected,
@@ -132,6 +134,7 @@ fn a_recreated_swapchain_retires_the_old_one_and_destroys_it_after() {
 		surface: 0x5_0000,
 		retired: false,
 		images: (5..=8).map(|n| 0xa0_0000 + n).collect(),
+		acquired: Vec::new(),
 	};
 	assert_eq!(driver.1, [live], "the old one is destroyed");
 	let released = with(|driver| driver.released.clone());
@@ -139,7 +142,7 @@ fn a_recreated_swapchain_retires_the_old_one_and_destroys_it_after() {
 		released.last().map(String::as_str),
 		Some("swapchain 0x60001")
 	);
-	assert_eq!(released.len(), 5, "its four views first");
+	assert_eq!(released.len(), 9, "its four views and semaphores first");
 	drop((swapchain, device, surface));
 	finish();
 }
@@ -261,6 +264,8 @@ fn a_failed_view_destroys_the_new_swapchain_then_the_old_one() {
 		"swapchain 0x60002",
 		"view 0xf00001",
 		"view 0xf00002",
+		"semaphore 0xc00001",
+		"semaphore 0xc00002",
 		"swapchain 0x60001",
 	];
 	assert_eq!(driver.1, released);
@@ -276,7 +281,7 @@ fn a_failed_recreation_still_retires_and_destroys_the_old_swapchain() {
 	let made = swapchain.recreate(plan()).err();
 	assert_eq!(made, Some(Error::Failed(-1_000_000_000)));
 	let driver = with(|driver| (driver.live_swapchains.len(), driver.released.len()));
-	assert_eq!(driver, (0, 5));
+	assert_eq!(driver, (0, 9));
 	// The surface takes a new swapchain afresh.
 	with(|driver| driver.fails.clear());
 	let fresh = Swapchain::new(&device, &surface, plan()).expect("swapchain");

@@ -170,6 +170,11 @@ impl Image {
 	pub(crate) fn view(&self) -> RawImageView {
 		self.view
 	}
+
+	/// Whether it is a swapchain's, for the presentation engine to show.
+	pub(crate) fn presentable(&self) -> bool {
+		self.swapchain.is_some()
+	}
 }
 
 impl Drop for Image {
