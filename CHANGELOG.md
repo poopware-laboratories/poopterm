@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.125 "Giga Fly" — 2026-10-26
+
+### Fixed
+
+- Match fallback fonts by exact coverage (#165) (fonts).
+
 ## 26.10.124 "Giga Fly" — 2026-10-26
 
 ### Added
