@@ -29,7 +29,7 @@ const MAX_CACHE_FILE: u64 = 64 << 20;
 /// Paths with their stamps.
 type Stamped = Vec<(PathBuf, Stamp)>;
 /// Bumped when face data changes meaning, so old caches are rebuilt.
-const HEADER: &str = "poopterm-fonts 4";
+const HEADER: &str = "poopterm-fonts 5";
 
 /// Modification time in nanoseconds and size. A missing path has the
 /// default stamp.
@@ -277,6 +277,7 @@ fn walk(roots: &[PathBuf]) -> (Stamped, Stamped) {
 /// `end` so a truncated file is rejected.
 pub(crate) fn encode(cache: &Cache) -> String {
 	let mut out = format!("{HEADER}\n");
+	let mut coverage = coverage::Writer::default();
 	for root in &cache.roots {
 		out += &format!("R\t{}\n", escape(&root.to_string_lossy()));
 	}
@@ -300,7 +301,7 @@ pub(crate) fn encode(cache: &Cache) -> String {
 				u8::from(face.monospace),
 				u8::from(face.drawable),
 				u8::from(face.color),
-				coverage::encode(&face.pages),
+				coverage.write(&face.coverage),
 				escape(&face.family),
 				escape(&face.style),
 				escape(&face.full_name),
@@ -318,6 +319,7 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 		return None;
 	}
 	let mut cache = Cache::default();
+	let mut coverage = coverage::Reader::default();
 	for line in lines {
 		let fields: Vec<&str> = line.split('\t').collect();
 		match fields.as_slice() {
@@ -345,7 +347,7 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 				monospace,
 				drawable,
 				color,
-				pages,
+				mapped,
 				family,
 				style,
 				full_name,
@@ -358,7 +360,7 @@ pub(crate) fn decode(text: &str) -> Option<Cache> {
 					monospace: *monospace == "1",
 					drawable: *drawable == "1",
 					color: *color == "1",
-					pages: coverage::decode(pages)?,
+					coverage: coverage.read(mapped)?,
 					family: unescape(family)?,
 					style: unescape(style)?,
 					full_name: unescape(full_name)?,

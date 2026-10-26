@@ -1,6 +1,6 @@
 //! Installed fonts for characters the configured fonts lack: the font
-//! database is opened on the first missing character, and only fonts whose
-//! pages cover it are loaded, a few at a time.
+//! database is opened on the first missing character, and only fonts that
+//! map it are loaded, a few at a time.
 use std::{
 	collections::{HashMap, HashSet},
 	fs,
@@ -17,11 +17,12 @@ const MAX_LOADED: usize = 32;
 const MAX_FILE: u64 = 64 << 20;
 /// Characters remembered as found nowhere before the list is reset.
 const MAX_MISSING: usize = 4096;
-/// Pages whose ranked candidates are remembered before the list is reset.
+/// Characters whose ranked candidates are remembered before the list is
+/// reset.
 const MAX_RANKED: usize = 512;
 
 /// The faces that may have `ch`, in color if `color`, best first: fonts
-/// whose pages cover it, monospace before proportional, upright regular
+/// whose `cmap` maps it, monospace before proportional, upright regular
 /// weights first, then smaller files, which are usually the more specific
 /// fonts.
 pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u32)> {
@@ -31,7 +32,7 @@ pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u3
 		.filter(|file| file.stamp.size <= MAX_FILE)
 		.flat_map(|file| file.faces.iter().map(move |face| (file, face)))
 		.filter(|(_, face)| if color { face.color } else { face.drawable })
-		.filter(|(_, face)| covers(&face.pages, ch))
+		.filter(|(_, face)| covers(&face.coverage, ch))
 		.collect();
 	found.sort_by_key(|(file, face)| {
 		(
@@ -55,8 +56,8 @@ pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u3
 pub(crate) struct SystemFallback {
 	open: Option<Box<dyn FnOnce() -> Cache>>,
 	cache: Cache,
-	/// Candidates by page and color: they depend on nothing else.
-	ranked: HashMap<(u16, bool), Vec<(PathBuf, u32)>>,
+	/// Candidates by character and color: they depend on nothing else.
+	ranked: HashMap<(char, bool), Vec<(PathBuf, u32)>>,
 	/// Faces already loaded, or that failed to load.
 	tried: HashSet<(PathBuf, u32)>,
 	/// Where each loaded face is in the caller's list.
@@ -91,9 +92,8 @@ impl SystemFallback {
 		if self.ranked.len() >= MAX_RANKED {
 			self.ranked.clear();
 		}
-		let page = (u32::from(ch) >> 8) as u16;
 		let cache = &self.cache;
-		let ranked = self.ranked.entry((page, color)).or_insert_with(|| {
+		let ranked = self.ranked.entry((ch, color)).or_insert_with(|| {
 			candidates(cache, ch, color)
 				.into_iter()
 				.map(|(path, index)| (path.to_owned(), index))
@@ -132,7 +132,7 @@ impl SystemFallback {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn ranked_pages(&self) -> usize {
+	pub(crate) fn ranked_chars(&self) -> usize {
 		self.ranked.len()
 	}
 }

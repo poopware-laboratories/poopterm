@@ -6,6 +6,8 @@ mod cff;
 mod cmap;
 mod color;
 pub(crate) mod coverage;
+#[cfg(test)]
+mod coverage_tests;
 pub(crate) mod db;
 #[cfg(test)]
 mod db_tests;
@@ -298,7 +300,7 @@ mod tests {
 					monospace: false,
 					drawable: true,
 					color: false,
-					pages: Default::default(),
+					coverage: Default::default(),
 				}],
 			}
 		});
