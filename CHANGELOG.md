@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.128 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Plan a window's swapchain from what its surface reports (#168) (gpu).
+
 ## 26.10.127 "Giga Fly" — 2026-10-26
 
 ### Added
