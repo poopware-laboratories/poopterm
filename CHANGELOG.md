@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.10.132 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Draw the main window's grid on the GPU, with software fallback (#173) (gpu).
+- Show software frames on wayland through our own presenter (#175) (present).
+
+### Maintenance
+
+- Install only the packages we name on ubuntu runners (#174).
+
 ## 26.10.131 "Giga Fly" — 2026-10-26
 
 ### Added
