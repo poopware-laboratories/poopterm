@@ -17,6 +17,7 @@ use super::{
 	library::Library,
 	memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, Usage, choose_memory},
 	surface::{Platform, Surface, Window},
+	swapchain_plan::Plan,
 	timeline::Timeline,
 	version::major_minor,
 };
@@ -160,18 +161,33 @@ fn child() {
 	}
 }
 
-/// Whether a family of some device shows on a headless surface.
-fn headless_shows(entry: Entry) -> Result<bool, Error> {
+/// The swapchain planned for a 64×48 headless window on each device with
+/// a family that shows on it.
+fn headless_plans(entry: Entry) -> Result<Vec<Plan>, Error> {
 	let instance = Rc::new(entry.create_window_instance(c"poopterm tests", Platform::Headless)?);
 	// SAFETY: a headless surface has no window handles to keep live.
 	let surface = unsafe { Surface::new(&instance, Window::Headless) }?;
-	let mut shows = false;
+	let mut plans = Vec::new();
 	for physical in instance.physical_devices()? {
 		let mut device = instance.describe(physical)?;
 		surface.mark_present(physical, &mut device)?;
-		shows |= device.families.iter().any(|family| family.present);
+		if device.families.iter().any(|family| family.present) {
+			plans.push(surface.plan(physical, [64, 48])?);
+		}
 	}
-	Ok(shows)
+	Ok(plans)
+}
+
+/// Whether some device shows on a headless surface, and its swapchain
+/// takes the window's size.
+fn headless_shows(entry: Entry) -> Result<bool, Error> {
+	let plans = headless_plans(entry)?;
+	Ok(
+		!plans.is_empty()
+			&& plans
+				.iter()
+				.all(|plan| plan.extent == [64, 48] && plan.images >= 2),
+	)
 }
 
 #[test]

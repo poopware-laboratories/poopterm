@@ -52,3 +52,37 @@ fn headless_surface_create_info_is_laid_out_as_vk_headless_surface_create_info_e
 	];
 	assert_eq!(offsets, [0, 8, 16]);
 }
+
+#[test]
+fn capabilities_are_laid_out_as_vk_surface_capabilities_khr() {
+	use super::swapchain_plan::Capabilities;
+	// Thirteen 32-bit fields: the extents are pairs of them.
+	let size = (size_of::<Capabilities>(), align_of::<Capabilities>());
+	assert_eq!(size, (52, 4));
+	let offsets = [
+		offset_of!(Capabilities, min_images),
+		offset_of!(Capabilities, max_images),
+		offset_of!(Capabilities, current_extent),
+		offset_of!(Capabilities, min_extent),
+		offset_of!(Capabilities, max_extent),
+		offset_of!(Capabilities, max_layers),
+		offset_of!(Capabilities, transforms),
+		offset_of!(Capabilities, current_transform),
+		offset_of!(Capabilities, alpha),
+		offset_of!(Capabilities, usage),
+	];
+	assert_eq!(offsets, [0, 4, 8, 16, 24, 32, 36, 40, 44, 48]);
+}
+
+#[test]
+fn surface_formats_are_laid_out_as_vk_surface_format_khr() {
+	use super::swapchain_plan::SurfaceFormat;
+	// Read as an array with a stride of 8.
+	let size = (size_of::<SurfaceFormat>(), align_of::<SurfaceFormat>());
+	assert_eq!(size, (8, 4));
+	let offsets = [
+		offset_of!(SurfaceFormat, format),
+		offset_of!(SurfaceFormat, color_space),
+	];
+	assert_eq!(offsets, [0, 4]);
+}

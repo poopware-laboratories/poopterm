@@ -81,6 +81,8 @@ mod submit_types_tests;
 pub(crate) mod surface;
 #[cfg(test)]
 mod surface_driver_tests;
+#[cfg(test)]
+mod surface_query_tests;
 pub(crate) mod surface_types;
 #[cfg(test)]
 mod surface_types_tests;

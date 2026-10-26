@@ -2,11 +2,12 @@
 //! surface made from a window's handles and destroyed on drop, and which
 //! queue families can show on it.
 use super::{
-	call::{Error, check},
+	call::{Error, check, enumerate},
 	choose::Device,
 	entry::cast,
 	instance::Instance,
 	surface_types::*,
+	swapchain_plan::{Capabilities, Plan, SurfaceFormat, plan},
 	types::RawPhysicalDevice,
 };
 use std::{
@@ -66,10 +67,35 @@ impl Window {
 	}
 }
 
-pub(crate) struct Surface {
-	handle: RawSurface,
+/// The instance's functions for surfaces, other than making them.
+struct Functions {
 	destroy: DestroySurface,
 	support: GetPhysicalDeviceSurfaceSupport,
+	capabilities: GetPhysicalDeviceSurfaceCapabilities,
+	formats: GetPhysicalDeviceSurfaceFormats,
+	modes: GetPhysicalDeviceSurfacePresentModes,
+}
+
+impl Functions {
+	fn load(instance: &Instance) -> Result<Self, Error> {
+		let function = |name| instance.function(name);
+		// SAFETY: the functions the loader returned for these names have
+		// these types.
+		unsafe {
+			Ok(Self {
+				destroy: cast(function(c"vkDestroySurfaceKHR")?),
+				support: cast(function(c"vkGetPhysicalDeviceSurfaceSupportKHR")?),
+				capabilities: cast(function(c"vkGetPhysicalDeviceSurfaceCapabilitiesKHR")?),
+				formats: cast(function(c"vkGetPhysicalDeviceSurfaceFormatsKHR")?),
+				modes: cast(function(c"vkGetPhysicalDeviceSurfacePresentModesKHR")?),
+			})
+		}
+	}
+}
+
+pub(crate) struct Surface {
+	handle: RawSurface,
+	functions: Functions,
 	/// Dropped after the surface is destroyed.
 	pub(super) instance: Rc<Instance>,
 }
@@ -87,15 +113,7 @@ impl Surface {
 		if instance.platform != Some(platform) {
 			return Err(Error::Missing(platform.extensions()[1]));
 		}
-		let function = |name| instance.function(name);
-		// SAFETY: the functions the loader returned for these names have
-		// these types.
-		let (destroy, support) = unsafe {
-			(
-				cast::<DestroySurface>(function(c"vkDestroySurfaceKHR")?),
-				cast::<GetPhysicalDeviceSurfaceSupport>(function(c"vkGetPhysicalDeviceSurfaceSupportKHR")?),
-			)
-		};
+		let functions = Functions::load(instance)?;
 		let (wayland, xlib, headless);
 		let (name, info): (&'static CStr, *const c_void) = match window {
 			Window::Wayland { display, surface } => {
@@ -130,7 +148,7 @@ impl Surface {
 		// SAFETY: the function the loader returned for this name has this
 		// type but for the pointee of its info, and pointers to sized types
 		// are passed alike.
-		let create: CreateSurface = unsafe { cast(function(name)?) };
+		let create: CreateSurface = unsafe { cast(instance.function(name)?) };
 		let mut handle = 0;
 		// SAFETY: the instance is live, `info` is the structure `create`
 		// takes and outlives the call, the caller vouches for the handles,
@@ -138,8 +156,7 @@ impl Surface {
 		check(unsafe { create(instance.handle(), info, ptr::null(), &mut handle) })?;
 		Ok(Self {
 			handle,
-			destroy,
-			support,
+			functions,
 			instance: instance.clone(),
 		})
 	}
@@ -155,10 +172,35 @@ impl Surface {
 			let mut supported = 0;
 			// SAFETY: `physical` is one of the instance's devices, `index` one
 			// of its families, the surface is live and `supported` writable.
-			check(unsafe { (self.support)(physical, index as u32, self.handle, &mut supported) })?;
+			check(unsafe {
+				(self.functions.support)(physical, index as u32, self.handle, &mut supported)
+			})?;
 			family.present = supported != 0;
 		}
 		Ok(())
+	}
+
+	/// The swapchain to make on `physical`, one of the instance's devices,
+	/// for a window of `window` pixels; `Error::Unfit` says why none suits.
+	pub(crate) fn plan(&self, physical: RawPhysicalDevice, window: [u32; 2]) -> Result<Plan, Error> {
+		let (functions, handle) = (&self.functions, self.handle);
+		let mut capabilities = Capabilities::default();
+		// SAFETY: `physical` is one of the instance's devices, the surface is
+		// live and `capabilities` writable.
+		check(unsafe { (functions.capabilities)(physical, handle, &mut capabilities) })?;
+		let none = SurfaceFormat {
+			format: 0,
+			color_space: 0,
+		};
+		let formats = enumerate(none, |count, formats| {
+			// SAFETY: as above, and `enumerate` passes room for `count`.
+			unsafe { (functions.formats)(physical, handle, count, formats) }
+		})?;
+		let modes = enumerate(0, |count, modes| {
+			// SAFETY: as above.
+			unsafe { (functions.modes)(physical, handle, count, modes) }
+		})?;
+		plan(&capabilities, &formats, &modes, window).map_err(Error::Unfit)
 	}
 }
 
@@ -166,6 +208,6 @@ impl Drop for Surface {
 	fn drop(&mut self) {
 		// SAFETY: the surface is live, made with this live instance, and
 		// nothing made from it is left.
-		unsafe { (self.destroy)(self.instance.handle(), self.handle, ptr::null()) };
+		unsafe { (self.functions.destroy)(self.instance.handle(), self.handle, ptr::null()) };
 	}
 }

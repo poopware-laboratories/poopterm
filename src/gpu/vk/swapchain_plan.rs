@@ -19,8 +19,10 @@ pub(crate) const INHERIT: u32 = 8;
 /// are drawn into the images, or copied in when software drew them.
 pub(crate) const USAGE: u32 = 0x2 | 0x10;
 
-/// What a surface supports, from `VkSurfaceCapabilitiesKHR`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What a surface supports: `VkSurfaceCapabilitiesKHR`, as the driver
+/// writes it.
+#[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Capabilities {
 	pub min_images: u32,
 	/// Zero for no limit.
@@ -29,12 +31,15 @@ pub(crate) struct Capabilities {
 	pub current_extent: [u32; 2],
 	pub min_extent: [u32; 2],
 	pub max_extent: [u32; 2],
+	pub max_layers: u32,
+	pub transforms: u32,
 	pub current_transform: u32,
 	pub alpha: u32,
 	pub usage: u32,
 }
 
 /// `VkSurfaceFormatKHR`.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SurfaceFormat {
 	pub format: i32,
