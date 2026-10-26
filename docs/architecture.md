@@ -323,6 +323,16 @@ clipped to their row so rows can be redrawn independently. X11 windows get
 the whole image each present (they lose contents when exposed); Wayland and
 macOS get damage rectangles.
 
+**Presenting (`src/present`).** Our own replacement for softbuffer, under
+way. `present::pool::Pool` picks the window buffer each frame goes into
+(at most three, reused once the compositor releases them) and how many
+frames old its contents are; `present::copy::History` turns that age and
+the changed pixel rows into the rows to copy and the damage to report, and
+carries rows changed while every buffer was held over to the next frame.
+`present::wayland::Presenter` shows frames on a `wl_surface` through
+`wl_shm`, with libwayland-client opened at run time (`library.rs`) and its
+objects on a private event queue, so winit's event loop never sees them.
+
 ## Input (`src/input`)
 
 All encoders are pure functions with unit tests:

@@ -85,6 +85,11 @@ impl Pool {
 		Pick::Make { id: self.made }
 	}
 
+	/// Buffer `id` could not be made after all: it is gone.
+	pub(crate) fn forget(&mut self, id: u64) {
+		self.buffers.retain(|buffer| buffer.id != id);
+	}
+
 	/// The frame copied into buffer `id` was handed to the compositor.
 	pub(crate) fn presented(&mut self, id: u64) {
 		self.frames += 1;

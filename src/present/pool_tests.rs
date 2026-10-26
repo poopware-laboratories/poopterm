@@ -237,3 +237,19 @@ fn every_frame_shown_is_whole_whatever_the_compositor_holds_and_however_the_wind
 	);
 	assert_eq!(destroyed.len() + pool.live(), made as usize);
 }
+
+#[test]
+fn a_buffer_that_could_not_be_made_is_forgotten_and_its_id_never_reused() {
+	let mut pool = Pool::new(SIZE);
+	assert_eq!(pool.next(), Pick::Make { id: 1 });
+	pool.forget(1);
+	assert_eq!(pool.live(), 0);
+	// Not offered as a free buffer that holds nothing: it does not exist.
+	assert_eq!(pool.next(), Pick::Make { id: 2 });
+	show(&mut pool);
+	// Forgetting a buffer that is shown or unknown changes nothing else.
+	pool.forget(9);
+	assert_eq!(pool.live(), 1);
+	assert!(!pool.released(2));
+	assert_eq!(pool.next(), Pick::Reuse { id: 2, age: 1 });
+}

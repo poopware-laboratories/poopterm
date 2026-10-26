@@ -290,7 +290,10 @@ least as fast.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
-  damage handling are designed once.
+  damage handling are designed once. Done: `present::{pool, copy}` (buffer
+  ages, rows to copy and damage) and `present::wayland` (libwayland-client
+  opened at run time, `wl_shm` on our own event queue). Next: show Wayland
+  windows through it, then X11 MIT-SHM, macOS CALayer, and drop the crate.
 
 Kept for now: `winit` (windowing, IME and DPI are too much risk for the
 gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rfd`.

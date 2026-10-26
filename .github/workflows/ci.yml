@@ -29,8 +29,8 @@ jobs:
         if: runner.os == 'Linux'
         # zsh and fish run the shell hooks' tests, which skip missing shells;
         # Mesa's software Vulkan driver and the validation layer run the
-        # Vulkan tests.
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+        # Vulkan tests; weston, headless, the Wayland presenter's.
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers weston
 
       # The checked-in SPIR-V must be what the GLSL compiles to with the
       # pinned glslc; scripts/shaders.sh names the SDK it comes from.
@@ -62,6 +62,20 @@ jobs:
 
       - name: Run fmt
         run: cargo +nightly fmt --check
+
+      - name: Start a headless Wayland compositor
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p -m 700 "$RUNNER_TEMP/xdg"
+          # The Wayland tests then fail, not skip, without it.
+          printf '%s\n' "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg" WAYLAND_DISPLAY=wayland-ci POOPTERM_REQUIRE_WAYLAND=1 >> "$GITHUB_ENV"
+          XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg" nohup weston --backend=headless --socket=wayland-ci --idle-time=0 > "$RUNNER_TEMP/weston.log" 2>&1 &
+          for _ in $(seq 100); do
+            [ -S "$RUNNER_TEMP/xdg/wayland-ci" ] && exit 0
+            sleep 0.1
+          done
+          cat "$RUNNER_TEMP/weston.log"
+          exit 1
 
       - name: Run tests
         run: cargo +nightly test --locked
