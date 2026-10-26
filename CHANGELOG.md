@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.127 "Giga Fly" — 2026-10-26
+
+### Added
+
+- Choose the swapchain a surface suits (#167) (gpu).
+
 ## 26.10.126 "Giga Fly" — 2026-10-26
 
 ### Added
