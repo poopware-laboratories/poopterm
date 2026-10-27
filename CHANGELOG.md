@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.133 "Giga Fly" — 2026-10-27
+
+### Maintenance
+
+- Bump anthropics/claude-code-action from 1.0.254 to 1.0.261 (#176) (deps).
+
 ## 26.10.132 "Giga Fly" — 2026-10-26
 
 ### Added
