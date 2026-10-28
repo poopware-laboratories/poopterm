@@ -471,3 +471,51 @@ Overall +0.7% is inside the run-to-run spread; this does not establish a
 repeatable throughput improvement or a ranking against another terminal.
 The native build option is provided for host-specific builds, not as a
 measured performance claim.
+
+## Bounded macOS PTY batching experiment (2026-10-28)
+
+A diagnostic 2 GiB ASCII stream delivered 2,147,483,840 bytes to both the
+reader and parser. macOS returned 2,097,152 individual 1 KiB reads despite
+64 KiB read buffers; the parser consumed about 1.53 million batches.
+The issue is handoff overhead, rather than missing input.
+
+The candidate detects at least 64 KiB in a 2 ms window. During the resulting
+2 ms lease, a partial queue batch waits for 4 KiB or a requested 50 μs
+condition-variable timeout, whichever comes first. Closing flushes immediately;
+sparse output bypasses the timeout. No terminal lock is held while waiting.
+The timeout is a scheduling request, not a hard wall-clock latency guarantee.
+Other production platforms retain their original queue policy.
+
+Apple M4, native release 26.10.135, software presentation, 100×30 verified grid,
+normal PTY output processing and 5000 scrollback lines. Identical saved official
+Ghostty-generated ASCII, shared-positive-width Unicode and grapheme inputs;
+our DA1 completion timer. Five timed passes after warmup per input per window;
+three windows per build, A B B A A B, no concurrent builds or benchmarks.
+Values below are medians of window medians, decimal MB/s.
+
+| Input | Baseline | 4 KiB / 50 μs candidate |
+|---|---:|---:|
+| ASCII | 243.8 | 260.3 |
+| Common-width Unicode | 201.3 | 201.8 |
+| Graphemes | 224.8 | 225.1 |
+
+ASCII improved 6.8%; other inputs were essentially unchanged in these runs.
+Idle DA1 round-trip medians were about 78 versus 79 μs. Immediately after
+writing a 1 MiB flood, reply medians were about 63 versus 98 μs. These include
+Python/termios/PTY overhead and any residual parsing after the writes, rather
+than measuring keyboard-to-pixel latency.
+
+Rejected tuning: a 16 KiB / 50 μs target improved default-settings ASCII
+241→270 MB/s but reduced grapheme throughput 225→199 MB/s. The 100 μs variant
+also added more post-flood reply delay. Those larger targets are not retained.
+This experiment compares Poopterm against itself; it does not establish a win
+over Ghostty. Ghostty still led the separately measured matching-history ASCII
+and common-width Unicode tests.
+
+With raw output and history disabled, the 4 KiB candidate measured ASCII
+257.0→263.0 MB/s, common-width Unicode 207.0→201.8, and graphemes 235.6→235.5.
+An additional Unicode-only A B B A A B repeat measured 208.7→206.4 MB/s
+(-1.1%); individual candidate windows ranged 197.0–207.5 MB/s versus baseline
+207.3–208.8. This remaining variation/cost is a limitation, not a Unicode
+speedup claim. Suppressing queue notifications alone did not reproduce the
+ASCII gain (242.6→243.8 MB/s in the separate default-settings series).
