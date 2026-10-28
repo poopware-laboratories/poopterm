@@ -250,12 +250,7 @@ impl Term {
 			if row[x + count - 1].width == 2 && x + count < cols {
 				row[x + count] = blank;
 			}
-			for (cell, &byte) in row[x..x + count].iter_mut().zip(bytes) {
-				*cell = Cell {
-					ch: byte as char,
-					..template
-				};
-			}
+			super::ascii::write(&mut row[x..x + count], &bytes[..count], template);
 			self.last_printed = Some(bytes[count - 1] as char);
 			bytes = &bytes[count..];
 			self.wrap_pending = x + count >= cols;

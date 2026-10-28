@@ -381,6 +381,27 @@ compatibility work of 26.10.23–26.10.27 made slower (see the regression
 in [`TODO.md`](../TODO.md)). The plan toward 200 MB/s on every payload is
 there too.
 
+## Whole-cell ASCII stores (Apple M4)
+
+The ASCII path assigned `Cell` fields separately, while the Unicode path
+already built whole vector words. The ASCII writer now uses that same cell
+representation, replacing only the character lane with a byte-derived scalar.
+A safe wrapper checks equal lengths before the mutable word conversion;
+layout, bounds, style and failure-path tests accompany the change.
+
+On Apple M4, native release, identical saved Ghostty-generated ASCII,
+120×80, four alternating processes per build, the isolated change measured
+528→695 MB/s with 5000 history lines and 663→934 with history disabled.
+After rebasing onto the SIMD UTF-8 fix, the same comparison measured
+510→659 and 663→913 respectively. File loading, terminal creation and
+teardown are included; generation is excluded. These are headless gains.
+
+Six real software windows at 100×30, 5000 history lines and five passes per
+file measured overlapping ASCII window medians: 246–253 before, 245–248
+after. No windowed ASCII gain is established; the live output path remains
+a separate bottleneck. Text and hyperlink snapshots matched on the saved
+ASCII, raw/common-width UTF-8, styled, grapheme and numbered-history fixtures.
+
 ## Aarch64 UTF-8 validation (Apple M4)
 
 A sample of Ghostty-generated UTF-8 with matching positive character widths

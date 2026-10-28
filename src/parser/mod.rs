@@ -2,6 +2,9 @@
 //!
 //! [`crate::vt`] tokenizes the byte stream; the [`Handler`] impl here routes
 //! each event to the submodule that applies it.
+mod ascii;
+#[cfg(test)]
+mod ascii_tests;
 mod cluster;
 mod color_spec;
 mod csi;

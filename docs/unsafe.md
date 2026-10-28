@@ -104,6 +104,7 @@ if it changes.
 | `term/mod.rs` `Cell::bits` | The cell as one `u128` (equal exactly when the cells are). |
 | `term/mod.rs` `Cell::words` | The cell as `u32x4`, the character in lane 0. |
 | `term/mod.rs` `Cell::words_mut` | `&mut [Cell]` as `&mut [u32x4]`, to store whole cells with one vector store. |
+| `parser/ascii.rs` `write` | Calls `Cell::words_mut` to store byte-derived characters and the template fields as whole cells. |
 | `term/mod.rs` `Cell::fill` (portable path) | `&mut [Cell]` as `&mut [u64x2]`. |
 | `term/scrollback.rs` `trimmed_len` | `&[Cell]` as `&[u64]`, to find trailing blank cells four at a time. |
 
@@ -113,9 +114,12 @@ The mutable views can write any bits, but a `char` has invalid values
 
 - `Cell::fill` writes copies of a real `Cell`, so this holds.
 - `Cell::words_mut` is an `unsafe fn`: its `# Safety` section makes each
-  caller keep lane 0 a valid `char`. Its only production caller,
-  `parser/print.rs`, stores `spacer` (a whole cell), `with_char` of a
-  `char`, or characters decoded from validated UTF-8.
+  caller keep lane 0 a valid `char`. `parser/print.rs` stores `spacer`
+  (a whole cell), `with_char` of a `char`, or characters decoded from
+  validated UTF-8. `parser/ascii.rs` stores a byte converted to `u32` in
+  lane 0 (always a scalar, at most U+00FF) and preserves all other template
+  fields. Its safe wrapper checks equal slice lengths before any store;
+  differential tests cover every byte, styles, subslices and length errors.
 
 The layout these views rely on (16 bytes, 16-byte alignment, no padding) is
 checked at compile time by a `const` assert next to `Cell`.
