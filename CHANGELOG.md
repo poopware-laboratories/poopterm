@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.10.135 "Giga Fly" — 2026-10-28
+
+### Performance
+
+- Store ascii cells as vector words (parser).
+
+### Maintenance
+
+- Tune local builds for the detected host cpu (macos).
+
 ## 26.10.134 "Giga Fly" — 2026-10-28
 
 ### Performance
