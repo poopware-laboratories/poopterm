@@ -140,9 +140,17 @@ Poopterm needs **nightly Rust** for `portable_simd`; the included
 `rust-toolchain.toml` selects it when Rust comes from rustup.
 
 ```sh
-cargo run --release          # build and launch
-cargo build --release        # binary: target/release/poopterm
+make run                    # build for this host and launch
+make                        # local macOS: automatically tune for this CPU
+# binary: target/release/poopterm
 ```
+
+Local `make`, `make install` and PGO builds detect macOS and use
+`-Ctarget-cpu=native`, letting rustc select the host CPU's instruction set
+and scheduling. Set `POOPTERM_PORTABLE=1` for a transferable build, or use
+`cargo build --release` for Cargo's normal defaults. CI, staged packages and
+cross builds stay portable; explicit CPU flags are respected. This tunes
+source builds, including dependencies, without recompiling at app startup.
 
 <details>
 <summary>Build dependencies per platform</summary>
