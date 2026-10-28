@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.136 "Giga Fly" — 2026-10-28
+
+### Performance
+
+- Coalesce dense macos output into bounded batches (pty).
+
 ## 26.10.135 "Giga Fly" — 2026-10-28
 
 ### Performance
