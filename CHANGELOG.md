@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.134 "Giga Fly" — 2026-10-28
+
+### Performance
+
+- Validate aarch64 utf-8 with simd (vt).
+
 ## 26.10.133 "Giga Fly" — 2026-10-27
 
 ### Maintenance
