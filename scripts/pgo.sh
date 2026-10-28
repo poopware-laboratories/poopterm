@@ -62,7 +62,7 @@ profdata() {
 cargo_build() {
 	target_dir=$1
 	shift
-	RUSTFLAGS="${RUSTFLAGS:-} $*" cargo build --release --locked --target "$host" \
+	RUSTFLAGS="${RUSTFLAGS:-} $*" sh scripts/build.sh --release --locked --target "$host" \
 		--target-dir "$target_dir"
 }
 
@@ -91,10 +91,13 @@ train() {
 # The binary releases ship, at the path packaging expects. Training runs
 # in its own process, so a failure anywhere in it falls back.
 dist() {
+	# Distribution builds target the architecture baseline, unless a local
+	# make pgo-install explicitly requests this machine's CPU. CI stays portable.
+	export POOPTERM_PORTABLE=${POOPTERM_PORTABLE:-1}
 	release=$root/target/release/poopterm
 	if ! sh "$root/scripts/pgo.sh" all "$@"; then
 		echo "::warning::pgo.sh: PGO failed; shipping a plain release build" >&2
-		cargo build --release --locked
+		sh scripts/build.sh --release --locked
 		return
 	fi
 	mkdir -p "$(dirname "$release")"
@@ -166,7 +169,7 @@ compare() {
 		echo "pgo.sh: no optimized build; run 'scripts/pgo.sh build' first" >&2
 		exit 1
 	}
-	cargo build --release --locked
+	sh scripts/build.sh --release --locked
 	for binary in "$root/target/release/poopterm" "$optimized" "$bolted"; do
 		[ -x "$binary" ] || continue
 		echo "== $binary"

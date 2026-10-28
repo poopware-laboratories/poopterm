@@ -16,9 +16,13 @@ PREFIX ?= /usr/local
 DESTDIR ?=
 # MiB per benchmark workload when training.
 PGO_MIB ?= 8
+POOPTERM_PORTABLE ?= 0
 
 all:
-	cargo build --release --locked
+	sh scripts/build.sh --release --locked
+
+run: all
+	./target/release/poopterm
 
 install: all
 	PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) sh scripts/install.sh --no-build
@@ -39,7 +43,7 @@ bolt:
 	sh scripts/pgo.sh bolt $(PGO_MIB)
 
 pgo-install:
-	sh scripts/pgo.sh dist $(PGO_MIB)
+	POOPTERM_PORTABLE=$(POOPTERM_PORTABLE) sh scripts/pgo.sh dist $(PGO_MIB)
 	PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) sh scripts/install.sh --no-build
 
 pgo-compare:
@@ -51,4 +55,4 @@ pgo-clean:
 clean:
 	cargo clean
 
-.PHONY: all install uninstall pgo pgo-use pgo-build bolt pgo-install pgo-compare pgo-clean clean
+.PHONY: all run install uninstall pgo pgo-use pgo-build bolt pgo-install pgo-compare pgo-clean clean

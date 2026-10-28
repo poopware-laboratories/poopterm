@@ -411,3 +411,42 @@ of ASCII, truecolor and shell found truecolor within 1% and no repeatable
 shell slowdown. These are host-specific observations, not a fastest-terminal
 claim. Text and hyperlink snapshots matched before and after on the saved
 ASCII, raw UTF-8, common-width UTF-8, styled, grapheme and retention fixtures.
+
+## Local macOS CPU builds (26.10.132)
+
+`make`, `make install` and local PGO builds use `-Ctarget-cpu=native` on
+macOS. Rustc detects the processor and tunes dependencies as well as the
+terminal. CI, cross compilation, staged packages and `pgo.sh dist` default
+to portable architecture builds; `POOPTERM_PORTABLE=1` opts out locally.
+Explicit `target-cpu` flags take precedence. This is a source-build policy,
+not compilation at app startup.
+
+Apple M4 (`rustc --print target-cpus` identifies the host as `apple-m4`),
+plain release versus native release, `--benchmark --mib 32`, 120×40. Three
+runs each, ordered A B B A A B, parser MB/s median (min–max):
+
+| Workload | Portable release | Native release | Change |
+|---|---:|---:|---:|
+| log | 518.5 (518.4–523.1) | 524.9 (518.6–531.4) | +1.2% |
+| compiler | 403.1 (340.6–419.4) | 407.4 (395.7–410.3) | +1.1% |
+| ls | 451.6 (451.1–460.3) | 448.5 (447.9–459.5) | -0.7% |
+| source | 396.4 (394.9–408.7) | 390.7 (388.3–393.7) | -1.4% |
+| unicode | 231.8 (230.9–236.2) | 229.4 (229.3–232.4) | -1.0% |
+| cjk | 305.7 (304.6–313.8) | 303.7 (300.5–308.9) | -0.7% |
+| emoji | 223.2 (222.9–228.6) | 227.7 (222.3–228.3) | +2.0% |
+| tui | 492.8 (488.3–523.2) | 496.9 (486.9–505.6) | +0.8% |
+| editor | 511.7 (507.3–527.3) | 519.2 (503.4–519.5) | +1.5% |
+| progress | 682.6 (679.2–685.4) | 693.0 (677.9–696.9) | +1.5% |
+| truecolor | 747.9 (744.8–752.2) | 747.2 (746.0–758.8) | -0.1% |
+| cursor | 463.7 (462.4–472.6) | 460.7 (446.3–460.9) | -0.6% |
+| shell | 356.0 (351.3–368.3) | 357.4 (346.4–358.0) | +0.4% |
+| sixel | 374.9 (373.2–383.0) | 373.7 (361.5–374.4) | -0.3% |
+| kitty-rgba | 3884.8 (3825.6–3952.8) | 3948.0 (3822.9–3980.2) | +1.6% |
+| kitty-png | 190.5 (190.2–193.7) | 194.7 (188.5–195.2) | +2.2% |
+| kitty-zlib | 484.2 (483.7–491.8) | 496.0 (485.9–498.5) | +2.4% |
+| overall | 392.9 (388.9–402.8) | 395.5 (390.1–397.1) | +0.7% |
+
+Overall +0.7% is inside the run-to-run spread; this does not establish a
+repeatable throughput improvement or a ranking against another terminal.
+The native build option is provided for host-specific builds, not as a
+measured performance claim.

@@ -28,6 +28,7 @@ mkdir -p "$dir"
 case $RUSTFLAGS in
 *-Cprofile-generate=*)
 	profiles=${RUSTFLAGS##*-Cprofile-generate=}
+	profiles=${profiles%% *}
 	cat > "$dir/poopterm" <<EOF
 #!/bin/sh
 echo "train \\$*" >> "$FAKE/log"
@@ -103,6 +104,7 @@ class Pgo(unittest.TestCase):
         self.repo = self.fake / 'repo'
         (self.repo / 'scripts').mkdir(parents=True)
         shutil.copy(SOURCE / 'scripts/pgo.sh', self.repo / 'scripts/pgo.sh')
+        shutil.copy(SOURCE / 'scripts/build.sh', self.repo / 'scripts/build.sh')
         bin_dir = self.fake / 'bin'
         bin_dir.mkdir()
         tools = self.fake / f'sysroot/lib/rustlib/{HOST}/bin'
@@ -269,7 +271,7 @@ class Pgo(unittest.TestCase):
     def test_make_installs_what_releases_ship(self):
         dry_run = subprocess.check_output(['make', '-n', 'pgo-install', 'PGO_MIB=3'], cwd=SOURCE,
                                           text=True).splitlines()
-        self.assertEqual(dry_run[0], 'sh scripts/pgo.sh dist 3')
+        self.assertEqual(dry_run[0], 'POOPTERM_PORTABLE=0 sh scripts/pgo.sh dist 3')
         self.assertIn('sh scripts/install.sh --no-build', dry_run[1])
         self.assertNotIn('POOPTERM_BIN', dry_run[1])
 

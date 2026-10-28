@@ -91,7 +91,7 @@ if [ "$build" = 1 ]; then
 		echo "install.sh: cargo not found; run this script as yourself, not with sudo" >&2
 		exit 1
 	}
-	(cd "$root" && cargo build --release --locked)
+	(cd "$root" && sh scripts/build.sh --release --locked)
 fi
 [ -f "$binary" ] || {
 	echo "install.sh: $binary not found; build it with cargo build --release" >&2
