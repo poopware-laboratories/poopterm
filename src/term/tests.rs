@@ -805,6 +805,9 @@ fn one_segment_of_mixed_widths_stores_each_width_in_the_style() {
 #[test]
 fn batched_printing_matches_per_character_printing() {
 	let fragments: &[&[u8]] = &[
+		b"0123456789abcdef0123456789abcdef!",
+		b"\x1b[1;4;48;2;255;128;64m0123456789abcdef\x1b[0m",
+		"猫\r0123456789abcdef".as_bytes(),
 		b"hello world ",
 		"🙂猫e\u{301}日本語".as_bytes(),
 		b"\xff\xe7x\xab",
