@@ -6,8 +6,13 @@
 //! pattern; a separate check requires the continuation bytes of three- and
 //! four-byte characters. `core::simd` lowers its dynamic swizzles to table
 //! lookups only when `core` itself was built with SSSE3, so the kernels use
-//! `core::arch` directly.
+//! `core::arch` directly on x86. Aarch64 uses safe portable SIMD, where
+//! dynamic swizzles lower to NEON table lookups.
 #![cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
+
+#[cfg(any(target_arch = "aarch64", test))]
+#[path = "utf8_simd.rs"]
+pub(super) mod neon;
 
 /// Whether `bytes` is entirely valid UTF-8.
 #[inline]
@@ -16,6 +21,11 @@ pub(crate) fn is_valid(bytes: &[u8]) -> bool {
 	if std::arch::is_x86_feature_detected!("avx2") {
 		// SAFETY: the CPU supports AVX2.
 		return unsafe { x86::is_valid(bytes) };
+	}
+	#[cfg(target_arch = "aarch64")]
+	if bytes.len() >= 8 {
+		// Short strings cost less to validate than to set up vector tables.
+		return neon::is_valid(bytes);
 	}
 	portable(bytes)
 }

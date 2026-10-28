@@ -380,3 +380,34 @@ workloads spend it in `Parser::advance`, the per-sequence path that the
 compatibility work of 26.10.23–26.10.27 made slower (see the regression
 in [`TODO.md`](../TODO.md)). The plan toward 200 MB/s on every payload is
 there too.
+
+## Aarch64 UTF-8 validation (Apple M4)
+
+A sample of Ghostty-generated UTF-8 with matching positive character widths
+spent about a third of CPU samples in `str::from_utf8`: only x86 had a SIMD
+validator. The aarch64 path now uses the existing lookup tables in safe
+16-byte portable SIMD, lowering to NEON table lookups. Strings below eight
+bytes keep the scalar path; a crossover microbenchmark found its setup
+cheaper there. No parser, width, history, hyperlink or grapheme semantics change.
+
+On an Apple M4, release with `-C target-cpu=native`, saved Ghostty-generated
+files, 120×80, four alternating process measurements per build, fresh terminals
+with 5000 history lines: common-width UTF-8 144→199 MB/s and mixed graphemes
+164→239 MB/s. ASCII remained about 523→524 MB/s. The process timer includes
+file loading, setup and teardown; both builds read identical files in 64 KiB
+parser calls. The unfiltered random UTF-8 file has different display widths
+between engines, so it is not used for an equal-state engine comparison.
+
+In six alternating software-rendered windows at 100×30, 5000 history lines,
+five timed passes per file per window, the medians of the three window
+medians were 145→201 MB/s for common-width UTF-8 and 163→225 for graphemes.
+Window noise was substantial: UTF-8 window medians ranged 115–145 before and
+132–201 after. ASCII's ranges overlapped, so no windowed ASCII gain is claimed.
+The timer waits for a DA1 reply after every payload.
+
+The broader built-in corpus at 120×80, 16 MiB, no rendering, three alternating
+runs per build improved from 387 to 416 MB/s overall. A separate 64 MiB check
+of ASCII, truecolor and shell found truecolor within 1% and no repeatable
+shell slowdown. These are host-specific observations, not a fastest-terminal
+claim. Text and hyperlink snapshots matched before and after on the saved
+ASCII, raw UTF-8, common-width UTF-8, styled, grapheme and retention fixtures.

@@ -362,3 +362,6 @@ fn defects_inside_non_ascii_text_agree_at_every_position() {
 		}
 	}
 }
+
+#[path = "utf8_simd_tests.rs"]
+mod simd_tests;
