@@ -1,7 +1,7 @@
 //! Row-based screen storage.
 //!
-//! Each row is its own `Vec<Cell>`, so scrolling rotates row headers instead
-//! of moving every cell, and rows entering the screen are blanked in place,
+//! Each row is its own `Vec<Cell>`, so full-screen scrolling advances a circular row index instead
+//! of moving row headers or cells. Rows entering the screen are blanked in place,
 //! in memory that is already in cache.
 //!
 //! Each row also records how far it is used: every cell from there on is
@@ -16,6 +16,7 @@ pub(crate) type Row = Vec<Cell>;
 #[derive(Clone)]
 pub(crate) struct Grid {
 	rows: Vec<Row>,
+	first: usize,
 	/// Per row: every cell at or after it equals `pad`.
 	used: Vec<usize>,
 	/// The padding cell `used` is measured against.
@@ -24,11 +25,30 @@ pub(crate) struct Grid {
 }
 
 impl Grid {
+	#[inline(always)]
+	fn physical(&self, y: usize) -> usize {
+		assert!(y < self.rows.len(), "grid row out of bounds");
+		let row = self.first + y;
+		if row >= self.rows.len() {
+			row - self.rows.len()
+		} else {
+			row
+		}
+	}
+	fn normalize(&mut self) {
+		if self.first != 0 {
+			self.rows.rotate_left(self.first);
+			self.used.rotate_left(self.first);
+			self.first = 0;
+		}
+	}
+
 	/// A grid of `blank` cells, which also become the padding until
 	/// [`Grid::sync_pad`] says otherwise.
 	pub(crate) fn new(cols: usize, rows: usize, blank: Cell) -> Self {
 		Self {
 			rows: (0..rows).map(|_| vec![blank; cols]).collect(),
+			first: 0,
 			used: vec![0; rows],
 			pad: blank,
 			cols,
@@ -37,18 +57,21 @@ impl Grid {
 
 	#[cfg(test)]
 	pub(crate) fn iter(&self) -> impl Iterator<Item = &Row> {
-		self.rows.iter()
+		self.rows[self.first..]
+			.iter()
+			.chain(self.rows[..self.first].iter())
 	}
 
 	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Row> {
 		self.used.fill(self.cols);
-		self.rows.iter_mut()
+		let (before, after) = self.rows.split_at_mut(self.first);
+		after.iter_mut().chain(before.iter_mut())
 	}
 
 	/// How far row `y` is used: the cells after it are all padding.
 	#[inline]
 	pub(crate) fn used(&self, y: usize) -> usize {
-		self.used[y]
+		self.used[self.physical(y)]
 	}
 
 	/// Measures `used` against `pad` from now on. A different padding cell
@@ -64,6 +87,7 @@ impl Grid {
 	/// Counts row `y` as used at least up to `end`.
 	#[inline(always)]
 	pub(crate) fn mark_used(&mut self, y: usize, end: usize) {
+		let y = self.physical(y);
 		let used = &mut self.used[y];
 		*used = (*used).max(end.min(self.cols));
 	}
@@ -72,6 +96,7 @@ impl Grid {
 	/// [`Grid::mark_used`] before anything else reads the grid.
 	#[inline(always)]
 	pub(crate) fn row_unmarked(&mut self, y: usize) -> &mut Row {
+		let y = self.physical(y);
 		&mut self.rows[y]
 	}
 
@@ -79,6 +104,7 @@ impl Grid {
 	#[inline(always)]
 	pub(crate) fn row_upto(&mut self, y: usize, end: usize) -> &mut Row {
 		self.mark_used(y, end);
+		let y = self.physical(y);
 		&mut self.rows[y]
 	}
 
@@ -86,6 +112,7 @@ impl Grid {
 	/// the used end shortens the row instead of being written past it.
 	#[inline]
 	pub(crate) fn fill(&mut self, y: usize, start: usize, stop: usize, cell: Cell) {
+		let y = self.physical(y);
 		let used = &mut self.used[y];
 		if cell == self.pad && stop >= *used {
 			if start < *used {
@@ -111,6 +138,21 @@ impl Grid {
 		mut evict: impl FnMut(&[Cell], usize) -> usize,
 	) {
 		let count = count.min(bottom + 1 - top);
+		if top == 0 && bottom + 1 == self.rows.len() {
+			let emptied = if blank == self.pad { 0 } else { self.cols };
+			for logical in 0..count {
+				let y = self.physical(logical);
+				let dirty = evict(&self.rows[y], self.used[y]);
+				Cell::fill(&mut self.rows[y][..dirty], blank);
+				self.used[y] = emptied;
+			}
+			self.first += count;
+			if self.first >= self.rows.len() {
+				self.first -= self.rows.len();
+			}
+			return;
+		}
+		self.normalize();
 		let region = &mut self.rows[top..=bottom];
 		let used = &mut self.used[top..=bottom];
 		let emptied = if blank == self.pad { 0 } else { self.cols };
@@ -131,6 +173,7 @@ impl Grid {
 
 	/// Scrolls rows `top..=bottom` down by `count`, blanking the rows at the top.
 	pub(crate) fn scroll_down(&mut self, top: usize, bottom: usize, count: usize, blank: Cell) {
+		self.normalize();
 		let count = count.min(bottom + 1 - top);
 		let region = &mut self.rows[top..=bottom];
 		region.rotate_right(count);
@@ -144,6 +187,7 @@ impl Grid {
 
 	/// Resizes to `cols` × `rows`, keeping the top-left content.
 	pub(crate) fn resize(&mut self, cols: usize, rows: usize, blank: Cell) {
+		self.normalize();
 		self.rows.truncate(rows);
 		for row in &mut self.rows {
 			row.resize(cols, blank);
@@ -185,7 +229,7 @@ impl Index<usize> for Grid {
 
 	#[inline(always)]
 	fn index(&self, row: usize) -> &Row {
-		&self.rows[row]
+		&self.rows[self.physical(row)]
 	}
 }
 
@@ -194,6 +238,7 @@ impl IndexMut<usize> for Grid {
 	/// [`Grid::row_upto`] or [`Grid::fill`].
 	#[inline(always)]
 	fn index_mut(&mut self, row: usize) -> &mut Row {
+		let row = self.physical(row);
 		self.used[row] = self.cols;
 		&mut self.rows[row]
 	}
@@ -359,3 +404,7 @@ mod tests {
 		assert_eq!((g.cols, g.iter().count()), (2, 3));
 	}
 }
+
+#[cfg(test)]
+#[path = "grid/ring_tests.rs"]
+mod ring_tests;
