@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.10.137 "Giga Fly" — 2026-10-29
+
+### Performance
+
+- Avoid row-header copies during full-screen scrolling (grid).
+
 ## 26.10.136 "Giga Fly" — 2026-10-28
 
 ### Performance
