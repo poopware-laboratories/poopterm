@@ -355,18 +355,20 @@ lives, least recently used first out of a 256 MiB budget); the quads draw
 in runs, each with its image's descriptor set bound (`vk::draw`), and text
 between images joins the run it is in. A frame the GPU cannot draw (glyphs
 the atlas cannot hold, images past the budget or larger than the device
-makes) is refused before a swapchain image is acquired, so software draws
-it, and forgets the textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
+makes) is refused, so software draws it, and forgets the textures it
+made. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 
 `app::gpu::Gpu` puts the main window on it (`app::renderer::Renderer::Gpu`).
-Each frame, software paints the wallpaper, tab bar and status bar into the
-canvas, `draw_grid` draws the grid on a `QuadPen`, and the GPU copies the
-canvas into the swapchain image as a backdrop (`vk::renderer::Backdrop`)
-before drawing the quads over it. When the search box or command palette
-covers the grid, or the GPU refuses the grid, software paints the whole
-frame and the GPU shows it over an empty pen. Any other GPU error switches
-the window to softbuffer for good (`Renderer::after_gpu`).
+Each frame, `App::compose` draws the whole frame on a `QuadPen`: the
+background, the wallpaper as one image (`render::background::wallpaper`; the
+`Wallpaper` keeps its crop in one `Arc<Bitmap>`, so its texture is uploaded
+once), the tab bar, the grid, search box, palette and status bar. The pen
+keeps the quads of rows the plan keeps and moves them by the scroll; rows
+showing an image are drawn again, because the frame lists its images anew.
+When the GPU refuses a frame, software paints it whole and the GPU shows it
+as a backdrop (`vk::renderer::Backdrop`) over an empty pen. Any other GPU
+error switches the window to softbuffer for good (`Renderer::after_gpu`).
 
 ## Input (`src/input`)
 

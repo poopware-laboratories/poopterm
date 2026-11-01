@@ -143,16 +143,15 @@ issue before starting a piece.
   Intel and llvmpipe. `gpu::vk::window::GpuWindow` picks the device for a
   window's surface and shows frames on a swapchain kept the window's size
   (passing the Khronos validation layer on a headless surface). The main
-  window draws its grid through it on Linux and FreeBSD, over the chrome
-  software paints (copied in as a backdrop each frame), falling back to
-  software for good if the GPU fails. `POOPTERM_RENDERER` overrides the
-  configured renderer. Sixel, kitty and iTerm2 images are drawn as textures,
+  window draws whole frames through it on Linux and FreeBSD (grid, chrome,
+  wallpaper and images, all as quads), falling back to software for good if
+  the GPU fails. `POOPTERM_RENDERER` overrides the configured renderer.
+  Sixel, kitty and iTerm2 images and the wallpaper are drawn as textures,
   uploaded once and kept while their bitmap lives (256 MiB at most; a frame
-  needing more, or an image larger than the device makes, is painted by
-  software). Still to do: the wallpaper as a texture, then dropping the
-  backdrop, repainting and uploading only the chrome that changed
-  (a full backdrop each frame costs about 6% more CPU in a flood), the
-  chrome on the GPU, and fractional scale.
+  needing more, or an image larger than the device makes, is painted whole
+  by software and shown as a backdrop). Still to do: dropping the backdrop
+  path from the renderer except for those whole software frames, the
+  Settings window on the GPU, and fractional scale.
 
 ## Resource management and memory
 

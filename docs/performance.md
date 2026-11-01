@@ -670,7 +670,24 @@ The GPU now draws a full frame 2.5× (scale 1) to 7× (scale 2) faster than
 software, whose cost grows with the pixels it paints. Typing latency is
 still higher than software's, which redraws only the damaged rows: the GPU
 redraws every quad and waits on presentation. Images are now drawn on the
-GPU (#27); wallpapers keep the backdrop until they are textures too.
+GPU (#27).
+
+### Wallpaper as a texture
+
+With the wallpaper drawn as one texture, uploaded once, a window with a
+wallpaper sends no backdrop either. `scripts/bench-frames.py` at 1000×600,
+wallpaper at 60%, three alternating runs, `main` before and the branch
+after, milliseconds:
+
+| Build | Renderer | Frame | Paint | Show | Latency | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|
+| before | software | 1.13 (1.10–1.14) | 0.83 (0.81–0.85) | 0.27 (0.26–0.27) | 0.54 (0.53–0.56) | 1.08 (1.04–1.16) |
+| before | gpu | 1.59 (1.54–1.64) | 0.52 (0.49–0.53) | 1.02 (1.02–1.05) | 1.74 (1.69–1.79) | 2.57 (2.09–2.73) |
+| after | software | 1.16 (1.13–1.18) | 0.85 (0.83–0.89) | 0.26 (0.25–0.26) | 0.54 (0.52–0.54) | 0.89 (0.69–1.08) |
+| after | gpu | 0.37 (0.37–0.37) | 0.17 (0.17–0.17) | 0.18 (0.18–0.18) | 0.59 (0.58–0.60) | 0.86 (0.83–0.89) |
+
+A GPU frame with a wallpaper now costs what one without does (0.37 ms, 4.3×
+faster than before), and typing latency drops from 1.74 to 0.59 ms.
 
 Flood throughput does not depend on the renderer: the parser bounds it and
 frames are capped at 30 fps. `scripts/bench-throughput.py` (16 MiB × 3) as
