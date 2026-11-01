@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.10 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Draw images as textures (#210) (gpu).
+
 ## 26.11.9 "Lunar Moth" — 2026-11-01
 
 ### Maintenance
