@@ -4,11 +4,11 @@
 //! textures they made.
 use super::{
 	call::Error,
-	driver_tests::{Driver, finish},
+	driver_tests::{Driver, finish, with},
 	renderer_tests::{ATLAS, frame, renderer_for},
 };
 use crate::{
-	gpu::quads::QuadPen,
+	gpu::{quads::QuadPen, textures::Textures},
 	graphics::{Bitmap, Placement, Rect},
 	render::pen::Pen,
 };
@@ -189,7 +189,7 @@ fn an_image_the_staging_buffer_fails_to_hold_is_not_kept() {
 	pen.begin_frame((40, 30));
 	place(&mut pen, &bitmap(4, 4));
 	// Growing the staging buffer fails: `VK_ERROR_OUT_OF_DEVICE_MEMORY`.
-	super::driver_tests::with(|driver| driver.fails.push((c"vkCreateBuffer", -2)));
+	with(|driver| driver.fails.push((c"vkCreateBuffer", -2)));
 	assert_eq!(
 		renderer.frame(&mut pen, &target).err(),
 		Some(Error::Failed(-2))
@@ -197,4 +197,91 @@ fn an_image_the_staging_buffer_fails_to_hold_is_not_kept() {
 	assert_eq!(renderer.textures.len(), 0);
 	drop((renderer, target, pen));
 	finish();
+}
+
+/// The uploads recorded.
+fn uploads(driver: &Driver) -> Vec<&str> {
+	let recorded = driver.recorded.iter().map(String::as_str);
+	recorded.filter(|call| call.starts_with("upload")).collect()
+}
+
+#[test]
+fn an_image_drawn_twice_in_a_frame_is_uploaded_once_and_bound_for_both() {
+	let (mut renderer, target) = renderer();
+	let mut pen = QuadPen::new((40, 30), ATLAS);
+	let image = bitmap(2, 2);
+	pen.begin_frame((40, 30));
+	place(&mut pen, &image);
+	pen.rect(0, 0, 1, 1, 0);
+	place(&mut pen, &image);
+	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
+	assert_eq!(renderer.textures.len(), 1);
+	drop((renderer, target, pen));
+	let driver = finish();
+	// The staging buffer grows after the quads' did.
+	let expected = [
+		"upload 0xb00004+0 layer 0 at 0,0 size 2x2 of 0xa00004",
+		"bind image set 0x660003",
+		"draw 6 vertices of 3 instances from 0",
+	];
+	assert_eq!(drawn(&driver), expected);
+}
+
+#[test]
+fn images_past_the_budget_evict_the_least_recently_drawn_to_upload_again() {
+	let (mut renderer, target) = renderer();
+	// Room for one 2×2 image.
+	renderer.textures = Textures::new(16);
+	let mut pen = QuadPen::new((40, 30), ATLAS);
+	let (a, b) = (bitmap(2, 2), bitmap(2, 2));
+	for image in [&a, &b, &a] {
+		pen.begin_frame((40, 30));
+		place(&mut pen, image);
+		renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
+		assert_eq!(renderer.textures.len(), 1);
+	}
+	drop((renderer, target, pen));
+	let driver = finish();
+	// `a` evicted for `b`, then `b` for `a`, in a new texture.
+	let expected = [
+		"upload 0xb00003+0 layer 0 at 0,0 size 2x2 of 0xa00004",
+		"upload 0xb00003+0 layer 0 at 0,0 size 2x2 of 0xa00005",
+		"upload 0xb00003+0 layer 0 at 0,0 size 2x2 of 0xa00006",
+	];
+	assert_eq!(uploads(&driver), expected);
+}
+
+#[test]
+fn a_frame_whose_images_together_pass_the_budget_is_refused_and_keeps_the_rest() {
+	let (mut renderer, target) = renderer();
+	renderer.textures = Textures::new(20);
+	let mut pen = QuadPen::new((40, 30), ATLAS);
+	let (a, b, c) = (bitmap(1, 1), bitmap(2, 2), bitmap(1, 1));
+	// Exactly the budget: drawn.
+	pen.begin_frame((40, 30));
+	place(&mut pen, &a);
+	place(&mut pen, &b);
+	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
+	assert_eq!(renderer.textures.bytes(), 20);
+	// One texel more, with nothing this frame does not draw to evict.
+	let images = with(|driver| driver.images.len());
+	pen.begin_frame((40, 30));
+	place(&mut pen, &a);
+	place(&mut pen, &b);
+	place(&mut pen, &c);
+	assert_eq!(renderer.frame(&mut pen, &target).err(), Some(Error::Draw));
+	// No texture made for it, and the others kept.
+	assert_eq!(with(|driver| driver.images.len()), images);
+	assert_eq!(
+		(renderer.textures.len(), renderer.textures.bytes()),
+		(2, 20)
+	);
+	// Without `b`, the next frame evicts it for `c`.
+	pen.begin_frame((40, 30));
+	place(&mut pen, &a);
+	place(&mut pen, &c);
+	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
+	assert_eq!((renderer.textures.len(), renderer.textures.bytes()), (2, 8));
+	drop((renderer, target, pen));
+	assert_eq!(uploads(&finish()).len(), 3);
 }

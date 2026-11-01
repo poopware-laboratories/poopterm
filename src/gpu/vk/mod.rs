@@ -112,6 +112,8 @@ mod swapchain_tests;
 pub(crate) mod swapchain_types;
 #[cfg(test)]
 mod swapchain_types_tests;
+#[cfg(test)]
+mod texture_set_tests;
 pub(crate) mod timeline;
 #[cfg(test)]
 mod timeline_tests;
