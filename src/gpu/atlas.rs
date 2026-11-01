@@ -112,6 +112,14 @@ impl<K: Hash + Eq> Atlas<K> {
 		self.slots.iter()
 	}
 
+	/// Marks `page` used this frame, for a bitmap drawn from it without a
+	/// lookup.
+	pub(crate) fn touch(&mut self, page: usize) {
+		if let Some(page) = self.pages.get_mut(page) {
+			page.used = self.frame;
+		}
+	}
+
 	/// The slot of `key`, marking its page used this frame.
 	pub(crate) fn get<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<Slot>
 	where

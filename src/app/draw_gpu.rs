@@ -1,12 +1,14 @@
 //! Drawing a frame of the main window on the GPU: all of it as quads, or
 //! with a wallpaper, which quads cannot show, the grid over the wallpaper
-//! and chrome software painted. A frame the GPU cannot draw, with images
-//! in it or an overlay over a wallpaper's grid, is painted whole by
-//! software and shown through the GPU.
+//! and chrome software painted. The pen keeps the grid rows that did not
+//! change since the last frame, so only the others are drawn again. A
+//! frame the GPU cannot draw, with images in it or an overlay over a
+//! wallpaper's grid, is painted whole by software and shown through the
+//! GPU.
 use super::{
 	App,
-	canvas::DrawKey,
-	gpu::{Gpu, Next, layers},
+	canvas::{DrawKey, Plan},
+	gpu::{Gpu, Next, layers, remembers},
 	renderer::Renderer,
 };
 use crate::{gpu::quads::QuadPen, render::painter::Painter};
@@ -21,14 +23,27 @@ impl App {
 		key: DrawKey,
 		size: (usize, usize),
 	) -> Option<Renderer> {
-		// The pixels never hold the grid the GPU drew: never redrawn in part.
-		self.canvas.invalidate();
-		self.canvas.plan(&self.frame, key, size, false);
+		// The canvas remembers the frame whose rows the pen keeps.
+		if !gpu.keeps_rows() || self.full_redraw_only {
+			self.canvas.invalidate();
+		}
+		let plan = (self.canvas).plan(&self.frame, key, size, self.wallpaper.is_none());
+		let damage = match plan {
+			Plan::Full => None,
+			Plan::Partial(damage) => Some(damage),
+		};
+		gpu.plan_rows(damage, self.ch);
 		let mut pixels = std::mem::take(&mut self.canvas.pixels);
 		let pixels_of = (size, &mut pixels[..]);
 		let layers = layers(self.wallpaper.is_some(), key.overlay);
 		let next = gpu.frame(self, pixels_of, layers, Self::around_grid, Self::whole);
 		self.canvas.pixels = pixels;
+		if remembers(layers, gpu.keeps_rows(), &next) {
+			self.canvas.remember(&mut self.frame, key);
+		} else {
+			// Software would redraw in part pixels that never held the grid.
+			self.canvas.invalidate();
+		}
 		match next {
 			Next::Done | Next::Software => Some(Renderer::Gpu(gpu)),
 			Next::Redraw => {
@@ -47,14 +62,14 @@ impl App {
 	// pr-check: window glue: paints the real window's frame for the GPU to show
 	fn around_grid(&mut self, pixels: Option<&mut [u32]>, pen: &mut QuadPen) {
 		let (width, height) = (self.width as usize, self.height as usize);
-		let painting = Instant::now();
+		let (painting, rows) = (Instant::now(), pen.rows_to_draw().map(<[bool]>::to_vec));
 		let Some(pixels) = pixels else {
-			self.compose_plain(pen);
+			self.compose_plain(pen, rows.as_deref());
 			return self.painted(painting.elapsed(), false);
 		};
 		self.compose_around(&mut Painter::new(pixels, width, height), false);
 		self.painted(painting.elapsed(), false);
-		self.draw_terminal(pen, self.scale(), None);
+		self.draw_terminal(pen, self.scale(), rows.as_deref());
 	}
 	// pr-check: end window glue
 

@@ -1,7 +1,10 @@
 //! The grid as the GPU draws it: a [`Pen`] that turns each rectangle, glyph
 //! and image into a quad, in drawing order, and keeps glyph bitmaps in an
 //! atlas, listing the ones the GPU has not been sent yet.
-use super::atlas::{Atlas, Slot};
+use super::{
+	atlas::{Atlas, Slot},
+	rows::Rows,
+};
 use crate::{
 	graphics::{Placement, Rect},
 	render::{
@@ -61,7 +64,9 @@ pub(crate) struct QuadPen {
 	pub uploads: Vec<Upload>,
 	/// False when the atlas could not hold a glyph, which the frame lacks.
 	pub complete: bool,
-	atlas: Atlas<Box<[u32]>>,
+	pub(super) atlas: Atlas<Box<[u32]>>,
+	/// The last frame's grid rows, for the next to keep.
+	pub(super) rows: Rows,
 	/// The key being looked up, kept to save allocating one per glyph.
 	key: Vec<u32>,
 }
@@ -77,6 +82,7 @@ impl QuadPen {
 			uploads: Vec::new(),
 			complete: true,
 			atlas: Atlas::new(side, pages),
+			rows: Rows::default(),
 			key: Vec::new(),
 		}
 	}
@@ -84,11 +90,11 @@ impl QuadPen {
 	/// Starts a frame `size` pixels large, forgetting the last one's quads.
 	pub(crate) fn begin_frame(&mut self, size: (usize, usize)) {
 		self.size = size;
-		self.quads.clear();
 		self.images.clear();
 		self.uploads.clear();
 		self.complete = true;
 		self.atlas.begin_frame();
+		self.begin_rows();
 	}
 
 	/// The slot of `glyph`, the bitmap of `ink`, uploading it when new.
@@ -174,6 +180,14 @@ fn coverage_texels(coverage: impl Iterator<Item = u8>) -> Vec<u32> {
 impl Pen for QuadPen {
 	fn size(&self) -> (usize, usize) {
 		self.size
+	}
+
+	fn begin_row(&mut self, row: usize) {
+		self.row_starts(row);
+	}
+
+	fn end_grid(&mut self, rows: usize) {
+		self.grid_ends(rows);
 	}
 
 	fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {

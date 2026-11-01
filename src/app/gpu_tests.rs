@@ -1,7 +1,7 @@
 //! Tests of the main window's GPU glue: which windows Vulkan draws in,
-//! when a CPU device may draw, what a frame is drawn as, and what each
-//! frame's outcome leads to.
-use super::{Layers, Next, allows_cpu_device, layers, next, surface_window};
+//! when a CPU device may draw, what a frame is drawn as, what each
+//! frame's outcome leads to, and which frames the next redraws rows of.
+use super::{Layers, Next, allows_cpu_device, layers, next, remembers, surface_window};
 use crate::{
 	config::RendererPreference,
 	gpu::vk::{call::Error, surface::Window, swapchain_plan::Unfit, window::Drawn},
@@ -110,4 +110,25 @@ fn a_wallpaper_is_painted_as_a_backdrop_and_under_an_overlay_the_whole_frame_too
 	// cover an overlay software painted over it.
 	assert_eq!(layers(true, false), Layers::OverBackdrop);
 	assert_eq!(layers(true, true), Layers::Whole);
+}
+
+#[test]
+fn a_frame_whose_grid_rows_the_pen_keeps_is_remembered_however_it_was_shown() {
+	for layers in [Layers::Quads, Layers::OverBackdrop] {
+		for next in [Next::Done, Next::Redraw, Next::Software] {
+			assert!(remembers(layers, true, &next), "{layers:?} {next:?}");
+			assert!(!remembers(layers, false, &next), "{layers:?} {next:?}");
+		}
+	}
+}
+
+#[test]
+fn a_frame_painted_whole_or_after_the_gpu_failed_is_not_remembered() {
+	// The pen kept older rows than the frame software painted, and
+	// software never painted the grid the GPU drew.
+	assert!(!remembers(Layers::Whole, true, &Next::Done));
+	assert!(!remembers(Layers::Whole, true, &Next::Software));
+	let failed = Next::Abandon("lost".into());
+	assert!(!remembers(Layers::Quads, true, &failed));
+	assert!(!remembers(Layers::OverBackdrop, true, &failed));
 }

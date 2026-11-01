@@ -18,6 +18,7 @@ use crate::{
 	},
 	graphics::{Bitmap, Placement, Rect},
 	render::{
+		damage::GridDamage,
 		glyphs::Glyph,
 		pen::{Ink, Pen},
 	},
@@ -351,5 +352,79 @@ fn a_gpu_failing_a_frame_of_quads_is_abandoned_without_software_painting() {
 	assert_eq!(next, Next::Abandon(Error::Failed(-4).to_string()));
 	assert_eq!(painted, [Quads]);
 	fake_failing(None);
+	close(gpu.gpu);
+}
+
+/// Draws a frame of quads whose grid is two rows, each a rectangle, the
+/// ones the pen says to draw; returns what it came to and the rows drawn.
+fn grid_frame(gpu: &mut Gpu<&str>, picture: bool) -> (Next, Option<Vec<bool>>) {
+	let mut pixels = vec![0; SIZE.0 * SIZE.1];
+	let mut drawn = None;
+	let around = |drawn: &mut Option<Vec<bool>>, _: Option<&mut [u32]>, pen: &mut QuadPen| {
+		*drawn = pen.rows_to_draw().map(<[bool]>::to_vec);
+		pen.rect(0, 0, SIZE.0, SIZE.1, CHROME);
+		for row in 0..2 {
+			if drawn.as_ref().is_none_or(|rows: &Vec<bool>| rows[row]) {
+				pen.begin_row(row);
+				pen.rect(0, row * 16, 8, 16, 0xff_0000);
+			}
+		}
+		pen.end_grid(2);
+		if picture {
+			picture_into(pen);
+		}
+	};
+	let next = gpu.frame(
+		&mut drawn,
+		(SIZE, &mut pixels),
+		Layers::Quads,
+		around,
+		|_, _| {},
+	);
+	(next, drawn)
+}
+
+#[test]
+fn rows_planned_for_the_next_frame_are_the_ones_it_draws() {
+	let mut gpu = gpu();
+	assert!(!gpu.keeps_rows());
+	let damage = || {
+		Some(GridDamage {
+			scroll: 0,
+			rows: vec![false, true],
+		})
+	};
+	// The pen keeps no rows yet: every row is drawn.
+	gpu.plan_rows(damage(), 16);
+	assert_eq!(grid_frame(&mut gpu, false), (Next::Done, None));
+	assert!(gpu.keeps_rows());
+	assert_eq!(recorded(), ["draw 6 vertices of 3 instances from 0"]);
+	gpu.plan_rows(damage(), 16);
+	assert_eq!(
+		grid_frame(&mut gpu, false),
+		(Next::Done, Some(vec![false, true]))
+	);
+	// The chrome, the kept row and the redrawn one.
+	assert_eq!(recorded(), ["draw 6 vertices of 3 instances from 0"]);
+	gpu.plan_rows(None, 16);
+	assert_eq!(grid_frame(&mut gpu, false), (Next::Done, None));
+	close(gpu.gpu);
+}
+
+#[test]
+fn a_frame_refused_or_painted_whole_leaves_the_pen_without_rows() {
+	let mut gpu = gpu();
+	grid_frame(&mut gpu, false);
+	assert!(gpu.keeps_rows());
+	// A frame with an image is refused, and the pen started over.
+	assert_eq!(grid_frame(&mut gpu, true).0, Next::Done);
+	assert!(!gpu.keeps_rows());
+	grid_frame(&mut gpu, false);
+	assert!(gpu.keeps_rows());
+	// A frame the GPU failed to show started the pen over too.
+	fake_failing(Some((c"vkQueueSubmit2", -4)));
+	assert!(matches!(grid_frame(&mut gpu, false).0, Next::Abandon(_)));
+	fake_failing(None);
+	assert!(!gpu.keeps_rows());
 	close(gpu.gpu);
 }
