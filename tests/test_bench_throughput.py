@@ -289,6 +289,7 @@ class EndToEnd(unittest.TestCase):
         script = Path(__file__).parents[1] / 'scripts/bench-throughput.py'
         argv = [sys.executable, str(script), '--mib', '1', '--repeat', '1', '--settle', '0',
                 '--timeout', '20', '--format', 'json', '--output', str(output), *flags]
+        started = time.monotonic()
         child, master = pty.fork()
         if child == 0:
             os.execve(sys.executable, argv, {**os.environ, 'POOPTERM_BIN': str(fake)})
@@ -311,7 +312,9 @@ class EndToEnd(unittest.TestCase):
         os.close(master)
         _, status = os.waitpid(child, 0)
         self.assertEqual(os.waitstatus_to_exitcode(status), 0)
-        return json.loads(output.read_text())
+        self.elapsed = time.monotonic() - started
+        text = output.read_text()
+        return text if '--format' in flags else json.loads(text)
 
     def test_the_report_measures_the_terminal_found_above_the_shell(self):
         report = self.run_benchmark()
@@ -327,3 +330,27 @@ class EndToEnd(unittest.TestCase):
     def test_pid_names_the_terminal_instead(self):
         report = self.run_benchmark('--pid', '1')
         self.assertEqual(report['pid'], 1)
+
+    def test_a_terminal_that_is_gone_leaves_memory_unknown_but_the_run_whole(self):
+        child = os.fork()
+        if child == 0:
+            os._exit(0)
+        os.waitpid(child, 0)
+        report = self.run_benchmark('--pid', str(child))
+        self.assertEqual(report['pid'], child)
+        self.assertEqual(report['results'][0]['payload'], 'ascii')
+        self.assertIsNone(report['results'][0]['rss_mib'])
+        self.assertIsNone(report['rss_start_mib'])
+        self.assertIsNone(report['peak_mib'])
+
+    def test_memory_is_read_only_after_the_settle_time(self):
+        self.run_benchmark('--settle', '0')
+        quick = self.elapsed
+        self.run_benchmark('--settle', '1.5')
+        self.assertGreater(self.elapsed, quick + 1.4)
+
+    def test_the_text_report_ends_with_the_memory_line(self):
+        lines = self.run_benchmark('--format', 'text').splitlines()
+        self.assertRegex(lines[0], r'^fake\(1\)  \d+x\d+  1 MiB x 1 ')
+        self.assertRegex(lines[1], r'^ascii +[\d.]+ MB/s +\([\d.]+-[\d.]+\) +[\d.]+ +plain text$')
+        self.assertRegex(lines[-1], rf'^memory +[\d.]+ MiB at start, .* \(pid {os.getpid()}\)$')
