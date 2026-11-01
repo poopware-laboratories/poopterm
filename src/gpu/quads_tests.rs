@@ -2,7 +2,7 @@
 //! atlas pixels the uploads sent, they paint what the software renderer
 //! paints; glyphs upload once; and a full atlas marks the frame incomplete.
 use super::{
-	atlas::Slot,
+	atlas::{Slot, Wanted},
 	quads::{Fill, QuadPen, Upload},
 };
 use crate::{
@@ -191,12 +191,19 @@ fn a_glyph_the_atlas_cannot_hold_is_left_out_of_an_incomplete_frame() {
 	pen.begin_frame(SIZE);
 	draw_grid(&mut pen, &mut fonts(), &view, None);
 	assert!(!pen.complete);
+	// It wants pages as wide as the glyph, and no more of them.
+	let wanted = pen.wanted;
+	assert!(
+		wanted.side > 10 && wanted.side <= 50 && !wanted.pages,
+		"{wanted:?}"
+	);
 	assert!(pen.uploads.is_empty());
 	assert!(pen.quads.iter().all(|quad| quad.fill == Fill::Solid));
 	assert!(!pen.quads.is_empty(), "the background is still drawn");
-	// The next frame starts complete again.
+	// The next frame starts complete again, wanting nothing.
 	pen.begin_frame(SIZE);
 	assert!(pen.complete && pen.quads.is_empty());
+	assert_eq!(pen.wanted, Wanted::default());
 }
 
 #[test]
@@ -206,6 +213,12 @@ fn a_full_atlas_keeps_the_glyphs_already_drawn_this_frame() {
 	pen.begin_frame(SIZE);
 	draw_grid(&mut pen, &mut fonts(), &view(&frame("abcdefgh")), None);
 	assert!(!pen.complete);
+	// Each glyph fits a page: it wants more pages, not larger ones.
+	let pages = Wanted {
+		side: 0,
+		pages: true,
+	};
+	assert_eq!(pen.wanted, pages);
 	let glyphs = pen.quads.iter().filter(|quad| quad.fill != Fill::Solid);
 	assert_eq!(glyphs.count(), pen.uploads.len());
 	assert!(!pen.uploads.is_empty());

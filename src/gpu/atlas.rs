@@ -23,6 +23,45 @@ pub(crate) enum Refused {
 	Full,
 }
 
+/// Bytes an atlas may take on the GPU, four a pixel.
+pub(crate) const BUDGET: usize = 256 << 20;
+
+/// What a frame lacked room for in the atlas: pages at least `side` pixels
+/// square, for a bitmap larger than a page, or more pages.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Wanted {
+	pub side: usize,
+	pub pages: bool,
+}
+
+/// The atlas (side, pages) to make for a frame that wanted more than
+/// `atlas`: pages the next power of two holding the bitmap wanted, as many
+/// as before, or twice as many when they ran out; within the device's
+/// `[dimension, layers]` and `budget` bytes. `None` when no larger atlas
+/// would hold more.
+pub(crate) fn grown(
+	(side, pages): (usize, usize),
+	wanted: Wanted,
+	[dimension, layers]: [u32; 2],
+	budget: usize,
+) -> Option<(usize, usize)> {
+	let wider = wanted
+		.side
+		.checked_next_power_of_two()
+		.unwrap_or(usize::MAX);
+	let new_side = if wanted.side > side {
+		wider.min(dimension as usize)
+	} else {
+		side
+	};
+	if new_side < wanted.side {
+		return None;
+	}
+	let most = (budget / (new_side * new_side * 4)).min(layers as usize);
+	let new_pages = if wanted.pages { pages * 2 } else { pages }.min(most);
+	(new_pages > 0 && (new_side > side || new_pages > pages)).then_some((new_side, new_pages))
+}
+
 /// A row of bitmaps as tall as `h`, filled from the left up to `x`.
 struct Shelf {
 	y: usize,

@@ -123,6 +123,8 @@ mod types_tests;
 pub(crate) mod version;
 pub(crate) mod window;
 #[cfg(test)]
+mod window_atlas_tests;
+#[cfg(test)]
 mod window_frame_tests;
 #[cfg(test)]
 mod window_gpu_tests;

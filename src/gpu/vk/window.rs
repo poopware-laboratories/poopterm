@@ -103,14 +103,20 @@ impl GpuWindow {
 	}
 
 	/// Draws `pen`'s frame in the window, now `size` pixels large, and
-	/// shows it. A frame the GPU cannot draw (lacking glyphs, or with
-	/// images past its budget or its device) is refused with
-	/// `Error::Draw`, and the pen started over.
+	/// shows it. A frame lacking room in the atlas grows it and is to be
+	/// drawn again. A frame the GPU cannot draw (lacking glyphs no atlas
+	/// it can make holds, or with images past its budget or its device) is
+	/// refused with `Error::Draw`. Either way the pen starts over.
 	pub(crate) fn draw(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
 		if !pen.complete {
+			let grew = self.renderer.grow(pen.wanted);
 			// The glyphs it added never reach the GPU.
 			self.renderer.restart(pen);
-			return Err(Error::Draw);
+			return if grew? {
+				Ok(Drawn::Again)
+			} else {
+				Err(Error::Draw)
+			};
 		}
 		// Not left to the plan: a Wayland surface takes any size, so the
 		// driver would make the smallest it allows.
