@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.9 "Lunar Moth" — 2026-11-01
+
+### Maintenance
+
+- Credit the bark color scheme in the third-party notices (#209).
+
 ## 26.11.8 "Lunar Moth" — 2026-11-01
 
 ### Performance
