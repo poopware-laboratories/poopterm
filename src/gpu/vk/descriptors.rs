@@ -16,6 +16,8 @@ use std::{cell::RefCell, ptr, rc::Rc};
 /// `VkDescriptorType`: a combined image sampler and a storage buffer.
 const COMBINED_IMAGE_SAMPLER: i32 = 1;
 const STORAGE_BUFFER: i32 = 7;
+/// `VK_IMAGE_USAGE_SAMPLED_BIT`.
+const SAMPLED: u32 = 0x4;
 
 /// What the quad set layout binds: the quads and the atlas.
 const SIZES: [DescriptorPoolSize; 2] = [
@@ -119,8 +121,12 @@ pub(crate) struct TextureSet {
 
 impl TextureSet {
 	/// A set of `pipeline`'s texture layout pointing at `image`, to be in
-	/// the shader read only layout when drawn.
+	/// the shader read only layout when drawn; refused unless `image` was
+	/// made for sampling.
 	pub(crate) fn new(pipeline: &Rc<QuadPipeline>, image: &Rc<Image>) -> Result<Self, Error> {
+		if image.usage & SAMPLED == 0 {
+			return Err(Error::Draw);
+		}
 		let set = QuadSet::of(pipeline, pipeline.texture_layout(), &TEXTURE_SIZES)?;
 		let info = DescriptorImageInfo {
 			// The set layout's sampler is immutable.

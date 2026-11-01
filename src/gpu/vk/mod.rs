@@ -34,6 +34,8 @@ mod draw_gpu_tests;
 #[cfg(test)]
 mod draw_rules_tests;
 #[cfg(test)]
+mod draw_runs_tests;
+#[cfg(test)]
 mod draw_tests;
 pub(crate) mod draw_types;
 #[cfg(test)]

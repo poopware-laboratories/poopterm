@@ -151,6 +151,40 @@ fn a_failure_releases_what_was_made_before_it() {
 }
 
 #[test]
+fn a_failure_making_the_image_set_layout_releases_the_quad_set_layout_and_sampler() {
+	// The quad set layout is made; the image's, the second, fails.
+	let device = device(&INTEL, |driver| {
+		(driver.fails_from).push((c"vkCreateDescriptorSetLayout", 1, -2));
+	});
+	let made = QuadPipeline::new(&device, Format::Bgra);
+	assert_eq!(made.err(), Some(Error::Failed(-2)));
+	drop(device);
+	let driver = finish();
+	assert_eq!(driver.released, ["set layout 0x620001", "sampler 0x610001"]);
+	assert!(driver.pipeline_objects.live.is_empty());
+	assert_eq!(driver.pipeline_objects.set_layouts.len(), 1);
+	assert!(driver.pipeline_objects.pipeline_layouts.is_empty());
+}
+
+#[test]
+fn the_fake_driver_fails_pipeline_objects_only_from_the_count_asked() {
+	// From the third set layout on: both of the pipeline's are made.
+	let device = device(&INTEL, |driver| {
+		(driver.fails_from).push((c"vkCreateDescriptorSetLayout", 2, -2));
+	});
+	let pipeline = QuadPipeline::new(&device, Format::Bgra).unwrap();
+	assert_eq!(
+		(pipeline.set_layout(), pipeline.texture_layout()),
+		(0x62_0001, 0x62_0002)
+	);
+	// The next pipeline's first is the third, so it fails.
+	let next = QuadPipeline::new(&device, Format::Bgra);
+	assert_eq!(next.err(), Some(Error::Failed(-2)));
+	drop((pipeline, device));
+	assert!(finish().pipeline_objects.live.is_empty());
+}
+
+#[test]
 fn shaders_that_are_not_spirv_make_nothing() {
 	let device = device(&INTEL, |_| {});
 	for shaders in [[&[1, 2, 3][..], QUAD_FRAGMENT], [QUAD_VERTEX, &[][..]]] {

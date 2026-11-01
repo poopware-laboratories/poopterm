@@ -39,6 +39,9 @@ pub(super) struct Driver {
 	pub lacks: Vec<&'static CStr>,
 	/// Calls that fail, with what they return.
 	pub fails: Vec<(&'static CStr, i32)>,
+	/// Pipeline object calls that fail once this many objects of their
+	/// kind were made, with what they return.
+	pub fails_from: Vec<(&'static CStr, usize, i32)>,
 	pub devices: Vec<RawPhysicalDevice>,
 	/// The devices there are once the first count was given, if more.
 	pub grown: Vec<RawPhysicalDevice>,

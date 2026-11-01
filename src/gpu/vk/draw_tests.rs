@@ -32,18 +32,18 @@ const STORAGE: u32 = 0x20;
 
 /// What the tests draw with, on a fake device: room for three quads, an
 /// atlas of two pages, and a 16×8 target.
-struct Scene {
-	timeline: Rc<Timeline>,
-	set: Rc<QuadSet>,
-	quads: Rc<Buffer>,
-	atlas: Rc<Image>,
-	target: Rc<Image>,
+pub(super) struct Scene {
+	pub timeline: Rc<Timeline>,
+	pub set: Rc<QuadSet>,
+	pub quads: Rc<Buffer>,
+	pub atlas: Rc<Image>,
+	pub target: Rc<Image>,
 	/// Runs of 0 to 4 quads, all with one image.
-	runs: [Vec<(Range<u32>, Rc<TextureSet>)>; 5],
+	pub runs: [Vec<(Range<u32>, Rc<TextureSet>)>; 5],
 }
 
 /// A texture set of `pipeline` for an image 2 pixels square.
-fn texture(pipeline: &Rc<QuadPipeline>) -> Rc<TextureSet> {
+pub(super) fn texture(pipeline: &Rc<QuadPipeline>) -> Rc<TextureSet> {
 	let image = image(
 		&pipeline.device,
 		Format::Bgra,
@@ -62,7 +62,7 @@ fn image(device: &Rc<Device>, format: Format, size: [u32; 3], usage: u32) -> Rc<
 	Rc::new(Image::new(device, format, size, usage).unwrap())
 }
 
-fn scene() -> (Commands, Scene) {
+pub(super) fn scene() -> (Commands, Scene) {
 	scene_on(&device(&INTEL, |_| {}))
 }
 
@@ -95,7 +95,7 @@ fn scene_on(device: &Rc<Device>) -> (Commands, Scene) {
 impl Scene {
 	/// A draw of `count` quads with the scene's set, atlas, image and
 	/// target.
-	fn draw(&self, count: usize) -> Draw<'_> {
+	pub(super) fn draw(&self, count: usize) -> Draw<'_> {
 		Draw {
 			set: &self.set,
 			quads: &self.quads,
@@ -108,7 +108,7 @@ impl Scene {
 
 /// What was recorded from the first write of the quad set on, the image
 /// set being written once made.
-fn drawn(driver: &Driver) -> Vec<&str> {
+pub(super) fn drawn(driver: &Driver) -> Vec<&str> {
 	let recorded = driver.recorded.iter().map(String::as_str);
 	let from = recorded
 		.clone()

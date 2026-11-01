@@ -1,7 +1,8 @@
 //! Tests of the image texture sets against the fake driver of
 //! `driver_tests`: each from a pool of its own, of the pipeline's texture
 //! layout, written once to point at its image read only by shaders, holding
-//! the image while it lives, and failures releasing what was made. The
+//! the image while it lives, images not made for sampling refused, and
+//! failures releasing what was made. The
 //! real driver makes and writes one too, under the validation layer.
 use super::{
 	buffer_tests::{INTEL, device},
@@ -121,6 +122,20 @@ fn a_texture_set_that_fails_writes_nothing_and_releases_what_it_made() {
 	assert!(writes().is_empty());
 	drop((image, pipeline));
 	assert!(finish().pipeline_objects.sets.is_empty());
+}
+
+#[test]
+fn an_image_not_made_for_sampling_gets_no_set() {
+	let pipeline = pipeline();
+	// `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` alone: viewable, not sampled.
+	let drawn_to = Image::new(&pipeline.device, Format::Bgra, [2, 2, 1], 0x10).unwrap();
+	let made = TextureSet::new(&pipeline, &Rc::new(drawn_to));
+	assert_eq!(made.err(), Some(Error::Draw));
+	drop(pipeline);
+	// Refused before a pool was made or a descriptor written.
+	let driver = finish();
+	assert!(driver.pipeline_objects.pools.is_empty());
+	assert!(!driver.recorded.iter().any(|call| call.starts_with("write")));
 }
 
 #[test]

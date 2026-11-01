@@ -71,9 +71,7 @@ impl Recording<'_> {
 		let end = runs.iter().map(|(range, _)| range.end).max().unwrap_or(0);
 		let fits = u64::from(end) * QUAD <= quads.size as u64;
 		let images = runs.iter().all(|(_, texture)| {
-			Rc::ptr_eq(texture.pipeline(), pipeline)
-				&& texture.image.usage & SAMPLED != 0
-				&& !Rc::ptr_eq(&texture.image, target)
+			Rc::ptr_eq(texture.pipeline(), pipeline) && !Rc::ptr_eq(&texture.image, target)
 		});
 		let made = quads.usage & STORAGE != 0
 			&& atlas.usage & SAMPLED != 0
