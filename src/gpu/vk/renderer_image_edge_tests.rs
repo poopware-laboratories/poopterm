@@ -1,14 +1,14 @@
 //! Tests of the renderer's image textures at their edges, against the fake
 //! driver: the device's largest image drawn and one texel more refused,
 //! a driver failing to make a texture failing the frame without keeping
-//! it, and images drawn over a backdrop software painted.
+//! it, and images uploaded before the quads that show them.
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,
 	driver_tests::{Driver, finish, with},
 	image::{Format, Image},
 	pipeline::QuadPipeline,
-	renderer::{Backdrop, Renderer},
+	renderer::Renderer,
 	renderer_image_tests::{bitmap, place},
 	renderer_tests::ATLAS,
 	timeline::Timeline,
@@ -83,18 +83,13 @@ fn a_driver_failing_to_make_a_texture_fails_the_frame_and_keeps_the_rest() {
 }
 
 #[test]
-fn images_are_uploaded_before_the_backdrop_and_drawn_over_it() {
+fn images_are_uploaded_before_the_quads_that_show_them() {
 	let (mut renderer, target) = renderer_on(|_| {});
 	let mut pen = QuadPen::new((40, 30), ATLAS);
 	let image = bitmap(2, 1);
 	pen.begin_frame((40, 30));
 	place(&mut pen, &image);
-	let backdrop = vec![0x30_5070; 40 * 30];
-	let under = Backdrop {
-		pixels: &backdrop,
-		width: 40,
-	};
-	let recording = renderer.frame_over(&mut pen, &target, Some(under)).unwrap();
+	let recording = renderer.frame(&mut pen, &target).unwrap();
 	recording.submit().unwrap();
 	drop((renderer, target, pen));
 	let driver = finish();
@@ -103,11 +98,10 @@ fn images_are_uploaded_before_the_backdrop_and_drawn_over_it() {
 		.filter(|call| kept.iter().any(|kind| call.starts_with(kind)))
 		.map(String::as_str)
 		.collect::<Vec<_>>();
-	// The image's texels to its texture, the backdrop into the target, then
-	// the image's quad over it.
+	// The image's texels to its texture, then its quad, with nothing
+	// copied into the target.
 	let expected = [
 		"upload 0xb00003+0 layer 0 at 0,0 size 2x1 of 0xa00004",
-		"upload 0xb00004+0 layer 0 at 0,0 size 40x30 of 0xa00001",
 		"bind image set 0x660003",
 		"draw 6 vertices of 1 instances from 0",
 	];

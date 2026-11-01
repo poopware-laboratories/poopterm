@@ -9,7 +9,7 @@ use super::{
 	image::Format,
 	pipeline::QuadPipeline,
 	present::{Acquired, Presented},
-	renderer::{Backdrop, Renderer},
+	renderer::Renderer,
 	surface::{Surface, Window},
 	swapchain::Swapchain,
 	swapchain_plan::Unfit,
@@ -102,16 +102,11 @@ impl GpuWindow {
 		&self.name
 	}
 
-	/// Draws `pen`'s frame in the window, now `size` pixels large, over
-	/// `backdrop`, and shows it. A frame the GPU cannot draw (lacking
-	/// glyphs, or with images past its budget or its device) is refused
-	/// with `Error::Draw`, and the pen started over.
-	pub(crate) fn draw(
-		&mut self,
-		pen: &mut QuadPen,
-		size: [u32; 2],
-		backdrop: Option<Backdrop>,
-	) -> Result<Drawn, Error> {
+	/// Draws `pen`'s frame in the window, now `size` pixels large, and
+	/// shows it. A frame the GPU cannot draw (lacking glyphs, or with
+	/// images past its budget or its device) is refused with
+	/// `Error::Draw`, and the pen started over.
+	pub(crate) fn draw(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
 		if !pen.complete {
 			// The glyphs it added never reach the GPU.
 			self.renderer.restart(pen);
@@ -153,7 +148,7 @@ impl GpuWindow {
 		let image = frame.image().clone();
 		// A frame dropped unpresented keeps its image: remake the swapchain.
 		self.made_for = REMAKE;
-		let recorded = self.renderer.frame_over(pen, &image, backdrop);
+		let recorded = self.renderer.frame(pen, &image);
 		let presented = recorded.and_then(|recording| recording.present(frame));
 		let presented = presented.inspect_err(|_| self.renderer.restart(pen))?;
 		if !suboptimal && presented == Presented::Shown {

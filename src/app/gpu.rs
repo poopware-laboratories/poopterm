@@ -9,12 +9,11 @@ use crate::{
 		vk::{
 			call::Error,
 			entry::Entry,
-			renderer::Backdrop,
 			surface,
 			window::{Drawn, GpuWindow},
 		},
 	},
-	render::{damage::GridDamage, glyphs::FontSet, painter::Painter, scene::Scene},
+	render::{damage::GridDamage, glyphs::FontSet, scene::Scene},
 };
 use winit::raw_window_handle::{
 	HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -58,8 +57,6 @@ pub(super) enum Next {
 	Done,
 	/// Draw the frame again now.
 	Redraw,
-	/// Paint the frame in software, as the GPU cannot draw it.
-	Software,
 	/// The GPU failed, as said: draw with software from now on.
 	Abandon(String),
 }
@@ -68,7 +65,6 @@ pub(super) fn next(drawn: Result<Drawn, Error>) -> Next {
 	match drawn {
 		Ok(Drawn::Shown | Drawn::Skipped) => Next::Done,
 		Ok(Drawn::Again) => Next::Redraw,
-		Err(Error::Draw) => Next::Software,
 		Err(error) => Next::Abandon(error.to_string()),
 	}
 }
@@ -93,7 +89,7 @@ pub(super) fn after_drawn<G, R>(
 	fallback: impl FnOnce(G, &str) -> Result<R, String>,
 ) -> Option<R> {
 	match next {
-		Next::Done | Next::Software => Some(keep(gpu)),
+		Next::Done => Some(keep(gpu)),
 		Next::Redraw => {
 			again();
 			Some(keep(gpu))
@@ -178,52 +174,19 @@ impl<W> Gpu<W> {
 		self.pen.plan_rows(damage, cell_height);
 	}
 
-	/// Draws a frame `size` pixels large and shows it: `quads` draws it
-	/// with the pen; when the GPU cannot draw that, `whole` paints it into
-	/// `pixels`, shown as they are.
-	pub(super) fn frame<C>(
-		&mut self,
-		context: &mut C,
-		(size, pixels): ((usize, usize), &mut [u32]),
-		quads: impl FnOnce(&mut C, &mut QuadPen),
-		whole: impl FnOnce(&mut C, &mut [u32]),
-	) -> Next {
+	/// Draws a frame `size` pixels large, which `quads` draws with the pen,
+	/// and shows it.
+	pub(super) fn frame(&mut self, size: (usize, usize), quads: impl FnOnce(&mut QuadPen)) -> Next {
 		self.pen.begin_frame(size);
-		quads(context, &mut self.pen);
-		let mut next = self.draw(size, None);
-		// A refused frame started the pen over.
-		if next == Next::Software {
-			whole(context, pixels);
-			next = self.draw(size, Some(pixels));
-		}
-		next
+		quads(&mut self.pen);
+		let size = [size.0, size.1].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+		next(self.gpu.draw(&mut self.pen, size))
 	}
 
-	/// Draws `scene`, the window's size, with glyphs from `fonts`, and shows
-	/// it: as quads, or painted whole by software into `pixels`, made the
-	/// scene's size, when the GPU cannot.
-	pub(super) fn scene(
-		&mut self,
-		scene: &Scene,
-		fonts: &mut FontSet,
-		pixels: &mut Vec<u32>,
-	) -> Next {
-		let size = (scene.width, scene.height);
-		pixels.clear();
-		pixels.resize(size.0 * size.1, 0);
-		let quads = |fonts: &mut FontSet, pen: &mut QuadPen| scene.replay(pen, fonts);
-		let whole = |fonts: &mut FontSet, pixels: &mut [u32]| {
-			scene.replay(&mut Painter::new(pixels, size.0, size.1), fonts);
-		};
-		self.frame(fonts, (size, pixels), quads, whole)
-	}
-
-	/// Draws the pen's frame, over `backdrop` if any, the window's `size`
-	/// pixels.
-	fn draw(&mut self, (width, height): (usize, usize), backdrop: Option<&[u32]>) -> Next {
-		let backdrop = backdrop.map(|pixels| Backdrop { pixels, width });
-		let size = [width, height].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-		next(self.gpu.draw(&mut self.pen, size, backdrop))
+	/// Draws `scene`, the window's size, with glyphs from `fonts`, and
+	/// shows it.
+	pub(super) fn scene(&mut self, scene: &Scene, fonts: &mut FontSet) -> Next {
+		self.frame((scene.width, scene.height), |pen| scene.replay(pen, fonts))
 	}
 }
 

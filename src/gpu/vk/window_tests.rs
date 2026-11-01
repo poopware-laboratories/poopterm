@@ -51,7 +51,7 @@ pub(super) fn pen(size: [u32; 2]) -> QuadPen {
 }
 
 pub(super) fn draw(window: &mut GpuWindow, size: [u32; 2]) -> Result<Drawn, Error> {
-	window.draw(&mut pen(size), size, None)
+	window.draw(&mut pen(size), size)
 }
 
 /// Each swapchain made so far: its size and whether it retired another.
@@ -218,7 +218,7 @@ fn a_frame_the_gpu_cannot_draw_is_refused_before_taking_an_image() {
 	let mut window = open(showing(), false).unwrap();
 	let mut lacking = pen(SIZE);
 	lacking.complete = false;
-	assert_eq!(window.draw(&mut lacking, SIZE, None), Err(Error::Draw));
+	assert_eq!(window.draw(&mut lacking, SIZE), Err(Error::Draw));
 	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
 	assert_eq!(draw(&mut window, SIZE), Ok(Drawn::Shown));
 	close(window);
@@ -336,7 +336,7 @@ fn a_glyph_is_uploaded_once_and_again_after_a_failed_frame() {
 		pen.begin_frame((40, 30));
 		let ink = Ink::Drawn('a', (3, 2));
 		pen.glyph(&glyph(3, 2, false), ink, (1, 1), (0, 0, 40, 30), false, 0);
-		window.draw(&mut pen, SIZE, None)
+		window.draw(&mut pen, SIZE)
 	};
 	assert_eq!(frame(&mut window), Ok(Drawn::Shown));
 	assert_eq!(uploads(), 1);

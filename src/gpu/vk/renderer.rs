@@ -97,16 +97,6 @@ pub(crate) struct Renderer {
 	/// and written only once the GPU is done with the last frame.
 	pub(super) quads: Rc<Buffer>,
 	pub(super) staging: Rc<Buffer>,
-	/// The backdrop, packed to the target's width; made for the first.
-	pub(super) backdrop: Option<Rc<Buffer>>,
-}
-
-/// Pixels software painted, which a frame's quads are drawn over: rows of
-/// `width` pixels from the top left corner.
-#[derive(Clone, Copy)]
-pub(crate) struct Backdrop<'p> {
-	pub pixels: &'p [u32],
-	pub width: usize,
 }
 
 impl Renderer {
@@ -141,34 +131,22 @@ impl Renderer {
 					SAMPLED | TRANSFER_DST,
 				)?),
 			)?),
-			backdrop: None,
 		})
 	}
 
 	/// Records `pen`'s frame over `target`, once the GPU has finished the
 	/// last: the caller may record more, and submits. A frame lacking
-	/// glyphs, or with images the GPU cannot hold, is refused, for software
-	/// to draw. A frame that fails never uploads its glyphs or images, so
-	/// the pen starts over and forgets the textures it made, and the next
-	/// frame uploads every one it draws.
+	/// glyphs, or with images the GPU cannot hold, is refused. A frame that
+	/// fails never uploads its glyphs or images, so the pen starts over and
+	/// forgets the textures it made, and the next frame uploads every one
+	/// it draws.
 	pub(crate) fn frame(
 		&mut self,
 		pen: &mut QuadPen,
 		target: &Rc<Image>,
 	) -> Result<Recording<'_>, Error> {
-		self.frame_over(pen, target, None)
-	}
-
-	/// Records `pen`'s frame as [`Self::frame`] does, over `backdrop`, which
-	/// is first copied into the part of `target` it covers.
-	pub(crate) fn frame_over(
-		&mut self,
-		pen: &mut QuadPen,
-		target: &Rc<Image>,
-		backdrop: Option<Backdrop>,
-	) -> Result<Recording<'_>, Error> {
 		let [side, _, pages] = self.atlas.size.map(|n| n as usize);
-		let recorded = self.record(pen, target, backdrop);
+		let recorded = self.record(pen, target);
 		if recorded.is_err() {
 			*pen = QuadPen::new(pen.size, (side, pages));
 		}
@@ -215,12 +193,7 @@ impl Renderer {
 		Ok(self.textures.insert(bitmap, texture).clone())
 	}
 
-	fn record(
-		&mut self,
-		pen: &QuadPen,
-		target: &Rc<Image>,
-		backdrop: Option<Backdrop>,
-	) -> Result<Recording<'_>, Error> {
+	fn record(&mut self, pen: &QuadPen, target: &Rc<Image>) -> Result<Recording<'_>, Error> {
 		if !pen.complete {
 			return Err(Error::Draw);
 		}
@@ -256,7 +229,6 @@ impl Renderer {
 			atlas,
 			quads,
 			staging,
-			backdrop: backdrop_buffer,
 			textures,
 			..
 		} = self;
@@ -305,9 +277,6 @@ impl Renderer {
 				recording.upload(staging, offset, &texture.image, region)?;
 				offset += bitmap.pixels.len() as u64 * 4;
 			}
-			if let Some(Backdrop { pixels, width }) = backdrop {
-				upload_backdrop(&mut recording, backdrop_buffer, (pixels, width), target)?;
-			}
 			recording.draw(Draw {
 				set,
 				quads,
@@ -332,39 +301,6 @@ impl Renderer {
 	pub(crate) fn finish(&self) -> Result<(), Error> {
 		self.commands.finish()
 	}
-}
-
-/// Records copying the part of `pixels`, rows of `width`, that fits
-/// `target` into it, packed into `buffer`, made for the first.
-fn upload_backdrop(
-	recording: &mut Recording,
-	buffer: &mut Option<Rc<Buffer>>,
-	(pixels, width): (&[u32], usize),
-	target: &Rc<Image>,
-) -> Result<(), Error> {
-	let [columns, rows] = [
-		width.min(target.size[0] as usize),
-		(pixels.len().checked_div(width).unwrap_or(0)).min(target.size[1] as usize),
-	];
-	if columns * rows == 0 {
-		return Ok(());
-	}
-	let (device, bytes) = (&target.device, columns * rows * 4);
-	let buffer = match buffer {
-		Some(buffer) => buffer,
-		None => buffer.insert(self::buffer(device, bytes, TRANSFER_SRC)?),
-	};
-	let words = writable(buffer, device, (columns * rows, 4), TRANSFER_SRC)?;
-	let packed = pixels.chunks_exact(width).flat_map(|row| &row[..columns]);
-	for (chunk, &pixel) in words.iter_mut().zip(packed) {
-		*chunk = pixel.to_ne_bytes();
-	}
-	let region = Region {
-		layer: 0,
-		at: [0, 0],
-		size: [columns as u32, rows as u32],
-	};
-	recording.upload(buffer, 0, target, region)
 }
 
 /// A buffer of `bytes` for `usage`, mapped for the CPU to write.
