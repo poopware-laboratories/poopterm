@@ -19,14 +19,12 @@ pub(super) const MAX_SAMPLES: usize = 1 << 16;
 pub(super) enum Kind {
 	Software,
 	Gpu,
-	/// Painted whole by software and shown through the GPU.
-	GpuWhole,
 }
 
 #[derive(Debug, Default)]
 pub(super) struct FrameStats {
-	/// Frames drawn in software, on the GPU, and painted whole for the GPU.
-	pub kinds: [usize; 3],
+	/// Frames drawn in software and on the GPU.
+	pub kinds: [usize; 2],
 	/// Per frame: painting in software, showing (the GPU's recording,
 	/// submission and presentation, or the software presenter), all of it.
 	pub paint: Vec<Duration>,
@@ -71,7 +69,7 @@ impl FrameStats {
 	/// The samples as one line of JSON, in microseconds, for a window
 	/// `size` pixels large at this display `scale`.
 	pub(super) fn report(&self, (width, height): (usize, usize), scale: f64) -> String {
-		let [software, gpu, whole] = self.kinds;
+		let [software, gpu] = self.kinds;
 		let us = |samples: &[Duration]| {
 			let samples: Vec<_> = samples
 				.iter()
@@ -80,7 +78,7 @@ impl FrameStats {
 			format!("[{}]", samples.join(", "))
 		};
 		format!(
-			"{{\"frames\": {{\"software\": {software}, \"gpu\": {gpu}, \"gpu_whole\": {whole}}}, \
+			"{{\"frames\": {{\"software\": {software}, \"gpu\": {gpu}}}, \
 			 \"size\": [{width}, {height}], \"scale\": {scale}, \"paint_us\": {}, \"show_us\": {}, \
 			 \"total_us\": {}, \"latency_us\": {}}}",
 			us(&self.paint),
@@ -96,9 +94,8 @@ impl FrameStats {
 pub(super) struct Recorder {
 	pub path: PathBuf,
 	pub stats: FrameStats,
-	/// Painted in software so far this frame, and whether whole.
+	/// Painted in software so far this frame.
 	paint: Duration,
-	whole: bool,
 }
 
 impl Recorder {
@@ -108,14 +105,12 @@ impl Recorder {
 			path: path.into(),
 			stats: FrameStats::default(),
 			paint: Duration::ZERO,
-			whole: false,
 		})
 	}
 
-	/// Software painted for `took` this frame, the whole frame if `whole`.
-	pub(super) fn painted(&mut self, took: Duration, whole: bool) {
+	/// Software painted for `took` this frame.
+	pub(super) fn painted(&mut self, took: Duration) {
 		self.paint += took;
-		self.whole |= whole;
 	}
 
 	/// The frame drawn from `start` to `end` is done: shown in `showing`, by
@@ -123,11 +118,9 @@ impl Recorder {
 	/// painted.
 	pub(super) fn finish(&mut self, gpu: bool, showing: Duration, start: Instant, end: Instant) {
 		let paint = std::mem::take(&mut self.paint);
-		let whole = std::mem::take(&mut self.whole);
-		let (kind, show) = match (gpu, whole) {
-			(false, _) => (Kind::Software, showing),
-			(true, false) => (Kind::Gpu, showing.saturating_sub(paint)),
-			(true, true) => (Kind::GpuWhole, showing.saturating_sub(paint)),
+		let (kind, show) = match gpu {
+			false => (Kind::Software, showing),
+			true => (Kind::Gpu, showing.saturating_sub(paint)),
 		};
 		let total = end.saturating_duration_since(start);
 		self.stats.frame(kind, [paint, show, total], end);

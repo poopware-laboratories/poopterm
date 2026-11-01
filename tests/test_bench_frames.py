@@ -30,7 +30,7 @@ SCRIPT = str(Path(__file__).parents[1] / 'scripts/bench-frames.py')
 def report(total, paint, show, latency=()):
     """A report whose samples are the given lists."""
     return {
-        "frames": {"software": len(total), "gpu": 0, "gpu_whole": 0}, "size": [1000, 600], "scale": 1,
+        "frames": {"software": len(total), "gpu": 0}, "size": [1000, 600], "scale": 1,
         "total_us": list(total), "paint_us": list(paint), "show_us": list(show), "latency_us": list(latency),
     }
 

@@ -97,7 +97,7 @@ impl App {
 			}
 			Plan::Partial(damage) => Some(self.compose_damaged(&mut painter, damage)),
 		};
-		self.painted(painting.elapsed(), false);
+		self.painted(painting.elapsed());
 		self.canvas.pixels = pixels;
 		let damage = match &plan {
 			Plan::Full => None,
@@ -122,9 +122,9 @@ impl App {
 	// pr-check: window glue: hands a real window's frame times to the tested frame_stats::Recorder
 	/// Software painted for `took` this frame (the whole of it if `whole`),
 	/// for the frame statistics.
-	pub(super) fn painted(&mut self, took: Duration, whole: bool) {
+	pub(super) fn painted(&mut self, took: Duration) {
 		if let Some(recorder) = &mut self.frame_stats {
-			recorder.painted(took, whole);
+			recorder.painted(took);
 		}
 	}
 
