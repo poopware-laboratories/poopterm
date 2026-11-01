@@ -72,6 +72,27 @@ pub(super) fn next(drawn: Result<Drawn, Error>) -> Next {
 	}
 }
 
+/// What a frame is drawn as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Layers {
+	/// Quads alone, from the background up.
+	Quads,
+	/// Quads of the grid over the rest, which software paints.
+	OverBackdrop,
+	/// Painted whole by software.
+	Whole,
+}
+
+/// What a frame is drawn as when there is a `wallpaper`, which quads cannot
+/// show, and an `overlay` over the grid.
+pub(super) fn layers(wallpaper: bool, overlay: bool) -> Layers {
+	match (wallpaper, overlay) {
+		(false, _) => Layers::Quads,
+		(true, false) => Layers::OverBackdrop,
+		(true, true) => Layers::Whole,
+	}
+}
+
 pub(super) struct Gpu<W = Arc<Window>> {
 	/// Dropped before the window it draws in.
 	gpu: GpuWindow,
@@ -132,40 +153,40 @@ impl<W> Gpu<W> {
 		&self.window
 	}
 
-	/// Draws a frame `size` pixels large and shows it, painted into
-	/// `pixels` by software: by `around` all but the grid, which it draws
-	/// with the pen for the GPU to draw over the rest, unless an `overlay`
-	/// covers the grid or the GPU cannot draw it; then by `whole`.
+	/// Draws a frame `size` pixels large of these `layers` and shows it.
+	/// `around` draws with the pen, also painting all but the grid into
+	/// the `pixels` it is given for a backdrop; `whole` paints the whole
+	/// frame into `pixels`, for `Layers::Whole` or when the GPU cannot draw
+	/// the pen's frame.
 	pub(super) fn frame<C>(
 		&mut self,
 		context: &mut C,
 		(size, pixels): ((usize, usize), &mut [u32]),
-		overlay: bool,
-		around: impl FnOnce(&mut C, &mut [u32], &mut QuadPen),
+		layers: Layers,
+		around: impl FnOnce(&mut C, Option<&mut [u32]>, &mut QuadPen),
 		whole: impl FnOnce(&mut C, &mut [u32]),
 	) -> Next {
 		let mut next = Next::Software;
-		if !overlay {
+		if layers != Layers::Whole {
+			let backdrop = layers == Layers::OverBackdrop;
 			self.pen.begin_frame(size);
-			around(context, pixels, &mut self.pen);
-			next = self.draw(size, pixels);
+			around(context, backdrop.then_some(&mut *pixels), &mut self.pen);
+			next = self.draw(size, backdrop.then_some(&*pixels));
 		}
 		// A refused frame started the pen over.
 		if next == Next::Software {
 			whole(context, pixels);
-			next = self.draw(size, pixels);
+			next = self.draw(size, Some(pixels));
 		}
 		next
 	}
 
-	/// Draws the pen's frame over `backdrop`, the window's `size` pixels.
-	fn draw(&mut self, (width, height): (usize, usize), backdrop: &[u32]) -> Next {
-		let backdrop = Backdrop {
-			pixels: backdrop,
-			width,
-		};
+	/// Draws the pen's frame, over `backdrop` if any, the window's `size`
+	/// pixels.
+	fn draw(&mut self, (width, height): (usize, usize), backdrop: Option<&[u32]>) -> Next {
+		let backdrop = backdrop.map(|pixels| Backdrop { pixels, width });
 		let size = [width, height].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-		next(self.gpu.draw(&mut self.pen, size, Some(backdrop)))
+		next(self.gpu.draw(&mut self.pen, size, backdrop))
 	}
 }
 

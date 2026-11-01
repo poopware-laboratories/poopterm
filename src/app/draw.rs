@@ -160,9 +160,22 @@ impl App {
 	/// Composes the frame, with the grid only when `grid`: else the GPU
 	/// draws it over the rest.
 	pub(super) fn compose_around(&mut self, p: &mut Painter, grid: bool) {
+		self.restore_background(p, 0, p.height);
+		self.compose_over(p, grid);
+	}
+
+	/// The frame drawn with any pen, without a wallpaper: the GPU's quads.
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	pub(super) fn compose_plain(&mut self, p: &mut impl Pen) {
+		let colors = (self.theme.border, self.theme.bg);
+		crate::render::background::fill(p, (0, p.size().1), 0, self.border, colors);
+		self.compose_over(p, true);
+	}
+
+	/// All of the frame over its background, with the grid when `grid`.
+	fn compose_over(&mut self, p: &mut impl Pen, grid: bool) {
 		let scale = self.scale();
 		let ui = self.ui_font(18.0 * scale as f32);
-		self.restore_background(p, 0, p.height);
 		self.draw_tab_bar(p, ui);
 		if grid {
 			self.draw_terminal(p, scale, None);
@@ -217,15 +230,15 @@ impl App {
 		}
 	}
 
-	fn overlay_place(&self, p: &Painter, scale: usize) -> Place {
+	fn overlay_place(&self, p: &impl Pen, scale: usize) -> Place {
 		Place {
-			window: (p.width, p.height),
+			window: p.size(),
 			top: self.top,
 			scale,
 		}
 	}
 
-	fn draw_search_box(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
+	fn draw_search_box(&mut self, p: &mut impl Pen, scale: usize, ui: UiFont) {
 		let place = self.overlay_place(p, scale);
 		// pr-check: window glue: hands the search state to the tested search box model
 		let found = (self.search_matches.len(), self.search_match_index);
@@ -235,7 +248,7 @@ impl App {
 		// pr-check: end window glue
 	}
 
-	fn draw_command_palette(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
+	fn draw_command_palette(&mut self, p: &mut impl Pen, scale: usize, ui: UiFont) {
 		let place = self.overlay_place(p, scale);
 		// pr-check: window glue: hands the palette state to the tested palette model
 		let query = (self.command_query.as_str(), self.renaming_tab);
@@ -244,11 +257,12 @@ impl App {
 		// pr-check: end window glue
 	}
 
-	pub(super) fn draw_status_bar(&mut self, p: &mut Painter, scale: usize, ui: UiFont) {
+	pub(super) fn draw_status_bar(&mut self, p: &mut impl Pen, scale: usize, ui: UiFont) {
 		if !self.preferences.show_bottom_bar {
 			return;
 		}
-		let y = p.height.saturating_sub(self.status_height + self.border);
+		let (width, height) = p.size();
+		let y = height.saturating_sub(self.status_height + self.border);
 		let term = self.sessions[self.active].term();
 		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
 		// Say when the user acts as someone else or somewhere else.
@@ -265,7 +279,7 @@ impl App {
 			size: (term.cols, term.rows),
 			theme: self.theme.kind.name(),
 		};
-		let rect = (0, y, p.width, self.status_height);
+		let rect = (0, y, width, self.status_height);
 		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);
 		drop(term);
 		paint(p, &mut self.ui_fonts, |s, f| draw_status_bar(s, f, &bar));

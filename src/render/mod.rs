@@ -1,5 +1,6 @@
 //! Pixel-level drawing helpers shared by the terminal and settings windows.
 pub(crate) mod backend;
+pub(crate) mod background;
 pub(crate) mod blend;
 pub(crate) mod boxdraw;
 pub(crate) mod cell_joins;

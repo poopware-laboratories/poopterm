@@ -1,7 +1,7 @@
 //! Drawing for the optional vertical tab sidebar.
 use super::{draw::UiFont, draw_tabs::tab_info, *};
 use crate::{
-	render::{painter::Painter, scene::paint, sidebar::draw_sidebar},
+	render::{painter::Painter, pen::Pen, scene::paint, sidebar::draw_sidebar},
 	ui::{
 		sidebar::{SidebarInput, SidebarState, sidebar, sidebar_target},
 		tabs::VerticalTabLayout,
@@ -23,7 +23,7 @@ impl App {
 		// pr-check: end window glue
 	}
 
-	pub(super) fn draw_vertical_tab_bar(&mut self, p: &mut Painter, ui: UiFont) {
+	pub(super) fn draw_vertical_tab_bar(&mut self, p: &mut impl Pen, ui: UiFont) {
 		let layout = self.vertical_tab_layout();
 		let state = self.sidebar_state(&layout);
 		self.paint_sidebar(p, ui, &layout, &state);
@@ -57,7 +57,7 @@ impl App {
 
 	fn paint_sidebar(
 		&mut self,
-		p: &mut Painter,
+		p: &mut impl Pen,
 		ui: UiFont,
 		layout: &VerticalTabLayout,
 		state: &SidebarState,
@@ -67,7 +67,7 @@ impl App {
 		let sidebar = sidebar(&SidebarInput {
 			layout,
 			state,
-			bounds: (top, p.height.saturating_sub(top)),
+			bounds: (top, p.size().1.saturating_sub(top)),
 			px: ui.px * 0.82,
 			theme: &self.theme,
 		});
