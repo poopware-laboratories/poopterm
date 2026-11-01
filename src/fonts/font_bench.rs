@@ -54,27 +54,28 @@ fn font_engine_speed() {
 	let settings = fontdue::FontSettings::default;
 	// What `load_fonts` reads at startup: the bundled font and up to eight
 	// installed symbol fonts. Leaked once so loading borrows, not copies.
-	let startup: Vec<&'static [u8]> = std::iter::once(super::BUNDLED)
+	let startup: Vec<(&'static [u8], u32)> = std::iter::once((super::BUNDLED, 0))
 		.chain(
-			super::installed_symbol_font_paths()
+			super::symbols::symbol_fonts(&super::system_fonts(), 8)
 				.into_iter()
-				.take(8)
-				.filter_map(|path| std::fs::read(path).ok())
-				.filter(|bytes| bytes.len() <= 64 * 1024 * 1024)
-				.map(|bytes| &*bytes.leak()),
+				.filter_map(|(path, index)| Some((&*std::fs::read(path).ok()?.leak(), index))),
 		)
 		.collect();
 	report(
 		&format!("startup ({} fonts)", startup.len()),
 		"load",
 		time(1, || {
-			for &bytes in &startup {
-				black_box(Font::from_bytes(bytes, 0).ok());
+			for &(bytes, index) in &startup {
+				black_box(Font::from_bytes(bytes, index).ok());
 			}
 		}),
 		time(1, || {
-			for &bytes in &startup {
-				black_box(fontdue::Font::from_bytes(bytes, settings()).ok());
+			for &(bytes, index) in &startup {
+				let settings = fontdue::FontSettings {
+					collection_index: index,
+					..settings()
+				};
+				black_box(fontdue::Font::from_bytes(bytes, settings).ok());
 			}
 		}),
 	);

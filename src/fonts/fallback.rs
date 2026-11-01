@@ -14,7 +14,7 @@ const TRIES_PER_CHAR: usize = 4;
 /// Fonts loaded in all; each stays in memory once loaded.
 const MAX_LOADED: usize = 32;
 /// Larger files are skipped, like the symbol fonts loaded at startup.
-const MAX_FILE: u64 = 64 << 20;
+pub(crate) const MAX_FILE: u64 = 64 << 20;
 /// Characters remembered as found nowhere before the list is reset.
 const MAX_MISSING: usize = 4096;
 /// Characters whose ranked candidates are remembered before the list is
