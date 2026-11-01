@@ -1,6 +1,6 @@
 //! winit `ApplicationHandler`: window creation and event dispatch.
 use super::*;
-use crate::input::keys::Modifiers;
+use crate::{input::keys::Modifiers, ui::scale::rescaled};
 use std::time::Instant;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
@@ -116,9 +116,10 @@ impl ApplicationHandler<UserEvent> for App {
 			}
 			WindowEvent::Resized(size) => self.resize(size.width, size.height),
 			// pr-check: window glue: winit sends this when the window moves to another output or its scale changes
-			WindowEvent::ScaleFactorChanged { .. } => {
+			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+				let (width, height) = rescaled((self.width, self.height), self.sized_for, scale_factor);
 				self.apply_scale();
-				self.resize(self.width, self.height);
+				self.resize(width, height);
 			}
 			// pr-check: end window glue
 			WindowEvent::RedrawRequested => self.draw(),

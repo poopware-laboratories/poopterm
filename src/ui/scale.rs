@@ -62,6 +62,18 @@ pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 	}
 }
 
+/// The size in pixels a window `size` pixels large at factor `from` takes
+/// at factor `to`: the same size in logical pixels, as the windowing
+/// system resizes it. Unchanged when either factor is not usable.
+pub(crate) fn rescaled(size: (u32, u32), from: f64, to: f64) -> (u32, u32) {
+	let usable = |factor: f64| factor.is_finite() && factor > 0.0;
+	if !usable(from) || !usable(to) {
+		return size;
+	}
+	let side = |pixels: u32| ((f64::from(pixels) / from * to).round() as u32).max(1);
+	(side(size.0), side(size.1))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -252,5 +264,53 @@ mod tests {
 			2.0,
 			"smaller never shrinks"
 		);
+	}
+
+	#[test]
+	fn a_window_keeps_its_logical_size_when_its_factor_changes() {
+		// 1000×600 at 1 is 1750×1050 at 1.75, and back.
+		assert_eq!(rescaled((1000, 600), 1.0, 1.75), (1750, 1050));
+		assert_eq!(rescaled((1750, 1050), 1.75, 1.0), (1000, 600));
+		assert_eq!(rescaled((1250, 750), 1.25, 2.0), (2000, 1200));
+		assert_eq!(rescaled((800, 600), 2.0, 2.0), (800, 600));
+	}
+
+	#[test]
+	fn rescaled_sizes_round_to_the_nearest_pixel_and_stay_at_least_one() {
+		// 1001 / 1.5 × 1.25 = 834.17, and 3 / 1.5 × 1.25 = 2.5, rounded up.
+		assert_eq!(rescaled((1001, 3), 1.5, 1.25), (834, 3));
+		assert_eq!(rescaled((1, 1), 2.0, 1.0), (1, 1), "0.5 rounds up");
+		assert_eq!(rescaled((1, 1), 8.0, 1.0), (1, 1), "never none");
+	}
+
+	#[test]
+	fn a_factor_not_usable_leaves_the_size_as_it_is() {
+		for (from, to) in [
+			(f64::NAN, 1.5),
+			(1.0, 0.0),
+			(-1.0, 2.0),
+			(1.0, f64::INFINITY),
+		] {
+			assert_eq!(
+				rescaled((1000, 600), from, to),
+				(1000, 600),
+				"{from} → {to}"
+			);
+		}
+	}
+
+	#[test]
+	fn rescaling_there_and_back_gives_the_size_it_started_from() {
+		for factor in [1.25, 1.5, 1.75, 2.0, 3.0] {
+			let there = rescaled((1000, 600), 1.0, factor);
+			assert_eq!(rescaled(there, factor, 1.0), (1000, 600), "{factor}");
+		}
+	}
+
+	#[test]
+	fn rescaled_sizes_follow_any_factor_and_saturate_rather_than_wrap() {
+		// The window system's factor, not the one text is bounded to.
+		assert_eq!(rescaled((100, 100), 1.0, 10.0), (1000, 1000));
+		assert_eq!(rescaled((u32::MAX, 1), 1.0, 8.0), (u32::MAX, 8));
 	}
 }

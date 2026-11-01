@@ -94,6 +94,8 @@ pub(crate) struct App {
 	tab_height: usize,
 	status_height: usize,
 	border: usize,
+	/// The scale factor the sizes above were made for.
+	sized_for: f64,
 
 	sessions: Vec<Session>,
 	active: usize,
@@ -205,6 +207,7 @@ impl App {
 	pub(super) fn apply_scale(&mut self) {
 		let factor = self.factor();
 		// pr-check: window glue: copies the sizes ui::scale computed into App
+		self.sized_for = factor;
 		let chrome = chrome(self.chrome_factor(), cfg!(target_os = "macos"));
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
@@ -343,6 +346,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		tab_height: 46,
 		status_height: 26,
 		border: 1,
+		sized_for: 1.0,
 		sessions,
 		active: 0,
 		tab_scroll: 0,
