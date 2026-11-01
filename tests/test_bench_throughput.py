@@ -1,9 +1,12 @@
 """End-to-end benchmark payloads: every write ends on a sequence boundary."""
 import importlib.util
+import json
 import os
 from pathlib import Path
+import pty
 import re
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -259,3 +262,68 @@ class SearchDepth(unittest.TestCase):
     def test_the_search_gives_up_after_64_processes(self):
         self.assertEqual(throughput.terminal_pid(64, stat=self.chain(64).get), 1)
         self.assertIsNone(throughput.terminal_pid(65, stat=self.chain(65).get))
+
+
+FAKE_POOPTERM = '''import sys
+if '--list' in sys.argv:
+    print('ascii   plain text')
+else:
+    kib = int(sys.argv[sys.argv.index('--kib') + 1])
+    sys.stdout.write(('x' * 78 + '\\r\\n') * (kib * 1024 // 80))
+'''
+
+
+@unittest.skipUnless(hasattr(os, 'fork') and shutil.which('ps'), 'needs a pty and ps')
+class EndToEnd(unittest.TestCase):
+    """The benchmark run in a pty whose other end is this test, standing in
+    for the terminal: it answers DA1 and XTVERSION and is the process whose
+    memory is reported."""
+
+    def run_benchmark(self, *flags):
+        work = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, work)
+        fake = work / 'poopterm'
+        fake.write_text(f'#!{sys.executable}\n' + FAKE_POOPTERM)
+        fake.chmod(0o755)
+        output = work / 'report.json'
+        script = Path(__file__).parents[1] / 'scripts/bench-throughput.py'
+        argv = [sys.executable, str(script), '--mib', '1', '--repeat', '1', '--settle', '0',
+                '--timeout', '20', '--format', 'json', '--output', str(output), *flags]
+        child, master = pty.fork()
+        if child == 0:
+            os.execve(sys.executable, argv, {**os.environ, 'POOPTERM_BIN': str(fake)})
+        seen = b''
+        while True:
+            try:
+                chunk = os.read(master, 1 << 16)
+            except OSError:  # EIO: the benchmark exited and closed its side
+                break
+            if not chunk:
+                break
+            # Answer in order; a query may straddle two reads.
+            seen += chunk
+            answered = 0
+            for query in re.finditer(rb'\x1b\[>q|\x1b\[c', seen):
+                xtversion = query[0] == b'\x1b[>q'
+                os.write(master, b'\x1bP>|fake(1)\x1b\\' if xtversion else b'\x1b[?62;c')
+                answered = query.end()
+            seen = seen[answered:][-3:]
+        os.close(master)
+        _, status = os.waitpid(child, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+        return json.loads(output.read_text())
+
+    def test_the_report_measures_the_terminal_found_above_the_shell(self):
+        report = self.run_benchmark()
+        self.assertEqual(report['terminal'], 'fake(1)')
+        self.assertEqual(report['pid'], os.getpid())
+        [result] = report['results']
+        self.assertEqual(result['payload'], 'ascii')
+        for resident in [report['rss_start_mib'], result['rss_mib']]:
+            self.assertGreater(resident, 1)
+        if Path('/proc/self/status').exists():
+            self.assertGreaterEqual(report['peak_mib'], result['rss_mib'])
+
+    def test_pid_names_the_terminal_instead(self):
+        report = self.run_benchmark('--pid', '1')
+        self.assertEqual(report['pid'], 1)
