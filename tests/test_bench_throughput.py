@@ -187,3 +187,75 @@ class TextReport(unittest.TestCase):
         lines = self.report(pid=None, rss_start_mib=None, peak_mib=None, results=results).splitlines()
         self.assertRegex(lines[1], r'\) +- +plain text$')
         self.assertEqual(lines[3], 'memory      - MiB at start, - MiB at peak (pid -)')
+
+
+class WithoutProc(unittest.TestCase):
+    """macOS and the BSDs have no /proc: `ps` answers instead."""
+
+    def setUp(self):
+        no_proc = [mock.patch.object(throughput.Path, 'read_text', side_effect=FileNotFoundError),
+                   mock.patch.object(throughput.Path, 'exists', return_value=False)]
+        for patch in no_proc:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def ps_says(self, stdout, returncode=0):
+        reply = mock.Mock(stdout=stdout, returncode=returncode)
+        return mock.patch.object(throughput.subprocess, 'run', return_value=reply)
+
+    @unittest.skipUnless(shutil.which('ps'), 'needs ps')
+    def test_ps_gives_the_parent_and_the_resident_set(self):
+        parent, _ = throughput.proc_stat(os.getpid())
+        self.assertEqual(parent, os.getppid())
+        own = throughput.memory(os.getpid())
+        self.assertGreater(own['rss_kib'], 0)
+        self.assertIsNone(own['peak_kib'])
+
+    def test_ps_columns_are_parsed(self):
+        with self.ps_says(' 4021 ttys003\n') as run:
+            self.assertEqual(throughput.proc_stat(4100), (4021, 'ttys003'))
+        self.assertEqual(run.call_args.args[0], ['ps', '-o', 'ppid=,tty=', '-p', '4100'])
+        with self.ps_says('  51200\n') as run:
+            self.assertEqual(throughput.memory(4100), {'rss_kib': 51200, 'peak_kib': None})
+        self.assertEqual(run.call_args.args[0], ['ps', '-o', 'rss=', '-p', '4100'])
+
+    def test_ps_failing_or_answering_nonsense_is_unknown(self):
+        # `ps -p` prints nothing and exits 1 once the pid is gone.
+        for stdout, code in [('', 1), ('4021 ttys003\n', 1), ('4021\n', 0), ('a b c\n', 0)]:
+            with self.subTest(stdout=stdout, code=code), self.ps_says(stdout, code):
+                self.assertIsNone(throughput.proc_stat(4100))
+        for stdout, code in [('', 1), ('51200\n', 1), ('-\n', 0), ('51 200\n', 0)]:
+            with self.subTest(stdout=stdout, code=code), self.ps_says(stdout, code):
+                self.assertIsNone(throughput.memory(4100))
+
+
+class UnreadableProc(unittest.TestCase):
+    def test_a_process_we_may_not_read_is_unknown_and_ps_is_not_tried(self):
+        # hidepid=2 mounts deny other users' /proc entries; ps would not see
+        # them either, and on Linux it only reads /proc again.
+        with mock.patch.object(throughput.Path, 'read_text', side_effect=PermissionError), \
+                mock.patch.object(throughput.subprocess, 'run') as run:
+            self.assertIsNone(throughput.memory(1))
+            self.assertIsNone(throughput.proc_stat(1))
+        run.assert_not_called()
+
+    def test_a_truncated_stat_is_unknown(self):
+        for stat in ['77 (a)', '77 (a) S 9', '77 a S 9 9 9 0', '77 (a) S nine 9 9 0']:
+            with self.subTest(stat=stat), \
+                    mock.patch.object(throughput.Path, 'read_text', return_value=stat):
+                self.assertIsNone(throughput.proc_stat(77))
+
+
+class SearchDepth(unittest.TestCase):
+    def chain(self, depth):
+        # pid `depth` is the script; every ancestor shares its terminal down to pid 1.
+        tree = {pid: (pid - 1, 'pts/0') for pid in range(2, depth + 1)}
+        tree[1] = (0, '?')
+        return tree
+
+    def test_a_deep_chain_is_still_searched(self):
+        self.assertEqual(throughput.terminal_pid(60, stat=self.chain(60).get), 1)
+
+    def test_the_search_gives_up_after_64_processes(self):
+        self.assertEqual(throughput.terminal_pid(64, stat=self.chain(64).get), 1)
+        self.assertIsNone(throughput.terminal_pid(65, stat=self.chain(65).get))
