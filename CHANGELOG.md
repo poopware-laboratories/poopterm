@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.8 "Lunar Moth" — 2026-11-01
+
+### Performance
+
+- Keep unchanged grid rows' quads between frames (#208) (gpu).
+
 ## 26.11.7 "Lunar Moth" — 2026-11-01
 
 ### Maintenance
