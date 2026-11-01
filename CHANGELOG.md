@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.14 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Grow the glyph atlas instead of refusing a frame (#214) (gpu).
+
 ## 26.11.13 "Lunar Moth" — 2026-11-01
 
 ### Maintenance
