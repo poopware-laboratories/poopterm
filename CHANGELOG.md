@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.4 "Lunar Moth" — 2026-11-01
+
+### Maintenance
+
+- Record frame times and typing latency (#203) (app).
+
 ## 26.11.3 "Lunar Moth" — 2026-11-01
 
 ### Performance
