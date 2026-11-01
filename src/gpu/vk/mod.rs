@@ -83,6 +83,8 @@ mod renderer_backdrop_tests;
 #[cfg(test)]
 mod renderer_gpu_tests;
 #[cfg(test)]
+mod renderer_image_edge_tests;
+#[cfg(test)]
 mod renderer_image_tests;
 #[cfg(test)]
 mod renderer_tests;
