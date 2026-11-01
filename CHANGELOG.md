@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.13 "Lunar Moth" — 2026-11-01
+
+### Maintenance
+
+- Drop the backdrop path (#213) (gpu).
+
 ## 26.11.12 "Lunar Moth" — 2026-11-01
 
 ### Added
