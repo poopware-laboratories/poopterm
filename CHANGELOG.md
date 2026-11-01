@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.0 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Add our own x11 presenter over mit-shm and putimage (#191) (present).
+
 ## 26.10.137 "Giga Fly" — 2026-10-29
 
 ### Performance

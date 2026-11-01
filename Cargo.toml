@@ -1,12 +1,12 @@
 [package]
 name = "poopterm"
-version = "26.10.137"
+version = "26.11.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [package.metadata.poopterm]
 # Versions are YEAR.MONTH.PATCH; each month gets a random codename, patches keep it.
-codename = "Giga Fly"
+codename = "Lunar Moth"
 
 [dependencies]
 winit = "^0.30"
