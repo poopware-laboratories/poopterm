@@ -51,6 +51,14 @@ the warm-up, ends on a whole escape sequence and UTF-8 character: a DA1
 query that lands inside an unfinished `CSI` is answered by Poopterm and
 xterm, but dropped by kitty, which used to abort the run.
 
+It also reports the terminal's resident memory (RSS): before the first
+workload, after each one once it has settled (`--settle`, default 1 s), and
+the peak (`VmHWM`) at the end. The terminal is the first ancestor of the
+script that is not attached to the script's own terminal; under tmux that is
+the tmux server, so pass `--pid` to name the emulator instead. Linux reads
+`/proc`; elsewhere `ps` gives the resident set but no peak. Compare memory
+only between runs with the same workloads, window size and scrollback limit.
+
 **Parser only**, without rendering: `cargo test --release -- --ignored
 --nocapture parser_throughput`. **PTY ceiling**: `scripts/bench-pty.py`.
 **Inflate**: `inflate_throughput`, the same way (our decoder against
