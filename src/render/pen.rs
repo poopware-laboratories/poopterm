@@ -54,6 +54,12 @@ pub(crate) trait Pen {
 		at: (isize, isize),
 		cell: (usize, usize),
 	);
+
+	/// Grid row `row` is drawn next, until the next row or the grid's end.
+	fn begin_row(&mut self, _row: usize) {}
+
+	/// The grid, of `rows` rows, is drawn.
+	fn end_grid(&mut self, _rows: usize) {}
 }
 
 impl Pen for Painter<'_> {

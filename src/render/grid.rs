@@ -70,6 +70,7 @@ pub(crate) fn draw_grid(
 	images.sort_by_key(|image| (image.z, image.kitty.map_or(0, |id| id.image)));
 	let wanted = |row: usize| rows.is_none_or(|rows| rows[row]);
 	for row in (0..frame.rows).filter(|&row| wanted(row)) {
+		p.begin_row(row);
 		extend_padding(p, view, row);
 		if images.is_empty() {
 			draw_row(p, fonts, view, row, Layer::All);
@@ -86,6 +87,7 @@ pub(crate) fn draw_grid(
 		draw_placeholders(p, view, row);
 		draw_images(p, view, &images, clip, |z| z >= 0);
 	}
+	p.end_grid(frame.rows);
 }
 
 /// Draws the image slices of the Unicode placeholder cells in `row`, where

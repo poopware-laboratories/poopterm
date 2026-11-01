@@ -19,5 +19,8 @@ mod quads_tests;
 pub(crate) mod record;
 #[cfg(test)]
 mod record_tests;
+pub(crate) mod rows;
+#[cfg(test)]
+mod rows_tests;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(crate) mod vk;

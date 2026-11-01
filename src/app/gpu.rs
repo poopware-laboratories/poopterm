@@ -14,6 +14,7 @@ use crate::{
 			window::{Drawn, GpuWindow},
 		},
 	},
+	render::damage::GridDamage,
 };
 use winit::raw_window_handle::{
 	HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -93,6 +94,14 @@ pub(super) fn layers(wallpaper: bool, overlay: bool) -> Layers {
 	}
 }
 
+/// Whether a frame of `layers` that came to `next` is remembered, for the
+/// next to redraw only the rows that changed: only while the pen `keeps`
+/// its grid rows, which a frame painted whole by software or a pen
+/// started over lacks, and while the GPU still draws.
+pub(super) fn remembers(layers: Layers, keeps: bool, next: &Next) -> bool {
+	layers != Layers::Whole && keeps && !matches!(next, Next::Abandon(_))
+}
+
 pub(super) struct Gpu<W = Arc<Window>> {
 	/// Dropped before the window it draws in.
 	gpu: GpuWindow,
@@ -151,6 +160,17 @@ impl<W> Gpu<W> {
 	/// The window it draws in.
 	pub(super) fn window(&self) -> &W {
 		&self.window
+	}
+
+	/// Whether the pen holds the last frame's grid rows.
+	pub(super) fn keeps_rows(&self) -> bool {
+		self.pen.keeps_rows()
+	}
+
+	/// Has the next frame redraw only `damage`'s grid rows, `cell_height`
+	/// pixels tall; every row without.
+	pub(super) fn plan_rows(&mut self, damage: Option<GridDamage>, cell_height: usize) {
+		self.pen.plan_rows(damage, cell_height);
 	}
 
 	/// Draws a frame `size` pixels large of these `layers` and shows it.
