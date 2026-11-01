@@ -318,6 +318,14 @@ mod recorder {
 	}
 
 	#[test]
+	fn a_path_that_is_not_utf8_is_kept_byte_for_byte() {
+		use std::os::unix::ffi::OsStringExt;
+		let bytes = b"/tmp/stats-\xff\xfe.json".to_vec();
+		let recorder = Recorder::from_env(Some(OsString::from_vec(bytes.clone()))).unwrap();
+		assert_eq!(recorder.path.into_os_string().into_vec(), bytes);
+	}
+
+	#[test]
 	fn software_painted_in_several_parts_adds_up() {
 		let mut recorder = recorder();
 		let start = Instant::now();

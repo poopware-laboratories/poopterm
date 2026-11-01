@@ -42,6 +42,8 @@ import json, os, shlex, sys
 words = shlex.split(open(os.environ["SHELL"]).read().splitlines()[1])
 if os.environ.get("FAKE_EXIT"):
     sys.exit(1)
+if os.environ.get("FAKE_STALL"):
+    import time; time.sleep(60)
 open(words[-1], "w").close()
 if os.environ.get("FAKE_HANG"):
     import time; time.sleep(60)
@@ -211,6 +213,23 @@ class Inside(unittest.TestCase):
             self.assertEqual(self.read_until(fd, b'z'), b'z')
             self.finish(pid)
 
+    def test_keys_arrive_raw_and_the_terminal_mode_is_restored(self):
+        # On Linux the master reports the slave's mode.
+        lflag = lambda fd: termios.tcgetattr(fd)[3]
+        with tempfile.TemporaryDirectory() as scratch:
+            ready = os.path.join(scratch, 'ready')
+            pid, fd = self.spawn(0, 1, ready)
+            deadline = time.monotonic() + 10
+            while not os.path.exists(ready):
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            # Raw: no line editing, and only the reader's echo, as a shell.
+            self.assertFalse(lflag(fd) & (termios.ICANON | termios.ECHO))
+            os.write(fd, b'z')
+            self.read_until(fd, b'z')
+            self.finish(pid)
+            self.assertEqual(lflag(fd) & (termios.ICANON | termios.ECHO), termios.ICANON | termios.ECHO)
+
 
 class Launching(unittest.TestCase):
     def test_the_shell_runs_the_inside_half(self):
@@ -308,6 +327,14 @@ class Running(unittest.TestCase):
         # stats: the files of the run before must not stand in for them.
         with mock.patch.dict(os.environ, FAKE_EXIT='1'), self.assertRaisesRegex(RuntimeError, 'never got ready'):
             frames.run(str(self.binary), 'gpu', (800, 500), 0, 0, self.scratch)
+
+    def test_gives_up_on_a_terminal_that_stays_open_but_never_gets_ready(self):
+        started = time.monotonic()
+        with mock.patch.dict(os.environ, FAKE_STALL='1'), self.assertRaisesRegex(RuntimeError, r'\(gpu\) never'):
+            frames.run(str(self.binary), 'gpu', (800, 500), 0, 0, self.scratch, wait_ready=0.3)
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertEqual(self.processes[0].poll(), -signal.SIGKILL)
+        self.assertEqual(self.commands, [frames.sway_command(self.processes[0].pid, 800, 500)], 'no keys typed')
 
 
 class Summaries(unittest.TestCase):
@@ -409,6 +436,15 @@ class Main(unittest.TestCase):
                 mock.patch('sys.stderr', io.StringIO()):
             frames.main(['--binary', 'x', '--renderer', 'gpu', '--runs', '1'])
         self.assertEqual(calls, ['gpu', 'gpu'])
+
+    def test_refuses_a_bad_size_before_launching_anything(self):
+        stderr = io.StringIO()
+        with mock.patch.object(frames, 'run') as run, mock.patch('sys.stderr', stderr), \
+                self.assertRaises(SystemExit) as exit:
+            frames.main(['--size', '1000by600'])
+        self.assertEqual(exit.exception.code, 2)
+        self.assertIn("expected WIDTHxHEIGHT, got '1000by600'", stderr.getvalue())
+        run.assert_not_called()
 
     def test_refuses_an_unknown_renderer(self):
         with mock.patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit):
