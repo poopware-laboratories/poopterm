@@ -74,12 +74,18 @@ impl QuadPen {
 			.filter(|(damage, _)| rows.valid && damage.rows.len() == rows.spans.len());
 		// Until this frame's grid ends.
 		rows.valid = false;
-		let Some((damage, height)) = planned else {
+		let Some((mut damage, height)) = planned else {
 			rows.redraw = None;
 			return;
 		};
 		// Rows scrolled off the top come back at the bottom, all redrawn.
 		rows.spans.rotate_left(damage.scroll);
+		// The frame lists its images anew: rows showing one are drawn again.
+		for (span, redraw) in rows.spans.iter().zip(&mut damage.rows) {
+			*redraw |= rows.last[span.clone()]
+				.iter()
+				.any(|quad| matches!(quad.fill, Fill::Image(..)));
+		}
 		let shift = (damage.scroll * height) as i32;
 		let kept = rows.spans.iter().zip(&damage.rows);
 		for (span, _) in kept.filter(|(_, redraw)| !**redraw) {
