@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.15 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Shrink images too large for the GPU on the CPU (#215) (gpu).
+
 ## 26.11.14 "Lunar Moth" — 2026-11-01
 
 ### Added
