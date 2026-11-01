@@ -64,18 +64,21 @@ if pid == 0:
     fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     os.execv(os.environ["SHELL"], [os.environ["SHELL"]])
 output, queries = b"", 0
+# The shell is gone once the pty fails (Linux) or ends (macOS).
 while True:
-    readable = select.select([fd, keys], [], [])[0]
-    if keys in readable:
-        os.write(fd, os.read(keys, 64))
-    if fd in readable:
-        try:
+    try:
+        readable = select.select([fd, keys], [], [])[0]
+        if keys in readable:
+            os.write(fd, os.read(keys, 64))
+        if fd in readable:
             data = os.read(fd, 65536)
-        except OSError:
-            break
-        output += data
-        queries += data.count(b"\\x1b[c")
-        os.write(fd, b"\\x1b[?62;22c" * data.count(b"\\x1b[c"))
+            if not data:
+                break
+            output += data
+            queries += data.count(b"\\x1b[c")
+            os.write(fd, b"\\x1b[?62;22c" * data.count(b"\\x1b[c"))
+    except OSError:
+        break
 os.waitpid(pid, 0)
 with open(os.environ["POOPTERM_FRAME_STATS"], "w") as out:
     json.dump({{"queries": queries, "after": output.rsplit(b"\\x1b[c", 1)[-1].decode()}}, out)
