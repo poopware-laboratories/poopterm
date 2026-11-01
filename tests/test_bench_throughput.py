@@ -120,6 +120,11 @@ class TerminalProcess(unittest.TestCase):
         self.assertIsNone(throughput.terminal_pid(40, stat=tree.get))
         self.assertIsNone(throughput.terminal_pid(40, stat={}.get))
 
+    def test_no_terminal_when_our_own_process_is_unreadable(self):
+        # Without our own terminal there is nothing to compare ancestors with.
+        tree = {pid: info for pid, info in self.TREE.items() if pid != 40}
+        self.assertIsNone(throughput.terminal_pid(40, stat=tree.get))
+
     def test_a_parent_loop_ends_the_search(self):
         tree = {40: (30, 'pts/3'), 30: (40, 'pts/3')}
         self.assertIsNone(throughput.terminal_pid(40, stat=tree.get))

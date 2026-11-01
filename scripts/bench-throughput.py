@@ -17,11 +17,7 @@ spirit of kitty's `kitten __benchmark__`, but using nothing terminal-specific:
   along with min/max so noisy runs are visible.
 * Workloads are generated for the window's size, which is recorded, because
   rendering cost scales with the grid. Compare terminals at the same size.
-* The terminal's memory is reported too: its resident set before the run,
-  after each workload once it settled (`--settle` seconds), and at its peak.
-  The terminal is the first ancestor of this script not attached to its
-  terminal (`--pid` names it instead). Linux reads /proc; elsewhere `ps`
-  gives the resident set but no peak.
+* The terminal's resident memory is reported too; see docs/performance.md.
 
 Usage (run inside the terminal under test):
 
