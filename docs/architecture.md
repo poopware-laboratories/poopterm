@@ -384,3 +384,16 @@ All encoders are pure functions with unit tests:
 - `session_store.rs`: tab working directories in `sessions.txt` (hex-encoded
   paths) next to the config file.
 - `theme.rs`: built-in palettes and the xterm 256-color cube.
+
+## Process-wide pieces
+
+- `allocator.rs`: mimalloc options set at startup. Freed memory is purged at
+  once, so a cleared scrollback goes back to the system
+  ([performance](performance.md#eager-mimalloc-purging-2026-10-31)).
+- `hugepages.rs`: transparent huge page hints for large, long-lived buffers
+  (Linux only), for buffers that adopt them after measuring.
+- `terminfo.rs`: the bundled `xterm-poopterm` entry, and choosing `TERM`
+  for spawned shells by whether that entry is installed.
+- `platform.rs`: per-platform window tweaks, such as window opacity on macOS.
+- `bench/`: `poopterm --benchmark` and `--bench-corpus`, the headless
+  benchmark and the workloads that `scripts/bench-throughput.py` also uses.

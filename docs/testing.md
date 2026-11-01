@@ -47,7 +47,7 @@ of the module as `#[cfg(test)] mod name_tests;`. The larger suites:
 | `src/input/*` | Exact byte sequences for keys, mouse reports, paste and scrolling. |
 | `src/app/settings.rs`, `src/ui/*` | Hit-testing and layout as pure functions. |
 | `src/pty/*` | Output queue backpressure and the non-blocking writer (real pipes and threads). |
-| `src/shell_integration.rs` | The shipped zsh/bash hooks, run in real shells. |
+| `src/shell_integration/*_tests.rs`, `tests.rs` | The shipped zsh, bash and fish hooks, run in real shells. |
 | `src/vt/tests.rs`, `src/vt/utf8_tests.rs` | Tokenizer events against vte; the UTF-8 validator's tables against a scalar model and every variant against `str::from_utf8`. |
 | `src/parser/print_tests.rs`, `narrow_tests.rs`, `cluster_tests.rs` | The printing fast paths against per-character printing. |
 | `src/term/scrollback_tests.rs`, `history_tests.rs`, `fill_tests.rs`, `width_tests.rs` | The scrollback ring; how trimmed history rows are shown, searched and copied; AVX2 fills against the portable fill; widths. |

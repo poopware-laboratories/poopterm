@@ -126,7 +126,11 @@ input events ──► App (UI thread) ──► input::{keys,mouse,paste} ─�
 | `src/ui/` | Pure UI models: selection, search, tab layout. |
 | `src/app/` | winit event loop and glue. `App` methods are split by concern (`keyboard`, `mouse`, `tabs`, `settings`, `draw`, …). |
 | `src/inflate/` | Our own zlib/DEFLATE decoder for kitty `o=z` payloads, tested against `miniz_oxide`. |
-| Top level | `config`, `theme`, `fonts`, `width` (generated width table), `clipboard`, `session_store`, `shell_integration`, `sixel`, `wallpaper`, `platform`. |
+| `src/present/` | Putting software-drawn frames on screen without softbuffer: our own Wayland (`wl_shm`) and X11 (MIT-SHM) presenters over shared memory. |
+| `src/gpu/` | Data for the GPU renderers (glyph outlines, quads, atlas), kept free of GPU calls, and the Vulkan renderer that draws the grid. |
+| `src/dbus/`, `src/notifier/`, `cgroup*.rs` | Desktop integration: our own D-Bus client, notifications, and per-tab cgroups on Linux. |
+| `src/bench/` | `poopterm --benchmark`: the headless benchmark and its corpus of real-world workloads. |
+| Top level | `config`, `theme`, `fonts`, `width` (generated width table), `clipboard`, `session_store`, `shell_integration`, `sixel`, `wallpaper`, `platform`, `terminfo`, `allocator` (mimalloc options), `cpu` (runtime CPU dispatch), `library` (run-time `dlopen`), `hugepages`. |
 
 Details: [`docs/architecture.md`](docs/architecture.md).
 
