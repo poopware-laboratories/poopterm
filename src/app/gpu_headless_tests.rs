@@ -11,6 +11,8 @@ use crate::{
 	},
 };
 
+const ATLAS: (usize, usize) = (256, 4);
+
 /// What painting the frame needs: the fonts, and the scene.
 struct Scene {
 	fonts: FontSet,
@@ -32,10 +34,10 @@ fn whole(scene: &mut Scene, pixels: &mut [u32]) {
 
 #[test]
 fn every_scene_drawn_by_a_real_gpu_is_shown_however_it_is_painted() {
-	let Some(window) = headless_window((256, 4)) else {
+	let Some(window) = headless_window(ATLAS) else {
 		return;
 	};
-	let mut gpu = Gpu::with(window, ());
+	let mut gpu = Gpu::with(window, (), ATLAS);
 	let mut shown = Vec::new();
 	for case in cases() {
 		let name = case.name.clone();

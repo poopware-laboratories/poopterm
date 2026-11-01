@@ -15,6 +15,9 @@ use super::{
 	window_tests::{close, machine, open, showing},
 };
 
+/// The atlas of `fake_window`'s: (side, pages).
+pub(crate) const FAKE_ATLAS: (usize, usize) = super::window_tests::ATLAS;
+
 /// A window on a machine with one device that shows in it.
 pub(crate) fn fake_window() -> GpuWindow {
 	open(showing(), false).unwrap()

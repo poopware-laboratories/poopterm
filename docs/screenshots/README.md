@@ -12,6 +12,7 @@ links keep working. Each folder belongs to one pull request:
 | `overlay-screenshots/` | #140, search box and command palette as popovers |
 | `rename-screenshots/` | #141, palette kept open to rename a tab |
 | `gpu-images/` | images drawn as GPU textures, beside software |
+| `gpu-settings/` | the Settings window drawn on the GPU, beside software |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

@@ -9,7 +9,7 @@ use crate::{
 		vk::{
 			call::Error,
 			outside_tests::{
-				fake_close as close, fake_failing, fake_out_of_date, fake_out_of_date_after,
+				FAKE_ATLAS, fake_close as close, fake_failing, fake_out_of_date, fake_out_of_date_after,
 				fake_presents as presents, fake_recorded as recorded, fake_window,
 			},
 		},
@@ -28,7 +28,7 @@ const CHROME: u32 = 0x20_3040;
 const WHOLE: u32 = 0x50_6070;
 
 fn gpu() -> Gpu<&'static str> {
-	Gpu::with(fake_window(), "the window")
+	Gpu::with(fake_window(), "the window", FAKE_ATLAS)
 }
 
 /// What each frame drew, in order: `Quads` for the frame drawn with the
