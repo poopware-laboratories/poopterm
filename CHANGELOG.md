@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.5 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Draw window chrome as quads (#204) (gpu).
+
 ## 26.11.4 "Lunar Moth" — 2026-11-01
 
 ### Maintenance
