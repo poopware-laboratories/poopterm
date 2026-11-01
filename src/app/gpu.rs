@@ -73,33 +73,12 @@ pub(super) fn next(drawn: Result<Drawn, Error>) -> Next {
 	}
 }
 
-/// What a frame is drawn as.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Layers {
-	/// Quads alone, from the background up.
-	Quads,
-	/// Quads of the grid over the rest, which software paints.
-	OverBackdrop,
-	/// Painted whole by software.
-	Whole,
-}
-
-/// What a frame is drawn as when there is a `wallpaper`, which quads cannot
-/// show, and an `overlay` over the grid.
-pub(super) fn layers(wallpaper: bool, overlay: bool) -> Layers {
-	match (wallpaper, overlay) {
-		(false, _) => Layers::Quads,
-		(true, false) => Layers::OverBackdrop,
-		(true, true) => Layers::Whole,
-	}
-}
-
-/// Whether a frame of `layers` that came to `next` is remembered, for the
-/// next to redraw only the rows that changed: only while the pen `keeps`
-/// its grid rows, which a frame painted whole by software or a pen
-/// started over lacks, and while the GPU still draws.
-pub(super) fn remembers(layers: Layers, keeps: bool, next: &Next) -> bool {
-	layers != Layers::Whole && keeps && !matches!(next, Next::Abandon(_))
+/// Whether a frame that came to `next` is remembered, for the next to
+/// redraw only the rows that changed: only while the pen `keeps` its grid
+/// rows, which a pen started over for a frame software painted lacks, and
+/// while the GPU still draws.
+pub(super) fn remembers(keeps: bool, next: &Next) -> bool {
+	keeps && !matches!(next, Next::Abandon(_))
 }
 
 pub(super) struct Gpu<W = Arc<Window>> {
@@ -173,26 +152,19 @@ impl<W> Gpu<W> {
 		self.pen.plan_rows(damage, cell_height);
 	}
 
-	/// Draws a frame `size` pixels large of these `layers` and shows it.
-	/// `around` draws with the pen, also painting all but the grid into
-	/// the `pixels` it is given for a backdrop; `whole` paints the whole
-	/// frame into `pixels`, for `Layers::Whole` or when the GPU cannot draw
-	/// the pen's frame.
+	/// Draws a frame `size` pixels large and shows it: `quads` draws it
+	/// with the pen; when the GPU cannot draw that, `whole` paints it into
+	/// `pixels`, shown as they are.
 	pub(super) fn frame<C>(
 		&mut self,
 		context: &mut C,
 		(size, pixels): ((usize, usize), &mut [u32]),
-		layers: Layers,
-		around: impl FnOnce(&mut C, Option<&mut [u32]>, &mut QuadPen),
+		quads: impl FnOnce(&mut C, &mut QuadPen),
 		whole: impl FnOnce(&mut C, &mut [u32]),
 	) -> Next {
-		let mut next = Next::Software;
-		if layers != Layers::Whole {
-			let backdrop = layers == Layers::OverBackdrop;
-			self.pen.begin_frame(size);
-			around(context, backdrop.then_some(&mut *pixels), &mut self.pen);
-			next = self.draw(size, backdrop.then_some(&*pixels));
-		}
+		self.pen.begin_frame(size);
+		quads(context, &mut self.pen);
+		let mut next = self.draw(size, None);
 		// A refused frame started the pen over.
 		if next == Next::Software {
 			whole(context, pixels);

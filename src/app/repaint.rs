@@ -4,7 +4,12 @@ use super::{
 	canvas::{merge_bands, scroll_pixels},
 	*,
 };
-use crate::render::{background::fill, damage::GridDamage, painter::Painter};
+use crate::render::{
+	background::{fill, wallpaper},
+	damage::GridDamage,
+	painter::Painter,
+	pen::Pen,
+};
 
 impl App {
 	/// Updates the previous frame's pixels: shifts scrolled rows, redraws
@@ -66,7 +71,7 @@ impl App {
 
 	/// Repaints pixel rows `y..y + height` with the window background: the
 	/// border rim, then the wallpaper or the theme background inside it.
-	pub(super) fn restore_background(&mut self, p: &mut Painter, y: usize, height: usize) {
+	pub(super) fn restore_background(&mut self, p: &mut impl Pen, y: usize, height: usize) {
 		self.restore_background_from(p, y, height, 0);
 	}
 
@@ -74,38 +79,19 @@ impl App {
 	/// `left` to the right edge.
 	pub(super) fn restore_background_from(
 		&mut self,
-		p: &mut Painter,
+		p: &mut impl Pen,
 		y: usize,
 		height: usize,
 		left: usize,
 	) {
-		let border = self.border;
-		let (width, total) = (p.width, p.height);
-		let inner_w = width.saturating_sub(2 * border);
-		let inner_h = total.saturating_sub(2 * border);
-		let (bg, strength) = (self.theme.bg, self.wallpaper_strength);
-		let Some(wallpaper) = self.wallpaper.as_mut() else {
-			fill(p, (y, height), left, border, (self.theme.border, bg));
-			return;
+		let (border, edge, bg) = (self.border, self.theme.border, self.theme.bg);
+		let Some(paper) = self.wallpaper.as_mut() else {
+			return fill(p, (y, height), left, border, (edge, bg));
 		};
-		let image = Some(wallpaper.pixels(inner_w as u32, inner_h as u32, bg, strength));
-		let image_w = inner_w.max(1);
-		for row in y..(y + height).min(total) {
-			let line = &mut p.pixels[row * width..(row + 1) * width];
-			let left = left.min(width);
-			if row < border || row >= border + inner_h {
-				line[left..].fill(self.theme.border);
-				continue;
-			}
-			let start = left.clamp(border, border + inner_w);
-			line[left.min(border)..border].fill(self.theme.border);
-			line[border + inner_w..].fill(self.theme.border);
-			let inner = &mut line[start..border + inner_w];
-			match image.and_then(|image| image.chunks_exact(image_w).nth(row - border)) {
-				Some(source) => inner.copy_from_slice(&source[start - border..inner_w]),
-				None => inner.fill(bg),
-			}
-		}
+		let inside = |size: usize| size.saturating_sub(2 * border);
+		let (width, total) = p.size();
+		let image = paper.bitmap(inside(width), inside(total), bg, self.wallpaper_strength);
+		wallpaper(p, (y, height), left, border, edge, image);
 	}
 }
 

@@ -1,6 +1,7 @@
 //! The grid drawn by a real GPU: every shared grid scene, drawn as quads
-//! by the renderer and read back, matches what the software renderer
-//! paints within one step a channel, images included. Run by the loader's tests and by its validation child.
+//! by the renderer and read back, over the background or a wallpaper,
+//! matches what the software renderer paints within one step a channel,
+//! images included. Run by the loader's tests and by its validation child.
 use super::{
 	buffer::Buffer,
 	call::Error,
@@ -18,13 +19,17 @@ use crate::{
 		atlas::Slot,
 		quads::{Fill, Quad, QuadPen},
 	},
+	graphics::Bitmap,
 	render::{
+		background::wallpaper,
 		grid::draw_grid,
-		grid_case_tests::{BG, SIZE, cases, direct, fonts},
+		grid_case_tests::{BG, SIZE, cases, fonts},
+		painter::Painter,
 		pen::Pen,
 	},
+	theme::{Theme, ThemeKind},
 };
-use std::{num::NonZeroUsize, rc::Rc};
+use std::{num::NonZeroUsize, rc::Rc, sync::Arc};
 
 /// `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` and `_TRANSFER_SRC_BIT`, and
 /// `VK_BUFFER_USAGE_TRANSFER_DST_BIT`.
@@ -99,28 +104,63 @@ pub(super) fn unlike_software(device: &Rc<Device>) -> Result<Vec<String>, Error>
 		at: [0, 0],
 		size: [size[0], size[1]],
 	};
-	let (mut pen, mut fonts) = (QuadPen::new(SIZE, ATLAS), fonts());
+	let (mut pen, mut fonts, mut soft_fonts) = (QuadPen::new(SIZE, ATLAS), fonts(), fonts());
+	let paper = paper();
+	// Over a wallpaper, cells of the theme's background show it, as in the
+	// app.
+	let theme_bg = Theme::from_kind(ThemeKind::Poop).bg;
 	let mut unlike = Vec::new();
 	for case in cases() {
-		let view = case.view();
-		pen.begin_frame(SIZE);
-		// What the software renderer starts from.
-		pen.rect(0, 0, width, height, BG);
-		draw_grid(&mut pen, &mut fonts, &view, None);
-		let mut recording = renderer.frame(&mut pen, &target)?;
-		recording.download(&target, whole, &readback, 0)?;
-		recording.submit()?;
-		renderer.finish()?;
-		let read = readback.bytes().ok_or(Error::NoMemory)?;
-		let read: Vec<u32> = (read.as_chunks::<4>().0.iter())
-			.map(|&chunk| u32::from_ne_bytes(chunk))
-			.collect();
-		let differ = differing(&read, &direct(&view), &layers(&pen));
-		if differ > 0 {
-			unlike.push(format!("{}: {differ} pixels", case.name));
+		for papered in [false, true] {
+			let mut view = case.view();
+			if papered {
+				view.default_bg = theme_bg;
+			}
+			pen.begin_frame(SIZE);
+			let mut painted = vec![BG; width * height];
+			let mut painter = Painter::new(&mut painted, width, height);
+			// What the software renderer starts from, or the wallpaper
+			// drawn alike.
+			match papered {
+				false => pen.rect(0, 0, width, height, BG),
+				true => {
+					wallpaper(&mut pen, (0, height), 0, BORDER, EDGE, &paper);
+					wallpaper(&mut painter, (0, height), 0, BORDER, EDGE, &paper);
+				}
+			}
+			draw_grid(&mut pen, &mut fonts, &view, None);
+			draw_grid(&mut painter, &mut soft_fonts, &view, None);
+			let mut recording = renderer.frame(&mut pen, &target)?;
+			recording.download(&target, whole, &readback, 0)?;
+			recording.submit()?;
+			renderer.finish()?;
+			let read = readback.bytes().ok_or(Error::NoMemory)?;
+			let read: Vec<u32> = (read.as_chunks::<4>().0.iter())
+				.map(|&chunk| u32::from_ne_bytes(chunk))
+				.collect();
+			let differ = differing(&read, &painted, &layers(&pen));
+			if differ > 0 {
+				let over = if papered { " over a wallpaper" } else { "" };
+				unlike.push(format!("{}{over}: {differ} pixels", case.name));
+			}
 		}
 	}
 	Ok(unlike)
+}
+
+/// The wallpaper's border, narrower than the grid's origin so the grid's
+/// first column and row sit over the wallpaper, and its color.
+const BORDER: usize = 3;
+const EDGE: u32 = 0x60_2040;
+
+/// A wallpaper for the inside of the scenes, as `Wallpaper::bitmap` makes
+/// it: opaque, and no two neighbors alike, so a texel off by one shows.
+fn paper() -> Arc<Bitmap> {
+	let (width, height) = (SIZE.0 - 2 * BORDER, SIZE.1 - 2 * BORDER);
+	let pixels = (0..width * height)
+		.map(|i| 0xff00_0000 | (i as u32).wrapping_mul(0x9e37_79b9) >> 8)
+		.collect();
+	Arc::new(Bitmap::new(width, height, pixels))
 }
 
 #[test]
