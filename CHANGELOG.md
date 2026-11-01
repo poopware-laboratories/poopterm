@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.12 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Draw the settings window on the GPU (#212) (gpu).
+
 ## 26.11.11 "Lunar Moth" — 2026-11-01
 
 ### Added
