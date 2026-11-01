@@ -3,8 +3,14 @@
 //! time.
 pub(crate) mod client;
 #[cfg(test)]
+mod client_tests;
+#[cfg(test)]
 mod fake_tests;
 pub(crate) mod presenter;
+#[cfg(test)]
+mod presenter_buffers_tests;
+#[cfg(test)]
+mod presenter_put_tests;
 #[cfg(test)]
 mod presenter_tests;
 #[cfg(test)]
