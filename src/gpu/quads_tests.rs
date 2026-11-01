@@ -428,7 +428,9 @@ fn image_quads_name_their_image_even_past_one_that_shows_nothing() {
 	let mut pen = pen();
 	pen.begin_frame(SIZE);
 	let shown = placement((2, 2), rect(0, 0, 2, 2), Extent::Natural, (0, 0));
-	let nothing = placement((2, 2), rect(0, 0, 2, 0), Extent::Natural, (0, 0));
+	// Sized in cells, yet showing no row of its bitmap.
+	let cell = Extent::Cells { cols: 1, rows: 1 };
+	let nothing = placement((2, 2), rect(0, 0, 2, 0), cell, (0, 0));
 	for image in [&shown, &nothing, &shown] {
 		pen.placement(rect(0, 0, 50, 50), image, (0, 0), (8, 16));
 	}
