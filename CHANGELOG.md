@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.11 "Lunar Moth" — 2026-11-01
+
+### Added
+
+- Draw the wallpaper and images in the window on the GPU (#211) (gpu).
+
 ## 26.11.10 "Lunar Moth" — 2026-11-01
 
 ### Added
