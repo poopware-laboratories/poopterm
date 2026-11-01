@@ -578,3 +578,30 @@ The gain is memory given back afterwards. A 64 MiB `log` flood followed by
 
 With the default, clearing history (which frees the ring since #192) gave
 nothing back at all.
+
+## Mapped font files (2026-11-01)
+
+Font files were read whole onto the heap with `fs::read`: the main font, the
+configured fallbacks and every installed fallback a character pulled in.
+They are now mapped read-only (`mapped.rs`, `fonts::data`), so they cost
+shared, evictable page cache, and only the pages in use are resident.
+
+Linux, Intel N-series (ADL-N), sway, `JetBrainsMono Nerd Font Mono` 18 pt.
+Memory of one window whose shell printed CJK, Hangul, math, braille and
+emoji (so their fallback fonts load), from `/proc/PID/smaps_rollup`, five
+alternating runs, medians with min–max, MiB:
+
+| | Before | Mapped |
+|---|---:|---:|
+| Private | 66.5 (66.1–68.9) | 30.8 (30.2–31.2) |
+| Anonymous | 61.0 (60.6–63.3) | 23.8 (23.2–24.2) |
+| PSS | 72.8 (72.4–75.2) | 37.4 (36.8–37.8) |
+| RSS | 104.8 (104.4–107.2) | 70.1 (69.5–70.4) |
+| Shared clean | 38.2 (38.2–38.3) | 39.3 (39.1–39.3) |
+
+`scripts/bench-throughput.py` at 16 MiB × 3, `--settle 1`, 90×26, three
+alternating runs per binary: overall throughput 139.9 (138.7–140.3) before
+and 140.3 (138.1–140.8) MB/s after, every workload within a few percent
+either way; resident memory at the start 86.9 → 63.6 MiB and at the peak
+152.7 → 121.0 MiB. Glyphs are cached once drawn, so floods do not read
+font bytes and the page faults of a first use do not show.

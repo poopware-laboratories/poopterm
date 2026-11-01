@@ -390,6 +390,9 @@ All encoders are pure functions with unit tests:
 - `allocator.rs`: mimalloc options set at startup. Freed memory is purged at
   once, so a cleared scrollback goes back to the system
   ([performance](performance.md#eager-mimalloc-purging-2026-10-31)).
+- `mapped.rs`: read-only mappings of whole files. Font files are mapped
+  instead of read onto the heap (`fonts::data`), so they cost shared,
+  evictable page cache, and only the pages in use are resident.
 - `hugepages.rs`: transparent huge page hints for large, long-lived buffers
   (Linux only), for buffers that adopt them after measuring.
 - `terminfo.rs`: the bundled `xterm-poopterm` entry, and choosing `TERM`

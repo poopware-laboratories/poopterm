@@ -1,8 +1,7 @@
 //! A loaded font at the interface the renderer uses: glyph lookup, line
 //! and glyph metrics in pixels, and rasterized coverage bitmaps.
-use std::borrow::Cow;
-
 use super::{
+	data::Data,
 	face::{Error, Face},
 	quads::{Quad, Quads},
 	raster::{Path, Raster},
@@ -33,8 +32,18 @@ pub(crate) struct Font {
 
 impl Font {
 	/// Loads face `index` of a font file or collection.
-	pub(crate) fn from_bytes(data: impl Into<Cow<'static, [u8]>>, index: u32) -> Result<Self, Error> {
+	pub(crate) fn from_bytes(data: impl Into<Data>, index: u32) -> Result<Self, Error> {
 		Face::parse(data.into(), index).map(|face| Self { face })
+	}
+
+	#[cfg(test)]
+	pub(crate) fn is_mapped(&self) -> bool {
+		matches!(self.face.data, Data::Mapped(_))
+	}
+
+	#[cfg(test)]
+	pub(crate) fn is_static(&self) -> bool {
+		matches!(self.face.data, Data::Static(_))
 	}
 
 	#[cfg(test)]

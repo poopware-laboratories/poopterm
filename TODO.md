@@ -154,14 +154,14 @@ issue before starting a piece.
   depending on window width. Repeated floods and clears do not raise it
   further, so no leak has been found; the memory is retained, not lost.
   Where it goes, worst first:
-  - *Fonts are read whole onto the heap.* The main font, the configured
-    fallbacks and up to 32 installed fallback fonts of up to 64 MB each
-    (loaded only when a character needs them, `fonts::fallback`) are copied
-    with `fs::read`. macOS system fonts are large (PingFang, Hiragino, Apple
-    Color Emoji), which likely explains most of the macOS figure. Map font
-    files read-only (`mmap`; `Font` already takes a `Cow<[u8]>`) so they
-    cost shared, evictable page cache instead of private memory, and load
-    fallbacks only when a missing glyph needs them.
+  - *Fonts are mapped, not copied (done).* The main font, configured
+    fallbacks and installed fallbacks are mapped read-only (`mapped.rs`),
+    so they cost shared, evictable page cache instead of private memory,
+    and only their pages in use are resident. With the CJK, emoji and
+    symbol fallbacks loaded, private memory went from 66.5 to 30.8 MiB and
+    RSS from 105 to 70 MiB (sway, one tab). Still to check: the macOS
+    figure, where system fonts (PingFang, Hiragino, Apple Color Emoji)
+    are largest.
   - *The scrollback ring grows by doubling and copying* (`Scrollback::grow`):
     during each step the old and new rings are both live. Grow in
     fixed-size segments without copying (fits #40). `ESC [3J` and a lower

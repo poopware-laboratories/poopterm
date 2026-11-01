@@ -3,7 +3,6 @@
 //! map it are loaded, a few at a time.
 use std::{
 	collections::{HashMap, HashSet},
-	fs,
 	path::{Path, PathBuf},
 };
 
@@ -108,7 +107,7 @@ impl SystemFallback {
 				None => {
 					loads += 1;
 					self.tried.insert(face.clone());
-					let Some(font) = fs::read(&face.0)
+					let Some(font) = super::data::read_file(&face.0)
 						.ok()
 						.and_then(|bytes| Font::from_bytes(bytes, face.1).ok())
 					else {
