@@ -16,10 +16,9 @@ fn frames_are_counted_by_how_they_were_drawn() {
 	let now = Instant::now();
 	stats.frame(Kind::Gpu, timing(1, 2, 3), now);
 	stats.frame(Kind::Gpu, timing(1, 2, 3), now);
-	stats.frame(Kind::GpuWhole, timing(1, 2, 3), now);
 	stats.frame(Kind::Software, timing(1, 2, 3), now);
-	assert_eq!(stats.kinds, [1, 2, 1], "software, gpu, gpu painted whole");
-	assert_eq!(stats.total.len(), 4);
+	assert_eq!(stats.kinds, [1, 2], "software, gpu");
+	assert_eq!(stats.total.len(), 3);
 }
 
 #[test]
@@ -101,7 +100,7 @@ fn latencies_stop_at_the_limit_too() {
 fn the_report_is_json_with_every_sample_in_microseconds_to_a_tenth() {
 	let mut stats = FrameStats::default();
 	let key = Instant::now();
-	stats.frame(Kind::GpuWhole, timing(1500, 250, 2000), key);
+	stats.frame(Kind::Software, timing(1500, 250, 2000), key);
 	stats.key(key);
 	stats.output();
 	stats.frame(
@@ -111,7 +110,7 @@ fn the_report_is_json_with_every_sample_in_microseconds_to_a_tenth() {
 	);
 	let report = stats.report((1000, 600), 2.0);
 	let expected = concat!(
-		"{\"frames\": {\"software\": 0, \"gpu\": 1, \"gpu_whole\": 1}, ",
+		"{\"frames\": {\"software\": 1, \"gpu\": 1}, ",
 		"\"size\": [1000, 600], \"scale\": 2, ",
 		"\"paint_us\": [1500.0, 500.0], \"show_us\": [250.0, 750.0], ",
 		"\"total_us\": [2000.0, 1000.0], \"latency_us\": [8123.0]}",
@@ -125,7 +124,7 @@ fn a_report_without_samples_has_empty_lists_and_a_fractional_scale() {
 	assert_eq!(
 		report,
 		concat!(
-			"{\"frames\": {\"software\": 0, \"gpu\": 0, \"gpu_whole\": 0}, ",
+			"{\"frames\": {\"software\": 0, \"gpu\": 0}, ",
 			"\"size\": [0, 0], \"scale\": 1.25, ",
 			"\"paint_us\": [], \"show_us\": [], \"total_us\": [], \"latency_us\": []}",
 		)
@@ -290,9 +289,9 @@ mod recorder {
 	fn a_software_frame_shows_for_as_long_as_its_presenter_took() {
 		let mut recorder = recorder();
 		let start = Instant::now();
-		recorder.painted(ms(4), false);
+		recorder.painted(ms(4));
 		recorder.finish(false, ms(2), start, start + ms(7));
-		assert_eq!(recorder.stats.kinds, [1, 0, 0]);
+		assert_eq!(recorder.stats.kinds, [1, 0]);
 		assert_eq!(recorder.stats.paint, [ms(4)]);
 		assert_eq!(recorder.stats.show, [ms(2)]);
 		assert_eq!(recorder.stats.total, [ms(7)]);
@@ -303,9 +302,9 @@ mod recorder {
 		// The GPU's frame call paints the chrome in software, then draws.
 		let mut recorder = recorder();
 		let start = Instant::now();
-		recorder.painted(ms(3), false);
+		recorder.painted(ms(3));
 		recorder.finish(true, ms(5), start, start + ms(6));
-		assert_eq!(recorder.stats.kinds, [0, 1, 0]);
+		assert_eq!(recorder.stats.kinds, [0, 1]);
 		assert_eq!(
 			(recorder.stats.paint[0], recorder.stats.show[0]),
 			(ms(3), ms(2))
@@ -313,32 +312,13 @@ mod recorder {
 	}
 
 	#[test]
-	fn a_gpu_frame_painted_whole_by_software_is_counted_apart() {
-		let mut recorder = recorder();
-		let start = Instant::now();
-		// Refused first (chrome painted), then painted whole: both count.
-		recorder.painted(ms(1), false);
-		recorder.painted(ms(4), true);
-		recorder.finish(true, ms(9), start, start + ms(10));
-		assert_eq!(recorder.stats.kinds, [0, 0, 1]);
-		assert_eq!(
-			(recorder.stats.paint[0], recorder.stats.show[0]),
-			(ms(5), ms(4))
-		);
-	}
-
-	#[test]
 	fn each_frame_starts_from_nothing_painted() {
 		let mut recorder = recorder();
 		let start = Instant::now();
-		recorder.painted(ms(4), true);
+		recorder.painted(ms(4));
 		recorder.finish(true, ms(5), start, start + ms(5));
 		recorder.finish(true, ms(2), start, start + ms(2));
-		assert_eq!(
-			recorder.stats.kinds,
-			[0, 1, 1],
-			"the second frame was not whole"
-		);
+		assert_eq!(recorder.stats.kinds, [0, 2]);
 		assert_eq!(recorder.stats.paint, [ms(4), ms(0)]);
 		assert_eq!(recorder.stats.show, [ms(1), ms(2)]);
 	}
@@ -347,7 +327,7 @@ mod recorder {
 	fn painting_longer_than_the_frame_call_shows_for_zero() {
 		let mut recorder = recorder();
 		let start = Instant::now();
-		recorder.painted(ms(9), false);
+		recorder.painted(ms(9));
 		recorder.finish(true, ms(5), start, start + ms(9));
 		assert_eq!(recorder.stats.show, [ms(0)]);
 	}
@@ -390,8 +370,8 @@ mod recorder {
 	fn software_painted_in_several_parts_adds_up() {
 		let mut recorder = recorder();
 		let start = Instant::now();
-		recorder.painted(ms(2), false);
-		recorder.painted(ms(3), false);
+		recorder.painted(ms(2));
+		recorder.painted(ms(3));
 		recorder.finish(false, ms(1), start, start + ms(6));
 		assert_eq!(recorder.stats.paint, [ms(5)]);
 		assert_eq!(
@@ -402,27 +382,26 @@ mod recorder {
 	}
 
 	#[test]
+	fn a_window_falling_back_to_software_counts_each_frame_as_it_was_drawn() {
+		let mut recorder = recorder();
+		let start = Instant::now();
+		// A GPU frame painting in two parts, then software from then on.
+		recorder.painted(ms(1));
+		recorder.painted(ms(2));
+		recorder.finish(true, ms(7), start, start + ms(8));
+		recorder.finish(false, ms(4), start, start + ms(4));
+		recorder.finish(false, ms(3), start, start + ms(3));
+		assert_eq!(recorder.stats.kinds, [2, 1]);
+		assert_eq!(recorder.stats.paint, [ms(3), ms(0), ms(0)]);
+		assert_eq!(recorder.stats.show, [ms(4), ms(4), ms(3)]);
+	}
+
+	#[test]
 	fn a_frame_ending_before_it_started_takes_zero() {
 		let mut recorder = recorder();
 		let start = Instant::now() + ms(10);
 		recorder.finish(false, ms(1), start, start - ms(1));
 		assert_eq!(recorder.stats.total, [ms(0)]);
-	}
-
-	#[test]
-	fn a_whole_software_frame_on_the_software_renderer_is_a_software_frame() {
-		// Only the GPU path paints whole for another renderer to show.
-		let mut recorder = recorder();
-		let start = Instant::now();
-		recorder.painted(ms(2), true);
-		recorder.finish(false, ms(1), start, start + ms(3));
-		assert_eq!(recorder.stats.kinds, [1, 0, 0]);
-		recorder.finish(true, ms(1), start, start + ms(1));
-		assert_eq!(
-			recorder.stats.kinds,
-			[1, 1, 0],
-			"and it does not carry over"
-		);
 	}
 
 	#[test]

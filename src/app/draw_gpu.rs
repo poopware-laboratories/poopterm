@@ -47,7 +47,7 @@ impl App {
 	fn quads(&mut self, pen: &mut QuadPen) {
 		let (painting, rows) = (Instant::now(), pen.rows_to_draw().map(<[bool]>::to_vec));
 		self.compose(pen, rows.as_deref());
-		self.painted(painting.elapsed(), false);
+		self.painted(painting.elapsed());
 	}
 	// pr-check: end window glue
 }
