@@ -153,8 +153,9 @@ issue before starting a piece.
   glyph atlas grows it (up to 256 MiB) and is drawn again. A frame the
   GPU still refuses (a glyph wider than the device makes, or images that
   together fill the budget a texel each) hands the window to software for
-  good, as a GPU failure does; software is otherwise only an opt-in. Still
-  to do: fractional scale.
+  good, as a GPU failure does; software is otherwise only an opt-in.
+  Fractional scales on Wayland draw at full resolution and match software,
+  scale changes included. Done on Linux and FreeBSD; Metal (macOS) is #26.
 
 ## Resource management and memory
 
