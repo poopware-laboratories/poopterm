@@ -353,14 +353,17 @@ device cannot, which the fallback to software reports), and keeps a swapchain
 of the window's size, remade when the window resizes or the driver says it
 is out of date or suboptimal. Images are textures of their own
 (`gpu::textures` keeps one per bitmap, by its address, while the bitmap
-lives, least recently used first out of a 256 MiB budget); the quads draw
+lives, least recently used first out of a 256 MiB budget). An image the
+device or the budget cannot hold whole is box-filtered on the CPU to the
+size it is shown at, or as near as fits (`gpu::shrink`), and its quads'
+source rectangles carried into the smaller texture; the quads draw
 in runs, each with its image's descriptor set bound (`vk::draw`), and text
 between images joins the run it is in. A frame whose glyphs lack room in
 the atlas grows it (`gpu::atlas::grown`: twice the pages when they ran out,
 pages the next power of two holding a glyph larger than one, within the
 device's limits and 256 MiB) and is drawn again. A frame the GPU still
-cannot draw (glyphs no atlas it can make holds, images past the budget or
-larger than the device makes) is refused, and the renderer forgets the
+cannot draw (glyphs no atlas it can make holds, images with no room left
+for even a texel) is refused, and the renderer forgets the
 textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 

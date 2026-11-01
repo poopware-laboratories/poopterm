@@ -9,7 +9,7 @@ use super::{
 	image::Format,
 	pipeline::QuadPipeline,
 	renderer::{Renderer, encode},
-	renderer_image_tests::{place, too_wide},
+	renderer_image_tests::{bitmap, place},
 	timeline::Timeline,
 };
 use crate::{
@@ -17,6 +17,7 @@ use crate::{
 	gpu::{
 		atlas::Slot,
 		quads::{Fill, Quad, QuadPen},
+		textures::Textures,
 	},
 	graphics::Rect,
 	render::{
@@ -295,12 +296,13 @@ fn an_empty_frame_draws_no_quads() {
 }
 
 #[test]
-fn frames_with_images_too_big_or_missing_glyphs_are_refused_for_software_to_draw() {
+fn frames_with_images_out_of_room_or_missing_glyphs_are_refused_for_software_to_draw() {
 	let (mut renderer, target) = renderer();
 	let mut pen = QuadPen::new((40, 30), ATLAS);
 	pen.begin_frame((40, 30));
-	// One texel wider than the device's 16384.
-	place(&mut pen, &too_wide());
+	// No room in the texture budget for even a texel.
+	renderer.textures = Textures::new(3);
+	place(&mut pen, &bitmap(1, 1));
 	assert_eq!(renderer.frame(&mut pen, &target).err(), Some(Error::Draw));
 	assert_eq!(renderer.textures.len(), 0);
 	// A glyph larger than a page leaves the frame incomplete.
@@ -343,10 +345,11 @@ fn a_frame_that_fails_uploads_its_glyphs_again_on_the_next() {
 	assert!(pen.uploads.is_empty() && pen.quads.is_empty());
 	frame(&mut pen);
 	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
-	// Software draws a frame with an image too wide; its new glyph is
-	// uploaded later.
+	// A frame with an image the budget has no room for is refused; its
+	// new glyph is uploaded later.
+	renderer.textures = Textures::new(0);
 	frame(&mut pen);
-	place(&mut pen, &too_wide());
+	place(&mut pen, &bitmap(1, 1));
 	pen.glyph(
 		&glyph(1, 1, false),
 		Ink::Drawn('g', (1, 1)),

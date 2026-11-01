@@ -26,11 +26,6 @@ pub(super) fn bitmap(width: usize, height: usize) -> Arc<Bitmap> {
 	})
 }
 
-/// One texel wider than the fake device's 16384.
-pub(super) fn too_wide() -> Arc<Bitmap> {
-	bitmap(16385, 1)
-}
-
 /// Places the whole of `bitmap` at the top left, cells 8×16.
 pub(super) fn place(pen: &mut QuadPen, bitmap: &Arc<Bitmap>) {
 	let whole = Rect {
@@ -127,16 +122,18 @@ fn quads_draw_in_runs_bound_to_their_image_in_order() {
 #[test]
 fn a_refused_frame_forgets_the_textures_it_made_and_keeps_the_others() {
 	let (mut renderer, target) = renderer();
+	// Room for the two images, and not a texel more.
+	renderer.textures = Textures::new(20);
 	let mut pen = QuadPen::new((40, 30), ATLAS);
 	let (kept, fresh) = (bitmap(1, 1), bitmap(2, 2));
 	pen.begin_frame((40, 30));
 	place(&mut pen, &kept);
 	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
-	// A new image before one too wide: the frame is software's.
+	// A new image before one with no room left: the frame is refused.
 	pen.begin_frame((40, 30));
 	place(&mut pen, &kept);
 	place(&mut pen, &fresh);
-	place(&mut pen, &too_wide());
+	place(&mut pen, &bitmap(1, 1));
 	assert_eq!(renderer.frame(&mut pen, &target).err(), Some(Error::Draw));
 	assert_eq!(renderer.textures.len(), 1);
 	// Drawn later, the new image is uploaded then, the kept one not again.

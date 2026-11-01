@@ -1,5 +1,5 @@
 //! Tests of the renderer's image textures at their edges, against the fake
-//! driver: the device's largest image drawn and one texel more refused,
+//! driver: the device's largest image drawn as it is and larger ones shrunk,
 //! a driver failing to make a texture failing the frame without keeping
 //! it, and images uploaded before the quads that show them.
 use super::{
@@ -31,27 +31,36 @@ fn renderer_on(change: impl FnOnce(&mut Driver)) -> (Renderer, Rc<Image>) {
 }
 
 #[test]
-fn the_largest_image_the_device_makes_is_drawn_and_one_texel_more_refused() {
+fn the_largest_image_the_device_makes_is_drawn_as_it_is_and_larger_ones_shrunk() {
 	// As large as the atlas's 64-pixel pages, and no larger.
 	let (mut renderer, target) = renderer_on(|driver| driver.image_limits = Some((64, 2048)));
 	let mut pen = QuadPen::new((40, 30), ATLAS);
-	for (size, drawn) in [
-		((64, 1), true),
-		((65, 1), false),
-		((1, 65), false),
-		((1, 64), true),
-	] {
+	let sizes = [
+		((64, 1), "64x1"),
+		((65, 1), "64x1"),
+		((1, 65), "1x64"),
+		((130, 2), "64x1"),
+		((1, 64), "1x64"),
+	];
+	for (size, _) in sizes {
 		let image = bitmap(size.0, size.1);
 		pen.begin_frame((40, 30));
 		place(&mut pen, &image);
-		match renderer.frame(&mut pen, &target) {
-			Ok(recording) => drop(recording.submit().unwrap()),
-			Err(error) => assert_eq!(error, Error::Draw, "{size:?}"),
-		}
-		assert_eq!(renderer.textures.get(&image).is_some(), drawn, "{size:?}");
+		renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
+		assert!(renderer.textures.get(&image).is_some(), "{size:?}");
 	}
 	drop((renderer, target, pen));
-	finish();
+	let driver = finish();
+	let uploads: Vec<_> = (driver.recorded.iter())
+		.filter(|call| call.starts_with("upload"))
+		.collect();
+	assert_eq!(uploads.len(), sizes.len(), "{uploads:?}");
+	for (upload, (size, texture)) in uploads.iter().zip(sizes) {
+		assert!(
+			upload.contains(&format!("size {texture} of")),
+			"{size:?}: {upload}"
+		);
+	}
 }
 
 #[test]

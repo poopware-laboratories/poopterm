@@ -26,8 +26,8 @@ pub(crate) struct Textures<T> {
 	frame: u64,
 }
 
-/// The bytes a texture of `bitmap` takes, four a pixel.
-fn bytes(bitmap: &Bitmap) -> usize {
+/// The bytes a texture of `bitmap`'s own size takes, four a pixel.
+pub(crate) fn texture_bytes(bitmap: &Bitmap) -> usize {
 	bitmap.width.saturating_mul(bitmap.height).saturating_mul(4)
 }
 
@@ -66,16 +66,21 @@ impl<T> Textures<T> {
 		Some(&entry.texture)
 	}
 
-	/// Makes room for a texture of `bitmap`, evicting the least recently
-	/// used textures this frame does not; false, evicting none, when even
-	/// that leaves too little.
-	pub(crate) fn make_room(&mut self, bitmap: &Bitmap) -> bool {
-		let needed = bytes(bitmap);
+	/// The bytes a new texture may take: the budget, less what the
+	/// textures this frame draws take.
+	pub(crate) fn room(&self) -> usize {
 		let evictable: usize = (self.entries.values())
 			.filter(|entry| entry.used < self.frame)
 			.map(|entry| entry.bytes)
 			.sum();
-		if needed > self.budget.saturating_sub(self.bytes - evictable) {
+		self.budget.saturating_sub(self.bytes - evictable)
+	}
+
+	/// Makes room for a texture of `needed` bytes, evicting the least
+	/// recently used textures this frame does not; false, evicting none,
+	/// when even that leaves too little.
+	pub(crate) fn make_room(&mut self, needed: usize) -> bool {
+		if needed > self.room() {
 			return false;
 		}
 		while self.bytes + needed > self.budget {
@@ -92,12 +97,12 @@ impl<T> Textures<T> {
 		true
 	}
 
-	/// Keeps `texture` as `bitmap`'s, used by this frame, in place of any
-	/// it had; room should be made first.
-	pub(crate) fn insert(&mut self, bitmap: &Arc<Bitmap>, texture: T) -> &T {
+	/// Keeps `texture`, of `bytes`, as `bitmap`'s, used by this frame, in
+	/// place of any it had; room should be made first.
+	pub(crate) fn insert(&mut self, bitmap: &Arc<Bitmap>, texture: T, bytes: usize) -> &T {
 		let entry = Entry {
 			bitmap: Arc::downgrade(bitmap),
-			bytes: bytes(bitmap),
+			bytes,
 			used: self.frame,
 			texture,
 		};
