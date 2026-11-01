@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.7 "Lunar Moth" — 2026-11-01
+
+### Maintenance
+
+- Add the frame time and typing latency script (#207) (app).
+
 ## 26.11.6 "Lunar Moth" — 2026-11-01
 
 ### Performance
