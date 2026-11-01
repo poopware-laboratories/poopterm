@@ -45,14 +45,35 @@ impl Scrollback {
 		Some(&self.cells[start..start + line.len as usize])
 	}
 
+	/// Cells and rows the ring holds memory for, used or not.
+	#[cfg(test)]
+	pub(crate) fn capacity(&self) -> (usize, usize) {
+		(self.cells.capacity(), self.lines.capacity())
+	}
+
 	#[cfg(test)]
 	pub(crate) fn iter(&self) -> impl Iterator<Item = &[Cell]> {
 		(0..self.len()).filter_map(|row| self.get(row))
 	}
 
+	/// Drops every row and gives the ring's memory back: after a flood it
+	/// holds megabytes, which `ESC [3J` should release.
 	pub(crate) fn clear(&mut self) {
-		self.lines.clear();
-		self.write = 0;
+		*self = Self::default();
+	}
+
+	/// Gives back ring memory past `cap` cells, keeping every row: after the
+	/// line limit is lowered, the ring sized for the old one is not needed.
+	pub(crate) fn shrink(&mut self, cap: usize) {
+		let used = self
+			.lines
+			.iter()
+			.map(|line| line.len as usize)
+			.sum::<usize>();
+		if cap.max(used) < self.cells.len() {
+			self.grow(cap.max(used));
+			self.lines.shrink_to_fit();
+		}
 	}
 
 	/// Drops the `count` oldest rows.

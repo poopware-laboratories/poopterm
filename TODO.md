@@ -163,10 +163,9 @@ issue before starting a piece.
     cost shared, evictable page cache instead of private memory, and load
     fallbacks only when a missing glyph needs them.
   - *The scrollback ring grows by doubling and copying* (`Scrollback::grow`):
-    during each step the old and new rings are both live, and the capacity
-    is kept after `ESC [3J` or a lower line limit. Grow in fixed-size
-    segments without copying (fits #40), and release the capacity on clear
-    and when the limit shrinks. It costs about 16 bytes per cell of history,
+    during each step the old and new rings are both live. Grow in
+    fixed-size segments without copying (fits #40). `ESC [3J` and a lower
+    line limit already give the ring's memory back. It costs about 16 bytes per cell of history,
     per tab; shrinking `Cell` (#41) cuts all of it.
   - *mimalloc keeps freed pages committed.* With `MIMALLOC_PURGE_DELAY=0`
     the same flood ends at 83 MB instead of 134 MB. Set purge options at
