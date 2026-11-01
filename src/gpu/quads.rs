@@ -90,7 +90,6 @@ impl QuadPen {
 	/// Starts a frame `size` pixels large, forgetting the last one's quads.
 	pub(crate) fn begin_frame(&mut self, size: (usize, usize)) {
 		self.size = size;
-		self.quads.clear();
 		self.images.clear();
 		self.uploads.clear();
 		self.complete = true;

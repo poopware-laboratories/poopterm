@@ -1,15 +1,21 @@
 //! Grid rows kept between frames: each row's quads from the last frame,
 //! reused for the rows the next one leaves unchanged, so a frame builds the
 //! quads of the rows that changed only and the GPU still draws them all.
+//! The rows stay where the last frame put them, among its quads, so a frame
+//! drawing every row copies none.
 use super::quads::{Fill, Quad, QuadPen};
 use crate::render::damage::GridDamage;
+use std::ops::Range;
 
 /// The last frame's grid rows, and which rows this frame redraws.
 #[derive(Default)]
 pub(crate) struct Rows {
-	/// Each row's quads, from the top.
-	kept: Vec<Vec<Quad>>,
-	/// Whether `kept` holds the last frame's whole grid.
+	/// The last frame's quads, once this one began.
+	last: Vec<Quad>,
+	/// Where each grid row's quads are, from the top: in the frame's quads
+	/// once its grid ended, in `last` once the next frame began.
+	spans: Vec<Range<usize>>,
+	/// Whether `spans` holds the last frame's whole grid.
 	valid: bool,
 	/// What the next frame redraws, and the cell height a scroll moves
 	/// rows by; `None` redraws every row.
@@ -18,6 +24,8 @@ pub(crate) struct Rows {
 	redraw: Option<Vec<bool>>,
 	/// Each row drawn this frame, and where its quads start.
 	drawn: Vec<(usize, usize)>,
+	/// The quads of the rows drawn, while the grid is put in order.
+	spare: Vec<Quad>,
 }
 
 /// `damage`, with the rows a scroll leaves wrong in kept quads redrawn as
@@ -54,13 +62,16 @@ impl QuadPen {
 		self.rows.redraw.as_deref()
 	}
 
-	/// Starts the frame's grid as planned, once the atlas started the
-	/// frame: kept rows move and keep their pages in the atlas.
+	/// Starts the frame's quads, empty, and its grid as planned, once the
+	/// atlas started the frame: kept rows move and keep their pages in the
+	/// atlas.
 	pub(super) fn begin_rows(&mut self) {
 		let rows = &mut self.rows;
+		std::mem::swap(&mut self.quads, &mut rows.last);
+		self.quads.clear();
 		rows.drawn.clear();
 		let planned = (rows.planned.take())
-			.filter(|(damage, _)| rows.valid && damage.rows.len() == rows.kept.len());
+			.filter(|(damage, _)| rows.valid && damage.rows.len() == rows.spans.len());
 		// Until this frame's grid ends.
 		rows.valid = false;
 		let Some((damage, height)) = planned else {
@@ -68,11 +79,11 @@ impl QuadPen {
 			return;
 		};
 		// Rows scrolled off the top come back at the bottom, all redrawn.
-		rows.kept.rotate_left(damage.scroll);
+		rows.spans.rotate_left(damage.scroll);
 		let shift = (damage.scroll * height) as i32;
-		let kept = rows.kept.iter_mut().zip(&damage.rows);
-		for (quads, _) in kept.filter(|(_, redraw)| !**redraw) {
-			for quad in quads {
+		let kept = rows.spans.iter().zip(&damage.rows);
+		for (span, _) in kept.filter(|(_, redraw)| !**redraw) {
+			for quad in &mut rows.last[span.clone()] {
 				quad.at.1 -= shift;
 				quad.clip.1 -= shift;
 				quad.clip.3 -= shift;
@@ -89,23 +100,51 @@ impl QuadPen {
 		self.rows.drawn.push((row, self.quads.len()));
 	}
 
-	/// The grid of `count` rows is drawn: keeps the rows drawn, and puts
-	/// every row's quads in order where the grid started.
+	/// The grid of `count` rows is drawn: puts every row's quads in order
+	/// where the grid started, the kept ones from the last frame, and
+	/// remembers where each row is.
 	pub(super) fn grid_ends(&mut self, count: usize) {
 		let Rows {
-			kept, valid, drawn, ..
+			last,
+			spans,
+			valid,
+			drawn,
+			spare,
+			..
 		} = &mut self.rows;
-		let start = drawn.first().map_or(self.quads.len(), |&(_, at)| at);
-		kept.resize_with(count, Vec::new);
-		let ends = drawn.iter().skip(1).map(|&(_, at)| at);
-		for (&(row, from), to) in drawn.iter().zip(ends.chain([self.quads.len()])) {
-			kept[row].clear();
-			kept[row].extend_from_slice(&self.quads[from..to]);
-		}
-		self.quads.truncate(start);
-		for row in kept.iter() {
-			self.quads.extend_from_slice(row);
-		}
+		let (start, end) = (
+			drawn.first().map_or(self.quads.len(), |&(_, at)| at),
+			self.quads.len(),
+		);
+		let ends = drawn.iter().skip(1).map(|&(_, at)| at).chain([end]);
+		let segments = drawn
+			.iter()
+			.zip(ends)
+			.map(|(&(row, from), to)| (row, from..to));
 		*valid = true;
+		// The grid draws its rows in order.
+		if drawn.len() == count {
+			// Every row drawn: the quads are where they belong.
+			spans.clear();
+			spans.extend(segments.map(|(_, span)| span));
+			return;
+		}
+		spare.clear();
+		spare.extend_from_slice(&self.quads[start..]);
+		self.quads.truncate(start);
+		let mut segments = segments.map(|(row, span)| (row, span.start - start..span.end - start));
+		let mut next = segments.next();
+		spans.resize(count, 0..0);
+		for (row, span) in spans.iter_mut().enumerate() {
+			let at = self.quads.len();
+			match next.take_if(|(drawn, _)| *drawn == row) {
+				Some((_, drawn)) => {
+					self.quads.extend_from_slice(&spare[drawn]);
+					next = segments.next();
+				}
+				None => self.quads.extend_from_slice(&last[span.clone()]),
+			}
+			*span = at..self.quads.len();
+		}
 	}
 }
