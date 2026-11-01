@@ -354,20 +354,25 @@ ranges, and drop changes without a reproducible gain.
 - Profiles with `perf` as described in `docs/performance.md`.
 
 Results table to fill per phase (MB/s, median of 64 MiB x 3, same host and
-window size):
+window size). The "after" columns were filled once the plan was implemented,
+from the corpus workloads that replaced these payloads (named in brackets):
+"Parser after" is the headless `poopterm --benchmark` median at 26.10.93 and
+"End to end after" the `bench-throughput.py` median at 26.10.137, both from
+the results table in [`performance.md`](performance.md). The payloads added
+by this plan had no "before" measurement (—).
 
 | Payload | Parser before | Parser after | End to end before | End to end after |
 |---------|---------------|--------------|-------------------|------------------|
-| ASCII | 131 | | ~100 | |
-| Unicode | 57 | | ~65 | |
-| CSI-heavy | 110 | | ~112 | |
-| Cursor movement | | | ~58 | |
-| Sixel (to add) | | | | |
-| Kitty graphics, base64 (to add) | | | | |
-| OSC-heavy (titles, hyperlinks; to add) | | | | |
+| ASCII [log] | 131 | 276 | ~100 | 118 |
+| Unicode [unicode] | 57 | 154 | ~65 | 81 |
+| CSI-heavy [ls] | 110 | 223 | ~112 | 112 |
+| Cursor movement [cursor] | — | 186 | ~58 | 179 |
+| Sixel [sixel] | — | 152 | — | 150 |
+| Kitty graphics, base64 [kitty-rgba] | — | 1070 | — | 375 |
+| OSC-heavy, titles and hyperlinks [shell] | — | 153 | — | 123 |
 
-New payloads go into both `parser_throughput` (its `payload(kind)`
-function) and `bench-throughput.py`. Image payloads measure decoded pixels
+New payloads go into the benchmark corpus (`src/bench/`), which both
+`parser_throughput` and `bench-throughput.py` run. Image payloads measure decoded pixels
 per second as well as input bytes, and must not trip the existing size
 limits. Interactive latency (small reads) is checked too, so the SIMD setup
 cost does not regress echo.
