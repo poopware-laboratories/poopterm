@@ -409,6 +409,36 @@ fn an_image_quad_covers_the_scaled_picture_from_its_offset_and_keeps_its_source(
 }
 
 #[test]
+fn an_image_scrolled_partly_above_the_view_starts_above_it_and_is_clipped() {
+	let mut pen = pen();
+	pen.begin_frame(SIZE);
+	let natural = placement((4, 40), rect(0, 0, 4, 40), Extent::Natural, (0, 2));
+	// A row and a half above the clip's top, cells 16 high.
+	pen.placement(rect(5, 6, 30, 20), &natural, (5, 6 - 24), (8, 16));
+	let [picture] = &pen.quads[..] else {
+		panic!("{:?}", pen.quads)
+	};
+	assert_eq!((picture.at, picture.size), ((5, -16), (4, 40)));
+	assert_eq!(picture.clip, (5, 6, 35, 26));
+	assert_eq!(pen.images[0].at, (5, -18));
+}
+
+#[test]
+fn image_quads_name_their_image_even_past_one_that_shows_nothing() {
+	let mut pen = pen();
+	pen.begin_frame(SIZE);
+	let shown = placement((2, 2), rect(0, 0, 2, 2), Extent::Natural, (0, 0));
+	let nothing = placement((2, 2), rect(0, 0, 2, 0), Extent::Natural, (0, 0));
+	for image in [&shown, &nothing, &shown] {
+		pen.placement(rect(0, 0, 50, 50), image, (0, 0), (8, 16));
+	}
+	let fills: Vec<_> = pen.quads.iter().map(|quad| quad.fill).collect();
+	let whole = rect(0, 0, 2, 2);
+	assert_eq!(fills, [Fill::Image(0, whole), Fill::Image(1, whole)]);
+	assert_eq!(pen.images.len(), 2);
+}
+
+#[test]
 fn an_image_showing_nothing_draws_no_quad() {
 	let mut pen = pen();
 	pen.begin_frame(SIZE);
