@@ -9,8 +9,8 @@ use crate::{
 		vk::{
 			call::Error,
 			outside_tests::{
-				fake_close as close, fake_failing, fake_out_of_date, fake_presents as presents,
-				fake_recorded as recorded, fake_window,
+				fake_close as close, fake_failing, fake_out_of_date, fake_out_of_date_after,
+				fake_presents as presents, fake_recorded as recorded, fake_window,
 			},
 		},
 	},
@@ -72,19 +72,15 @@ fn whole(painted: &mut Painted, pixels: &mut [u32]) {
 	painted.0.push(Whole);
 }
 
-/// An image the fake driver refuses, so its frame is left to software.
+/// An image wider than the fake device makes, so its frame is left to
+/// software.
 fn picture_into(pen: &mut QuadPen) {
-	let bitmap = Arc::new(Bitmap {
-		width: 2,
-		height: 2,
-		opaque: true,
-		pixels: vec![0; 4],
-	});
+	let bitmap = Arc::new(Bitmap::new(16385, 1, vec![0xff00_0000; 16385]));
 	let whole = Rect {
 		x: 0,
 		y: 0,
-		width: 2,
-		height: 2,
+		width: 40,
+		height: 30,
 	};
 	pen.placement(whole, &Placement::natural(bitmap, 0, 0), (0, 0), (8, 16));
 }
@@ -160,7 +156,12 @@ fn a_window_without_area_shows_nothing_and_waits() {
 fn a_frame_software_painted_follows_the_swapchain_and_the_gpu_too() {
 	let mut gpu = gpu();
 	frame(&mut gpu, false);
+	// The swapchain went out of date before the GPU refused the frame.
 	fake_out_of_date();
+	let (next, painted, _) = frame(&mut gpu, true);
+	assert_eq!((next, painted), (Next::Redraw, vec![Quads]));
+	// Or after, as software's frame was shown.
+	fake_out_of_date_after(1);
 	let (next, painted, _) = frame(&mut gpu, true);
 	assert_eq!((next, painted), (Next::Redraw, vec![Quads, Whole]));
 	fake_failing(Some((c"vkQueueSubmit2", -4)));

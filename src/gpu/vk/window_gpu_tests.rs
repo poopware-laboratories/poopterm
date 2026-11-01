@@ -1,8 +1,7 @@
 //! A window drawn by a real GPU, on a headless surface: the device chosen
-//! for it shows every grid scene the GPU draws, over a backdrop, through
-//! resizes and more frames than it has images, and refuses the scene with
-//! images, for software to draw. Run by the loader's tests and by its
-//! validation child.
+//! for it shows every grid scene, images included, over a backdrop,
+//! through resizes and more frames than it has images. Run by the loader's
+//! tests and by its validation child.
 use super::{
 	call::Error,
 	entry::Entry,
@@ -48,32 +47,19 @@ pub(super) fn headless_window(entry: Entry) -> Result<Vec<Result<Drawn, Error>>,
 	for size in [[width, height], [width / 2, height / 2], [1, 1]] {
 		cases.iter().for_each(|case| draw(case, size));
 	}
-	let shown = cases.iter().rfind(|case| case.frame.images.is_empty());
+	let last = cases.last().expect("scenes");
 	for size in [[width, height]; 12].into_iter().chain([[0, height]]) {
-		draw(shown.expect("a scene without images"), size);
+		draw(last, size);
 	}
 	Ok(drawn)
 }
 
-/// Whether every frame [`headless_window`] drew was shown but those with
-/// images, refused, and the minimized one, skipped.
+/// Whether every frame [`headless_window`] drew was shown, the minimized
+/// one skipped.
 pub(super) fn as_expected(drawn: &[Result<Drawn, Error>]) -> bool {
-	let cases = cases();
-	let (scenes, rest) = drawn.split_at(cases.len() * 3);
-	let scenes = scenes
-		.iter()
-		.zip(cases.iter().cycle())
-		.all(|(drawn, case)| {
-			let expected = match case.frame.images.is_empty() {
-				true => Ok(Drawn::Shown),
-				false => Err(Error::Draw),
-			};
-			*drawn == expected
-		});
-	let (minimized, repeated) = rest.split_last().expect("frames after the scenes");
-	scenes
-		&& repeated.len() == 12
-		&& repeated.iter().all(|drawn| *drawn == Ok(Drawn::Shown))
+	let (minimized, shown) = drawn.split_last().expect("frames");
+	shown.len() == cases().len() * 3 + 12
+		&& shown.iter().all(|drawn| *drawn == Ok(Drawn::Shown))
 		&& *minimized == Ok(Drawn::Skipped)
 }
 
@@ -87,5 +73,4 @@ fn a_headless_window_shows_every_grid_scene_through_resizes() {
 	}
 	let drawn = headless_window(entry).expect("a window");
 	assert!(as_expected(&drawn), "{drawn:?}");
-	assert!(drawn.contains(&Err(Error::Draw)), "the scene with images");
 }

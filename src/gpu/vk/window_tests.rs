@@ -17,10 +17,8 @@ use super::{
 };
 use crate::{
 	gpu::quads::QuadPen,
-	graphics::{Bitmap, Placement, Rect},
 	render::pen::{Ink, Pen},
 };
-use std::sync::Arc;
 
 pub(super) const ATLAS: (usize, usize) = (64, 2);
 pub(super) const SIZE: [u32; 2] = [40, 30];
@@ -265,29 +263,6 @@ fn a_surface_offering_only_rgba_is_refused_as_its_colors_would_swap() {
 	let mut window = open(driver, false).unwrap();
 	assert_eq!(draw(&mut window, SIZE), Err(Error::Unfit(Unfit::Format)));
 	assert!(swapchains().is_empty());
-	close(window);
-}
-
-#[test]
-fn a_frame_with_images_is_refused_before_taking_an_image() {
-	let mut window = open(showing(), false).unwrap();
-	let mut pictured = pen(SIZE);
-	let bitmap = Arc::new(Bitmap {
-		width: 2,
-		height: 2,
-		opaque: true,
-		pixels: vec![0; 4],
-	});
-	let whole = Rect {
-		x: 0,
-		y: 0,
-		width: 2,
-		height: 2,
-	};
-	let placement = Placement::natural(bitmap, 0, 0);
-	pictured.placement(whole, &placement, (0, 0), (8, 16));
-	assert_eq!(window.draw(&mut pictured, SIZE, None), Err(Error::Draw));
-	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
 	close(window);
 }
 
