@@ -5,6 +5,8 @@ use super::{
 	renderer::after_shown,
 	repaint::keeps_contents,
 };
+use std::time::{Duration, Instant};
+
 use crate::{
 	render::{
 		grid::{GridView, draw_grid},
@@ -58,7 +60,8 @@ impl App {
 	}
 
 	pub(super) fn draw(&mut self) {
-		self.pacer.drawn(std::time::Instant::now());
+		let started = Instant::now();
+		self.pacer.drawn(started);
 		self.refresh_search_if_dirty();
 		self.fonts.trim();
 		self.ui_fonts.trim();
@@ -70,7 +73,9 @@ impl App {
 		let key = self.draw_key();
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		if let renderer::Renderer::Gpu(gpu) = renderer {
+			let showing = Instant::now();
 			self.renderer = self.draw_on_gpu(gpu, key, size);
+			self.timed(true, showing.elapsed(), started);
 			return;
 		}
 		let plan = self
@@ -84,6 +89,7 @@ impl App {
 		};
 		let mut pixels = std::mem::take(&mut self.canvas.pixels);
 		let mut painter = Painter::new(&mut pixels, size.0, size.1);
+		let painting = Instant::now();
 		let bands = match &plan {
 			Plan::Full => {
 				self.compose(&mut painter);
@@ -91,12 +97,14 @@ impl App {
 			}
 			Plan::Partial(damage) => Some(self.compose_damaged(&mut painter, damage)),
 		};
+		self.painted(painting.elapsed(), false);
 		self.canvas.pixels = pixels;
 		let damage = match &plan {
 			Plan::Full => None,
 			Plan::Partial(damage) => Some(damage),
 		};
 		let damage_only = self.window.as_deref().is_some_and(keeps_contents);
+		let showing = Instant::now();
 		let shown = renderer.present(
 			&self.frame,
 			damage,
@@ -105,9 +113,25 @@ impl App {
 			bands.as_deref(),
 			damage_only,
 		);
+		self.timed(false, showing.elapsed(), started);
 		self.canvas.remember(&mut self.frame, key);
 		let again = || self.schedule_redraw();
 		self.renderer = after_shown(renderer, shown, again, renderer::Renderer::after_presenter);
+	}
+
+	/// Software painted for `took` this frame (the whole of it if `whole`),
+	/// for the frame statistics.
+	pub(super) fn painted(&mut self, took: Duration, whole: bool) {
+		if let Some(recorder) = &mut self.frame_stats {
+			recorder.painted(took, whole);
+		}
+	}
+
+	/// The frame begun at `started` is done, shown in `showing`.
+	fn timed(&mut self, gpu: bool, showing: Duration, started: Instant) {
+		if let Some(recorder) = &mut self.frame_stats {
+			recorder.finish(gpu, showing, started, Instant::now());
+		}
 	}
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.

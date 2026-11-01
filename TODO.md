@@ -109,10 +109,15 @@ Done, or measured and dropped (the issues hold the numbers):
 
 ## Hardware-accelerated rendering
 
-Full GPU rendering, now that kitty graphics has landed. CPU drawing is the main
-latency cost: a full redraw takes 25.6 ms at 1000×600, and much longer at
-HiDPI sizes. It also takes memory bandwidth from the parser during floods,
-which is why floods are capped at 30 fps. Parse throughput stays CPU work.
+Full GPU rendering, now that kitty graphics has landed. A full software
+redraw takes about 1 ms at 1000×600 and 2 ms at 1920×1080 (scale 2) on an
+Intel N-series; it also takes memory bandwidth from the parser during
+floods, which is why floods are capped at 30 fps. Parse throughput stays
+CPU work. Baseline before the chrome moves over, from
+`scripts/bench-frames.py`: [performance.md](docs/performance.md#gpu-baseline-2026-11-01).
+Today the GPU path is slower than software (1.2 vs 1.0 ms a frame, 1.3 vs
+0.4 ms from key to frame at 1000×600), because of the full backdrop it
+uploads each frame.
 
 Tracked in [#30](https://github.com/poopware-laboratories/poopterm/issues/30), with
 one issue per piece (#21–#29; the renderer boundary, #20, is done). All of it is claimed by @vx9k; ask on the
