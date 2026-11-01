@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.3 "Lunar Moth" — 2026-11-01
+
+### Performance
+
+- Map font files instead of reading them onto the heap (#202) (fonts).
+
 ## 26.11.2 "Lunar Moth" — 2026-11-01
 
 ### Fixed
