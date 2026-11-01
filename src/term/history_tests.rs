@@ -300,3 +300,89 @@ fn erased_cells_take_the_current_background_and_stay_in_history() {
 	feed(&mut t, b"cd\x1b[2J\r\n");
 	assert_eq!(t.scrollback[1].len(), 0);
 }
+
+#[test]
+fn clearing_history_releases_the_ring_and_later_output_regrows_it() {
+	let mut t = terminal(80, 4);
+	t.scrollback_limit = 1000;
+	let full = "x".repeat(70);
+	feed(&mut t, format!("{full}\r\n").repeat(2000).as_bytes());
+	let (cells, rows) = t.scrollback.capacity();
+	assert!(
+		cells >= 1000 * 70 && rows >= 1000,
+		"{cells} cells, {rows} rows"
+	);
+	// A flood leaves megabytes of history behind: `ESC [3J` gives them back.
+	feed(&mut t, b"\x1b[3J");
+	assert_eq!(t.scrollback.capacity(), (0, 0));
+	assert!(lines(&t).is_empty());
+	// The screen kept its rows; the next scroll stores one again.
+	feed(&mut t, b"again\r\n");
+	assert_eq!(lines(&t), [full]);
+	assert!((1..cells).contains(&t.scrollback.capacity().0));
+}
+
+#[test]
+fn erasing_the_screen_keeps_the_history_ring() {
+	let mut t = terminal(80, 4);
+	feed(&mut t, "x\r\n".repeat(100).as_bytes());
+	let before = t.scrollback.capacity();
+	assert_ne!(before.0, 0);
+	feed(&mut t, b"\x1b[J\x1b[1J\x1b[2J");
+	assert_eq!(t.scrollback.capacity(), before);
+}
+
+#[test]
+fn a_zero_line_limit_holds_no_ring() {
+	let mut t = terminal(80, 4);
+	t.scrollback_limit = 0;
+	feed(&mut t, "x\r\n".repeat(100).as_bytes());
+	assert_eq!(t.scrollback.capacity(), (0, 0));
+	assert_eq!(t.history_base, 97);
+}
+
+#[test]
+fn lowering_the_limit_gives_back_the_ring_it_no_longer_needs() {
+	let mut t = terminal(80, 4);
+	t.scrollback_limit = 1000;
+	let full = "x".repeat(70);
+	feed(&mut t, format!("{full}\r\n").repeat(2000).as_bytes());
+	assert!(t.scrollback.capacity().0 >= 1000 * 70);
+	t.set_scrollback_limit(10);
+	// Ten rows of the window's width, and the row a lap may skip.
+	let (cells, rows) = t.scrollback.capacity();
+	assert!((10 * 70..=11 * 80).contains(&cells), "{cells} cells");
+	assert!((10..100).contains(&rows), "room for {rows} rows");
+	assert_eq!(lines(&t), vec![full.clone(); 10]);
+	// The smaller ring still takes output at the new limit.
+	feed(&mut t, "y\r\n".repeat(5).as_bytes());
+	assert_eq!(lines(&t).last().map(String::as_str), Some("y"));
+	assert_eq!(lines(&t).len(), 10);
+	t.set_scrollback_limit(0);
+	assert_eq!(t.scrollback.capacity(), (0, 0));
+}
+
+#[test]
+fn raising_the_limit_keeps_every_row() {
+	let mut t = terminal(80, 4);
+	t.scrollback_limit = 50;
+	feed(&mut t, "z\r\n".repeat(60).as_bytes());
+	let before = t.scrollback.capacity();
+	t.set_scrollback_limit(5000);
+	assert_eq!(t.scrollback.capacity(), before);
+	assert_eq!(lines(&t).len(), 50);
+}
+
+#[test]
+fn a_lower_limit_after_narrowing_keeps_the_rewrapped_rows() {
+	let mut t = terminal(200, 2);
+	t.scrollback_limit = 100;
+	let wide = "w".repeat(150);
+	feed(&mut t, format!("{wide}\r\n").repeat(40).as_bytes());
+	t.resize(20, 2);
+	let stored = lines(&t);
+	// The history was rewrapped to twenty columns: a ring sized for 31
+	// such rows still holds the 30 kept, uncut.
+	t.set_scrollback_limit(30);
+	assert_eq!(lines(&t), stored[stored.len() - 30..]);
+}

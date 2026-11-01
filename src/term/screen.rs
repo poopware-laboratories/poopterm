@@ -174,6 +174,12 @@ impl Term {
 		self.scrollback_limit = limit;
 		let excess = self.scrollback.len().saturating_sub(limit);
 		self.scrollback.drain_front(excess);
+		if limit == 0 {
+			self.scrollback.clear();
+		} else {
+			// What `Scrollback::push` would grow to for this limit.
+			self.scrollback.shrink((limit + 1) * self.cols);
+		}
 		self.history_base = self.history_base.saturating_add(excess);
 		self.scroll_offset = self.scroll_offset.min(self.scrollback.len());
 	}
