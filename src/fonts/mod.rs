@@ -38,6 +38,9 @@ mod read;
 mod sfnt;
 #[cfg(test)]
 mod sfnt_tests;
+mod symbols;
+#[cfg(test)]
+mod symbols_tests;
 
 use std::{
 	env,
@@ -77,14 +80,8 @@ pub(crate) fn load_fonts() -> (Font, Vec<Font>) {
 		None => (bundled, Vec::new()),
 	};
 
-	for path in installed_symbol_font_paths().into_iter().take(8) {
-		let Ok(bytes) = fs::read(&path) else {
-			continue;
-		};
-		if bytes.len() > 64 * 1024 * 1024 {
-			continue;
-		}
-		if let Ok(font) = Font::from_bytes(bytes, 0) {
+	for (path, index) in symbols::symbol_fonts(&system_fonts(), 8) {
+		if let Ok(font) = load_font(&path, index) {
 			fallback_fonts.push(font);
 		}
 	}
@@ -175,58 +172,6 @@ pub(crate) fn system_fonts() -> db::Cache {
 		Some(dir) => db::load(&roots, &dir.join("fonts.db")),
 		None => db::refresh(&roots, None).0,
 	}
-}
-
-pub(crate) fn installed_symbol_font_paths() -> Vec<PathBuf> {
-	pub(crate) fn scan(path: &PathBuf, depth: usize, budget: &mut usize, out: &mut Vec<PathBuf>) {
-		if depth > 5 || *budget == 0 {
-			return;
-		}
-		let Ok(entries) = fs::read_dir(path) else {
-			return;
-		};
-		for entry in entries.flatten() {
-			if *budget == 0 {
-				break;
-			}
-			*budget -= 1;
-			let path = entry.path();
-			if path.is_dir() {
-				scan(&path, depth + 1, budget, out);
-				continue;
-			}
-			let Some(filename) = path.file_name().and_then(|name| name.to_str()) else {
-				continue;
-			};
-			let filename = filename.to_ascii_lowercase();
-			let symbol_font =
-				filename.contains("nerd") || filename.contains("symbol") || filename.contains("awesome");
-			if symbol_font
-				&& path
-					.extension()
-					.is_some_and(|ext| ext.eq_ignore_ascii_case("ttf"))
-			{
-				out.push(path);
-			}
-		}
-	}
-
-	let roots = font_roots(
-		env::var_os("HOME"),
-		env::var_os("XDG_DATA_HOME"),
-		env::var_os("XDG_DATA_DIRS"),
-	);
-	let mut out = Vec::new();
-	let mut budget = 2048;
-	for root in roots {
-		scan(&root, 0, &mut budget, &mut out);
-		if budget == 0 {
-			break;
-		}
-	}
-	out.sort();
-	out.dedup();
-	out
 }
 
 /// Font directories: `fonts` in each XDG data directory, then the macOS and
