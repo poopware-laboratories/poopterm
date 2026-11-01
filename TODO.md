@@ -167,11 +167,10 @@ issue before starting a piece.
     fixed-size segments without copying (fits #40). `ESC [3J` and a lower
     line limit already give the ring's memory back. It costs about 16 bytes per cell of history,
     per tab; shrinking `Cell` (#41) cuts all of it.
-  - *mimalloc keeps freed pages committed.* With `MIMALLOC_PURGE_DELAY=0`
-    the same flood ends at 83 MB instead of 134 MB. Set purge options at
-    startup, or allocate the few huge buffers (scrollback, frame buffer,
-    image bitmaps) with `mmap` directly so freeing returns them at once.
-    Measure throughput, because eager purging costs page faults.
+  - *Freed memory after a clear.* mimalloc now purges at once
+    (`allocator.rs`), so `ESC [3J` after a 64 MiB flood drops the terminal
+    from about 136 to 106 MiB. It still ends some 30 MiB over its start:
+    find what stays live (glyph caches, the PTY queue, frame buffers).
   - *Idle baseline.* 35 MB of heap before any output: audit it (fonts, font
     database, glyph caches, per-tab buffers sized for the largest window).
   - General Rust techniques to apply where profiles point: `shrink_to_fit`
@@ -180,9 +179,9 @@ issue before starting a piece.
     enums and indices (`u32`/`u16` over `usize`), interning repeated
     strings (hyperlinks, titles), and lazy initialization of rarely used
     state (`Option<Box<…>>`, `OnceCell`).
-  - Track it: report peak and settled RSS in the benchmark, and test that
-    clearing history releases its memory. Check on macOS (`footprint`,
-    `vmmap`) and Linux (`/proc/<pid>/smaps_rollup`).
+  - Track it: `bench-throughput.py` reports start, settled and peak RSS,
+    and tests check that clearing history releases its memory. Still to
+    check on macOS (`footprint`, `vmmap`).
 - **cgroups v2 per tab (Linux): join before `exec`.** The terminal asks
   systemd for a scope with `Delegate=yes` and lays it out itself
   (`src/cgroup_tree.rs`): the terminal in a `terminal` leaf with

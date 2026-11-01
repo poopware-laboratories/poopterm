@@ -10,6 +10,7 @@
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+mod allocator;
 mod app;
 mod bench;
 #[cfg(target_os = "linux")]
@@ -72,6 +73,7 @@ Print shell hooks with --print-shell-integration zsh|bash|fish.
 Install the terminfo entry with: poopterm --print-terminfo | tic -x -";
 
 fn main() -> Result<(), Box<dyn Error>> {
+	allocator::purge_eagerly();
 	let mut args = env::args().skip(1);
 	let Some(argument) = args.next() else {
 		return app::run();
