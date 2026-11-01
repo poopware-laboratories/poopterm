@@ -59,16 +59,17 @@ the tmux server, so pass `--pid` to name the emulator instead. Linux reads
 `/proc`; elsewhere `ps` gives the resident set but no peak. Compare memory
 only between runs with the same workloads, window size and scrollback limit.
 
-**Frames and typing latency**, in Poopterm's own windows (sway, with
-`wtype`): `scripts/bench-frames.py` launches each renderer in turn, paints
-a different full screen about 30 times a second, then types keys into a
-raw echo loop. `POOPTERM_FRAME_STATS=<file>` makes any run write its
-samples as JSON on exit (frame kinds, then every frame's paint, show and
-whole-frame time and every key-to-frame latency, in µs).
+**Frames and typing latency**, in Poopterm's own windows:
+`POOPTERM_FRAME_STATS=<file>` makes a run write its samples as JSON on
+exit (frame kinds, then every frame's paint, show and whole-frame time and
+every key-to-frame latency, in µs). Pick the renderer with
+`POOPTERM_RENDERER=software` or `gpu`, give the window a fixed size, and
+have its shell paint full screens (waiting for a DA1 reply after each) or
+echo typed keys in raw mode; a script that does all of it on sway is to
+follow.
 
 ```sh
-python3 scripts/bench-frames.py                                   # software and gpu, 3 runs
-python3 scripts/bench-frames.py --runs 5 --binary /tmp/poopterm-before --binary target/release/poopterm
+POOPTERM_RENDERER=gpu POOPTERM_FRAME_STATS=/tmp/gpu.json ./target/release/poopterm
 ```
 
 **Parser only**, without rendering: `cargo test --release -- --ignored
@@ -624,7 +625,9 @@ Before the chrome moves to the GPU (#29): the main window draws its grid
 with Vulkan over a backdrop software paints, copied and uploaded whole each
 frame. Linux, Intel N-series (ADL-N) with its integrated GPU, sway,
 `JetBrainsMono Nerd Font Mono` 18 pt, release build. Five alternating runs
-of `scripts/bench-frames.py` (300 full screens, 40 keys per run); medians
+per renderer, each a window floated and sized with `swaymsg`, whose shell
+paints 300 different full screens about 30 times a second, then echoes 40
+keys typed with `wtype` 120 ms apart; `POOPTERM_FRAME_STATS` samples, medians
 of the run medians with min–max, ms. Paint is software drawing, show is the
 GPU's recording, upload, submission and presentation (or the software
 presenter), frame is all of `draw`; latency runs from the key event to the

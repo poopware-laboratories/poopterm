@@ -159,6 +159,22 @@ fn long_times_are_not_cut_short() {
 }
 
 #[test]
+fn typing_is_still_timed_once_frame_samples_are_full() {
+	// A long flood fills the frame samples; the limits are separate.
+	let mut stats = FrameStats::default();
+	let now = Instant::now();
+	for _ in 0..MAX_SAMPLES {
+		stats.frame(Kind::Gpu, timing(1, 1, 1), now);
+	}
+	stats.key(now);
+	stats.output();
+	stats.frame(Kind::Gpu, timing(1, 1, 1), now + ms(7));
+	assert_eq!(stats.total.len(), MAX_SAMPLES);
+	assert_eq!(stats.latency, [ms(7)]);
+	assert_eq!(stats.kinds[1], MAX_SAMPLES + 1);
+}
+
+#[test]
 fn a_key_typed_after_the_echo_waits_for_the_frame_to_answer_the_first() {
 	let mut stats = FrameStats::default();
 	let first = Instant::now();

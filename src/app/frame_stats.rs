@@ -1,7 +1,7 @@
 //! Frame timing for benchmarks: how long each frame took to paint and
 //! show, and how long typing took to reach the screen. Recorded only when
 //! `POOPTERM_FRAME_STATS` names a file, which gets the samples as JSON on
-//! exit; `scripts/bench-frames.py` reads and summarizes them.
+//! exit, for a benchmark to summarize.
 use std::{
 	ffi::OsString,
 	io,

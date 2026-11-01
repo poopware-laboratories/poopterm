@@ -114,7 +114,7 @@ redraw takes about 1 ms at 1000×600 and 2 ms at 1920×1080 (scale 2) on an
 Intel N-series; it also takes memory bandwidth from the parser during
 floods, which is why floods are capped at 30 fps. Parse throughput stays
 CPU work. Baseline before the chrome moves over, from
-`scripts/bench-frames.py`: [performance.md](docs/performance.md#gpu-baseline-2026-11-01).
+`POOPTERM_FRAME_STATS`: [performance.md](docs/performance.md#gpu-baseline-2026-11-01).
 Today the GPU path is slower than software (1.2 vs 1.0 ms a frame, 1.3 vs
 0.4 ms from key to frame at 1000×600), because of the full backdrop it
 uploads each frame.
