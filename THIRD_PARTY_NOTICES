@@ -82,3 +82,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+Bark color scheme
+-----------------
+Poopterm includes colors adapted from the bark color scheme:
+https://github.com/if-not-nil/bark
+
+prod. lung notification
+
+provided as-is, no liability, do whatever you want, must specify
+everyone involved as "prod. alice, bob, ..." instead of "authors: ..."
+or "contributors: ..." or whatever
