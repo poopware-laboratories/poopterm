@@ -21,6 +21,7 @@ Usage:
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -34,7 +35,10 @@ import time
 import tty
 
 RENDERERS = ("software", "gpu")
-MEASURES = ("total_us", "paint_us", "show_us")
+COLUMNS = ("Frame", "Paint", "Show", "Latency", "Latency p95")
+# Table column, report measure, and the percentile taken of each run.
+MEASURES = tuple(zip(COLUMNS, ("total_us", "paint_us", "show_us", "latency_us", "latency_us"),
+                     (0.5, 0.5, 0.5, 0.5, 0.95)))
 
 
 def parse_size(text):
@@ -133,17 +137,20 @@ def run(binary, renderer, size, frames, keys, scratch, wait_ready=60, key_delay=
     return json.loads(stats.read_text())
 
 
+def percentile(samples, fraction):
+    """The nearest-rank percentile of `samples`."""
+    ordered = sorted(samples)
+    return ordered[max(1, math.ceil(fraction * len(ordered))) - 1]
+
+
 def summarize(reports):
     """Per measure, the median across runs of each run's median, with the
-    smallest and largest run median; latency also with its p95 medians."""
+    smallest and largest run median; latency also with its p95s."""
     summary = {}
-    for measure in MEASURES + ("latency_us",):
-        medians = [report[measure]["median"] for report in reports if report.get(measure)]
-        if medians:
-            summary[measure] = (statistics.median(medians), min(medians), max(medians))
-    p95s = [report["latency_us"]["p95"] for report in reports if report.get("latency_us")]
-    if p95s:
-        summary["latency_p95_us"] = (statistics.median(p95s), min(p95s), max(p95s))
+    for name, measure, fraction in MEASURES:
+        values = [percentile(report[measure], fraction) for report in reports if report[measure]]
+        if values:
+            summary[name] = (statistics.median(values), min(values), max(values))
     return summary
 
 
@@ -154,36 +161,29 @@ def ms(spread):
 
 def table(summaries):
     """A Markdown table, one row per (binary, renderer), times in ms."""
-    head = "| Build | Renderer | Frame | Paint | Show | Latency | Latency p95 |"
-    lines = [head, "|---|---|---:|---:|---:|---:|---:|"]
+    lines = ["| Build | Renderer | " + " | ".join(COLUMNS) + " |", "|---|---|" + "---:|" * len(COLUMNS)]
     for (build, renderer), summary in summaries.items():
-        cells = [ms(summary[key]) if key in summary else "–" for key in
-                 ("total_us", "paint_us", "show_us", "latency_us", "latency_p95_us")]
+        cells = [ms(summary[name]) if name in summary else "–" for name in COLUMNS]
         lines.append(f"| {build} | {renderer} | " + " | ".join(cells) + " |")
     return "\n".join(lines)
-
-
-def default_binary():
-    built = Path(__file__).resolve().parents[1] / "target/release/poopterm"
-    return str(built) if built.exists() else "poopterm"
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--inside", nargs=3, metavar=("FRAMES", "KEYS", "READY"), help=argparse.SUPPRESS)
-    parser.add_argument("--binary", action="append", help="poopterm to measure (repeatable)")
+    parser.add_argument("--binary", action="append", help="poopterm to measure (repeatable; "
+                        "default target/release/poopterm)")
     parser.add_argument("--renderer", action="append", choices=RENDERERS, help="repeatable")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--size", type=parse_size, default=(1000, 600), help="window size, WIDTHxHEIGHT")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--keys", type=int, default=40)
-    parser.add_argument("--output", help="also write every report as JSON here")
     args = parser.parse_args(argv)
     if args.inside:
         frames, keys, ready = args.inside
         inside(int(frames), int(keys), ready)
         return 0
-    binaries = args.binary or [default_binary()]
+    binaries = args.binary or [str(Path(__file__).resolve().parents[1] / "target/release/poopterm")]
     renderers = args.renderer or list(RENDERERS)
     reports = {}
     with tempfile.TemporaryDirectory(prefix="bench-frames-") as scratch:
@@ -195,11 +195,6 @@ def main(argv=None):
                     typing = run(binary, renderer, args.size, 0, args.keys, scratch)
                     reports.setdefault(key, []).append({**frames, "latency_us": typing["latency_us"]})
                     print(f"run {index + 1}/{args.runs}: {binary} {renderer}", file=sys.stderr)
-    if args.output:
-        Path(args.output).write_text(json.dumps([
-            {"binary": binary, "renderer": renderer, "reports": runs}
-            for (binary, renderer), runs in reports.items()
-        ], indent=2))
     summaries = {(Path(binary).name, renderer): summarize(runs) for (binary, renderer), runs in reports.items()}
     print(table(summaries))
     return 0

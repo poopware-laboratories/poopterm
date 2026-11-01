@@ -26,16 +26,26 @@ spec.loader.exec_module(frames)
 SCRIPT = str(Path(__file__).parents[1] / 'scripts/bench-frames.py')
 
 
-def spread(median, p95=None):
-    return {"count": 9, "median": median, "p95": p95 or median * 2, "min": median / 2, "max": median * 3}
-
-
-def report(total, paint, show, latency=None):
+def report(total, paint, show, latency=()):
+    """A report whose samples are the given lists."""
     return {
-        "frames": {"software": 1, "gpu": 0, "gpu_whole": 0},
-        "total_us": spread(total), "paint_us": spread(paint), "show_us": spread(show),
-        "latency_us": spread(latency) if latency is not None else None,
+        "frames": {"software": len(total), "gpu": 0, "gpu_whole": 0}, "size": [1000, 600], "scale": 1,
+        "total_us": list(total), "paint_us": list(paint), "show_us": list(show), "latency_us": list(latency),
     }
+
+
+# A stand-in for poopterm: makes its shell ready (or fails to, with
+# FAKE_EXIT set) and writes stats that show what it was started with.
+FAKE_TERMINAL = '''#!{python}
+import json, os, shlex, sys
+words = shlex.split(open(os.environ["SHELL"]).read().splitlines()[1])
+if os.environ.get("FAKE_EXIT"):
+    sys.exit(1)
+open(words[-1], "w").close()
+inside = words[words.index("--inside") + 1:]
+with open(os.environ["POOPTERM_FRAME_STATS"], "w") as out:
+    json.dump({{"renderer": os.environ["POOPTERM_RENDERER"], "inside": inside, "total_us": [1.5]}}, out)
+'''
 
 
 class Sizes(unittest.TestCase):
@@ -189,31 +199,83 @@ class Launching(unittest.TestCase):
         self.assertEqual(command[0], 'swaymsg')
         self.assertEqual(command[1], '[pid=4242] floating enable, resize set 1000 600, move position 0 0')
 
-    def test_the_built_binary_comes_first(self):
-        with mock.patch.object(frames.Path, 'exists', return_value=True):
-            self.assertTrue(frames.default_binary().endswith('target/release/poopterm'))
-        with mock.patch.object(frames.Path, 'exists', return_value=False):
-            self.assertEqual(frames.default_binary(), 'poopterm')
+
+
+class Running(unittest.TestCase):
+    """One launch, with a fake terminal, and swaymsg and wtype recorded
+    instead of run."""
+
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.scratch = scratch.name
+        self.binary = Path(self.scratch, 'poopterm')
+        self.binary.write_text(FAKE_TERMINAL.format(python=sys.executable))
+        self.binary.chmod(0o755)
+        self.commands = []
+        real = subprocess.run
+
+        def record(command, **kwargs):
+            if command[0] in ('swaymsg', 'wtype'):
+                self.commands.append(command)
+                return subprocess.CompletedProcess(command, 0)
+            return real(command, **kwargs)
+
+        for patch in [mock.patch.object(frames.subprocess, 'run', record),
+                      mock.patch.object(frames.time, 'sleep', lambda _: None)]:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_returns_the_stats_its_terminal_wrote(self):
+        stats = frames.run(str(self.binary), 'gpu', (800, 500), 12, 3, self.scratch)
+        self.assertEqual(stats['renderer'], 'gpu')
+        self.assertEqual(stats['inside'][:2], ['12', '3'])
+        self.assertEqual(stats['total_us'], [1.5])
+
+    def test_sizes_the_window_then_types_the_keys(self):
+        frames.run(str(self.binary), 'software', (800, 500), 0, 3, self.scratch)
+        self.assertEqual(self.commands[0][0], 'swaymsg')
+        self.assertIn('resize set 800 500', self.commands[0][1])
+        self.assertEqual(self.commands[1:], [['wtype', 'a'], ['wtype', 'b'], ['wtype', 'c']])
+
+    def test_files_left_by_the_last_run_do_not_count(self):
+        frames.run(str(self.binary), 'software', (800, 500), 0, 0, self.scratch)
+        # This terminal exits without making its shell ready or writing
+        # stats: the files of the run before must not stand in for them.
+        with mock.patch.dict(os.environ, FAKE_EXIT='1'), self.assertRaisesRegex(RuntimeError, 'never got ready'):
+            frames.run(str(self.binary), 'gpu', (800, 500), 0, 0, self.scratch)
 
 
 class Summaries(unittest.TestCase):
-    def test_medians_of_run_medians_with_their_bounds(self):
-        summary = frames.summarize([report(300, 100, 50, 9000), report(100, 300, 70, 7000), report(200, 200, 60, 8000)])
-        self.assertEqual(summary['total_us'], (200, 100, 300))
-        self.assertEqual(summary['paint_us'], (200, 100, 300))
-        self.assertEqual(summary['show_us'], (60, 50, 70))
-        self.assertEqual(summary['latency_us'], (8000, 7000, 9000))
-        self.assertEqual(summary['latency_p95_us'], (16000, 14000, 18000))
+    def test_percentiles_are_nearest_ranks(self):
+        samples = list(range(20, 0, -1))
+        self.assertEqual(frames.percentile(samples, 0.5), 10)
+        self.assertEqual(frames.percentile(samples, 0.95), 19)
+        self.assertEqual(frames.percentile([5, 1, 9], 0.5), 5)
+        self.assertEqual(frames.percentile([5, 1, 9], 0.95), 9)
+        self.assertEqual(frames.percentile([7], 0.95), 7)
+        self.assertEqual(samples, list(range(20, 0, -1)), 'the samples are left as they were')
 
-    def test_an_even_count_takes_the_middle_mean(self):
-        summary = frames.summarize([report(100, 1, 1), report(300, 1, 1)])
-        self.assertEqual(summary['total_us'], (200, 100, 300))
+    def test_medians_of_run_medians_with_their_bounds(self):
+        runs = [report([300, 100, 500], [100] * 3, [50] * 3, [9000, 1000, 20000]),
+                report([100, 100, 100], [300] * 3, [70] * 3, [7000] * 3),
+                report([200], [200], [60], [8000, 8000])]
+        summary = frames.summarize(runs)
+        self.assertEqual(summary['Frame'], (200, 100, 300))
+        self.assertEqual(summary['Paint'], (200, 100, 300))
+        self.assertEqual(summary['Show'], (60, 50, 70))
+        self.assertEqual(summary['Latency'], (8000, 7000, 9000))
+        self.assertEqual(summary['Latency p95'], (8000, 7000, 20000))
+
+    def test_an_even_count_of_runs_takes_the_middle_mean(self):
+        summary = frames.summarize([report([100], [1], [1]), report([300], [1], [1])])
+        self.assertEqual(summary['Frame'], (200, 100, 300))
 
     def test_measures_without_samples_are_left_out(self):
-        summary = frames.summarize([report(100, 10, 5), {**report(200, 20, 6), "paint_us": None}])
-        self.assertEqual(summary['paint_us'], (10, 10, 10))
-        self.assertNotIn('latency_us', summary)
-        self.assertNotIn('latency_p95_us', summary)
+        summary = frames.summarize([report([100], [10], [5]), report([200], [], [6])])
+        self.assertEqual(summary['Paint'], (10, 10, 10))
+        self.assertNotIn('Latency', summary)
+        self.assertNotIn('Latency p95', summary)
         self.assertEqual(frames.summarize([]), {})
 
     def test_milliseconds_with_their_spread(self):
@@ -222,13 +284,14 @@ class Summaries(unittest.TestCase):
 
     def test_a_row_per_build_and_renderer(self):
         rows = frames.table({
-            ('poopterm', 'software'): frames.summarize([report(2000, 1500, 400, 9000)]),
-            ('poopterm', 'gpu'): frames.summarize([report(1000, 300, 600)]),
+            ('poopterm', 'software'): frames.summarize([report([2000], [1500], [400], [9000])]),
+            ('poopterm', 'gpu'): frames.summarize([report([1000], [300], [600])]),
         }).splitlines()
         self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0], '| Build | Renderer | Frame | Paint | Show | Latency | Latency p95 |')
         self.assertEqual(rows[0].count('|'), rows[1].count('|'))
         self.assertEqual(rows[2], '| poopterm | software | 2.00 (2.00–2.00) | 1.50 (1.50–1.50) | 0.40 (0.40–0.40) '
-                                  '| 9.00 (9.00–9.00) | 18.00 (18.00–18.00) |')
+                                  '| 9.00 (9.00–9.00) | 9.00 (9.00–9.00) |')
         self.assertTrue(rows[3].startswith('| poopterm | gpu | 1.00'))
         self.assertTrue(rows[3].endswith('| – | – |'))
 
@@ -239,36 +302,44 @@ class Main(unittest.TestCase):
 
         def run(binary, renderer, size, frame_count, keys, scratch):
             calls.append((binary, renderer, size, frame_count, keys))
-            return report(1000, 500, 300, 8000 if keys else None)
+            return report([1000], [500], [300], [8000] if keys else [])
 
-        with tempfile.TemporaryDirectory() as scratch:
-            output = os.path.join(scratch, 'all.json')
-            argv = ['--binary', '/a/before', '--binary', '/b/after', '--runs', '2', '--size', '800x500',
-                    '--frames', '10', '--keys', '4', '--output', output]
-            stdout = io.StringIO()
-            with mock.patch.object(frames, 'run', run), mock.patch('sys.stdout', stdout), \
-                    mock.patch('sys.stderr', io.StringIO()):
-                self.assertEqual(frames.main(argv), 0)
-            saved = json.loads(Path(output).read_text())
+        argv = ['--binary', '/a/before', '--binary', '/b/after', '--runs', '2', '--size', '800x500',
+                '--frames', '10', '--keys', '4']
+        stdout = io.StringIO()
+        with mock.patch.object(frames, 'run', run), mock.patch('sys.stdout', stdout), \
+                mock.patch('sys.stderr', io.StringIO()):
+            self.assertEqual(frames.main(argv), 0)
         order = [(binary, renderer) for binary, renderer, *_ in calls[::2]]
         self.assertEqual(order, [('/a/before', 'software'), ('/a/before', 'gpu'), ('/b/after', 'software'),
                                  ('/b/after', 'gpu')] * 2)
         # Each pairs a run of frames without keys with a run of keys without frames.
         self.assertTrue(all(call[2:] == ((800, 500), 10, 0) for call in calls[::2]))
         self.assertTrue(all(call[2:] == ((800, 500), 0, 4) for call in calls[1::2]))
-        self.assertEqual(len(saved), 4)
-        self.assertEqual(len(saved[0]['reports']), 2)
-        self.assertEqual(saved[0]['reports'][0]['latency_us']['median'], 8000)
         table = stdout.getvalue()
-        self.assertIn('| before | software | 1.00 (1.00–1.00) |', table)
+        self.assertIn('| before | software | 1.00 (1.00–1.00) | 0.50 (0.50–0.50) | 0.30 (0.30–0.30) '
+                      '| 8.00 (8.00–8.00) |', table)
         self.assertIn('| after | gpu |', table)
+
+    def test_measures_the_release_build_by_default(self):
+        binaries = []
+
+        def run(binary, *_):
+            binaries.append(binary)
+            return report([1], [1], [1])
+
+        with mock.patch.object(frames, 'run', run), mock.patch('sys.stdout', io.StringIO()), \
+                mock.patch('sys.stderr', io.StringIO()):
+            frames.main(['--runs', '1', '--renderer', 'software'])
+        self.assertTrue(all(binary.endswith('/target/release/poopterm') for binary in binaries))
+        self.assertTrue(Path(binaries[0]).is_absolute())
 
     def test_one_renderer_when_asked(self):
         calls = []
 
         def run(binary, renderer, *_):
             calls.append(renderer)
-            return report(1, 1, 1, 1)
+            return report([1], [1], [1], [1])
 
         with mock.patch.object(frames, 'run', run), mock.patch('sys.stdout', io.StringIO()), \
                 mock.patch('sys.stderr', io.StringIO()):

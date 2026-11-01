@@ -6,48 +6,8 @@ fn ms(n: u64) -> Duration {
 	Duration::from_millis(n)
 }
 
-fn timing(paint: u64, show: u64, total: u64) -> Timing {
-	Timing {
-		paint: Duration::from_micros(paint),
-		show: Duration::from_micros(show),
-		total: Duration::from_micros(total),
-	}
-}
-
-#[test]
-fn an_empty_list_has_no_spread() {
-	assert_eq!(spread(&mut []), None);
-}
-
-#[test]
-fn one_sample_is_its_own_median_percentile_and_bounds() {
-	let spread = spread(&mut [ms(7)]).unwrap();
-	assert_eq!(
-		spread,
-		Spread {
-			count: 1,
-			median: ms(7),
-			p95: ms(7),
-			min: ms(7),
-			max: ms(7)
-		}
-	);
-}
-
-#[test]
-fn the_median_and_95th_percentile_are_nearest_ranks_of_the_sorted_samples() {
-	// 1..=20 ms out of order: rank ceil(0.5 × 20) = 10, ceil(0.95 × 20) = 19.
-	let mut samples: Vec<_> = (1..=20).rev().map(ms).collect();
-	let spread = spread(&mut samples).unwrap();
-	assert_eq!((spread.median, spread.p95), (ms(10), ms(19)));
-	assert_eq!((spread.min, spread.max, spread.count), (ms(1), ms(20), 20));
-}
-
-#[test]
-fn an_odd_count_takes_the_middle_sample() {
-	let spread = spread(&mut [ms(5), ms(1), ms(9)]).unwrap();
-	assert_eq!(spread.median, ms(5));
-	assert_eq!(spread.p95, ms(9), "rank ceil(2.85) = 3");
+fn timing(paint: u64, show: u64, total: u64) -> [Duration; 3] {
+	[paint, show, total].map(Duration::from_micros)
 }
 
 #[test]
@@ -109,7 +69,7 @@ fn keys_typed_before_the_echo_are_timed_from_the_first() {
 }
 
 #[test]
-fn samples_stop_at_the_limit_and_count_what_was_dropped() {
+fn samples_stop_at_the_limit_but_frames_are_still_counted() {
 	let mut stats = FrameStats::default();
 	let now = Instant::now();
 	for _ in 0..MAX_SAMPLES + 3 {
@@ -117,7 +77,7 @@ fn samples_stop_at_the_limit_and_count_what_was_dropped() {
 	}
 	assert_eq!(stats.total.len(), MAX_SAMPLES);
 	assert_eq!(stats.paint.len(), MAX_SAMPLES);
-	assert_eq!(stats.dropped, 3);
+	assert_eq!(stats.show.len(), MAX_SAMPLES);
 	assert_eq!(
 		stats.kinds[1],
 		MAX_SAMPLES + 3,
@@ -138,7 +98,7 @@ fn latencies_stop_at_the_limit_too() {
 }
 
 #[test]
-fn the_report_is_json_with_microseconds_to_a_tenth() {
+fn the_report_is_json_with_every_sample_in_microseconds_to_a_tenth() {
 	let mut stats = FrameStats::default();
 	let key = Instant::now();
 	stats.frame(Kind::GpuWhole, timing(1500, 250, 2000), key);
@@ -152,24 +112,22 @@ fn the_report_is_json_with_microseconds_to_a_tenth() {
 	let report = stats.report((1000, 600), 2.0);
 	let expected = concat!(
 		"{\"frames\": {\"software\": 0, \"gpu\": 1, \"gpu_whole\": 1}, ",
-		"\"size\": [1000, 600], \"scale\": 2, \"dropped\": 0, ",
-		"\"paint_us\": {\"count\": 2, \"median\": 500.0, \"p95\": 1500.0, \"min\": 500.0, \"max\": 1500.0}, ",
-		"\"show_us\": {\"count\": 2, \"median\": 250.0, \"p95\": 750.0, \"min\": 250.0, \"max\": 750.0}, ",
-		"\"total_us\": {\"count\": 2, \"median\": 1000.0, \"p95\": 2000.0, \"min\": 1000.0, \"max\": 2000.0}, ",
-		"\"latency_us\": {\"count\": 1, \"median\": 8123.0, \"p95\": 8123.0, \"min\": 8123.0, \"max\": 8123.0}}",
+		"\"size\": [1000, 600], \"scale\": 2, ",
+		"\"paint_us\": [1500.0, 500.0], \"show_us\": [250.0, 750.0], ",
+		"\"total_us\": [2000.0, 1000.0], \"latency_us\": [8123.0]}",
 	);
 	assert_eq!(report, expected);
 }
 
 #[test]
-fn a_report_without_samples_has_null_spreads_and_a_fractional_scale() {
+fn a_report_without_samples_has_empty_lists_and_a_fractional_scale() {
 	let report = FrameStats::default().report((0, 0), 1.25);
 	assert_eq!(
 		report,
 		concat!(
 			"{\"frames\": {\"software\": 0, \"gpu\": 0, \"gpu_whole\": 0}, ",
-			"\"size\": [0, 0], \"scale\": 1.25, \"dropped\": 0, ",
-			"\"paint_us\": null, \"show_us\": null, \"total_us\": null, \"latency_us\": null}",
+			"\"size\": [0, 0], \"scale\": 1.25, ",
+			"\"paint_us\": [], \"show_us\": [], \"total_us\": [], \"latency_us\": []}",
 		)
 	);
 }
@@ -177,50 +135,27 @@ fn a_report_without_samples_has_null_spreads_and_a_fractional_scale() {
 #[test]
 fn sub_microsecond_times_keep_their_tenths() {
 	let mut stats = FrameStats::default();
-	let quick = Timing {
-		paint: Duration::from_nanos(1_250),
-		show: Duration::ZERO,
-		total: Duration::from_nanos(99),
-	};
+	let quick = [
+		Duration::from_nanos(1_250),
+		Duration::ZERO,
+		Duration::from_nanos(99),
+	];
 	stats.frame(Kind::Software, quick, Instant::now());
 	let report = stats.report((1, 1), 1.0);
-	assert!(
-		report.contains("\"paint_us\": {\"count\": 1, \"median\": 1.2,"),
-		"{report}"
-	);
-	assert!(
-		report.contains("\"show_us\": {\"count\": 1, \"median\": 0.0,"),
-		"{report}"
-	);
-	assert!(
-		report.contains("\"total_us\": {\"count\": 1, \"median\": 0.1,"),
-		"{report}"
-	);
+	assert!(report.contains("\"paint_us\": [1.2]"), "{report}");
+	assert!(report.contains("\"show_us\": [0.0]"), "{report}");
+	assert!(report.contains("\"total_us\": [0.1]"), "{report}");
 }
 
 #[test]
-fn the_report_goes_where_the_variable_points() {
-	let path = std::env::temp_dir().join(format!("poopterm-frame-stats-{}.json", std::process::id()));
-	let target = destination(Some(path.clone().into_os_string()));
-	assert_eq!(target.as_deref(), Some(path.as_path()));
-	assert_eq!(destination(None), None);
-	assert_eq!(
-		destination(Some("".into())),
-		None,
-		"an empty variable is unset"
-	);
+fn long_times_are_not_cut_short() {
 	let mut stats = FrameStats::default();
-	stats.frame(Kind::Gpu, timing(1, 1, 1), Instant::now());
-	write_report(&stats, &path, (10, 20), 1.0).unwrap();
-	let written = std::fs::read_to_string(&path).unwrap();
-	assert_eq!(written, format!("{}\n", stats.report((10, 20), 1.0)));
-	std::fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn a_report_that_cannot_be_written_is_an_error() {
-	let path = std::path::Path::new("/nonexistent-dir/stats.json");
-	assert!(write_report(&FrameStats::default(), path, (1, 1), 1.0).is_err());
+	stats.frame(Kind::Software, [Duration::from_secs(90); 3], Instant::now());
+	assert!(
+		stats
+			.report((1, 1), 1.0)
+			.contains("\"total_us\": [90000000.0]")
+	);
 }
 
 mod recorder {
@@ -233,7 +168,10 @@ mod recorder {
 	#[test]
 	fn it_records_only_when_the_variable_names_a_file() {
 		assert!(Recorder::from_env(None).is_none());
-		assert!(Recorder::from_env(Some("".into())).is_none());
+		assert!(
+			Recorder::from_env(Some("".into())).is_none(),
+			"an empty variable is unset"
+		);
 		assert_eq!(recorder().path, std::path::Path::new("/tmp/stats.json"));
 	}
 
@@ -314,18 +252,24 @@ mod recorder {
 	}
 
 	#[test]
-	fn saving_writes_the_report_to_its_file() {
+	fn saving_writes_the_report_and_a_newline_to_its_file() {
 		let path = std::env::temp_dir().join(format!("poopterm-recorder-{}.json", std::process::id()));
 		let mut recorder = Recorder::from_env(Some(path.clone().into_os_string())).unwrap();
 		let start = Instant::now();
 		recorder.finish(false, ms(1), start, start + ms(1));
 		recorder.save((80, 24), 1.0).unwrap();
 		let written = std::fs::read_to_string(&path).unwrap();
-		assert!(
-			written.starts_with("{\"frames\": {\"software\": 1,"),
-			"{written}"
+		assert_eq!(
+			written,
+			format!("{}\n", recorder.stats.report((80, 24), 1.0))
 		);
 		assert!(written.contains("\"size\": [80, 24]"), "{written}");
 		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn a_report_that_cannot_be_written_is_an_error() {
+		let recorder = Recorder::from_env(Some("/nonexistent-dir/stats.json".into())).unwrap();
+		assert!(recorder.save((1, 1), 1.0).is_err());
 	}
 }

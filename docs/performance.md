@@ -62,9 +62,9 @@ only between runs with the same workloads, window size and scrollback limit.
 **Frames and typing latency**, in Poopterm's own windows (sway, with
 `wtype`): `scripts/bench-frames.py` launches each renderer in turn, paints
 a different full screen about 30 times a second, then types keys into a
-raw echo loop. `POOPTERM_FRAME_STATS=<file>` makes any run write the same
-JSON summary on exit (frame kinds, paint, show and whole-frame times,
-key-to-frame latency; median, p95 and bounds).
+raw echo loop. `POOPTERM_FRAME_STATS=<file>` makes any run write its
+samples as JSON on exit (frame kinds, then every frame's paint, show and
+whole-frame time and every key-to-frame latency, in µs).
 
 ```sh
 python3 scripts/bench-frames.py                                   # software and gpu, 3 runs

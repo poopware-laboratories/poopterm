@@ -1,11 +1,11 @@
 //! Frame timing for benchmarks: how long each frame took to paint and
 //! show, and how long typing took to reach the screen. Recorded only when
-//! `POOPTERM_FRAME_STATS` names a file, which gets a JSON summary on exit
-//! (`scripts/bench-frames.py` reads it).
+//! `POOPTERM_FRAME_STATS` names a file, which gets the samples as JSON on
+//! exit; `scripts/bench-frames.py` reads and summarizes them.
 use std::{
 	ffi::OsString,
 	io,
-	path::{Path, PathBuf},
+	path::PathBuf,
 	time::{Duration, Instant},
 };
 
@@ -23,26 +23,16 @@ pub(super) enum Kind {
 	GpuWhole,
 }
 
-/// How long one frame took: painting in software, showing it (the GPU's
-/// recording, submission and presentation, or the software presenter),
-/// and all of `draw`.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Timing {
-	pub paint: Duration,
-	pub show: Duration,
-	pub total: Duration,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct FrameStats {
 	/// Frames drawn in software, on the GPU, and painted whole for the GPU.
 	pub kinds: [usize; 3],
+	/// Per frame: painting in software, showing (the GPU's recording,
+	/// submission and presentation, or the software presenter), all of it.
 	pub paint: Vec<Duration>,
 	pub show: Vec<Duration>,
 	pub total: Vec<Duration>,
 	pub latency: Vec<Duration>,
-	/// Frames past the limit, counted but not timed.
-	pub dropped: usize,
 	/// The first key not answered yet, and whether output came after it.
 	key: Option<Instant>,
 	echoed: bool,
@@ -62,88 +52,43 @@ impl FrameStats {
 		self.echoed |= self.key.is_some();
 	}
 
-	/// A frame of `kind` took `timing` and ended at `end`.
-	pub(super) fn frame(&mut self, kind: Kind, timing: Timing, end: Instant) {
+	/// A frame of `kind` took `[paint, show, total]` and ended at `end`.
+	pub(super) fn frame(&mut self, kind: Kind, [paint, show, total]: [Duration; 3], end: Instant) {
 		self.kinds[kind as usize] += 1;
 		if self.total.len() < MAX_SAMPLES {
-			self.paint.push(timing.paint);
-			self.show.push(timing.show);
-			self.total.push(timing.total);
-		} else {
-			self.dropped += 1;
+			self.paint.push(paint);
+			self.show.push(show);
+			self.total.push(total);
 		}
 		if self.echoed
 			&& let Some(key) = self.key.take()
+			&& self.latency.len() < MAX_SAMPLES
 		{
-			self.echoed = false;
-			if self.latency.len() < MAX_SAMPLES {
-				self.latency.push(end.saturating_duration_since(key));
-			}
+			self.latency.push(end.saturating_duration_since(key));
 		}
 	}
 
-	/// The summary as one line of JSON, for a window `size` pixels large
-	/// at this display `scale`.
+	/// The samples as one line of JSON, in microseconds, for a window
+	/// `size` pixels large at this display `scale`.
 	pub(super) fn report(&self, (width, height): (usize, usize), scale: f64) -> String {
 		let [software, gpu, whole] = self.kinds;
-		let measures = [
-			("paint_us", &self.paint),
-			("show_us", &self.show),
-			("total_us", &self.total),
-			("latency_us", &self.latency),
-		];
-		let spreads = measures.map(|(name, samples)| {
-			let json = spread(&mut samples.clone()).map_or("null".into(), |spread| spread.json());
-			format!("\"{name}\": {json}")
-		});
+		let us = |samples: &[Duration]| {
+			let samples: Vec<_> = samples
+				.iter()
+				.map(|time| format!("{:.1}", time.as_nanos() as f64 / 1e3))
+				.collect();
+			format!("[{}]", samples.join(", "))
+		};
 		format!(
 			"{{\"frames\": {{\"software\": {software}, \"gpu\": {gpu}, \"gpu_whole\": {whole}}}, \
-			 \"size\": [{width}, {height}], \"scale\": {scale}, \"dropped\": {}, {}}}",
-			self.dropped,
-			spreads.join(", "),
+			 \"size\": [{width}, {height}], \"scale\": {scale}, \"paint_us\": {}, \"show_us\": {}, \
+			 \"total_us\": {}, \"latency_us\": {}}}",
+			us(&self.paint),
+			us(&self.show),
+			us(&self.total),
+			us(&self.latency),
 		)
 	}
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct Spread {
-	pub count: usize,
-	pub median: Duration,
-	pub p95: Duration,
-	pub min: Duration,
-	pub max: Duration,
-}
-
-impl Spread {
-	fn json(&self) -> String {
-		let us = |time: Duration| format!("{:.1}", time.as_nanos() as f64 / 1000.0);
-		format!(
-			"{{\"count\": {}, \"median\": {}, \"p95\": {}, \"min\": {}, \"max\": {}}}",
-			self.count,
-			us(self.median),
-			us(self.p95),
-			us(self.min),
-			us(self.max),
-		)
-	}
-}
-
-/// The count, median, 95th percentile and bounds of `samples`, which it
-/// sorts; percentiles are nearest ranks.
-pub(super) fn spread(samples: &mut [Duration]) -> Option<Spread> {
-	samples.sort_unstable();
-	let (min, max) = (*samples.first()?, *samples.last()?);
-	let rank = |fraction: f64| {
-		let rank = (fraction * samples.len() as f64).ceil() as usize;
-		samples[rank.max(1) - 1]
-	};
-	Some(Spread {
-		count: samples.len(),
-		median: rank(0.5),
-		p95: rank(0.95),
-		min,
-		max,
-	})
 }
 
 /// Frame statistics being recorded for the file they are saved to.
@@ -159,8 +104,8 @@ pub(super) struct Recorder {
 impl Recorder {
 	/// A recorder when `variable`, the environment's, names a file.
 	pub(super) fn from_env(variable: Option<OsString>) -> Option<Self> {
-		destination(variable).map(|path| Self {
-			path,
+		variable.filter(|path| !path.is_empty()).map(|path| Self {
+			path: path.into(),
 			stats: FrameStats::default(),
 			paint: Duration::ZERO,
 			whole: false,
@@ -177,38 +122,22 @@ impl Recorder {
 	/// the software presenter, or else by the GPU's frame call, which also
 	/// painted.
 	pub(super) fn finish(&mut self, gpu: bool, showing: Duration, start: Instant, end: Instant) {
-		let (kind, show) = match (gpu, self.whole) {
+		let paint = std::mem::take(&mut self.paint);
+		let whole = std::mem::take(&mut self.whole);
+		let (kind, show) = match (gpu, whole) {
 			(false, _) => (Kind::Software, showing),
-			(true, whole) => {
-				let kind = if whole { Kind::GpuWhole } else { Kind::Gpu };
-				(kind, showing.saturating_sub(self.paint))
-			}
+			(true, false) => (Kind::Gpu, showing.saturating_sub(paint)),
+			(true, true) => (Kind::GpuWhole, showing.saturating_sub(paint)),
 		};
 		let total = end.saturating_duration_since(start);
-		let paint = std::mem::take(&mut self.paint);
-		self.whole = false;
-		self.stats.frame(kind, Timing { paint, show, total }, end);
+		self.stats.frame(kind, [paint, show, total], end);
 	}
 
-	/// Writes the report for a window `size` pixels large at `scale`.
+	/// Writes the report, ended by a newline, for a window `size` pixels
+	/// large at `scale`.
 	pub(super) fn save(&self, size: (usize, usize), scale: f64) -> io::Result<()> {
-		write_report(&self.stats, &self.path, size, scale)
+		std::fs::write(&self.path, format!("{}\n", self.stats.report(size, scale)))
 	}
-}
-
-/// The report's file, from the environment variable; unset when empty.
-pub(super) fn destination(variable: Option<OsString>) -> Option<PathBuf> {
-	variable.filter(|path| !path.is_empty()).map(PathBuf::from)
-}
-
-/// Writes the report of `stats` to `path`, ended by a newline.
-pub(super) fn write_report(
-	stats: &FrameStats,
-	path: &Path,
-	size: (usize, usize),
-	scale: f64,
-) -> io::Result<()> {
-	std::fs::write(path, format!("{}\n", stats.report(size, scale)))
 }
 
 #[cfg(test)]
