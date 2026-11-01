@@ -81,9 +81,11 @@ jobs:
       - name: Start a virtual X server
         if: runner.os == 'Linux'
         run: |
-          # The X11 tests then fail, not skip, without it.
+          # The X11 tests then fail, not skip, without it. -noreset: by default
+          # the server resets when its last client leaves, and a test that
+          # connects during the reset gets "no X server".
           printf '%s\n' DISPLAY=:99 POOPTERM_REQUIRE_X11=1 >> "$GITHUB_ENV"
-          nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+          nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp -noreset > "$RUNNER_TEMP/xvfb.log" 2>&1 &
           for _ in $(seq 100); do
             [ -S /tmp/.X11-unix/X99 ] && exit 0
             sleep 0.1
