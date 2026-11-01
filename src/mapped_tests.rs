@@ -191,3 +191,53 @@ mod linux {
 		assert_eq!(error.kind(), ErrorKind::InvalidInput);
 	}
 }
+
+#[test]
+fn a_symlink_is_followed_to_the_file_it_names() {
+	// Font directories are often links into other packages' directories.
+	let dir = scratch("symlink");
+	let path = dir.join("real.ttf");
+	fs::write(&path, pattern(4097)).unwrap();
+	std::os::unix::fs::symlink(&path, dir.join("link.ttf")).unwrap();
+	let map = Mapped::open(&dir.join("link.ttf")).unwrap();
+	assert_eq!(&*map, &pattern(4097)[..]);
+}
+
+#[test]
+fn a_dangling_symlink_reports_not_found() {
+	let dir = scratch("dangling");
+	std::os::unix::fs::symlink(dir.join("gone.ttf"), dir.join("link.ttf")).unwrap();
+	let error = Mapped::open(&dir.join("link.ttf")).err().expect("dangling");
+	assert_eq!(error.kind(), ErrorKind::NotFound);
+}
+
+#[test]
+fn an_unreadable_file_reports_permission_denied() {
+	use std::os::unix::fs::PermissionsExt;
+	let dir = scratch("unreadable");
+	let path = dir.join("font.ttf");
+	fs::write(&path, pattern(100)).unwrap();
+	fs::set_permissions(&path, fs::Permissions::from_mode(0o200)).unwrap();
+	// SAFETY: geteuid takes no arguments and cannot fail.
+	if unsafe { libc::geteuid() } == 0 {
+		return; // root reads any file whatever its mode
+	}
+	let error = Mapped::open(&path).err().expect("unreadable");
+	assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn many_mappings_of_one_file_are_independent() {
+	let dir = scratch("many");
+	let path = dir.join("font.ttf");
+	fs::write(&path, pattern(2 * page() + 3)).unwrap();
+	let first = Mapped::open(&path).unwrap();
+	let second = Mapped::open(&path).unwrap();
+	assert_ne!(first.as_ptr(), second.as_ptr(), "two mappings");
+	drop(first);
+	assert_eq!(
+		&*second,
+		&pattern(2 * page() + 3)[..],
+		"the other is intact"
+	);
+}

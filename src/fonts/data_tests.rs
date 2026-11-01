@@ -143,3 +143,79 @@ fn the_bundled_font_stays_in_the_binary_without_a_copy() {
 	assert!(!font.is_mapped());
 	assert!(font.is_static());
 }
+
+#[test]
+fn an_unreadable_font_file_is_an_error_not_read_another_way() {
+	use std::os::unix::fs::PermissionsExt;
+	let dir = scratch("unreadable");
+	let path = bundled_file(&dir);
+	fs::set_permissions(&path, fs::Permissions::from_mode(0o200)).unwrap();
+	// SAFETY: geteuid takes no arguments and cannot fail.
+	if unsafe { libc::geteuid() } == 0 {
+		return; // root reads any file whatever its mode
+	}
+	let error = read_file(&path).err().expect("unreadable");
+	assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+}
+
+#[test]
+fn truncated_and_garbage_font_files_are_refused_without_panicking() {
+	let dir = scratch("broken");
+	let cases: [(&str, &[u8]); 4] = [
+		("half.ttf", &BUNDLED[..BUNDLED.len() / 2]),
+		("header.ttf", &BUNDLED[..12]),
+		("text.ttf", b"this is not a font at all"),
+		("zeros.ttf", &[0; 8192]),
+	];
+	for (name, bytes) in cases {
+		let path = dir.join(name);
+		fs::write(&path, bytes).unwrap();
+		let data = read_file(&path).unwrap();
+		assert!(matches!(data, Data::Mapped(_)), "{name} is mapped");
+		if let Ok(font) = Font::from_bytes(data, 0) {
+			// A face whose tables still parse must draw without reading past its end.
+			let _ = font.rasterize('A', 17.0);
+		}
+	}
+	assert!(load_font(&dir.join("text.ttf"), 0).is_err());
+	assert!(load_font(&dir.join("zeros.ttf"), 0).is_err());
+}
+
+#[test]
+fn a_font_keeps_drawing_after_its_file_is_deleted() {
+	// A package upgrade or uninstall while the terminal runs.
+	let dir = scratch("deleted");
+	let path = bundled_file(&dir);
+	let font = load_font(&path, 0).unwrap();
+	let before = font.rasterize('g', 21.0);
+	fs::remove_file(&path).unwrap();
+	assert_eq!(font.rasterize('g', 21.0), before);
+	assert_ne!(font.lookup_glyph_index('g'), 0);
+}
+
+#[test]
+fn a_font_keeps_its_own_glyphs_after_its_file_is_replaced() {
+	let dir = scratch("replaced");
+	let path = bundled_file(&dir);
+	let font = load_font(&path, 0).unwrap();
+	let new = dir.join("bundled.ttf.new");
+	fs::write(&new, font_with_only('漢')).unwrap();
+	fs::rename(&new, &path).unwrap();
+	assert_ne!(font.lookup_glyph_index('A'), 0, "still the old font");
+	let reloaded = load_font(&path, 0).unwrap();
+	assert_eq!(
+		reloaded.lookup_glyph_index('A'),
+		0,
+		"the new file has only 漢"
+	);
+	assert_ne!(reloaded.lookup_glyph_index('漢'), 0);
+}
+
+#[test]
+fn a_font_reached_through_a_symlink_is_mapped() {
+	let dir = scratch("symlink");
+	let path = bundled_file(&dir);
+	std::os::unix::fs::symlink(&path, dir.join("link.ttf")).unwrap();
+	let font = load_font(&dir.join("link.ttf"), 0).unwrap();
+	assert!(font.is_mapped());
+}

@@ -7,7 +7,7 @@
 //! any program that maps fonts; we accept that for files under the system's
 //! and user's font directories.
 use std::{
-	fs::{File, OpenOptions},
+	fs::OpenOptions,
 	io,
 	ops::Deref,
 	os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
@@ -37,7 +37,13 @@ impl Mapped {
 			.read(true)
 			.custom_flags(libc::O_NONBLOCK)
 			.open(path)?;
-		let len = regular_len(&file)?;
+		let metadata = file.metadata()?;
+		let refused = || io::Error::from(io::ErrorKind::InvalidInput);
+		if !metadata.is_file() {
+			return Err(refused());
+		}
+		// `mmap` refuses an empty file (`EINVAL`) as `InvalidInput` too.
+		let len = usize::try_from(metadata.len()).map_err(|_| refused())?;
 		// SAFETY: maps `len` bytes of an open file, read only and private, at
 		// an address the kernel picks; the result is checked before use.
 		let map = unsafe {
@@ -59,20 +65,6 @@ impl Mapped {
 			len,
 		})
 	}
-}
-
-/// The length of `file` when it is a regular, non-empty file that fits in
-/// memory.
-fn regular_len(file: &File) -> io::Result<usize> {
-	let metadata = file.metadata()?;
-	let refused = || io::Error::from(io::ErrorKind::InvalidInput);
-	if !metadata.is_file() || metadata.len() == 0 {
-		return Err(refused());
-	}
-	usize::try_from(metadata.len())
-		.ok()
-		.filter(|&len| len <= isize::MAX as usize)
-		.ok_or_else(refused)
 }
 
 impl Deref for Mapped {
