@@ -1,7 +1,7 @@
 //! Tests of the image textures kept between frames: found again by their
 //! bitmap alone, dropped with it, evicted least recently used first within
 //! the budget, and never evicted while the frame being drawn uses them.
-use super::textures::{Textures, runs};
+use super::textures::{Textures, runs, texture_bytes};
 use crate::graphics::Bitmap;
 use std::{ops::Range, sync::Arc};
 
@@ -24,9 +24,8 @@ fn draw(
 	if let Some(&texture) = textures.get(bitmap) {
 		return Some(texture);
 	}
-	textures
-		.make_room(bitmap)
-		.then(|| *textures.insert(bitmap, name))
+	let bytes = texture_bytes(bitmap);
+	(textures.make_room(bytes)).then(|| *textures.insert(bitmap, name, bytes))
 }
 
 #[test]
@@ -35,8 +34,11 @@ fn a_texture_is_found_by_its_bitmap_and_not_by_an_equal_one() {
 	let (first, equal) = (bitmap(2, 2), bitmap(2, 2));
 	textures.begin_frame();
 	assert_eq!(textures.get(&first), None);
-	assert!(textures.make_room(&first));
-	assert_eq!(*textures.insert(&first, "first"), "first");
+	assert!(textures.make_room(texture_bytes(&first)));
+	assert_eq!(
+		*textures.insert(&first, "first", texture_bytes(&first)),
+		"first"
+	);
 	assert_eq!(textures.get(&first), Some(&"first"));
 	assert_eq!(textures.get(&Arc::clone(&first)), Some(&"first"));
 	// Equal pixels, another image: animation frames are new bitmaps.
@@ -90,7 +92,7 @@ fn textures_the_frame_uses_are_never_evicted() {
 		assert_eq!(draw(&mut textures, bitmap, name), Some(name));
 	}
 	// Full of textures this frame draws: no room for a fourth.
-	assert!(!textures.make_room(&d));
+	assert!(!textures.make_room(texture_bytes(&d)));
 	assert_eq!((textures.len(), textures.bytes()), (3, 48));
 	// The next frame, only `c` is drawn before `d`: `a` goes, `b` stays.
 	textures.begin_frame();
@@ -107,13 +109,13 @@ fn a_bitmap_larger_than_the_budget_never_gets_room() {
 	textures.begin_frame();
 	draw(&mut textures, &small, "small");
 	textures.begin_frame();
-	assert!(!textures.make_room(&large));
+	assert!(!textures.make_room(texture_bytes(&large)));
 	// Nothing was evicted in vain.
 	assert_eq!(textures.get(&small), Some(&"small"));
 	// Exactly the budget fits, once the rest is evicted.
 	let fits = Arc::new(Bitmap::new(3, 4, vec![0; 12]));
 	textures.begin_frame();
-	assert!(textures.make_room(&fits));
+	assert!(textures.make_room(texture_bytes(&fits)));
 	assert_eq!(textures.bytes(), 0);
 }
 
@@ -122,8 +124,11 @@ fn an_empty_bitmap_needs_no_room() {
 	let mut textures = Textures::new(0);
 	let empty = Arc::new(Bitmap::new(0, 3, Vec::new()));
 	textures.begin_frame();
-	assert!(textures.make_room(&empty));
-	assert_eq!(*textures.insert(&empty, "empty"), "empty");
+	assert!(textures.make_room(texture_bytes(&empty)));
+	assert_eq!(
+		*textures.insert(&empty, "empty", texture_bytes(&empty)),
+		"empty"
+	);
 	assert_eq!(textures.bytes(), 0);
 }
 
@@ -132,8 +137,8 @@ fn inserting_a_bitmap_again_replaces_its_texture_and_its_bytes() {
 	let mut textures = Textures::new(1024);
 	let image = bitmap(2, 2);
 	textures.begin_frame();
-	textures.insert(&image, "old");
-	textures.insert(&image, "new");
+	textures.insert(&image, "old", 4);
+	textures.insert(&image, "new", 16);
 	assert_eq!(textures.get(&image), Some(&"new"));
 	assert_eq!((textures.len(), textures.bytes()), (1, 16));
 }
@@ -205,4 +210,33 @@ fn a_run_ends_only_where_another_texture_is_needed() {
 		runs_of(&[Some('a'), None, Some('b'), None, None, Some('a')]),
 		[(0..2, Some('a')), (2..5, Some('b')), (5..6, Some('a'))]
 	);
+}
+
+#[test]
+fn room_is_the_budget_less_what_the_frame_draws() {
+	let mut textures = Textures::new(48);
+	let [a, b] = [(); 2].map(|()| bitmap(2, 2));
+	textures.begin_frame();
+	assert_eq!(textures.room(), 48);
+	draw(&mut textures, &a, "a");
+	draw(&mut textures, &b, "b");
+	assert_eq!(textures.room(), 16);
+	// Next frame both may be evicted, until one is drawn again.
+	textures.begin_frame();
+	assert_eq!(textures.room(), 48);
+	textures.get(&a);
+	assert_eq!(textures.room(), 32);
+}
+
+#[test]
+fn a_texture_takes_the_bytes_it_was_made_with_not_its_bitmaps() {
+	// A 4×4 bitmap shrunk to a texel.
+	let mut textures = Textures::new(48);
+	let large = bitmap(4, 4);
+	textures.begin_frame();
+	assert!(textures.make_room(4));
+	textures.insert(&large, "shrunk", 4);
+	assert_eq!((textures.bytes(), textures.room()), (4, 44));
+	textures.remove(&large);
+	assert_eq!((textures.bytes(), textures.room()), (0, 48));
 }

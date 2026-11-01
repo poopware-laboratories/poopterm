@@ -19,6 +19,7 @@ use crate::{
 	gpu::{
 		atlas::{BUDGET, Slot, Wanted, grown},
 		quads::{Fill, Quad, QuadPen},
+		shrink::{in_texture, regrown, shown_sizes, shrink, texture_size},
 		textures::{Textures, runs},
 	},
 	graphics::Bitmap,
@@ -38,6 +39,10 @@ const COLOR: u32 = 2;
 const IMAGE: u32 = 3;
 /// Words a quad.
 const QUAD: usize = 12;
+
+/// A texture made this frame: its bitmap, the pixels to upload when
+/// shrunk to fit, and the texture.
+type Fresh = (Arc<Bitmap>, Option<Bitmap>, Rc<TextureSet>);
 /// Bytes the images' textures may take on the GPU: a frame needing more is
 /// refused, for software to draw.
 pub(crate) const TEXTURES: usize = 256 << 20;
@@ -177,26 +182,37 @@ impl Renderer {
 		self.textures.clear();
 	}
 
-	/// The texture of `bitmap`, made and kept when new, and listed in
-	/// `fresh` for the frame to upload; refused when the budget or the
-	/// device cannot hold it.
+	/// The texture of `bitmap`, `shown` that large, made and kept when
+	/// new, and listed in `fresh` for the frame to upload: its own size, or
+	/// shrunk when the device or the budget cannot hold that; refused when
+	/// not even a texel fits.
 	fn texture(
 		&mut self,
 		bitmap: &Arc<Bitmap>,
-		fresh: &mut Vec<(Arc<Bitmap>, Rc<TextureSet>)>,
+		shown: (usize, usize),
+		fresh: &mut Vec<Fresh>,
 	) -> Result<Rc<TextureSet>, Error> {
-		if let Some(texture) = self.textures.get(bitmap) {
-			return Ok(texture.clone());
+		let device = &self.set.pipeline.device;
+		let own = (bitmap.width, bitmap.height);
+		let dimension = device.image_limits[0] as usize;
+		if let Some(texture) = self.textures.get(bitmap).cloned() {
+			let [width, height, _] = texture.image.size.map(|n| n as usize);
+			let room = self.textures.room();
+			if regrown((width, height), own, shown, dimension, room).is_none() {
+				return Ok(texture);
+			}
+			// Shrunk, and now shown larger than it holds.
+			self.textures.remove(bitmap);
 		}
-		let size = [bitmap.width, bitmap.height].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-		if !self.textures.make_room(bitmap) {
+		let size = texture_size(own, shown, dimension, self.textures.room()).ok_or(Error::Draw)?;
+		let bytes = size.0 * size.1 * 4;
+		if !self.textures.make_room(bytes) {
 			return Err(Error::Draw);
 		}
-		let device = &self.set.pipeline.device;
 		let image = Image::new(
 			device,
 			Format::Bgra,
-			[size[0], size[1], 1],
+			[size.0 as u32, size.1 as u32, 1],
 			SAMPLED | TRANSFER_DST,
 		);
 		let image = image.map_err(|error| match error {
@@ -204,8 +220,9 @@ impl Renderer {
 			error => error,
 		})?;
 		let texture = Rc::new(TextureSet::new(&self.set.pipeline, &Rc::new(image))?);
-		fresh.push((bitmap.clone(), texture.clone()));
-		Ok(self.textures.insert(bitmap, texture).clone())
+		let shrunk = (size != own).then(|| shrink(bitmap, size));
+		fresh.push((bitmap.clone(), shrunk, texture.clone()));
+		Ok(self.textures.insert(bitmap, texture, bytes).clone())
 	}
 
 	fn record(&mut self, pen: &QuadPen, target: &Rc<Image>) -> Result<Recording<'_>, Error> {
@@ -215,11 +232,11 @@ impl Renderer {
 		self.textures.begin_frame();
 		let mut fresh = Vec::new();
 		let mut shown = Vec::with_capacity(pen.images.len());
-		for image in &pen.images {
-			match self.texture(&image.placement.bitmap, &mut fresh) {
+		for (image, size) in pen.images.iter().zip(shown_sizes(pen)) {
+			match self.texture(&image.placement.bitmap, size, &mut fresh) {
 				Ok(texture) => shown.push(texture),
 				Err(error) => {
-					for (bitmap, _) in &fresh {
+					for (bitmap, ..) in &fresh {
 						self.textures.remove(bitmap);
 					}
 					return Err(error);
@@ -254,14 +271,23 @@ impl Renderer {
 			let mut recording = commands.record()?;
 			let device = &set.pipeline.device;
 			let words = writable(quads, device, (pen.quads.len(), QUAD * 4), STORAGE)?;
-			for (chunks, quad) in words.as_chunks_mut::<QUAD>().0.iter_mut().zip(&pen.quads) {
-				let encoded = encode(quad).ok_or(Error::Draw)?;
+			for (chunks, &quad) in words.as_chunks_mut::<QUAD>().0.iter_mut().zip(&pen.quads) {
+				let quad = match quad.fill {
+					Fill::Image(index, _) => {
+						let bitmap = &pen.images[index].placement.bitmap;
+						let [width, height, _] = shown[index].image.size.map(|n| n as usize);
+						in_texture(quad, (bitmap.width, bitmap.height), (width, height))
+					}
+					_ => quad,
+				};
+				let encoded = encode(&quad).ok_or(Error::Draw)?;
 				for (chunk, word) in chunks.iter_mut().zip(encoded) {
 					*chunk = word.to_ne_bytes();
 				}
 			}
 			let glyphs = pen.uploads.iter().map(|upload| &upload.pixels[..]);
-			let images = fresh_ref.iter().map(|(bitmap, _)| &bitmap.pixels[..]);
+			let images =
+				(fresh_ref.iter()).map(|(bitmap, shrunk, _)| &shrunk.as_ref().unwrap_or(bitmap).pixels[..]);
 			let texels = glyphs
 				.clone()
 				.chain(images.clone())
@@ -283,7 +309,8 @@ impl Renderer {
 				recording.upload(staging, offset, atlas, region)?;
 				offset += upload.pixels.len() as u64 * 4;
 			}
-			for (bitmap, texture) in fresh_ref {
+			for (bitmap, shrunk, texture) in fresh_ref {
+				let bitmap = shrunk.as_ref().unwrap_or(bitmap);
 				let region = Region {
 					layer: 0,
 					at: [0, 0],
@@ -304,7 +331,7 @@ impl Renderer {
 		match recorded {
 			Ok(recording) => Ok(recording),
 			Err(error) => {
-				for (bitmap, _) in &fresh {
+				for (bitmap, ..) in &fresh {
 					textures.remove(bitmap);
 				}
 				Err(error)

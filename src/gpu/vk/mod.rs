@@ -83,6 +83,10 @@ mod renderer_image_edge_tests;
 #[cfg(test)]
 mod renderer_image_tests;
 #[cfg(test)]
+mod renderer_shrink_gpu_tests;
+#[cfg(test)]
+mod renderer_shrink_tests;
+#[cfg(test)]
 mod renderer_tests;
 #[cfg(test)]
 mod round_trip_tests;

@@ -38,7 +38,7 @@ pub(crate) enum Drawn {
 
 pub(crate) struct GpuWindow {
 	/// Dropped first: it waits for the frames it drew.
-	renderer: Renderer,
+	pub(super) renderer: Renderer,
 	/// `None` until the window first has area, and after a remake failed.
 	swapchain: Option<Swapchain>,
 	/// The window size the swapchain was made for; [`REMAKE`] to remake

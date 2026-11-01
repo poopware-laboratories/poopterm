@@ -2,7 +2,7 @@
 //! every order of up to seven quads needing one of three textures or none,
 //! and the cache against a plain least recently used list over random
 //! frames of drawing, dropping and removing bitmaps.
-use super::textures::{Textures, runs};
+use super::textures::{Textures, runs, texture_bytes};
 use crate::graphics::Bitmap;
 use std::sync::Arc;
 
@@ -145,8 +145,8 @@ fn the_cache_keeps_what_a_least_recently_used_list_keeps() {
 					let bytes = bitmap.pixels.len() * 4;
 					let hit = textures.get(bitmap).is_some();
 					let drawn = hit
-						|| textures.make_room(bitmap) && {
-							textures.insert(bitmap, ids[at]);
+						|| textures.make_room(bytes) && {
+							textures.insert(bitmap, ids[at], bytes);
 							true
 						};
 					assert_eq!(drawn, model.draw(ids[at], bytes), "seed {seed} step {step}");
@@ -179,7 +179,10 @@ fn a_bitmap_whose_size_overflows_never_gets_room() {
 			opaque: true,
 			pixels: Vec::new(),
 		};
-		assert!(!textures.make_room(&huge), "{width}×{height}");
+		assert!(
+			!textures.make_room(texture_bytes(&huge)),
+			"{width}×{height}"
+		);
 	}
 	assert_eq!(textures.bytes(), 0);
 }

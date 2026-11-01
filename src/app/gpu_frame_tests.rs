@@ -14,14 +14,12 @@ use crate::{
 			},
 		},
 	},
-	graphics::{Bitmap, Placement, Rect},
 	render::{
 		damage::GridDamage,
 		glyphs::Glyph,
 		pen::{Ink, Pen},
 	},
 };
-use std::sync::Arc;
 
 const SIZE: (usize, usize) = (40, 30);
 const CHROME: u32 = 0x20_3040;
@@ -31,8 +29,8 @@ fn gpu() -> Gpu<&'static str> {
 }
 
 /// Draws like the app: the chrome as a quad, and a cell of grid with a
-/// letter; with `picture`, the grid holds an image.
-fn quads(pen: &mut QuadPen, picture: bool) {
+/// letter; with `huge`, a letter wider than the GPU makes an atlas.
+fn quads(pen: &mut QuadPen, huge: bool) {
 	pen.rect(0, 0, SIZE.0, SIZE.1, CHROME);
 	pen.rect(8, 4, 8, 16, 0xff_0000);
 	let glyph = Glyph {
@@ -46,30 +44,34 @@ fn quads(pen: &mut QuadPen, picture: bool) {
 	};
 	let ink = Ink::Drawn('a', (3, 2));
 	pen.glyph(&glyph, ink, (9, 5), (0, 0, 40, 30), false, 0xffffff);
-	if picture {
-		picture_into(pen);
+	if huge {
+		huge_into(pen);
 	}
 }
 
-/// An image wider than the fake device makes, so the GPU refuses its frame.
-fn picture_into(pen: &mut QuadPen) {
-	let bitmap = Arc::new(Bitmap::new(16385, 1, vec![0xff00_0000; 16385]));
-	let whole = Rect {
-		x: 0,
-		y: 0,
-		width: 40,
-		height: 30,
+/// A letter wider than the fake device makes an atlas, which no atlas
+/// grows to hold, so the GPU refuses its frame.
+fn huge_into(pen: &mut QuadPen) {
+	let glyph = Glyph {
+		metrics: Metrics {
+			width: 16385,
+			height: 1,
+			..Metrics::default()
+		},
+		coverage: vec![0x80; 16385],
+		color: None,
 	};
-	pen.placement(whole, &Placement::natural(bitmap, 0, 0), (0, 0), (8, 16));
+	let ink = Ink::Drawn('w', (16385, 1));
+	pen.glyph(&glyph, ink, (0, 0), (0, 0, 40, 30), false, 0xffffff);
 }
 
 /// Draws a frame `size` pixels large, saying what it came to.
-fn frame_of(gpu: &mut Gpu<&str>, size: (usize, usize), picture: bool) -> Next {
-	gpu.frame(size, |pen| quads(pen, picture))
+fn frame_of(gpu: &mut Gpu<&str>, size: (usize, usize), huge: bool) -> Next {
+	gpu.frame(size, |pen| quads(pen, huge))
 }
 
-fn frame(gpu: &mut Gpu<&str>, picture: bool) -> Next {
-	frame_of(gpu, SIZE, picture)
+fn frame(gpu: &mut Gpu<&str>, huge: bool) -> Next {
+	frame_of(gpu, SIZE, huge)
 }
 
 /// What a frame the GPU refused comes to: the window goes to software.
@@ -117,14 +119,16 @@ fn a_window_without_area_shows_nothing_and_waits() {
 }
 
 #[test]
-fn a_swapchain_out_of_date_is_remade_before_the_gpu_refuses_a_frame() {
+fn a_frame_no_atlas_holds_is_refused_before_a_swapchain_image_is_taken() {
 	let mut gpu = gpu();
 	frame(&mut gpu, false);
-	// The swapchain is remade first: the frame is drawn again, and only
-	// then refused.
+	// Refused at once, without touching the out-of-date swapchain: the
+	// next frame drawn finds it so, and remakes it.
 	fake_out_of_date();
-	assert_eq!(frame(&mut gpu, true), Next::Redraw);
 	assert_eq!(frame(&mut gpu, true), refused());
+	assert_eq!(presents(), 1);
+	assert_eq!(frame(&mut gpu, false), Next::Redraw);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
 	close(gpu.gpu);
 }
 
@@ -175,7 +179,7 @@ fn a_gpu_failing_a_frame_of_quads_is_abandoned_and_says_why() {
 
 /// Draws a frame of quads whose grid is two rows, each a rectangle, the
 /// ones the pen says to draw; returns what it came to and the rows drawn.
-fn grid_frame(gpu: &mut Gpu<&str>, picture: bool) -> (Next, Option<Vec<bool>>) {
+fn grid_frame(gpu: &mut Gpu<&str>, huge: bool) -> (Next, Option<Vec<bool>>) {
 	let mut drawn = None;
 	let next = gpu.frame(SIZE, |pen| {
 		drawn = pen.rows_to_draw().map(<[bool]>::to_vec);
@@ -187,8 +191,8 @@ fn grid_frame(gpu: &mut Gpu<&str>, picture: bool) -> (Next, Option<Vec<bool>>) {
 			}
 		}
 		pen.end_grid(2);
-		if picture {
-			picture_into(pen);
+		if huge {
+			huge_into(pen);
 		}
 	});
 	(next, drawn)
@@ -226,7 +230,7 @@ fn a_frame_refused_or_failed_leaves_the_pen_without_rows() {
 	let mut gpu = gpu();
 	grid_frame(&mut gpu, false);
 	assert!(gpu.keeps_rows());
-	// A frame with an image is refused, and the pen started over.
+	// A frame with a huge letter is refused, and the pen started over.
 	assert_eq!(grid_frame(&mut gpu, true).0, refused());
 	assert!(!gpu.keeps_rows());
 	grid_frame(&mut gpu, false);

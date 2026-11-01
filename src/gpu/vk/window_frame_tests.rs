@@ -1,6 +1,7 @@
 //! Tests of what a window drawn by the GPU puts in its swapchain images,
 //! against the fake driver of `driver_tests`: the quads alone, in the
-//! image of the swapchain the window has now, pictures as textures, and
+//! image of the swapchain the window has now, pictures as textures, those
+//! wider than the device shrunk, and
 //! the glyphs of a frame it refused uploaded by the next one.
 use super::{
 	call::Error,
@@ -11,7 +12,7 @@ use super::{
 	window_tests::{ATLAS, SIZE, close, open, pen, showing, swapchains, uploads},
 };
 use crate::{
-	gpu::quads::QuadPen,
+	gpu::{quads::QuadPen, textures::Textures},
 	graphics::{Bitmap, Placement, Rect},
 	render::pen::{Ink, Pen},
 };
@@ -48,13 +49,14 @@ fn lettered(
 fn a_frame_with_a_picture_is_drawn_with_its_texture_and_shown() {
 	let mut window = open(showing(), false).unwrap();
 	let mut pen = QuadPen::new((40, 30), ATLAS);
-	for width in [2, LIMIT] {
+	// One pixel wider than the device makes is shrunk to its width.
+	for (width, texture) in [(2, 2), (LIMIT, LIMIT), (LIMIT + 1, LIMIT)] {
 		assert_eq!(
 			lettered(&mut window, &mut pen, Some(width)),
 			Ok(Drawn::Shown)
 		);
 		let recorded = with(|driver| std::mem::take(&mut driver.recorded));
-		let size = format!("size {width}x1");
+		let size = format!("size {texture}x1 of");
 		assert!(
 			recorded.iter().any(|call| call.contains(&size)),
 			"{recorded:?}"
@@ -74,13 +76,11 @@ fn a_frame_with_a_picture_is_drawn_with_its_texture_and_shown() {
 fn the_glyphs_of_a_refused_frame_are_uploaded_by_the_next() {
 	let mut window = open(showing(), false).unwrap();
 	let mut pen = QuadPen::new((40, 30), ATLAS);
-	// A picture wider than the device makes is left to software, though a
+	// A picture the texture budget has no room for is refused, though a
 	// swapchain image was taken for it; its glyph never reached the GPU,
 	// so the next frame the GPU draws must upload it.
-	assert_eq!(
-		lettered(&mut window, &mut pen, Some(LIMIT + 1)),
-		Err(Error::Draw)
-	);
+	window.renderer.textures = Textures::new(0);
+	assert_eq!(lettered(&mut window, &mut pen, Some(2)), Err(Error::Draw));
 	assert_eq!(uploads(), 0);
 	assert!(pen.quads.is_empty(), "the pen started over");
 	assert_eq!(lettered(&mut window, &mut pen, None), Ok(Drawn::Shown));

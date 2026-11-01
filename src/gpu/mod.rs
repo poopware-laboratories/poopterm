@@ -26,6 +26,11 @@ pub(crate) mod rows;
 mod rows_plan_tests;
 #[cfg(test)]
 mod rows_tests;
+pub(crate) mod shrink;
+#[cfg(test)]
+mod shrink_pen_tests;
+#[cfg(test)]
+mod shrink_tests;
 pub(crate) mod textures;
 #[cfg(test)]
 mod textures_model_tests;
