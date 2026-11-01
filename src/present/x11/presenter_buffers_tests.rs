@@ -5,6 +5,7 @@ use super::{
 	fake_tests::{DISPLAY, Put, client, server, window},
 	presenter::{Presented, Presenter},
 };
+use crate::present::pool::MAX_BUFFERS;
 
 fn presenter(window: u32) -> Presenter {
 	// SAFETY: the fake display is live for the thread.
@@ -52,4 +53,49 @@ fn dropping_flushes_the_requests_that_take_everything_back() {
 	// Unflushed, the detach and the GC's release would wait in libxcb's
 	// buffer for whatever request the display sends next.
 	assert_eq!(server(|server| server.flushes), flushes + 1);
+}
+
+#[test]
+fn a_resize_while_the_server_holds_every_buffer_shows_at_once_and_frees_them_later() {
+	let window = window(24, [4, 4]);
+	let mut presenter = presenter(window);
+	let frame = |seed: u32, pixels: u32| (0..pixels).map(|index| seed << 24 | index).collect();
+	let mut seed = 0;
+	let held = loop {
+		seed += 1;
+		let pixels: Vec<u32> = frame(seed, 16);
+		match presenter.present(&pixels, [4, 4], None) {
+			Ok(Presented::Shown) => continue,
+			busy => break busy,
+		}
+	};
+	assert_eq!(held, Ok(Presented::Busy));
+	let attached = || {
+		server(|server| {
+			server.serve();
+			server.segments.len()
+		})
+	};
+	// Buffers of the old size cannot take the new frame, so it does not
+	// wait for them: one more is made, beside the three the server holds.
+	let small: Vec<u32> = frame(0xab, 6);
+	assert_eq!(
+		presenter.present(&small, [3, 2], None),
+		Ok(Presented::Shown)
+	);
+	assert_eq!(attached(), MAX_BUFFERS + 1);
+	// Once read, the old ones are detached rather than kept for reuse.
+	let next: Vec<u32> = frame(0xac, 6);
+	assert_eq!(presenter.present(&next, [3, 2], None), Ok(Presented::Shown));
+	assert_eq!(attached(), 1, "the new size's one, read and reused");
+	assert_eq!(
+		server(|server| server.windows[&window].pixels[..3].to_vec()),
+		next[..3]
+	);
+	drop(presenter);
+	server(|server| {
+		server.serve();
+		assert_eq!(server.broken, Vec::<String>::new());
+		assert!(server.segments.is_empty());
+	});
 }
