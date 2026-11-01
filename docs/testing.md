@@ -145,5 +145,10 @@ Notes:
   same bytes headlessly instead: a temporary ignored test that feeds them to
   a `Term`, draws the `Frame` with the helpers in `canvas_pixels_tests.rs` and
   saves a PNG with `image::save_buffer`. Remove the test afterwards.
+- **Screenshots for a pull request** go in `docs/screenshots/<topic>/` in
+  that same pull request, never on a separate branch (`main` is the only
+  long-lived branch). Link them by their path on `main`
+  (`https://github.com/poopware-laboratories/poopterm/blob/main/docs/screenshots/<topic>/<file>.png?raw=true`);
+  the links work once the pull request merges.
 - Debug builds panic if a thread locks a terminal it already holds, so run
   new UI code paths in a debug build at least once.
