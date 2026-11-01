@@ -1,7 +1,6 @@
 //! The grid drawn by a real GPU: every shared grid scene, drawn as quads
 //! by the renderer and read back, matches what the software renderer
-//! paints within one step a channel, and the scene with images is left to
-//! software. Run by the loader's tests and by its validation child.
+//! paints within one step a channel, images included. Run by the loader's tests and by its validation child.
 use super::{
 	buffer::Buffer,
 	call::Error,
@@ -80,7 +79,7 @@ pub(super) fn differing(drawn: &[u32], painted: &[u32], layers: &[u32]) -> usize
 }
 
 /// Draws every scene on `device` and says which differ from software, and
-/// by how many pixels; the scene with images must be refused.
+/// by how many pixels.
 pub(super) fn unlike_software(device: &Rc<Device>) -> Result<Vec<String>, Error> {
 	let (width, height) = SIZE;
 	let pipeline = Rc::new(QuadPipeline::new(device, Format::Bgra)?);
@@ -108,16 +107,7 @@ pub(super) fn unlike_software(device: &Rc<Device>) -> Result<Vec<String>, Error>
 		// What the software renderer starts from.
 		pen.rect(0, 0, width, height, BG);
 		draw_grid(&mut pen, &mut fonts, &view, None);
-		let images = !case.frame.images.is_empty();
-		let mut recording = match renderer.frame(&mut pen, &target) {
-			Err(Error::Draw) if images => continue,
-			Err(error) => return Err(error),
-			Ok(_) if images => {
-				unlike.push(format!("{}: drawn with images", case.name));
-				continue;
-			}
-			Ok(recording) => recording,
-		};
+		let mut recording = renderer.frame(&mut pen, &target)?;
 		recording.download(&target, whole, &readback, 0)?;
 		recording.submit()?;
 		renderer.finish()?;

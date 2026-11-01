@@ -146,8 +146,11 @@ issue before starting a piece.
   window draws its grid through it on Linux and FreeBSD, over the chrome
   software paints (copied in as a backdrop each frame), falling back to
   software for good if the GPU fails. `POOPTERM_RENDERER` overrides the
-  configured renderer. Still to do: frames with images (painted whole by
-  software for now), repainting and uploading only the chrome that changed
+  configured renderer. Sixel, kitty and iTerm2 images are drawn as textures,
+  uploaded once and kept while their bitmap lives (256 MiB at most; a frame
+  needing more, or an image larger than the device makes, is painted by
+  software). Still to do: the wallpaper as a texture, then dropping the
+  backdrop, repainting and uploading only the chrome that changed
   (a full backdrop each frame costs about 6% more CPU in a flood), the
   chrome on the GPU, and fractional scale.
 

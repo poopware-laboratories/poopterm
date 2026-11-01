@@ -24,5 +24,10 @@ pub(crate) mod rows;
 mod rows_plan_tests;
 #[cfg(test)]
 mod rows_tests;
+pub(crate) mod textures;
+#[cfg(test)]
+mod textures_model_tests;
+#[cfg(test)]
+mod textures_tests;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(crate) mod vk;

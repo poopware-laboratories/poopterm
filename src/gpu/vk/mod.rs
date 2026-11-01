@@ -34,6 +34,8 @@ mod draw_gpu_tests;
 #[cfg(test)]
 mod draw_rules_tests;
 #[cfg(test)]
+mod draw_runs_tests;
+#[cfg(test)]
 mod draw_tests;
 pub(crate) mod draw_types;
 #[cfg(test)]
@@ -81,6 +83,10 @@ mod renderer_backdrop_tests;
 #[cfg(test)]
 mod renderer_gpu_tests;
 #[cfg(test)]
+mod renderer_image_edge_tests;
+#[cfg(test)]
+mod renderer_image_tests;
+#[cfg(test)]
 mod renderer_tests;
 #[cfg(test)]
 mod round_trip_tests;
@@ -110,6 +116,8 @@ mod swapchain_tests;
 pub(crate) mod swapchain_types;
 #[cfg(test)]
 mod swapchain_types_tests;
+#[cfg(test)]
+mod texture_set_tests;
 pub(crate) mod timeline;
 #[cfg(test)]
 mod timeline_tests;

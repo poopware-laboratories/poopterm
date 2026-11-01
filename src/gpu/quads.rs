@@ -23,8 +23,9 @@ pub(crate) enum Fill {
 	Coverage(Slot),
 	/// The atlas texels in `Slot`, straight alpha.
 	Color(Slot),
-	/// The image [`QuadPen::images`] holds at this index.
-	Image(usize),
+	/// The image [`QuadPen::images`] holds at this index: the part of its
+	/// bitmap in the `Rect`, scaled to the quad's size.
+	Image(usize, Rect),
 }
 
 /// A rectangle drawn at `at`, `size` pixels large, showing only what lies
@@ -262,12 +263,19 @@ impl Pen for QuadPen {
 		at: (isize, isize),
 		cell: (usize, usize),
 	) {
+		let (width, height) = placement.size(cell);
+		let source = placement.source;
+		if width == 0 || height == 0 || source.width == 0 || source.height == 0 {
+			return;
+		}
+		let left = (at.0 + placement.offset.0 as isize) as i32;
+		let top = (at.1 + placement.offset.1 as isize) as i32;
 		let (x, y) = (clip.x as i32, clip.y as i32);
 		self.quads.push(Quad {
-			at: (x, y),
-			size: (clip.width, clip.height),
+			at: (left, top),
+			size: (width, height),
 			clip: (x, y, x + clip.width as i32, y + clip.height as i32),
-			fill: Fill::Image(self.images.len()),
+			fill: Fill::Image(self.images.len(), source),
 			italic: false,
 			color: 0,
 		});

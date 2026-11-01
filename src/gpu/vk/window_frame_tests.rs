@@ -83,6 +83,10 @@ fn a_backdrop_is_copied_into_the_swapchain_image_before_the_quads() {
 #[test]
 fn a_window_without_area_copies_no_backdrop_and_takes_no_image() {
 	let mut window = open(showing(), false).unwrap();
+	// Opening writes the blank texture's set; the draws record nothing.
+	let opened = with(|driver| std::mem::take(&mut driver.recorded));
+	assert_eq!(opened.len(), 1);
+	assert!(opened[0].starts_with("write"), "{opened:?}");
 	let backdrop = vec![0x30_5070; 40 * 30];
 	for size in [[0, 30], [40, 0]] {
 		let under = Backdrop {
@@ -92,7 +96,7 @@ fn a_window_without_area_copies_no_backdrop_and_takes_no_image() {
 		let drawn = window.draw(&mut pen(SIZE), size, Some(under));
 		assert_eq!(drawn, Ok(Drawn::Skipped), "{size:?}");
 	}
-	assert!(with(|driver| driver.recorded.is_empty()));
+	assert_eq!(with(|driver| driver.recorded.clone()), [""; 0]);
 	assert!(with(|driver| driver.acquire_timeouts.is_empty()));
 	close(window);
 }

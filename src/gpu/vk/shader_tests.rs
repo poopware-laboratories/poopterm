@@ -124,11 +124,12 @@ fn the_shaders_are_spirv_1_6_with_the_entry_points_and_bindings_the_pipeline_exp
 	assert_eq!(vertex[1], V1_6);
 	assert_eq!(fragment[1], V1_6);
 	// Execution models 0, vertex, and 4, fragment. The vertex shader reads
-	// the quads; the fragment shader reads them and samples the atlas.
+	// the quads; the fragment shader reads them and samples the atlas, and
+	// the image of set 1.
 	assert_eq!(interface(&vertex), (vec![(0, "main".into())], vec![(0, 0)]));
 	assert_eq!(
 		interface(&fragment),
-		(vec![(4, "main".into())], vec![(0, 0), (0, 1)])
+		(vec![(4, "main".into())], vec![(0, 0), (0, 1), (1, 0)])
 	);
 }
 
@@ -366,7 +367,8 @@ fn the_shaders_declare_what_the_pipeline_layout_and_the_renderer_provide() {
 		]
 	);
 	// Binding 1 is the atlas: a combined image sampler over a sampled 2D
-	// array of float texels, not multisampled, as the set layout declares.
+	// array of float texels, not multisampled, as the set layout declares;
+	// set 1's binding 0, the image, is the same.
 	let atlas = "sampled image of f32 (dim 1 depth 0 arrayed 1 ms 0 usage 1)";
 	assert_eq!(
 		fragment,
@@ -375,6 +377,7 @@ fn the_shaders_declare_what_the_pipeline_layout_and_the_renderer_provide() {
 			"output location 0: f32x4".into(),
 			QUADS.into(),
 			format!("uniform constant 0.1: {atlas}"),
+			format!("uniform constant 1.0: {atlas}"),
 		]
 	);
 	// What the vertex shader hands on is what the fragment shader reads.

@@ -102,10 +102,11 @@ fn the_device_is_made_on_the_family_that_draws_and_shows() {
 fn the_atlas_has_the_pages_asked_for() {
 	let window = open(showing(), false).unwrap();
 	let driver = close(window);
-	// Sampled and copied into: the atlas, not a swapchain image.
-	let atlas: Vec<_> = (driver.images.iter())
+	// Sampled and copied into: the atlas, then the blank texture bound
+	// where no image is drawn; not a swapchain image.
+	let sampled: Vec<_> = (driver.images.iter())
 		.filter(|image| image.usage == 0x4 | 0x2)
 		.map(|image| (image.extent, image.layers))
 		.collect();
-	assert_eq!(atlas, [([64, 64, 1], 2)]);
+	assert_eq!(sampled, [([64, 64, 1], 2), ([1, 1, 1], 1)]);
 }

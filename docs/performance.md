@@ -669,8 +669,8 @@ backdrop: the whole frame is quads. Same machine, method and configuration,
 The GPU now draws a full frame 2.5× (scale 1) to 7× (scale 2) faster than
 software, whose cost grows with the pixels it paints. Typing latency is
 still higher than software's, which redraws only the damaged rows: the GPU
-redraws every quad and waits on presentation. Wallpapers keep the backdrop
-until images are drawn on the GPU (#27).
+redraws every quad and waits on presentation. Images are now drawn on the
+GPU (#27); wallpapers keep the backdrop until they are textures too.
 
 Flood throughput does not depend on the renderer: the parser bounds it and
 frames are capped at 30 fps. `scripts/bench-throughput.py` (16 MiB × 3) as

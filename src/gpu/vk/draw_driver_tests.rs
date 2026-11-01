@@ -1,15 +1,18 @@
 //! The fake driver's descriptor update and drawing functions, for
 //! `draw_tests`: each checks the specification's valid usage rules, among
 //! them that no recorded or pending commands use a set being updated, that
-//! rendering goes to a view in the color attachment layout of the
-//! pipeline's format, and that a draw finds its atlas readable and its
-//! quads in the bound buffer, and records what it did.
+//! a write is of a binding its set's layout has, that rendering goes to a
+//! view in the color attachment layout of the pipeline's format, and that
+//! a draw finds its atlas and image readable and its quads in the bound
+//! buffer, and records what it did.
 use super::{
 	descriptor_driver_tests::{POOLS, SETS},
 	descriptor_types::RawDescriptorSet,
 	draw_types::*,
 	driver_tests::{Driver, with},
-	pipeline_driver_tests::{COMBINED_IMAGE_SAMPLER, PIPELINE_LAYOUTS, PIPELINES, STORAGE_BUFFER},
+	pipeline_driver_tests::{
+		COMBINED_IMAGE_SAMPLER, PIPELINE_LAYOUTS, PIPELINES, SET_LAYOUTS, STORAGE_BUFFER,
+	},
 	pipeline_types::{RawPipeline, RawPipelineLayout},
 	submit_types::RawCommandBuffer,
 	types::*,
@@ -28,6 +31,8 @@ pub(super) struct Drawing {
 	pub pipeline: Option<RawPipeline>,
 	/// The bound set and the pipeline layout it was bound with.
 	pub set: Option<(RawDescriptorSet, RawPipelineLayout)>,
+	/// The same of set 1, the image's.
+	pub texture: Option<(RawDescriptorSet, RawPipelineLayout)>,
 	pub pushed: bool,
 	pub viewport: bool,
 	pub scissor: bool,
@@ -99,12 +104,30 @@ impl Driver {
 			.map(|buffer| &mut buffer.drawing)
 	}
 
-	/// Breaks the test unless the descriptor in `write` suits the quad set
+	/// Whether the layout of `set` has a binding numbered `binding` of
+	/// `kind`.
+	fn declares(&self, set: RawDescriptorSet, binding: u32, kind: i32) -> bool {
+		let sets = &self.pipeline_objects.sets;
+		let layout = sets
+			.get(set.wrapping_sub(SETS + 1) as usize)
+			.map(|&(_, layout)| layout);
+		let layouts = &self.pipeline_objects.set_layouts;
+		let bindings =
+			layout.and_then(|layout| layouts.get(layout.wrapping_sub(SET_LAYOUTS + 1) as usize));
+		bindings.is_some_and(|bindings| {
+			bindings
+				.iter()
+				.any(|&(at, of, ..)| (at, of) == (binding, kind))
+		})
+	}
+
+	/// Breaks the test unless the descriptor in `write` suits its set's
 	/// layout, and returns what it points to and its range or layout.
 	fn check_write(&mut self, write: &WriteDescriptorSet) -> (u64, u64) {
 		let one = write.dst_array_element == 0 && write.descriptor_count == 1;
-		let (rules, written) = match (write.dst_binding, write.descriptor_type) {
-			(0, STORAGE_BUFFER) if !write.buffer_info.is_null() => {
+		let declared = self.declares(write.dst_set, write.dst_binding, write.descriptor_type);
+		let (rules, written) = match (declared, write.descriptor_type) {
+			(true, STORAGE_BUFFER) if !write.buffer_info.is_null() => {
 				// SAFETY: the bindings pass one buffer info for one descriptor.
 				let info = unsafe { &*write.buffer_info };
 				let made = self.made_buffer(info.buffer);
@@ -118,7 +141,7 @@ impl Driver {
 				];
 				(rules, (info.buffer, info.range))
 			}
-			(1, COMBINED_IMAGE_SAMPLER) if !write.image_info.is_null() => {
+			(true, COMBINED_IMAGE_SAMPLER) if !write.image_info.is_null() => {
 				// SAFETY: the bindings pass one image info for one descriptor.
 				let info = unsafe { &*write.image_info };
 				let image = self.viewed(info.image_view);
@@ -136,7 +159,7 @@ impl Driver {
 				(rules, (info.image_view, info.image_layout as u64))
 			}
 			_ => (
-				[(false, "a binding of the quad set layout"), (true, "")],
+				[(false, "a binding of the set's layout"), (true, "")],
 				(0, 0),
 			),
 		};
@@ -184,7 +207,7 @@ pub(super) unsafe extern "system" fn update_sets(
 			for buffer in &mut driver.command_buffers {
 				buffer.drawing.stale |= buffer.drawing.sets.contains(&write.dst_set);
 			}
-			let kind = if write.dst_binding == 0 {
+			let kind = if write.descriptor_type == STORAGE_BUFFER {
 				"range"
 			} else {
 				"layout"
@@ -397,13 +420,13 @@ pub(super) unsafe extern "system" fn bind_sets(
 			.get(set.wrapping_sub(SETS + 1) as usize)
 			.copied();
 		let rules = [
-			(point == 0 && first == 0, "the first set for graphics"),
+			(point == 0 && first <= 1, "set 0 or 1 for graphics"),
 			(live_layout, "a live pipeline layout"),
 			(driver.live_set(set), "a set of a live pool"),
 			(
 				made
 					.zip(set_layouts)
-					.is_some_and(|((_, of), layouts)| layouts.first() == Some(&of)),
+					.is_some_and(|((_, of), layouts)| layouts.get(first as usize) == Some(&of)),
 				"a set of the layout's set layout",
 			),
 			(offsets == 0, "no dynamic offsets"),
@@ -412,10 +435,16 @@ pub(super) unsafe extern "system" fn bind_sets(
 			driver.require(holds, || format!("{call}: {rule}"));
 		}
 		if let Some(drawing) = driver.drawing(buffer, call) {
-			drawing.set = Some((set, layout));
+			match first {
+				0 => drawing.set = Some((set, layout)),
+				_ => drawing.texture = Some((set, layout)),
+			}
 			drawing.sets.push(set);
 		}
-		driver.recorded.push(format!("bind set {set:#x}"));
+		match first {
+			0 => driver.recorded.push(format!("bind set {set:#x}")),
+			_ => driver.recorded.push(format!("bind image set {set:#x}")),
+		}
 	})
 }
 
@@ -473,6 +502,7 @@ pub(super) unsafe extern "system" fn draw(
 			return;
 		};
 		let (rendering, pipeline, set) = (drawing.rendering, drawing.pipeline, drawing.set);
+		let texture = drawing.texture;
 		let ready = drawing.pushed && drawing.viewport && drawing.scissor;
 		let made = pipeline.and_then(|pipeline| {
 			let index = (pipeline - PIPELINES - 1) as usize;
@@ -494,6 +524,14 @@ pub(super) unsafe extern "system" fn draw(
 			.and_then(|(set, _)| driver.written(set, 1))
 			.and_then(|(view, _)| driver.viewed(view));
 		let readable = atlas.is_some_and(|atlas| driver.layout(buffer, atlas) == READ_ONLY_LAYOUT);
+		let textured = made
+			.as_ref()
+			.zip(texture)
+			.is_some_and(|(&(_, made), (_, layout))| made == layout);
+		let image = texture
+			.and_then(|(set, _)| driver.written(set, 0))
+			.and_then(|(view, _)| driver.viewed(view));
+		let shown = image.is_some_and(|image| driver.layout(buffer, image) == READ_ONLY_LAYOUT);
 		let read = (u64::from(first_instance) + u64::from(instances)) * QUAD;
 		let held = quads.and_then(|(quads, range)| {
 			let (size, _) = driver.made_buffer(quads)?;
@@ -506,6 +544,8 @@ pub(super) unsafe extern "system" fn draw(
 			(formats_match, "a target of the pipeline's format"),
 			(layouts_match, "a set bound with the pipeline's layout"),
 			(readable, "an atlas read only by shaders"),
+			(textured, "an image set bound with the pipeline's layout"),
+			(shown, "an image read only by shaders"),
 			(held == Some(true), "every quad drawn in the bound buffer"),
 			(vertices > 0 && first_vertex == 0, "vertices from the first"),
 		];

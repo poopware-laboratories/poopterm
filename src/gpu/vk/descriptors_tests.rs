@@ -72,6 +72,7 @@ fn a_set_keeps_its_pipeline_and_device_alive_and_goes_first() {
 			"pipeline 0x640001",
 			"pipeline layout 0x630001",
 			"set layout 0x620001",
+			"set layout 0x620002",
 			"sampler 0x610001",
 		]
 	);

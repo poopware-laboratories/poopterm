@@ -8,7 +8,7 @@ use super::{
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
 	commands::Commands,
-	descriptors::QuadSet,
+	descriptors::{QuadSet, TextureSet},
 	device::Device,
 	draw::Draw,
 	driver_tests::{Driver, family, finish, install, with, with_devices},
@@ -19,7 +19,7 @@ use super::{
 	timeline::Timeline,
 	version::api_version,
 };
-use std::{num::NonZeroUsize, rc::Rc};
+use std::{num::NonZeroUsize, ops::Range, rc::Rc};
 
 /// `VK_BUFFER_USAGE_TRANSFER_SRC_BIT` and `_DST_BIT`, which image usage
 /// shares; `VK_IMAGE_USAGE_SAMPLED_BIT` and `_COLOR_ATTACHMENT_BIT`; and
@@ -32,12 +32,25 @@ const STORAGE: u32 = 0x20;
 
 /// What the tests draw with, on a fake device: room for three quads, an
 /// atlas of two pages, and a 16×8 target.
-struct Scene {
-	timeline: Rc<Timeline>,
-	set: Rc<QuadSet>,
-	quads: Rc<Buffer>,
-	atlas: Rc<Image>,
-	target: Rc<Image>,
+pub(super) struct Scene {
+	pub timeline: Rc<Timeline>,
+	pub set: Rc<QuadSet>,
+	pub quads: Rc<Buffer>,
+	pub atlas: Rc<Image>,
+	pub target: Rc<Image>,
+	/// Runs of 0 to 4 quads, all with one image.
+	pub runs: [Vec<(Range<u32>, Rc<TextureSet>)>; 5],
+}
+
+/// A texture set of `pipeline` for an image 2 pixels square.
+pub(super) fn texture(pipeline: &Rc<QuadPipeline>) -> Rc<TextureSet> {
+	let image = image(
+		&pipeline.device,
+		Format::Bgra,
+		[2, 2, 1],
+		SAMPLED | TRANSFER_DST,
+	);
+	Rc::new(TextureSet::new(pipeline, &image).unwrap())
 }
 
 fn quads(device: &Rc<Device>, bytes: usize, usage: u32) -> Rc<Buffer> {
@@ -49,7 +62,7 @@ fn image(device: &Rc<Device>, format: Format, size: [u32; 3], usage: u32) -> Rc<
 	Rc::new(Image::new(device, format, size, usage).unwrap())
 }
 
-fn scene() -> (Commands, Scene) {
+pub(super) fn scene() -> (Commands, Scene) {
 	scene_on(&device(&INTEL, |_| {}))
 }
 
@@ -57,7 +70,8 @@ fn scene_on(device: &Rc<Device>) -> (Commands, Scene) {
 	let timeline = Rc::new(Timeline::new(device).unwrap());
 	let pipeline = Rc::new(QuadPipeline::new(device, Format::Bgra).unwrap());
 	let commands = Commands::new(&timeline).unwrap();
-	let scene = Scene {
+	let mut scene = Scene {
+		runs: Default::default(),
 		timeline,
 		set: Rc::new(QuadSet::new(&pipeline).unwrap()),
 		quads: quads(device, 3 * 48, STORAGE),
@@ -69,26 +83,36 @@ fn scene_on(device: &Rc<Device>) -> (Commands, Scene) {
 			COLOR_ATTACHMENT | TRANSFER_SRC,
 		),
 	};
+	// Made last, so the rest keep their handles.
+	let texture = texture(&pipeline);
+	scene.runs = [0, 1, 2, 3, 4].map(|count| match count {
+		0 => Vec::new(),
+		count => vec![(0..count, texture.clone())],
+	});
 	(commands, scene)
 }
 
 impl Scene {
-	/// A draw of `count` quads with the scene's set, atlas and target.
-	fn draw(&self, count: u32) -> Draw<'_> {
+	/// A draw of `count` quads with the scene's set, atlas, image and
+	/// target.
+	pub(super) fn draw(&self, count: usize) -> Draw<'_> {
 		Draw {
 			set: &self.set,
 			quads: &self.quads,
-			count,
+			runs: &self.runs[count],
 			atlas: &self.atlas,
 			target: &self.target,
 		}
 	}
 }
 
-/// What was recorded from the first descriptor write on.
-fn drawn(driver: &Driver) -> Vec<&str> {
+/// What was recorded from the first write of the quad set on, the image
+/// set being written once made.
+pub(super) fn drawn(driver: &Driver) -> Vec<&str> {
 	let recorded = driver.recorded.iter().map(String::as_str);
-	let from = recorded.clone().position(|call| call.starts_with("write"));
+	let from = recorded
+		.clone()
+		.position(|call| call.starts_with("write 0x660001 "));
 	recorded.skip(from.unwrap_or(usize::MAX)).collect()
 }
 
@@ -102,13 +126,15 @@ fn a_draw_points_the_set_at_the_quads_and_atlas_and_renders_over_the_target() {
 	assert_eq!(scene.target.layout.get(), Layout::ColorAttachment);
 	drop((commands, scene));
 	let driver = finish();
-	// The whole buffer, the atlas's view read by shaders; the atlas made
-	// readable and the target writable; loaded, so quads go over what is
-	// there; the target's size pushed for the vertex shader.
+	// The whole buffer, the atlas's view read by shaders; the atlas and the
+	// image made readable and the target writable; loaded, so quads go over
+	// what is there; the target's size pushed for the vertex shader; the
+	// image's set bound for its run.
 	let expected = [
 		"write 0x660001 binding 0: 0xb00001 range 0xffffffffffffffff",
 		"write 0x660001 binding 1: 0xf00001 layout 0x5",
 		"barrier 0xa00001 0 to 5",
+		"barrier 0xa00003 0 to 5",
 		"barrier 0xa00002 0 to 2",
 		"begin rendering 0xf00002 at 0,0 size 16x8 load 0",
 		"bind pipeline 0x640001",
@@ -116,6 +142,7 @@ fn a_draw_points_the_set_at_the_quads_and_atlas_and_renders_over_the_target() {
 		"scissor 0,0 size 16x8",
 		"bind set 0x660001",
 		"push [16.0, 8.0]",
+		"bind image set 0x660002",
 		"draw 6 vertices of 3 instances from 0",
 		"end rendering",
 		"end 0x7c0001",
@@ -162,9 +189,11 @@ fn a_drawn_target_reads_back_after_the_draw_and_layouts_carry_over() {
 		barriers,
 		[
 			"barrier 0xa00001 0 to 5",
+			"barrier 0xa00003 0 to 5",
 			"barrier 0xa00002 0 to 2",
 			"barrier 0xa00002 2 to 6",
 			"barrier 0xa00001 5 to 5",
+			"barrier 0xa00003 5 to 5",
 			"barrier 0xa00002 6 to 2",
 		]
 	);
@@ -185,13 +214,17 @@ fn draws_that_break_a_rule_are_refused_and_record_and_hold_nothing() {
 		[16, 8, 1],
 		COLOR_ATTACHMENT | SAMPLED,
 	);
+	// An image of another pipeline's set layout, and the target as an image.
+	let rgba_pipeline = Rc::new(QuadPipeline::new(&device, Format::Rgba).unwrap());
+	let foreign = [(0..1, texture(&rgba_pipeline))];
+	let shown_target = [(
+		0..1,
+		Rc::new(TextureSet::new(&scene.set.pipeline, &both).unwrap()),
+	)];
 	let mut recording = commands.record().unwrap();
 	let cases = [
 		// The quads: drawn past the buffer's end, or not made for storage.
-		Draw {
-			count: 4,
-			..scene.draw(0)
-		},
+		scene.draw(4),
 		Draw {
 			quads: &unstored,
 			..scene.draw(1)
@@ -220,6 +253,16 @@ fn draws_that_break_a_rule_are_refused_and_record_and_hold_nothing() {
 			target: &both,
 			..scene.draw(1)
 		},
+		// An image of another pipeline's, or the target shown as an image.
+		Draw {
+			runs: &foreign,
+			..scene.draw(1)
+		},
+		Draw {
+			target: &both,
+			runs: &shown_target,
+			..scene.draw(1)
+		},
 	];
 	for (case, draw) in cases.into_iter().enumerate() {
 		assert_eq!(recording.draw(draw), Err(Error::Draw), "case {case}");
@@ -227,7 +270,7 @@ fn draws_that_break_a_rule_are_refused_and_record_and_hold_nothing() {
 	assert_eq!(recording.sets.len(), 0);
 	// Exactly as many quads as the buffer holds are drawn.
 	assert_eq!(recording.draw(scene.draw(3)), Ok(()));
-	drop(recording);
+	drop((recording, foreign, shown_target, rgba_pipeline));
 	let images = [&unsampled, &unattached, &rgba, &layered, &both].map(Rc::strong_count);
 	assert_eq!((Rc::strong_count(&unstored), images), (1, [1; 5]));
 	drop((
@@ -244,7 +287,9 @@ fn draws_that_break_a_rule_are_refused_and_record_and_hold_nothing() {
 		.iter()
 		.filter(|call| call.starts_with("barrier"))
 		.count();
-	assert_eq!((writes, barriers), (2, 2));
+	// The three image sets, written once made, then the one draw's set;
+	// the atlas, the image and the target made ready for it.
+	assert_eq!((writes, barriers), (5, 3));
 }
 
 #[test]
@@ -283,6 +328,10 @@ fn draws_between_devices_are_refused() {
 			target: &there.target,
 			..scene.draw(1)
 		},
+		Draw {
+			runs: &there.runs[1],
+			..scene.draw(1)
+		},
 	];
 	for (case, draw) in cases.into_iter().enumerate() {
 		assert_eq!(recording.draw(draw), Err(Error::Draw), "case {case}");
@@ -290,7 +339,9 @@ fn draws_between_devices_are_refused() {
 	drop(recording);
 	drop((commands, theirs, scene, there, here, elsewhere));
 	let driver = finish();
-	assert!(!driver.recorded.iter().any(|call| call.starts_with("write")));
+	// Only each scene's image set was written, once made.
+	let writes = (driver.recorded.iter()).filter(|call| call.starts_with("write"));
+	assert_eq!(writes.count(), 2);
 }
 
 #[test]
@@ -389,9 +440,11 @@ fn the_target_is_of_the_format_its_pipeline_draws() {
 	let pipeline = Rc::new(QuadPipeline::new(&device, Format::Rgba).unwrap());
 	let set = Rc::new(QuadSet::new(&pipeline).unwrap());
 	let rgba = image(&device, Format::Rgba, [16, 8, 1], COLOR_ATTACHMENT);
+	let runs = [(0..1, texture(&pipeline))];
 	let mut recording = commands.record().unwrap();
 	let draw = Draw {
 		set: &set,
+		runs: &runs,
 		..scene.draw(1)
 	};
 	assert_eq!(recording.draw(draw), Err(Error::Draw));
@@ -403,6 +456,6 @@ fn the_target_is_of_the_format_its_pipeline_draws() {
 		Ok(())
 	);
 	recording.submit().unwrap();
-	drop((commands, scene, device, pipeline, set, rgba));
+	drop((commands, scene, device, runs, pipeline, set, rgba));
 	finish();
 }

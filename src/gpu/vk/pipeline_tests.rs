@@ -45,6 +45,7 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 		(pipeline.handle(), pipeline.layout(), pipeline.set_layout()),
 		(0x64_0001, 0x63_0001, 0x62_0001)
 	);
+	assert_eq!(pipeline.texture_layout(), 0x62_0002);
 	// The shader modules go once the pipeline is made.
 	let released = with(|driver| std::mem::take(&mut driver.released));
 	assert_eq!(released, ["module 0x600001", "module 0x600002"]);
@@ -54,16 +55,19 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 	let objects = driver.pipeline_objects;
 	// Nearest texels, clamped: the shaders fetch texels by index.
 	assert_eq!(objects.samplers, [[0, 0, 0, 2, 2, 2]]);
-	// The quads for both stages, and the atlas sampled by the fragments.
+	// The quads for both stages, and the atlas sampled by the fragments;
+	// then, in set 1, the image sampled by the fragments, through the same
+	// sampler.
 	let bindings: [Binding; 2] = [
 		(0, STORAGE_BUFFER, 1, VERTEX | FRAGMENT, None),
 		(1, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001)),
 	];
-	assert_eq!(objects.set_layouts, [bindings]);
+	let image: Binding = (0, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001));
+	assert_eq!(objects.set_layouts, [bindings.to_vec(), vec![image]]);
 	// The target's width and height, two floats, for the vertex stage.
 	assert_eq!(
 		objects.pipeline_layouts,
-		[(vec![0x62_0001], vec![[VERTEX, 0, 8]])]
+		[(vec![0x62_0001, 0x62_0002], vec![[VERTEX, 0, 8]])]
 	);
 	let expected = MadePipeline {
 		stages: vec![
@@ -87,6 +91,7 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 		"pipeline 0x640001",
 		"pipeline layout 0x630001",
 		"set layout 0x620001",
+		"set layout 0x620002",
 		"sampler 0x610001",
 	];
 	assert_eq!(driver.released, expected);
@@ -107,13 +112,18 @@ fn a_failure_releases_what_was_made_before_it() {
 		(c"vkCreateDescriptorSetLayout", &["sampler 0x610001"]),
 		(
 			c"vkCreatePipelineLayout",
-			&["set layout 0x620001", "sampler 0x610001"],
+			&[
+				"set layout 0x620001",
+				"set layout 0x620002",
+				"sampler 0x610001",
+			],
 		),
 		(
 			c"vkCreateShaderModule",
 			&[
 				"pipeline layout 0x630001",
 				"set layout 0x620001",
+				"set layout 0x620002",
 				"sampler 0x610001",
 			],
 		),
@@ -124,6 +134,7 @@ fn a_failure_releases_what_was_made_before_it() {
 				"module 0x600002",
 				"pipeline layout 0x630001",
 				"set layout 0x620001",
+				"set layout 0x620002",
 				"sampler 0x610001",
 			],
 		),
@@ -137,6 +148,40 @@ fn a_failure_releases_what_was_made_before_it() {
 		assert_eq!(driver.released, released, "{failing:?}");
 		assert!(driver.pipeline_objects.live.is_empty(), "{failing:?}");
 	}
+}
+
+#[test]
+fn a_failure_making_the_image_set_layout_releases_the_quad_set_layout_and_sampler() {
+	// The quad set layout is made; the image's, the second, fails.
+	let device = device(&INTEL, |driver| {
+		(driver.fails_from).push((c"vkCreateDescriptorSetLayout", 1, -2));
+	});
+	let made = QuadPipeline::new(&device, Format::Bgra);
+	assert_eq!(made.err(), Some(Error::Failed(-2)));
+	drop(device);
+	let driver = finish();
+	assert_eq!(driver.released, ["set layout 0x620001", "sampler 0x610001"]);
+	assert!(driver.pipeline_objects.live.is_empty());
+	assert_eq!(driver.pipeline_objects.set_layouts.len(), 1);
+	assert!(driver.pipeline_objects.pipeline_layouts.is_empty());
+}
+
+#[test]
+fn the_fake_driver_fails_pipeline_objects_only_from_the_count_asked() {
+	// From the third set layout on: both of the pipeline's are made.
+	let device = device(&INTEL, |driver| {
+		(driver.fails_from).push((c"vkCreateDescriptorSetLayout", 2, -2));
+	});
+	let pipeline = QuadPipeline::new(&device, Format::Bgra).unwrap();
+	assert_eq!(
+		(pipeline.set_layout(), pipeline.texture_layout()),
+		(0x62_0001, 0x62_0002)
+	);
+	// The next pipeline's first is the third, so it fails.
+	let next = QuadPipeline::new(&device, Format::Bgra);
+	assert_eq!(next.err(), Some(Error::Failed(-2)));
+	drop((pipeline, device));
+	assert!(finish().pipeline_objects.live.is_empty());
 }
 
 #[test]

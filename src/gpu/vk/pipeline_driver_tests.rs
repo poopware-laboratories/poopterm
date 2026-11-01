@@ -125,6 +125,11 @@ impl Driver {
 		if let Some(code) = self.failing(call) {
 			return Err(code);
 		}
+		let late =
+			(self.fails_from.iter()).find(|&&(failing, from, _)| failing == call && count >= from);
+		if let Some(&(_, _, code)) = late {
+			return Err(code);
+		}
 		let handle = kind + count as u64 + 1;
 		self.pipeline_objects.live.push(handle);
 		Ok(handle)

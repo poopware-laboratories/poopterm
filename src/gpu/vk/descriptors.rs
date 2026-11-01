@@ -1,10 +1,14 @@
-//! The quad pipeline's descriptor set: where the shaders find the quads
-//! and the atlas, allocated from a pool with room for it alone, which
-//! frees it when destroyed on drop.
+//! The quad pipeline's descriptor sets: where the shaders find the quads
+//! and the atlas, and the image a run of quads shows, each allocated from a
+//! pool with room for it alone, which frees it when destroyed on drop.
 use super::{
 	call::{Error, check},
 	descriptor_types::*,
+	draw_types::{DescriptorImageInfo, STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, WriteDescriptorSet},
+	image::Image,
 	pipeline::QuadPipeline,
+	pipeline_types::RawDescriptorSetLayout,
+	recording::Layout,
 	timeline::Timeline,
 };
 use std::{cell::RefCell, ptr, rc::Rc};
@@ -12,6 +16,8 @@ use std::{cell::RefCell, ptr, rc::Rc};
 /// `VkDescriptorType`: a combined image sampler and a storage buffer.
 const COMBINED_IMAGE_SAMPLER: i32 = 1;
 const STORAGE_BUFFER: i32 = 7;
+/// `VK_IMAGE_USAGE_SAMPLED_BIT`.
+const SAMPLED: u32 = 0x4;
 
 /// What the quad set layout binds: the quads and the atlas.
 const SIZES: [DescriptorPoolSize; 2] = [
@@ -24,6 +30,12 @@ const SIZES: [DescriptorPoolSize; 2] = [
 		count: 1,
 	},
 ];
+
+/// What the texture set layout binds: the image.
+const TEXTURE_SIZES: [DescriptorPoolSize; 1] = [DescriptorPoolSize {
+	descriptor_type: COMBINED_IMAGE_SAMPLER,
+	count: 1,
+}];
 
 pub(crate) struct QuadSet {
 	pool: RawDescriptorPool,
@@ -39,14 +51,23 @@ pub(crate) struct QuadSet {
 impl QuadSet {
 	/// A set of `pipeline`'s set layout.
 	pub(crate) fn new(pipeline: &Rc<QuadPipeline>) -> Result<Self, Error> {
+		Self::of(pipeline, pipeline.set_layout(), &SIZES)
+	}
+
+	/// A set of `pipeline`'s `layout`, which binds descriptors of `sizes`.
+	fn of(
+		pipeline: &Rc<QuadPipeline>,
+		layout: RawDescriptorSetLayout,
+		sizes: &[DescriptorPoolSize],
+	) -> Result<Self, Error> {
 		let device = &pipeline.device;
 		let info = DescriptorPoolCreateInfo {
 			s_type: STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			next: ptr::null(),
 			flags: 0,
 			max_sets: 1,
-			pool_size_count: SIZES.len() as u32,
-			pool_sizes: SIZES.as_ptr(),
+			pool_size_count: sizes.len() as u32,
+			pool_sizes: sizes.as_ptr(),
 		};
 		let mut pool = 0;
 		let create = device.functions.create_descriptor_pool;
@@ -60,7 +81,6 @@ impl QuadSet {
 			used: RefCell::new(None),
 			pipeline: pipeline.clone(),
 		};
-		let layout = pipeline.set_layout();
 		let info = DescriptorSetAllocateInfo {
 			s_type: STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			next: ptr::null(),
@@ -88,5 +108,59 @@ impl Drop for QuadSet {
 		let destroy = device.functions.destroy_descriptor_pool;
 		// SAFETY: the pool is the device's, and its set no longer used.
 		unsafe { destroy(device.handle, self.pool, ptr::null()) };
+	}
+}
+
+/// Set 1 of the quad pipeline: an image that runs of quads show, written
+/// once, read only by shaders.
+pub(crate) struct TextureSet {
+	set: QuadSet,
+	/// Held while the set points to it.
+	pub(super) image: Rc<Image>,
+}
+
+impl TextureSet {
+	/// A set of `pipeline`'s texture layout pointing at `image`, to be in
+	/// the shader read only layout when drawn; refused unless `image` was
+	/// made for sampling.
+	pub(crate) fn new(pipeline: &Rc<QuadPipeline>, image: &Rc<Image>) -> Result<Self, Error> {
+		if image.usage & SAMPLED == 0 {
+			return Err(Error::Draw);
+		}
+		let set = QuadSet::of(pipeline, pipeline.texture_layout(), &TEXTURE_SIZES)?;
+		let info = DescriptorImageInfo {
+			// The set layout's sampler is immutable.
+			sampler: 0,
+			image_view: image.view(),
+			image_layout: Layout::ShaderReadOnly as i32,
+		};
+		let write = WriteDescriptorSet {
+			s_type: STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			next: ptr::null(),
+			dst_set: set.handle(),
+			dst_binding: 0,
+			dst_array_element: 0,
+			descriptor_count: 1,
+			descriptor_type: COMBINED_IMAGE_SAMPLER,
+			image_info: &info,
+			buffer_info: ptr::null(),
+			texel_buffer_view: ptr::null(),
+		};
+		let device = &pipeline.device;
+		// SAFETY: the set is new, so no commands use it, the view is the
+		// device's, and the write and what it points to outlive the call.
+		unsafe { (device.functions.update_sets)(device.handle, 1, &write, 0, ptr::null()) };
+		Ok(Self {
+			set,
+			image: image.clone(),
+		})
+	}
+
+	pub(crate) fn handle(&self) -> RawDescriptorSet {
+		self.set.handle()
+	}
+
+	pub(crate) fn pipeline(&self) -> &Rc<QuadPipeline> {
+		&self.set.pipeline
 	}
 }
