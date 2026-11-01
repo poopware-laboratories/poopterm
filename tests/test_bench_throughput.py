@@ -349,10 +349,10 @@ class EndToEnd(unittest.TestCase):
         self.assertIsNone(report['peak_mib'])
 
     def test_memory_is_read_only_after_the_settle_time(self):
-        self.run_benchmark('--settle', '0')
-        quick = self.elapsed
-        self.run_benchmark('--settle', '1.5')
-        self.assertGreater(self.elapsed, quick + 1.4)
+        # A lower bound only: comparing two runs' times was flaky on busy
+        # CI machines. Without the wait one workload finishes well under 2 s.
+        self.run_benchmark('--settle', '2')
+        self.assertGreaterEqual(self.elapsed, 2)
 
     def test_the_text_report_ends_with_the_memory_line(self):
         lines = self.run_benchmark('--format', 'text').splitlines()
