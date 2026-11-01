@@ -38,6 +38,7 @@ mod inflate;
 mod input;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod library;
+mod mapped;
 mod notifier;
 mod parser;
 mod platform;

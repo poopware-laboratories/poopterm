@@ -8,6 +8,9 @@ mod color;
 pub(crate) mod coverage;
 #[cfg(test)]
 mod coverage_tests;
+mod data;
+#[cfg(test)]
+mod data_tests;
 pub(crate) mod db;
 #[cfg(test)]
 mod db_tests;
@@ -45,7 +48,6 @@ mod symbols_tests;
 use std::{
 	env,
 	ffi::OsString,
-	fs,
 	path::{Path, PathBuf},
 };
 
@@ -136,7 +138,7 @@ fn locate(source: FontSource) -> Option<(PathBuf, u32)> {
 }
 
 fn load_font(path: &Path, collection_index: u32) -> Result<Font, String> {
-	let bytes = fs::read(path).map_err(|error| error.to_string())?;
+	let bytes = data::read_file(path).map_err(|error| error.to_string())?;
 	Font::from_bytes(bytes, collection_index).map_err(|error| error.to_string())
 }
 

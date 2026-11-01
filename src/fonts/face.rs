@@ -1,12 +1,11 @@
 //! One font face loaded in memory: its table directory, global metrics,
 //! character map and horizontal metrics, and its glyph outlines (`glyf` or
 //! `CFF `). Written from the OpenType specification.
-use std::borrow::Cow;
-
 use super::{
 	cbdt::{Cbdt, ColorBitmap},
 	cff::Cff,
 	cmap::Cmap,
+	data::Data,
 	glyf,
 	gsub::{Gsub, MAX_GLYPHS},
 	otl::Gdef,
@@ -63,7 +62,7 @@ impl Table {
 }
 
 pub(crate) struct Face {
-	pub(crate) data: Cow<'static, [u8]>,
+	pub(crate) data: Data,
 	pub(crate) units_per_em: u16,
 	pub(crate) ascender: i16,
 	pub(crate) descender: i16,
@@ -86,7 +85,7 @@ pub(crate) type Error = &'static str;
 
 impl Face {
 	/// Parses face `index` of `data` (0 unless it is a collection).
-	pub(crate) fn parse(data: Cow<'static, [u8]>, index: u32) -> Result<Self, Error> {
+	pub(crate) fn parse(data: Data, index: u32) -> Result<Self, Error> {
 		let bytes: &[u8] = &data;
 		let start = if bytes.slice_at(0, 4) == Some(b"ttcf") {
 			let count = bytes.u32_at(8).ok_or("truncated collection")?;
@@ -167,7 +166,7 @@ impl Face {
 			cbdt,
 			gsub: find(b"GSUB").and_then(|table| Gsub::parse(bytes, table)),
 			gdef: find(b"GDEF").and_then(|table| Gdef::parse(bytes, table)),
-			data: Cow::Borrowed(&[]),
+			data: Data::Static(&[]),
 		};
 		Ok(Self { data, ..face })
 	}
