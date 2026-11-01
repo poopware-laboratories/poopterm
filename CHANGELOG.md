@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.6 "Lunar Moth" — 2026-11-01
+
+### Performance
+
+- Draw frames without a wallpaper as quads alone (#206) (gpu).
+
 ## 26.11.5 "Lunar Moth" — 2026-11-01
 
 ### Added
