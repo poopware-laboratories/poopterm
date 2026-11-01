@@ -1,12 +1,21 @@
 //! Tests of how a frame's kept rows follow the plan over many frames: a
 //! chain of partial frames, plans that do not fit the grid, a frame whose
-//! grid never ends, and the rows a scroll adds to those redrawn.
-use super::rows_tests::{Drawn, assert_same, draw, lines, padded, pen, plain};
-use crate::render::{
-	damage::{GridDamage, grid_damage},
-	grid::GridView,
-	grid_case_tests::{CELL, SAMPLE, SIZE, frame, view},
+//! grid never ends, the rows a scroll adds to those redrawn, and rows
+//! showing images, drawn again with their frame's images.
+use super::{
+	quads::{Fill, QuadPen},
+	rows_tests::{Drawn, assert_same, draw, lines, padded, pen, plain},
 };
+use crate::{
+	graphics::{Bitmap, Placement},
+	render::{
+		damage::{GridDamage, grid_damage},
+		grid::GridView,
+		grid_case_tests::{CELL, SAMPLE, SIZE, frame, view},
+	},
+	term::Frame,
+};
+use std::sync::Arc;
 
 /// The rows the pen redraws when planned `damage` after a whole frame of
 /// `SAMPLE`, as `plan_rows` adds those a scroll leaves wrong.
@@ -155,4 +164,68 @@ fn a_scroll_keeps_the_rows_it_was_told_to_redraw() {
 	let redraw = redrawn(damage).expect("planned");
 	assert!(redraw[2]);
 	assert_eq!(redraw.iter().filter(|&&row| row).count(), 3);
+}
+
+/// `SAMPLE` with a small image in grid row `row`, at column 2.
+fn pictured(row: isize) -> Frame {
+	let mut sample = frame(SAMPLE);
+	let bitmap = Arc::new(Bitmap::new(4, 4, vec![0xff_30_60_90; 16]));
+	sample.images.push(Placement::natural(bitmap, 2, row));
+	sample
+}
+
+/// The bitmap each image quad of `pen` shows, in order; `None` for an
+/// index the frame's images lack.
+fn shown(pen: &QuadPen) -> Vec<Option<*const Bitmap>> {
+	let quads = pen.quads.iter().filter_map(|quad| match quad.fill {
+		Fill::Image(index, _) => Some(index),
+		_ => None,
+	});
+	let bitmap = |index: usize| {
+		pen
+			.images
+			.get(index)
+			.map(|image| Arc::as_ptr(&image.placement.bitmap))
+	};
+	quads.map(bitmap).collect()
+}
+
+#[test]
+fn rows_showing_images_are_drawn_again_so_the_frame_lists_their_images() {
+	// The frame's images are listed anew each frame, so a kept row's
+	// image quad would point past them, or at another image.
+	for row in [0, 1, 4] {
+		let sample = pictured(row);
+		let mut drawn = Drawn::new();
+		drawn.draw(&view(&sample));
+		let shows = shown(&drawn.pen);
+		assert_eq!(shows.len(), 1, "row {row}");
+		drawn.pen.plan_rows(Some(unchanged(sample.rows)), CELL.1);
+		drawn.draw(&view(&sample));
+		let mut redrawn = vec![false; sample.rows];
+		redrawn[row as usize] = true;
+		assert_eq!(drawn.pen.rows_to_draw(), Some(&redrawn[..]), "row {row}");
+		assert_eq!(shown(&drawn.pen), shows, "row {row}");
+		assert_same(&drawn, &view(&sample), &format!("image in row {row}"));
+	}
+}
+
+#[test]
+fn a_row_whose_image_scrolled_away_is_kept_again() {
+	let sample = pictured(1);
+	// Scrolled below the view: the grid still draws in layers, as it does
+	// while a frame has images, but no row shows this one.
+	let plain = pictured(sample.rows as isize + 2);
+	let mut drawn = Drawn::new();
+	drawn.draw(&view(&sample));
+	let damage = grid_damage(&sample, &plain, true).expect("same size");
+	drawn.pen.plan_rows(Some(damage), CELL.1);
+	drawn.draw(&view(&plain));
+	assert!(drawn.pen.images.is_empty());
+	drawn.pen.plan_rows(Some(unchanged(plain.rows)), CELL.1);
+	drawn.draw(&view(&plain));
+	let kept = vec![false; plain.rows];
+	assert_eq!(drawn.pen.rows_to_draw(), Some(&kept[..]));
+	assert_same(&drawn, &view(&plain), "image gone");
+	assert!(drawn.pen.images.is_empty());
 }

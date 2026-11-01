@@ -1,8 +1,14 @@
-//! Tests of the window's plain background: every pixel of the rows asked
-//! for, from the column asked for, takes the edge color within the border
-//! and the background inside it, and nothing else changes.
-use super::fill;
-use crate::render::painter::Painter;
+//! Tests of the window's background: every pixel of the rows asked for,
+//! from the column asked for, takes the edge color within the border and
+//! the background color or the wallpaper's pixel inside it, and nothing
+//! else changes.
+use super::{fill, wallpaper};
+use crate::{
+	gpu::quads::{Fill, QuadPen},
+	graphics::{Bitmap, Rect},
+	render::painter::Painter,
+};
+use std::sync::Arc;
 
 const EDGE: u32 = 0x112233;
 const INSIDE: u32 = 0x445566;
@@ -27,25 +33,43 @@ fn expected(
 	}
 }
 
-/// Fills on a `size` window and checks every pixel.
+/// A wallpaper for the inside of a `size` window with this `border`, no
+/// two pixels alike, as `Wallpaper::bitmap` makes it: opaque, and at least
+/// a pixel.
+fn paper((width, height): (usize, usize), border: usize) -> Arc<Bitmap> {
+	let inside = |size: usize| size.saturating_sub(2 * border).max(1);
+	let (width, height) = (inside(width), inside(height));
+	let pixels = (0..width * height)
+		.map(|i| 0xff10_0000 + i as u32)
+		.collect();
+	Arc::new(Bitmap::new(width, height, pixels))
+}
+
+/// Fills on a `size` window with a color, then with a wallpaper, and checks
+/// every pixel.
 fn check(size: (usize, usize), rows: (usize, usize), left: usize, border: usize) {
 	let (width, height) = size;
-	let mut pixels = vec![BEFORE; width * height];
-	fill(
-		&mut Painter::new(&mut pixels, width, height),
-		rows,
-		left,
-		border,
-		(EDGE, INSIDE),
-	);
-	for y in 0..height {
-		for x in 0..width {
-			let want = expected((x, y), size, rows, left, border);
-			assert_eq!(
-				pixels[y * width + x],
-				want,
-				"({x}, {y}) of {size:?}, rows {rows:?}, from {left}, border {border}"
-			);
+	let image = paper(size, border);
+	for papered in [false, true] {
+		let mut pixels = vec![BEFORE; width * height];
+		let painter = &mut Painter::new(&mut pixels, width, height);
+		match papered {
+			false => fill(painter, rows, left, border, (EDGE, INSIDE)),
+			true => wallpaper(painter, rows, left, border, EDGE, &image),
+		}
+		for y in 0..height {
+			for x in 0..width {
+				let want = match expected((x, y), size, rows, left, border) {
+					INSIDE if papered => image.pixels[(y - border) * image.width + x - border] & 0xff_ffff,
+					want => want,
+				};
+				assert_eq!(
+					pixels[y * width + x],
+					want,
+					"({x}, {y}) of {size:?}, rows {rows:?}, from {left}, border {border}, \
+					 wallpaper {papered}"
+				);
+			}
 		}
 	}
 }
@@ -111,13 +135,72 @@ fn every_quad_stays_inside_the_window_however_wide_the_border() {
 		((20, 12), 2, 40),
 	];
 	for (size, border, left) in cases {
-		let mut pen = crate::gpu::quads::QuadPen::new(size, (64, 1));
+		let mut pen = QuadPen::new(size, (64, 1));
 		fill(&mut pen, (0, usize::MAX), left, border, (EDGE, INSIDE));
+		wallpaper(
+			&mut pen,
+			(0, usize::MAX),
+			left,
+			border,
+			EDGE,
+			&paper(size, border),
+		);
 		assert_eq!(pen.quads.is_empty(), left >= size.0, "{size:?} from {left}");
 		for quad in &pen.quads {
 			let (x, y) = (quad.at.0 as usize, quad.at.1 as usize);
 			let inside = x + quad.size.0 <= size.0 && y + quad.size.1 <= size.1;
+			let clip = (quad.clip.2 as usize, quad.clip.3 as usize);
 			assert!(inside, "{quad:?} of {size:?}, border {border}");
+			assert!(clip.0 <= size.0 && clip.1 <= size.1, "{quad:?} of {size:?}");
 		}
 	}
+}
+
+#[test]
+fn the_gpu_gets_the_wallpaper_as_one_image_over_the_inside_clipped_to_the_rows() {
+	let (size, border) = ((20, 12), 2);
+	let image = paper(size, border);
+	let mut pen = QuadPen::new(size, (64, 1));
+	wallpaper(&mut pen, (3, 4), 5, border, EDGE, &image);
+	let images: Vec<_> = pen
+		.quads
+		.iter()
+		.filter(|quad| matches!(quad.fill, Fill::Image(..)))
+		.collect();
+	assert_eq!(images.len(), 1, "{:?}", pen.quads);
+	let quad = images[0];
+	// The whole wallpaper at the inside's corner, shown from column 5 of
+	// rows 3 to 6.
+	let all = Rect {
+		x: 0,
+		y: 0,
+		width: 16,
+		height: 8,
+	};
+	assert_eq!(quad.fill, Fill::Image(0, all));
+	assert_eq!(
+		(quad.at, quad.size, quad.clip),
+		((2, 2), (16, 8), (5, 3, 18, 7))
+	);
+	let drawn = &pen.images[0];
+	assert!(
+		Arc::ptr_eq(&drawn.placement.bitmap, &image),
+		"the same bitmap, so the same texture"
+	);
+	assert_eq!(drawn.placement.source, all);
+}
+
+#[test]
+fn rows_in_the_border_alone_draw_no_wallpaper() {
+	let (size, border) = ((20, 12), 2);
+	for rows in [(0, 2), (10, 2), (12, 3), (4, 0)] {
+		let mut pen = QuadPen::new(size, (64, 1));
+		wallpaper(&mut pen, rows, 0, border, EDGE, &paper(size, border));
+		assert!(pen.images.is_empty(), "rows {rows:?}");
+	}
+	// Nor columns past the inside.
+	let mut pen = QuadPen::new(size, (64, 1));
+	wallpaper(&mut pen, (0, 12), 18, border, EDGE, &paper(size, border));
+	assert!(pen.images.is_empty());
+	assert!(!pen.quads.is_empty(), "the right edge is still drawn");
 }

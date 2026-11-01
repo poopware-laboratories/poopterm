@@ -1,7 +1,7 @@
 //! Tests of what a window drawn by the GPU puts in its swapchain images,
 //! against the fake driver of `driver_tests`: the backdrop under the quads,
-//! in the image of the swapchain the window has now, and the glyphs of a
-//! frame it refused uploaded by the next one.
+//! in the image of the swapchain the window has now, pictures as textures,
+//! and the glyphs of a frame it refused uploaded by the next one.
 use super::{
 	call::Error,
 	driver_tests::with,
@@ -18,24 +18,26 @@ use crate::{
 };
 use std::sync::Arc;
 
-/// Draws a frame with the glyph `a` in `window`, with a picture when
-/// `pictured`.
-fn lettered(window: &mut GpuWindow, pen: &mut QuadPen, pictured: bool) -> Result<Drawn, Error> {
+/// The widest image the fake device makes.
+const LIMIT: usize = 16384;
+
+/// Draws a frame with the glyph `a` in `window`, with a picture one pixel
+/// tall and this wide, if any.
+fn lettered(
+	window: &mut GpuWindow,
+	pen: &mut QuadPen,
+	picture: Option<usize>,
+) -> Result<Drawn, Error> {
 	pen.begin_frame((40, 30));
 	let ink = Ink::Drawn('a', (3, 2));
 	pen.glyph(&glyph(3, 2, false), ink, (1, 1), (0, 0, 40, 30), false, 0);
-	if pictured {
-		let bitmap = Arc::new(Bitmap {
-			width: 2,
-			height: 2,
-			opaque: true,
-			pixels: vec![0; 4],
-		});
+	if let Some(width) = picture {
+		let bitmap = Arc::new(Bitmap::new(width, 1, vec![0xff00_0000; width]));
 		let whole = Rect {
 			x: 0,
 			y: 0,
-			width: 2,
-			height: 2,
+			width: 40,
+			height: 30,
 		};
 		let placement = Placement::natural(bitmap, 0, 0);
 		pen.placement(whole, &placement, (0, 0), (8, 16));
@@ -44,15 +46,49 @@ fn lettered(window: &mut GpuWindow, pen: &mut QuadPen, pictured: bool) -> Result
 }
 
 #[test]
+fn a_frame_with_a_picture_is_drawn_with_its_texture_and_shown() {
+	let mut window = open(showing(), false).unwrap();
+	let mut pen = QuadPen::new((40, 30), ATLAS);
+	for width in [2, LIMIT] {
+		assert_eq!(
+			lettered(&mut window, &mut pen, Some(width)),
+			Ok(Drawn::Shown)
+		);
+		let recorded = with(|driver| std::mem::take(&mut driver.recorded));
+		let size = format!("size {width}x1");
+		assert!(
+			recorded.iter().any(|call| call.contains(&size)),
+			"{recorded:?}"
+		);
+		assert!(
+			recorded
+				.iter()
+				.any(|call| call.starts_with("bind image set")),
+			"{recorded:?}"
+		);
+	}
+	assert_eq!(swapchains().len(), 1, "every frame shown in the first");
+	close(window);
+}
+
+#[test]
 fn the_glyphs_of_a_refused_frame_are_uploaded_by_the_next() {
 	let mut window = open(showing(), false).unwrap();
 	let mut pen = QuadPen::new((40, 30), ATLAS);
-	// Software draws the frame with a picture; its glyph never reached the
-	// GPU, so the next frame the GPU draws must upload it.
-	assert_eq!(lettered(&mut window, &mut pen, true), Err(Error::Draw));
-	assert_eq!(lettered(&mut window, &mut pen, false), Ok(Drawn::Shown));
+	// A picture wider than the device makes is left to software, though a
+	// swapchain image was taken for it; its glyph never reached the GPU,
+	// so the next frame the GPU draws must upload it.
+	assert_eq!(
+		lettered(&mut window, &mut pen, Some(LIMIT + 1)),
+		Err(Error::Draw)
+	);
+	assert_eq!(uploads(), 0);
+	assert!(pen.quads.is_empty(), "the pen started over");
+	assert_eq!(lettered(&mut window, &mut pen, None), Ok(Drawn::Shown));
 	assert_eq!(uploads(), 1);
-	assert_eq!(lettered(&mut window, &mut pen, false), Ok(Drawn::Shown));
+	// The image taken but not shown made the swapchain anew.
+	assert_eq!(swapchains(), [(SIZE, false), (SIZE, true)]);
+	assert_eq!(lettered(&mut window, &mut pen, None), Ok(Drawn::Shown));
 	assert_eq!(uploads(), 0, "the atlas keeps it");
 	close(window);
 }

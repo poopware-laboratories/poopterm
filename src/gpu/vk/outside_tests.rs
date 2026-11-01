@@ -41,7 +41,16 @@ pub(crate) fn fake_presents() -> usize {
 
 /// Has the next acquisition find the swapchain out of date.
 pub(crate) fn fake_out_of_date() {
-	with(|driver| driver.acquire_answers = vec![OUT_OF_DATE]);
+	fake_out_of_date_after(0);
+}
+
+/// Has the acquisition after the next `taken` find the swapchain out of
+/// date.
+pub(crate) fn fake_out_of_date_after(taken: usize) {
+	with(|driver| {
+		driver.acquire_answers = vec![0; taken];
+		driver.acquire_answers.push(OUT_OF_DATE);
+	});
 }
 
 /// Has `function` fail with `code` from now on, or, with none, nothing.

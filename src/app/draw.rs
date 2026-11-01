@@ -92,7 +92,7 @@ impl App {
 		let painting = Instant::now();
 		let bands = match &plan {
 			Plan::Full => {
-				self.compose(&mut painter);
+				self.compose(&mut painter, None);
 				None
 			}
 			Plan::Partial(damage) => Some(self.compose_damaged(&mut painter, damage)),
@@ -153,35 +153,15 @@ impl App {
 		}
 	}
 
-	pub(super) fn compose(&mut self, p: &mut Painter) {
-		self.compose_around(p, true);
-	}
-
-	/// Composes the frame, with the grid only when `grid`: else the GPU
-	/// draws it over the rest.
-	pub(super) fn compose_around(&mut self, p: &mut Painter, grid: bool) {
-		self.restore_background(p, 0, p.height);
-		self.compose_over(p, grid.then_some(None));
-	}
-
-	/// The frame drawn with any pen, without a wallpaper: the GPU's quads,
-	/// with the grid's `rows` (all of them for `None`).
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-	pub(super) fn compose_plain(&mut self, p: &mut impl Pen, rows: Option<&[bool]>) {
-		let colors = (self.theme.border, self.theme.bg);
-		crate::render::background::fill(p, (0, p.size().1), 0, self.border, colors);
-		self.compose_over(p, Some(rows));
-	}
-
-	/// All of the frame over its background, with the grid's `rows` (all
-	/// of them for `None`) when `grid` is given.
-	fn compose_over(&mut self, p: &mut impl Pen, grid: Option<Option<&[bool]>>) {
+	/// The whole frame with any pen, software's painter or the GPU's
+	/// quads, with the grid's `rows` (all of them for `None`).
+	pub(super) fn compose(&mut self, p: &mut impl Pen, rows: Option<&[bool]>) {
+		let height = p.size().1;
+		self.restore_background(p, 0, height);
 		let scale = self.scale();
 		let ui = self.ui_font(18.0 * scale as f32);
 		self.draw_tab_bar(p, ui);
-		if let Some(rows) = grid {
-			self.draw_terminal(p, scale, rows);
-		}
+		self.draw_terminal(p, scale, rows);
 		if self.search_active {
 			self.draw_search_box(p, scale, ui);
 		}

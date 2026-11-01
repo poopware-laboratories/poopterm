@@ -271,10 +271,16 @@ impl Pen for QuadPen {
 		let left = (at.0 + placement.offset.0 as isize) as i32;
 		let top = (at.1 + placement.offset.1 as isize) as i32;
 		let (x, y) = (clip.x as i32, clip.y as i32);
+		let clip = (x, y, x + clip.width as i32, y + clip.height as i32);
+		// The grid draws each image once a row: rows it misses add nothing.
+		let (right, bottom) = (left + width as i32, top + height as i32);
+		if left.max(clip.0) >= right.min(clip.2) || top.max(clip.1) >= bottom.min(clip.3) {
+			return;
+		}
 		self.quads.push(Quad {
 			at: (left, top),
 			size: (width, height),
-			clip: (x, y, x + clip.width as i32, y + clip.height as i32),
+			clip,
 			fill: Fill::Image(self.images.len(), source),
 			italic: false,
 			color: 0,

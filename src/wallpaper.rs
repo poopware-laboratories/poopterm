@@ -1,15 +1,18 @@
 //! Static terminal background image loading and resize caching.
 
-use std::path::Path;
+use crate::graphics::Bitmap;
+use std::{path::Path, sync::Arc};
 
 use image::{RgbaImage, imageops::FilterType};
 
+/// What a wallpaper bitmap is made for: its width and height, the
+/// background and the strength.
+type Made = (usize, usize, u32, usize);
+
 pub(crate) struct Wallpaper {
 	image: RgbaImage,
-	cache: Vec<u32>,
-	cache_size: (u32, u32),
-	cache_background: u32,
-	cache_strength: usize,
+	/// The last bitmap made, with what it was made for.
+	cache: Option<(Made, Arc<Bitmap>)>,
 }
 
 impl Wallpaper {
@@ -35,29 +38,29 @@ impl Wallpaper {
 		if (width as u64) * (height as u64) > 50_000_000 {
 			return Err("Wallpaper image exceeds the 50-megapixel limit.".into());
 		}
-		Ok(Self {
-			image: image.into_rgba8(),
-			cache: Vec::new(),
-			cache_size: (0, 0),
-			cache_background: 0,
-			cache_strength: usize::MAX,
-		})
+		Ok(Self::new(image.into_rgba8()))
 	}
 
-	pub(crate) fn pixels(
+	pub(crate) fn new(image: RgbaImage) -> Self {
+		Self { image, cache: None }
+	}
+
+	/// The wallpaper `width` by `height` (at least one pixel each), cropped
+	/// around its center to that shape and blended over `background` at
+	/// `strength` percent: opaque, and the same bitmap until one of these
+	/// changes, so a GPU keeps its texture.
+	pub(crate) fn bitmap(
 		&mut self,
-		width: u32,
-		height: u32,
+		width: usize,
+		height: usize,
 		background: u32,
 		strength: usize,
-	) -> &[u32] {
-		let width = width.max(1);
-		let height = height.max(1);
-		let strength = strength.min(100);
-		if self.cache_size != (width, height)
-			|| self.cache_background != background
-			|| self.cache_strength != strength
-		{
+	) -> &Arc<Bitmap> {
+		let made = (width.max(1), height.max(1), background, strength.min(100));
+		if self.cache.as_ref().is_none_or(|(old, _)| *old != made) {
+			// Dropped first, so the old and new bitmaps are never both held.
+			self.cache = None;
+			let (width, height, strength) = (made.0 as u32, made.1 as u32, made.3);
 			let (source_width, source_height) = self.image.dimensions();
 			let (crop_width, crop_height) =
 				if source_width as u64 * height as u64 > source_height as u64 * width as u64 {
@@ -82,18 +85,26 @@ impl Wallpaper {
 			)
 			.to_image();
 			let scaled = image::imageops::resize(&cropped, width, height, FilterType::Triangle);
-			self.cache.clear();
-			self.cache.reserve(width as usize * height as usize);
-			self.cache.extend(
-				scaled
-					.pixels()
-					.map(|pixel| blend_over(pixel.0, background, strength)),
-			);
-			self.cache_size = (width, height);
-			self.cache_background = background;
-			self.cache_strength = strength;
+			let pixels = scaled
+				.pixels()
+				.map(|pixel| blend_over(pixel.0, background, strength));
+			let bitmap = Bitmap::new(made.0, made.1, pixels.collect());
+			self.cache = Some((made, Arc::new(bitmap)));
 		}
-		&self.cache
+		&self.cache.as_ref().expect("made above").1
+	}
+
+	/// [`bitmap`](Self::bitmap) for the inside of a `window` (width and
+	/// height) within its `border`.
+	pub(crate) fn inside(
+		&mut self,
+		(width, height): (usize, usize),
+		border: usize,
+		background: u32,
+		strength: usize,
+	) -> &Arc<Bitmap> {
+		let inside = |size: usize| size.saturating_sub(border.saturating_mul(2));
+		self.bitmap(inside(width), inside(height), background, strength)
 	}
 }
 
@@ -105,7 +116,12 @@ fn blend_over(pixel: [u8; 4], background: u32, strength: usize) -> u32 {
 		(background & 0xff) as usize,
 	];
 	let channel = |src: u8, dst: usize| (src as usize * alpha + dst * (255 - alpha) + 127) / 255;
-	(channel(pixel[0], bg[0]) as u32) << 16
+	0xff00_0000
+		| (channel(pixel[0], bg[0]) as u32) << 16
 		| (channel(pixel[1], bg[1]) as u32) << 8
 		| channel(pixel[2], bg[2]) as u32
 }
+
+#[cfg(test)]
+#[path = "wallpaper_tests.rs"]
+mod tests;

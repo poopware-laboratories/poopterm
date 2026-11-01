@@ -340,8 +340,8 @@ fn quads_cover_the_rectangles_and_images_they_were_given() {
 		0,
 	);
 	let clip = Rect {
-		x: 4,
-		y: 6,
+		x: 0,
+		y: 3,
 		width: 9,
 		height: 3,
 	};
@@ -359,7 +359,7 @@ fn quads_cover_the_rectangles_and_images_they_were_given() {
 	let whole = image.source;
 	assert_eq!(
 		(picture.clip, picture.fill),
-		((4, 6, 13, 9), Fill::Image(0, whole))
+		((0, 3, 9, 6), Fill::Image(0, whole))
 	);
 	let drawn = &pen.images[0];
 	assert_eq!((drawn.at, drawn.cell), ((-1, 2), (8, 16)));
@@ -473,6 +473,38 @@ fn an_image_showing_nothing_draws_no_quad() {
 		"{:?}",
 		pen.quads
 	);
+}
+
+#[test]
+fn an_image_wholly_outside_its_clip_draws_no_quad() {
+	// The grid draws each image once a row, clipped to the row: rows it
+	// misses must hold no quad of it.
+	let natural = placement((4, 4), rect(0, 0, 4, 4), Extent::Natural, (0, 0));
+	let touching = [
+		rect(14, 0, 10, 50),
+		rect(0, 14, 50, 10),
+		rect(0, 0, 10, 50),
+		rect(0, 0, 50, 10),
+		rect(12, 12, 0, 0),
+	];
+	for clip in touching {
+		let mut pen = pen();
+		pen.begin_frame(SIZE);
+		pen.placement(clip, &natural, (10, 10), (8, 16));
+		assert!(pen.quads.is_empty() && pen.images.is_empty(), "{clip:?}");
+	}
+	// A pixel of each corner is enough.
+	for clip in [
+		rect(13, 13, 5, 5),
+		rect(0, 0, 11, 11),
+		rect(13, 0, 1, 11),
+		rect(0, 13, 11, 1),
+	] {
+		let mut pen = pen();
+		pen.begin_frame(SIZE);
+		pen.placement(clip, &natural, (10, 10), (8, 16));
+		assert_eq!((pen.quads.len(), pen.images.len()), (1, 1), "{clip:?}");
+	}
 }
 
 #[test]
