@@ -87,6 +87,10 @@ impl Pen for GridRecord {
 		self.strokes.push(Stroke::Rect { x, y, w, h, color });
 	}
 
+	fn round_rect(&mut self, _: (usize, usize, usize, usize), _: usize, _: u32) {
+		unreachable!("the grid draws no rounded rectangles");
+	}
+
 	fn glyph(
 		&mut self,
 		glyph: &Glyph,
@@ -104,6 +108,7 @@ impl Pen for GridRecord {
 				InkKey::Cluster(start..self.chars.len(), px)
 			}
 			Ink::Drawn(ch, cell) => InkKey::Drawn(ch, cell),
+			Ink::Ui(..) => unreachable!("the grid draws with the terminal's fonts"),
 		};
 		self.strokes.push(Stroke::Glyph {
 			ink,

@@ -7,6 +7,7 @@ use crate::{
 	render::{
 		glyphs::{Glyph, Shape},
 		pen::{Ink, Pen},
+		shapes::corner_coverage,
 	},
 };
 
@@ -91,7 +92,7 @@ impl QuadPen {
 	}
 
 	/// The slot of `glyph`, the bitmap of `ink`, uploading it when new.
-	fn slot(&mut self, glyph: &Glyph, ink: Ink) -> Option<Slot> {
+	fn glyph_slot(&mut self, glyph: &Glyph, ink: Ink) -> Option<Slot> {
 		self.key.clear();
 		match ink {
 			Ink::Text(Shape::Char(ch, presentation), px) => {
@@ -102,24 +103,72 @@ impl QuadPen {
 				self.key.extend(chars.iter().map(|&ch| ch as u32));
 			}
 			Ink::Drawn(ch, (w, h)) => self.key.extend([2, w as u32, h as u32, ch as u32]),
+			Ink::Ui(ch, px) => self.key.extend([3, px.to_bits(), ch as u32]),
 		}
+		let size = (glyph.metrics.width, glyph.metrics.height);
+		self.slot(size, || match &glyph.color {
+			Some(pixels) => pixels.clone(),
+			None => coverage_texels(glyph.coverage.iter().copied()),
+		})
+	}
+
+	/// The slot under the key being looked up, holding `size` pixels that
+	/// `pixels` makes when the atlas lacks them; `None`, and the frame
+	/// incomplete, when the atlas cannot hold them.
+	fn slot(&mut self, size: (usize, usize), pixels: impl FnOnce() -> Vec<u32>) -> Option<Slot> {
 		if let Some(slot) = self.atlas.get(&self.key[..]) {
 			return Some(slot);
 		}
-		let size = (glyph.metrics.width, glyph.metrics.height);
 		let Ok(slot) = self.atlas.insert(self.key.as_slice().into(), size) else {
 			self.complete = false;
 			return None;
 		};
-		let pixels = match &glyph.color {
-			Some(pixels) => pixels.clone(),
-			None => (glyph.coverage.iter())
-				.map(|&c| u32::from(c) << 24 | 0xff_ffff)
-				.collect(),
-		};
+		let pixels = pixels();
 		self.uploads.push(Upload { slot, pixels });
 		Some(slot)
 	}
+
+	/// The coverage quad of a rounded corner `radius` wide at `at`, the
+	/// `right` and `bottom` one of its rectangle as asked.
+	fn corner(
+		&mut self,
+		at: (usize, usize),
+		radius: usize,
+		(right, bottom): (bool, bool),
+		color: u32,
+	) {
+		self.key.clear();
+		self
+			.key
+			.extend([4, radius as u32, u32::from(right), u32::from(bottom)]);
+		let texel = |column: usize, row: usize| {
+			let column = if right { radius - 1 - column } else { column };
+			let row = if bottom { radius - 1 - row } else { row };
+			corner_coverage(radius, column, row) as u8
+		};
+		let texels = || {
+			let rows = (0..radius).flat_map(|row| (0..radius).map(move |column| (column, row)));
+			coverage_texels(rows.map(|(column, row)| texel(column, row)))
+		};
+		let Some(slot) = self.slot((radius, radius), texels) else {
+			return;
+		};
+		let (x, y) = (at.0 as i32, at.1 as i32);
+		let side = radius as i32;
+		self.quads.push(Quad {
+			at: (x, y),
+			size: (radius, radius),
+			clip: (x, y, x + side, y + side),
+			fill: Fill::Coverage(slot),
+			italic: false,
+			color,
+		});
+	}
+}
+
+/// Coverage as the atlas holds it: white, at the coverage's alpha.
+fn coverage_texels(coverage: impl Iterator<Item = u8>) -> Vec<u32> {
+	coverage.map(|c| u32::from(c) << 24 | 0xff_ffff).collect()
 }
 
 impl Pen for QuadPen {
@@ -139,6 +188,30 @@ impl Pen for QuadPen {
 		});
 	}
 
+	/// As [`crate::render::shapes::round_rect`] paints it: three rectangles,
+	/// and a coverage quad for each corner.
+	fn round_rect(&mut self, (x, y, w, h): (usize, usize, usize, usize), radius: usize, color: u32) {
+		if w == 0 || h == 0 {
+			return;
+		}
+		let r = radius.min(h / 2).min(w / 2);
+		self.rect(x, y + r, w, h - 2 * r, color);
+		if r == 0 {
+			return;
+		}
+		self.rect(x + r, y, w - 2 * r, r, color);
+		self.rect(x + r, y + h - r, w - 2 * r, r, color);
+		let (right, bottom) = (x + w - r, y + h - r);
+		for (at, side) in [
+			((x, y), (false, false)),
+			((right, y), (true, false)),
+			((x, bottom), (false, true)),
+			((right, bottom), (true, true)),
+		] {
+			self.corner(at, r, side, color);
+		}
+	}
+
 	fn glyph(
 		&mut self,
 		glyph: &Glyph,
@@ -151,7 +224,7 @@ impl Pen for QuadPen {
 		if glyph.metrics.width == 0 || glyph.metrics.height == 0 {
 			return;
 		}
-		let Some(slot) = self.slot(glyph, ink) else {
+		let Some(slot) = self.glyph_slot(glyph, ink) else {
 			return;
 		};
 		let fill = match glyph.color {

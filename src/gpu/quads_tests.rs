@@ -23,12 +23,12 @@ const SIDE: usize = 256;
 /// A stand-in for the GPU: texture pages filled by uploads, and quads
 /// drawn from nothing else.
 #[derive(Default)]
-struct Gpu {
+pub(super) struct Gpu {
 	pages: Vec<Vec<u32>>,
 }
 
 impl Gpu {
-	fn upload(&mut self, uploads: &[Upload]) {
+	pub(super) fn upload(&mut self, uploads: &[Upload]) {
 		for upload in uploads {
 			let slot = upload.slot;
 			if self.pages.len() <= slot.page {
@@ -49,9 +49,10 @@ impl Gpu {
 		rows.flatten().copied().collect()
 	}
 
-	fn draw(&self, pen: &QuadPen) -> Vec<u32> {
-		let mut pixels = vec![BG; SIZE.0 * SIZE.1];
-		let p = &mut Painter::new(&mut pixels, SIZE.0, SIZE.1);
+	pub(super) fn draw(&self, pen: &QuadPen) -> Vec<u32> {
+		let (width, height) = pen.size;
+		let mut pixels = vec![BG; width * height];
+		let p = &mut Painter::new(&mut pixels, width, height);
 		for quad in &pen.quads {
 			let (x, y) = quad.at;
 			match quad.fill {

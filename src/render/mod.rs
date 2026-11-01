@@ -3,6 +3,7 @@ pub(crate) mod backend;
 pub(crate) mod blend;
 pub(crate) mod boxdraw;
 pub(crate) mod cell_joins;
+pub(crate) mod chrome;
 #[cfg(test)]
 mod chrome_scene_tests;
 pub(crate) mod damage;
