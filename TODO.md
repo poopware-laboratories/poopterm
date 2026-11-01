@@ -144,14 +144,16 @@ issue before starting a piece.
   window's surface and shows frames on a swapchain kept the window's size
   (passing the Khronos validation layer on a headless surface). The main
   window draws whole frames through it on Linux and FreeBSD (grid, chrome,
-  wallpaper and images, all as quads), falling back to software for good if
-  the GPU fails. `POOPTERM_RENDERER` overrides the configured renderer.
+  wallpaper and images, all as quads), and so does the Settings window,
+  each falling back to software for good if its GPU fails. `POOPTERM_RENDERER` overrides the configured renderer.
   Sixel, kitty and iTerm2 images and the wallpaper are drawn as textures,
   uploaded once and kept while their bitmap lives (256 MiB at most; a frame
   needing more, or an image larger than the device makes, is painted whole
-  by software and shown as a backdrop). Still to do: dropping the backdrop
-  path from the renderer except for those whole software frames, the
-  Settings window on the GPU, and fractional scale.
+  by software and shown as a backdrop). Still to do: drawing those frames
+  on the GPU too (evicting atlas glyphs within a frame, scaling images
+  down to what the device makes), so the backdrop path can go, with
+  software only as an opt-in and the fallback when the GPU fails; and
+  fractional scale.
 
 ## Resource management and memory
 

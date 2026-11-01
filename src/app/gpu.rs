@@ -1,6 +1,6 @@
-//! The main window drawn on the GPU: Vulkan's view of the window from its
-//! handles, the grid renderer and its pen, and what each frame's outcome
-//! means for the next.
+//! Windows drawn on the GPU: Vulkan's view of a window from its handles,
+//! the renderer and its pen, frames of the main window and scenes of the
+//! Settings window, and what each frame's outcome means for the next.
 use super::{Arc, Window};
 use crate::{
 	config::RendererPreference,
@@ -14,7 +14,7 @@ use crate::{
 			window::{Drawn, GpuWindow},
 		},
 	},
-	render::damage::GridDamage,
+	render::{damage::GridDamage, glyphs::FontSet, painter::Painter, scene::Scene},
 };
 use winit::raw_window_handle::{
 	HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -81,6 +81,31 @@ pub(super) fn remembers(keeps: bool, next: &Next) -> bool {
 	keeps && !matches!(next, Next::Abandon(_))
 }
 
+/// The renderer to draw a window's next frame with, after its `gpu` drew one
+/// that came to `next`: the GPU, which `keep` makes a renderer of; another
+/// frame asked for by `again` when one is due; and `fallback`'s software
+/// in place of a GPU that failed, if that works.
+pub(super) fn after_drawn<G, R>(
+	gpu: G,
+	next: Next,
+	again: impl FnOnce(),
+	keep: impl FnOnce(G) -> R,
+	fallback: impl FnOnce(G, &str) -> Result<R, String>,
+) -> Option<R> {
+	match next {
+		Next::Done | Next::Software => Some(keep(gpu)),
+		Next::Redraw => {
+			again();
+			Some(keep(gpu))
+		}
+		Next::Abandon(error) => {
+			again();
+			let failed = |error: &String| eprintln!("poopterm: software renderer unavailable: {error}");
+			fallback(gpu, &error).inspect_err(failed).ok()
+		}
+	}
+}
+
 pub(super) struct Gpu<W = Arc<Window>> {
 	/// Dropped before the window it draws in.
 	gpu: GpuWindow,
@@ -124,14 +149,15 @@ impl<W> Gpu<W> {
 		// SAFETY: as the caller vouches; the GPU drops before `window`.
 		let gpu = unsafe { GpuWindow::new(entry, surface, software, ATLAS) };
 		gpu
-			.map(|gpu| Self::with(gpu, window))
+			.map(|gpu| Self::with(gpu, window, ATLAS))
 			.map_err(|error| error.to_string())
 	}
 
-	fn with(gpu: GpuWindow, window: W) -> Self {
+	/// Draws in `window` on `gpu`, whose atlas is `atlas` (side, pages).
+	fn with(gpu: GpuWindow, window: W, atlas: (usize, usize)) -> Self {
 		Self {
 			gpu,
-			pen: QuadPen::new((0, 0), ATLAS),
+			pen: QuadPen::new((0, 0), atlas),
 			window,
 		}
 	}
@@ -173,6 +199,25 @@ impl<W> Gpu<W> {
 		next
 	}
 
+	/// Draws `scene`, the window's size, with glyphs from `fonts`, and shows
+	/// it: as quads, or painted whole by software into `pixels`, made the
+	/// scene's size, when the GPU cannot.
+	pub(super) fn scene(
+		&mut self,
+		scene: &Scene,
+		fonts: &mut FontSet,
+		pixels: &mut Vec<u32>,
+	) -> Next {
+		let size = (scene.width, scene.height);
+		pixels.clear();
+		pixels.resize(size.0 * size.1, 0);
+		let quads = |fonts: &mut FontSet, pen: &mut QuadPen| scene.replay(pen, fonts);
+		let whole = |fonts: &mut FontSet, pixels: &mut [u32]| {
+			scene.replay(&mut Painter::new(pixels, size.0, size.1), fonts);
+		};
+		self.frame(fonts, (size, pixels), quads, whole)
+	}
+
 	/// Draws the pen's frame, over `backdrop` if any, the window's `size`
 	/// pixels.
 	fn draw(&mut self, (width, height): (usize, usize), backdrop: Option<&[u32]>) -> Next {
@@ -191,6 +236,9 @@ mod headless_tests;
 #[cfg(test)]
 #[path = "gpu_open_tests.rs"]
 mod open_tests;
+#[cfg(test)]
+#[path = "gpu_scene_tests.rs"]
+mod scene_tests;
 #[cfg(test)]
 #[path = "gpu_tests.rs"]
 mod tests;

@@ -308,7 +308,9 @@ and position, and placeholder slices row by row.
   when the CPU has it (see [`unsafe.md`](unsafe.md)).
 - `app/draw.rs` composes a full frame: background or wallpaper, tab bar
   (`draw_tabs.rs`), terminal grid, search box, command palette, status bar.
-  The Settings window is drawn by `app/settings_view.rs`.
+  The Settings window's scene is composed by `app/settings_view.rs` and
+  drawn by `app/settings_draw.rs`, on the GPU like the main window when it
+  can.
 
 **Damage tracking.** `app::canvas::Canvas` keeps a back buffer holding the
 last frame and the `Frame` it shows. `render::damage::grid_damage` compares
@@ -369,6 +371,9 @@ showing an image are drawn again, because the frame lists its images anew.
 When the GPU refuses a frame, software paints it whole and the GPU shows it
 as a backdrop (`vk::renderer::Backdrop`) over an empty pen. Any other GPU
 error switches the window to softbuffer for good (`Renderer::after_gpu`).
+The Settings window has a `Renderer` of its own, chosen the same way: on the
+GPU, its scene is replayed on the pen; `app::gpu::after_drawn` decides, for
+both windows, which renderer draws the next frame.
 
 ## Input (`src/input`)
 

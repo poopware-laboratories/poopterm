@@ -6,7 +6,7 @@
 use super::{
 	App,
 	canvas::{DrawKey, Plan},
-	gpu::{Gpu, Next, remembers},
+	gpu::{Gpu, after_drawn, remembers},
 	renderer::Renderer,
 };
 use crate::{gpu::quads::QuadPen, render::painter::Painter};
@@ -42,19 +42,8 @@ impl App {
 			// Software would redraw in part pixels that never held the grid.
 			self.canvas.invalidate();
 		}
-		match next {
-			Next::Done | Next::Software => Some(Renderer::Gpu(gpu)),
-			Next::Redraw => {
-				self.request_redraw();
-				Some(Renderer::Gpu(gpu))
-			}
-			Next::Abandon(error) => {
-				self.request_redraw();
-				Renderer::after_gpu(gpu, &error)
-					.inspect_err(|error| eprintln!("poopterm: software renderer unavailable: {error}"))
-					.ok()
-			}
-		}
+		let again = || self.request_redraw();
+		after_drawn(gpu, next, again, Renderer::Gpu, Renderer::after_gpu)
 	}
 
 	// pr-check: window glue: draws the real window's frame for the GPU to show

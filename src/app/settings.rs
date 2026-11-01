@@ -123,7 +123,8 @@ impl App {
 				.create_window(attributes)
 				.expect("failed to create settings window"),
 		);
-		let mut surface = renderer::Software::new(window.clone()).expect("settings surface");
+		let renderer = renderer::Renderer::new(window.clone(), self.preferences.renderer);
+		let mut surface = renderer.expect("settings surface");
 		let size = window.inner_size();
 		surface.resize(size.width.max(1), size.height.max(1));
 		self.settings_width = size.width;

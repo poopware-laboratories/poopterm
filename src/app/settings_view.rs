@@ -3,15 +3,11 @@
 //! constants.
 use super::*;
 use super::{
-	renderer::after_shown,
 	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
 	settings_pen::Pen,
 };
 use crate::input::shortcuts::ShortcutAction;
-use crate::render::{
-	painter::{ButtonStyle, Painter},
-	scene::Scene,
-};
+use crate::render::{painter::ButtonStyle, scene::Scene};
 
 pub(super) const THEME_ROW: usize = 138;
 pub(super) const WALLPAPER_ROW: usize = 228;
@@ -115,22 +111,15 @@ impl App {
 			.as_ref()
 			.map_or(1, |window| window.scale_factor().round() as usize)
 			.max(1);
-		let Some(mut surface) = self.settings_surface.take() else {
+		let Some(renderer) = self.settings_surface.take() else {
 			return;
 		};
 		let (width, height) = (self.settings_width as usize, self.settings_height as usize);
-		let mut pixels = vec![0; width * height];
 		// pr-check: window glue: draws the settings window's frame, which needs its window
 		let mut scene = Scene::new(width, height);
 		self.compose_settings(&mut scene, scale);
-		scene.replay(
-			&mut Painter::new(&mut pixels, width, height),
-			&mut self.ui_fonts,
-		);
+		self.settings_surface = self.show_settings(renderer, &scene);
 		// pr-check: end window glue
-		let shown = surface.present(&pixels, width, None, false);
-		let again = || self.redraw_settings();
-		self.settings_surface = after_shown(surface, shown, again, renderer::Software::fallback);
 	}
 
 	fn compose_settings(&mut self, p: &mut Scene, scale: usize) {

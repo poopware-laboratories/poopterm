@@ -1,7 +1,8 @@
 //! Tests of the main window's GPU glue: which windows Vulkan draws in,
 //! when a CPU device may draw, what a frame is drawn as, what each
-//! frame's outcome leads to, and which frames the next redraws rows of.
-use super::{Next, allows_cpu_device, next, remembers, surface_window};
+//! frame's outcome leads to, which frames the next redraws rows of, and
+//! which renderer draws the next frame.
+use super::{Next, after_drawn, allows_cpu_device, next, remembers, surface_window};
 use crate::{
 	config::RendererPreference,
 	gpu::vk::{call::Error, surface::Window, swapchain_plan::Unfit, window::Drawn},
@@ -110,4 +111,53 @@ fn a_frame_whose_grid_rows_the_pen_keeps_is_remembered_however_it_was_shown() {
 fn a_frame_after_the_gpu_failed_is_not_remembered() {
 	// Software never painted the grid the GPU drew.
 	assert!(!remembers(true, &Next::Abandon("lost".into())));
+}
+
+/// What `after_drawn` did with a GPU after a frame came to `next`, when
+/// software would come to `software`: the renderer it hands back, and what
+/// it asked for on the way, in order.
+fn after(next: Next, software: Result<&str, &str>) -> (Option<String>, Vec<String>) {
+	let calls = std::cell::RefCell::new(Vec::new());
+	let renderer = after_drawn(
+		"gpu",
+		next,
+		|| calls.borrow_mut().push("again".to_owned()),
+		|gpu| format!("kept {gpu}"),
+		|gpu, error| {
+			calls.borrow_mut().push(format!("{gpu} failed: {error}"));
+			software.map(str::to_owned).map_err(str::to_owned)
+		},
+	);
+	(renderer, calls.into_inner())
+}
+
+#[test]
+fn the_gpu_draws_on_after_a_frame_it_showed_or_left_to_software() {
+	// A frame software painted was shown through the GPU, which stays.
+	for next in [Next::Done, Next::Software] {
+		let (renderer, calls) = after(next, Ok("software"));
+		assert_eq!(renderer.as_deref(), Some("kept gpu"));
+		assert!(calls.is_empty(), "{calls:?}");
+	}
+}
+
+#[test]
+fn the_gpu_draws_on_and_asks_for_another_frame_after_one_it_could_not_show() {
+	let (renderer, calls) = after(Next::Redraw, Ok("software"));
+	assert_eq!(renderer.as_deref(), Some("kept gpu"));
+	assert_eq!(calls, ["again"]);
+}
+
+#[test]
+fn a_gpu_that_failed_hands_its_window_to_software_which_draws_the_frame_again() {
+	let (renderer, calls) = after(Next::Abandon("device lost".into()), Ok("software"));
+	assert_eq!(renderer.as_deref(), Some("software"));
+	assert_eq!(calls, ["again", "gpu failed: device lost"]);
+}
+
+#[test]
+fn a_window_whose_gpu_and_software_both_failed_has_no_renderer() {
+	let (renderer, calls) = after(Next::Abandon("device lost".into()), Err("no shm"));
+	assert_eq!(renderer, None);
+	assert_eq!(calls, ["again", "gpu failed: device lost"]);
 }
