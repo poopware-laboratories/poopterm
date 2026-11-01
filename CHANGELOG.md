@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.11.1 "Lunar Moth" — 2026-11-01
+
+### Fixed
+
+- Give back history memory after clearing it or lowering its limit (#192) (term).
+
+### Performance
+
+- Give freed memory back to the system at once (#194) (alloc).
+
+### Maintenance
+
+- Report the terminal's resident memory (#193) (throughput).
+
 ## 26.11.0 "Lunar Moth" — 2026-11-01
 
 ### Added
