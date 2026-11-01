@@ -527,3 +527,52 @@ An additional Unicode-only A B B A A B repeat measured 208.7→206.4 MB/s
 207.3–208.8. This remaining variation/cost is a limitation, not a Unicode
 speedup claim. Suppressing queue notifications alone did not reproduce the
 ASCII gain (242.6→243.8 MB/s in the separate default-settings series).
+
+## Eager mimalloc purging (2026-10-31)
+
+mimalloc kept freed pages committed for a second and purged them only on a
+later allocation, so an idle terminal never gave back what a flood or a
+cleared scrollback had used. `allocator.rs` sets the purge delay to 0 at
+startup.
+
+Linux, Intel N-series (ADL-N), sway, 100×30, `scripts/bench-throughput.py`
+at 16 MiB × 3, `--settle 2`. Runs alternated, three per variant: the
+default, then `MIMALLOC_PURGE_DELAY=0` on the same binary. Medians across
+runs, with min–max, MB/s:
+
+| Workload | Default | Purge at once |
+|---|---:|---:|
+| log | 118.3 (115.1–120.4) | 119.3 (114.7–120.6) |
+| compiler | 116.0 (112.3–116.2) | 116.5 (115.8–116.6) |
+| ls | 112.4 (111.4–112.5) | 114.4 (114.3–116.7) |
+| source | 129.2 (127.7–131.8) | 127.9 (127.4–129.0) |
+| unicode | 80.5 (79.7–81.3) | 81.8 (81.1–82.6) |
+| cjk | 83.7 (82.3–84.9) | 85.3 (84.3–86.0) |
+| emoji | 74.9 (72.7–76.0) | 75.0 (73.5–75.1) |
+| tui | 218.7 (147.5–224.3) | 219.9 (216.8–224.5) |
+| editor | 236.8 (232.7–240.1) | 237.6 (232.3–238.5) |
+| progress | 314.3 (306.5–314.3) | 309.3 (306.7–310.2) |
+| truecolor | 245.9 (245.5–252.5) | 250.1 (248.3–252.9) |
+| cursor | 179.0 (177.9–180.1) | 176.5 (171.2–179.8) |
+| shell | 123.3 (120.6–123.6) | 119.7 (116.4–124.7) |
+| sixel | 150.2 (149.6–151.6) | 144.3 (143.6–145.7) |
+| kitty-rgba | 374.8 (368.4–381.1) | 366.1 (365.4–374.3) |
+| kitty-png | 111.0 (111.0–111.0) | 110.7 (110.6–111.1) |
+| kitty-zlib | 238.3 (237.7–239.6) | 238.6 (234.8–239.0) |
+| overall | 136.6 (134.9–137.8) | 137.3 (136.6–138.1) |
+
+Throughput holds overall. Sixel is about 4% lower, outside the default's
+range; the other workloads overlap. Peak RSS barely moves (170 → 168 MiB),
+and RSS after each workload is mostly live data (history, images).
+
+The gain is memory given back afterwards. A 64 MiB `log` flood followed by
+`ESC [2J ESC [3J`, RSS in MiB, five alternated runs each:
+
+| | Default | Purge at once |
+|---|---:|---:|
+| Start | 84 (84–86) | 77 (76–79) |
+| After the flood | 138 (136–140) | 117 (113–125) |
+| 3 s after the clear | 138 (136–140) | 106 (102–114) |
+
+With the default, clearing history (which frees the ring since #192) gave
+nothing back at all.
