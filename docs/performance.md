@@ -715,3 +715,52 @@ renderer, MB/s, and resident memory at the end of each workload, MiB:
 | kitty-zlib | 248 (246–249) | 245 (243–250) | 82 / 113 |
 
 The GPU path holds about 40 MiB more, mostly the Vulkan driver's.
+
+### GPU finished (26.11.16)
+
+With everything drawn on the GPU (text, chrome, images, wallpaper and the
+Settings window; software only as the fallback and opt-in), the same
+measurements on `main` (`3224472`, released as 26.11.16). Frames:
+`scripts/bench-frames.py --runs 5`, alternating, milliseconds:
+
+| Window | Renderer | Frame | Paint | Show | Latency | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|
+| 1000×600, scale 1 | software | 1.00 (0.98–1.02) | 0.71 (0.70–0.73) | 0.28 (0.27–0.28) | 0.44 (0.43–0.45) | 0.54 (0.50–1.05) |
+| 1000×600, scale 1 | gpu | 0.38 (0.35–0.39) | 0.17 (0.15–0.18) | 0.19 (0.19–0.20) | 0.55 (0.53–0.60) | 1.00 (0.78–1.22) |
+| 1920×1080, scale 2 | software | 1.91 (1.90–1.95) | 1.14 (1.13–1.16) | 0.76 (0.75–0.76) | 0.55 (0.51–0.56) | 0.66 (0.65–1.02) |
+| 1920×1080, scale 2 | gpu | 0.31 (0.31–0.32) | 0.13 (0.13–0.13) | 0.17 (0.17–0.17) | 0.56 (0.55–0.58) | 0.68 (0.64–0.84) |
+
+A full GPU frame is 2.6× (scale 1) to 6.2× (scale 2) faster than software,
+and its cost no longer grows with the pixels. Typing latency matches
+software at scale 2 and stays about 0.1 ms above it at scale 1, where
+software redraws only the damaged rows and the GPU waits on submission.
+
+Flood throughput in a window (`scripts/bench-throughput.py --mib 16
+--repeat 3` as the shell, 86×45, three alternating runs per renderer), MB/s,
+and resident memory at the end of each workload, MiB:
+
+| Workload | Software | GPU | RSS software / GPU |
+|---|---:|---:|---:|
+| log | 120 (118–120) | 121 (118–123) | 44 / 90 |
+| compiler | 114 (111–114) | 115 (113–118) | 45 / 90 |
+| ls | 110 (110–114) | 113 (112–116) | 45 / 96 |
+| source | 128 (124–131) | 133 (133–135) | 47 / 96 |
+| unicode | 82 (80–82) | 82 (81–84) | 52 / 96 |
+| cjk | 84 (81–85) | 83 (82–86) | 56 / 97 |
+| emoji | 73 (72–75) | 73 (71–75) | 54 / 100 |
+| tui | 277 (273–280) | 281 (280–288) | 61 / 102 |
+| editor | 230 (230–231) | 248 (235–248) | 61 / 102 |
+| progress | 312 (309–313) | 318 (316–322) | 63 / 110 |
+| truecolor | 255 (241–256) | 258 (251–259) | 63 / 114 |
+| cursor | 184 (184–184) | 184 (183–185) | 63 / 114 |
+| shell | 123 (120–126) | 128 (122–129) | 69 / 114 |
+| sixel | 146 (145–147) | 148 (147–149) | 75 / 115 |
+| kitty-rgba | 383 (368–388) | 390 (389–395) | 77 / 120 |
+| kitty-png | 116 (114–116) | 119 (118–120) | 78 / 118 |
+| kitty-zlib | 237 (237–242) | 242 (241–246) | 76 / 117 |
+| **overall** | 138 | 141 | |
+
+The parser still bounds floods, so both renderers stay within a few
+percent; the GPU path holds 40–50 MiB more, mostly the Vulkan driver's.
+Headless (`poopterm --benchmark`, 120×40, five runs) is unchanged by the
+renderer: 253 (251–254) MB/s overall.
