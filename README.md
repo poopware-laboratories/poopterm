@@ -17,7 +17,7 @@
 
 ![Poopterm showing a cargo build, a benchmark table, styled text, emoji and a truecolor gradient in the Poop theme](assets/screenshot.png)
 
-Poopterm handles real-world output at 63–248 MB/s end to end (108 MB/s
+Poopterm handles real-world output at 75–375 MB/s end to end (137 MB/s
 overall, images included) on a low-power laptop CPU; see
 [performance](docs/performance.md). It runs on Linux, macOS and FreeBSD.
 Terminal compatibility is growing and is not yet a complete xterm
@@ -92,7 +92,7 @@ same profile-guided build, launcher, icons and terminfo entry. There is no
 DNF repository yet, so updates are installed the same way:
 
 ```sh
-sudo dnf install ./poopterm-26.10.93-1.x86_64.rpm
+sudo dnf install ./poopterm-26.11.0-1.x86_64.rpm
 ```
 
 </details>
@@ -131,7 +131,7 @@ Release packages carry a signed build provenance attestation, which proves
 that the release workflow built them from the tagged commit:
 
 ```sh
-gh attestation verify poopterm_26.10.93-1_amd64.deb --repo poopware-laboratories/poopterm
+gh attestation verify poopterm_26.11.0-1_amd64.deb --repo poopware-laboratories/poopterm
 ```
 
 ## Build from source

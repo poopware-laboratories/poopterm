@@ -160,28 +160,30 @@ the synchronized-output and combining-mark changes below (`d48ebd6`), then
 at 26.10.42 with our own inflate (#57), and at 26.10.93 (after the
 regression recovery, runtime CPU dispatch and the emoji work). **End to end** is
 `scripts/bench-throughput.py --mib 16 --repeat 3` in a Poopterm window of
-100×30 cells (median MB/s), measured at `d48ebd6` and not yet repeated.
+100×30 cells (median MB/s), at `d48ebd6` and again at 26.10.137 (the
+median of three alternated runs on sway, from the
+[mimalloc purge comparison](#eager-mimalloc-purging-2026-10-31)).
 
-| Workload | End to end (`d48ebd6`) | Headless (`d48ebd6`) | Headless (26.10.42) | Headless (26.10.93) |
-|----------|-----------:|---------:|---------:|---------:|
-| log (plain ASCII) | 86 | 204 | 248 | 276 |
-| compiler (colors, hyperlinks) | 77 | 122 | 153 | 188 |
-| ls --color | 86 | 143 | 182 | 223 |
-| source (highlighted) | 105 | 131 | 139 | 175 |
-| unicode (accented, Greek, Cyrillic) | 83 | 92 | 138 | 154 |
-| cjk | 86 | 102 | 154 | 173 |
-| emoji (ZWJ, combining marks) | 63 | 69 | 120 | 135 |
-| tui (sync blocks, htop-like) | 161 | 175 | 204 | 241 |
-| editor (scroll regions) | 159 | 165 | 213 | 265 |
-| progress bars | 175 | 190 | 286 | 371 |
-| truecolor half blocks | 248 | 261 | 240 | 260 |
-| cursor motion | 119 | 123 | 144 | 186 |
-| shell prompts (OSC 133/7/0/8) | 90 | 115 | 142 | 153 |
-| sixel | 72 | 76 | 149 | 152 |
-| kitty-rgba | 301 | 1021 | 1023 | 1070 |
-| kitty-png | 108 | 111 | 113 | 116 |
-| kitty-zlib | 224 | 233 | 246 | 231 |
-| **overall** | **108** | **133** | **175** | **198** |
+| Workload | End to end (`d48ebd6`) | End to end (26.10.137) | Headless (`d48ebd6`) | Headless (26.10.42) | Headless (26.10.93) |
+|----------|-----------:|-----------:|---------:|---------:|---------:|
+| log (plain ASCII) | 86 | 118 | 204 | 248 | 276 |
+| compiler (colors, hyperlinks) | 77 | 116 | 122 | 153 | 188 |
+| ls --color | 86 | 112 | 143 | 182 | 223 |
+| source (highlighted) | 105 | 129 | 131 | 139 | 175 |
+| unicode (accented, Greek, Cyrillic) | 83 | 81 | 92 | 138 | 154 |
+| cjk | 86 | 84 | 102 | 154 | 173 |
+| emoji (ZWJ, combining marks) | 63 | 75 | 69 | 120 | 135 |
+| tui (sync blocks, htop-like) | 161 | 219 | 175 | 204 | 241 |
+| editor (scroll regions) | 159 | 237 | 165 | 213 | 265 |
+| progress bars | 175 | 314 | 190 | 286 | 371 |
+| truecolor half blocks | 248 | 246 | 261 | 240 | 260 |
+| cursor motion | 119 | 179 | 123 | 144 | 186 |
+| shell prompts (OSC 133/7/0/8) | 90 | 123 | 115 | 142 | 153 |
+| sixel | 72 | 150 | 76 | 149 | 152 |
+| kitty-rgba | 301 | 375 | 1021 | 1023 | 1070 |
+| kitty-png | 108 | 111 | 111 | 113 | 116 |
+| kitty-zlib | 224 | 238 | 233 | 246 | 231 |
+| **overall** | **108** | **137** | **133** | **175** | **198** |
 
 End-to-end figures sit below headless ones where the PTY and the window
 cost more than parsing: at `d48ebd6` plain ASCII parsed at 204 MB/s but
