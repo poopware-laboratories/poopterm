@@ -158,6 +158,56 @@ fn long_times_are_not_cut_short() {
 	);
 }
 
+#[test]
+fn a_key_typed_after_the_echo_waits_for_the_frame_to_answer_the_first() {
+	let mut stats = FrameStats::default();
+	let first = Instant::now();
+	stats.key(first);
+	stats.output();
+	// Typed after the echo but before the frame showing it: no new start.
+	stats.key(first + ms(3));
+	stats.frame(Kind::Software, timing(1, 1, 1), first + ms(5));
+	assert_eq!(stats.latency, [ms(5)]);
+	// Its echo was not seen yet, so it measures nothing more.
+	stats.frame(Kind::Software, timing(1, 1, 1), first + ms(9));
+	assert_eq!(stats.latency, [ms(5)]);
+}
+
+#[test]
+fn output_seen_twice_is_one_echo() {
+	let mut stats = FrameStats::default();
+	let key = Instant::now();
+	stats.key(key);
+	stats.output();
+	stats.output();
+	stats.frame(Kind::Gpu, timing(1, 1, 1), key + ms(4));
+	stats.frame(Kind::Gpu, timing(1, 1, 1), key + ms(8));
+	assert_eq!(stats.latency, [ms(4)]);
+}
+
+#[test]
+fn a_frame_ending_before_its_key_measures_zero_not_a_panic() {
+	let mut stats = FrameStats::default();
+	let key = Instant::now() + ms(10);
+	stats.key(key);
+	stats.output();
+	stats.frame(Kind::Gpu, timing(1, 1, 1), key - ms(5));
+	assert_eq!(stats.latency, [ms(0)]);
+}
+
+#[test]
+fn samples_keep_the_order_frames_were_drawn_in() {
+	let mut stats = FrameStats::default();
+	let now = Instant::now();
+	for n in [3, 1, 2] {
+		stats.frame(Kind::Software, timing(n, n * 10, n * 100), now);
+	}
+	let micros = |samples: &[Duration]| samples.iter().map(Duration::as_micros).collect::<Vec<_>>();
+	assert_eq!(micros(&stats.paint), [3, 1, 2]);
+	assert_eq!(micros(&stats.show), [30, 10, 20]);
+	assert_eq!(micros(&stats.total), [300, 100, 200]);
+}
+
 mod recorder {
 	use super::*;
 
@@ -265,6 +315,45 @@ mod recorder {
 		);
 		assert!(written.contains("\"size\": [80, 24]"), "{written}");
 		std::fs::remove_file(path).unwrap();
+	}
+
+	#[test]
+	fn software_painted_in_several_parts_adds_up() {
+		let mut recorder = recorder();
+		let start = Instant::now();
+		recorder.painted(ms(2), false);
+		recorder.painted(ms(3), false);
+		recorder.finish(false, ms(1), start, start + ms(6));
+		assert_eq!(recorder.stats.paint, [ms(5)]);
+		assert_eq!(
+			recorder.stats.show,
+			[ms(1)],
+			"software shows for what its presenter took"
+		);
+	}
+
+	#[test]
+	fn a_frame_ending_before_it_started_takes_zero() {
+		let mut recorder = recorder();
+		let start = Instant::now() + ms(10);
+		recorder.finish(false, ms(1), start, start - ms(1));
+		assert_eq!(recorder.stats.total, [ms(0)]);
+	}
+
+	#[test]
+	fn a_whole_software_frame_on_the_software_renderer_is_a_software_frame() {
+		// Only the GPU path paints whole for another renderer to show.
+		let mut recorder = recorder();
+		let start = Instant::now();
+		recorder.painted(ms(2), true);
+		recorder.finish(false, ms(1), start, start + ms(3));
+		assert_eq!(recorder.stats.kinds, [1, 0, 0]);
+		recorder.finish(true, ms(1), start, start + ms(1));
+		assert_eq!(
+			recorder.stats.kinds,
+			[1, 1, 0],
+			"and it does not carry over"
+		);
 	}
 
 	#[test]

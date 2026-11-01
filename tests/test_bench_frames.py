@@ -10,6 +10,7 @@ from pathlib import Path
 import pty
 import re
 import select
+import signal
 import subprocess
 import struct
 import sys
@@ -42,9 +43,40 @@ words = shlex.split(open(os.environ["SHELL"]).read().splitlines()[1])
 if os.environ.get("FAKE_EXIT"):
     sys.exit(1)
 open(words[-1], "w").close()
+if os.environ.get("FAKE_HANG"):
+    import time; time.sleep(60)
 inside = words[words.index("--inside") + 1:]
 with open(os.environ["POOPTERM_FRAME_STATS"], "w") as out:
     json.dump({{"renderer": os.environ["POOPTERM_RENDERER"], "inside": inside, "total_us": [1.5]}}, out)
+'''
+
+# A stand-in for poopterm that runs its shell, the real inside half, on a
+# pty: it answers DA1, types the keys written to the FAKE_KEYS pipe, and
+# reports how many screens it was sent and everything after the last.
+FAKE_HOST = '''#!{python}
+import fcntl, json, os, pty, select, struct, termios
+# Read and write: the pipe never ends while the test opens and closes it.
+keys = os.open(os.environ["FAKE_KEYS"], os.O_RDWR)
+pid, fd = pty.fork()
+if pid == 0:
+    fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    os.execv(os.environ["SHELL"], [os.environ["SHELL"]])
+output, queries = b"", 0
+while True:
+    readable = select.select([fd, keys], [], [])[0]
+    if keys in readable:
+        os.write(fd, os.read(keys, 64))
+    if fd in readable:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            break
+        output += data
+        queries += data.count(b"\\x1b[c")
+        os.write(fd, b"\\x1b[?62;22c" * data.count(b"\\x1b[c"))
+os.waitpid(pid, 0)
+with open(os.environ["POOPTERM_FRAME_STATS"], "w") as out:
+    json.dump({{"queries": queries, "after": output.rsplit(b"\\x1b[c", 1)[-1].decode()}}, out)
 '''
 
 
@@ -212,19 +244,51 @@ class Running(unittest.TestCase):
         self.binary = Path(self.scratch, 'poopterm')
         self.binary.write_text(FAKE_TERMINAL.format(python=sys.executable))
         self.binary.chmod(0o755)
-        self.commands = []
-        real = subprocess.run
+        self.commands, self.processes = [], []
+        self.keys = Path(self.scratch, 'keys')
+        os.mkfifo(self.keys)
+        real_run, real_popen = subprocess.run, subprocess.Popen
 
         def record(command, **kwargs):
-            if command[0] in ('swaymsg', 'wtype'):
-                self.commands.append(command)
-                return subprocess.CompletedProcess(command, 0)
-            return real(command, **kwargs)
+            if command[0] not in ('swaymsg', 'wtype'):
+                return real_run(command, **kwargs)
+            self.commands.append(command)
+            if command[0] == 'wtype':
+                if os.environ.get('FAKE_WTYPE_FAILS'):
+                    raise subprocess.CalledProcessError(1, command)
+                # Read and write, so it never waits for a terminal to read.
+                keys = os.open(self.keys, os.O_RDWR)
+                os.write(keys, command[1].encode())
+                os.close(keys)
+            return subprocess.CompletedProcess(command, 0)
 
+        def popen(*args, **kwargs):
+            self.processes.append(real_popen(*args, **kwargs))
+            return self.processes[-1]
+
+        env = {'FAKE_KEYS': str(self.keys)}
         for patch in [mock.patch.object(frames.subprocess, 'run', record),
-                      mock.patch.object(frames.time, 'sleep', lambda _: None)]:
+                      mock.patch.object(frames.subprocess, 'Popen', popen),
+                      mock.patch.object(frames.time, 'sleep', lambda _: None),
+                      mock.patch.dict(os.environ, env)]:
             patch.start()
             self.addCleanup(patch.stop)
+
+    def test_the_inside_half_paints_answers_and_echoes_in_a_terminal(self):
+        # The whole round trip, with the real shell script and inside half.
+        self.binary.write_text(FAKE_HOST.format(python=sys.executable))
+        stats = frames.run(str(self.binary), 'software', (800, 500), 3, 4, self.scratch)
+        self.assertEqual(stats['queries'], 3, 'one DA1 query per screen')
+        self.assertEqual(stats['after'], 'abcd', 'every typed key echoed, after the last screen')
+        self.assertEqual([command[0] for command in self.commands], ['swaymsg'] + ['wtype'] * 4)
+
+    def test_a_failed_run_does_not_leave_its_terminal_open(self):
+        with mock.patch.dict(os.environ, FAKE_HANG='1', FAKE_WTYPE_FAILS='1'), \
+                self.assertRaises(subprocess.CalledProcessError):
+            frames.run(str(self.binary), 'gpu', (800, 500), 0, 2, self.scratch)
+        self.assertEqual(len(self.processes), 1)
+        # Killed and reaped at once, not waited for until it exits by itself.
+        self.assertEqual(self.processes[0].poll(), -signal.SIGKILL)
 
     def test_returns_the_stats_its_terminal_wrote(self):
         stats = frames.run(str(self.binary), 'gpu', (800, 500), 12, 3, self.scratch)

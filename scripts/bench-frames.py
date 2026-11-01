@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
-"""Frame time and typing latency of Poopterm's renderers, in real windows.
-
-Launches poopterm (sway only: windows are floated and sized with swaymsg,
-keys typed with wtype) with each renderer in turn, alternating, and reads
-the summary each run writes to POOPTERM_FRAME_STATS on exit:
-
-* Frames: the shell paints a different full screen about 30 times a
-  second, waiting for each to be parsed (a DA1 reply), so every frame
-  redraws the whole grid. Reported: time in software painting, in showing
-  the frame (GPU recording, submission and presentation, or the software
-  presenter), and in all of the frame.
-* Latency: wtype types keys into a raw-mode reader that echoes each one,
-  as a shell would; measured from the key event to the end of the first
-  frame drawn after the echo arrived (not to photons on the glass).
-
-Usage:
-
-    python3 scripts/bench-frames.py                          # software and gpu, 3 runs
-    python3 scripts/bench-frames.py --runs 5 --size 1600x1000 --binary /tmp/poopterm-before
-"""
+# Frame time and typing latency of Poopterm's renderers, in real windows.
+#
+# Launches poopterm (sway only: windows are floated and sized with swaymsg,
+# keys typed with wtype) with each renderer in turn, alternating, and reads
+# the samples each run writes to POOPTERM_FRAME_STATS on exit:
+#
+# * Frames: the shell paints a different full screen about 30 times a
+#   second, waiting for each to be parsed (a DA1 reply), so every frame
+#   redraws the whole grid. Reported: time in software painting, in showing
+#   the frame (GPU recording, submission and presentation, or the software
+#   presenter), and in all of the frame.
+# * Latency: wtype types keys into a raw-mode reader that echoes each one,
+#   as a shell would; measured from the key event to the end of the first
+#   frame drawn after the echo arrived (not to photons on the glass).
+#
+# Usage:
+#
+#     python3 scripts/bench-frames.py                          # software and gpu, 3 runs
+#     python3 scripts/bench-frames.py --runs 5 --size 1600x1000 --binary /tmp/poopterm-before
 import argparse
 import json
 import math
@@ -169,7 +168,7 @@ def table(summaries):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description="Frame time and typing latency of Poopterm's renderers, in real windows.")
     parser.add_argument("--inside", nargs=3, metavar=("FRAMES", "KEYS", "READY"), help=argparse.SUPPRESS)
     parser.add_argument("--binary", action="append", help="poopterm to measure (repeatable; "
                         "default target/release/poopterm)")
