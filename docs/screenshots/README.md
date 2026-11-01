@@ -11,6 +11,7 @@ links keep working. Each folder belongs to one pull request:
 | `status/` | #139, status bar in the header's colors |
 | `overlay-screenshots/` | #140, search box and command palette as popovers |
 | `rename-screenshots/` | #141, palette kept open to rename a tab |
+| `gpu-images/` | images drawn as GPU textures, beside software |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

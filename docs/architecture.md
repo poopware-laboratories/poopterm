@@ -349,9 +349,14 @@ window with Vulkan: it makes a surface of the window's handles, picks the
 device whose queue draws and shows on it (`choose::suits` says why each other
 device cannot, which the fallback to software reports), and keeps a swapchain
 of the window's size, remade when the window resizes or the driver says it
-is out of date or suboptimal. A frame the GPU cannot draw yet (images, or
-glyphs the atlas cannot hold) is refused before an image is acquired, so
-software draws it. `render::backend::preference` lets `POOPTERM_RENDERER`
+is out of date or suboptimal. Images are textures of their own
+(`gpu::textures` keeps one per bitmap, by its address, while the bitmap
+lives, least recently used first out of a 256 MiB budget); the quads draw
+in runs, each with its image's descriptor set bound (`vk::draw`), and text
+between images joins the run it is in. A frame the GPU cannot draw (glyphs
+the atlas cannot hold, images past the budget or larger than the device
+makes) is refused before a swapchain image is acquired, so software draws
+it, and forgets the textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 
 `app::gpu::Gpu` puts the main window on it (`app::renderer::Renderer::Gpu`).
