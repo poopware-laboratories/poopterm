@@ -65,11 +65,14 @@ exit (frame kinds, then every frame's paint, show and whole-frame time and
 every key-to-frame latency, in µs). Pick the renderer with
 `POOPTERM_RENDERER=software` or `gpu`, give the window a fixed size, and
 have its shell paint full screens (waiting for a DA1 reply after each) or
-echo typed keys in raw mode; a script that does all of it on sway is to
-follow.
+echo typed keys in raw mode. `scripts/bench-frames.py` does all of it on
+sway (windows floated and sized with `swaymsg`, keys typed with `wtype`),
+alternating renderers and builds, and prints the medians of the run
+medians with their spread as a Markdown table:
 
 ```sh
 POOPTERM_RENDERER=gpu POOPTERM_FRAME_STATS=/tmp/gpu.json ./target/release/poopterm
+python3 scripts/bench-frames.py --runs 5 --binary /tmp/poopterm-before --binary target/release/poopterm
 ```
 
 **Parser only**, without rendering: `cargo test --release -- --ignored
