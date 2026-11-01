@@ -107,3 +107,28 @@ fn an_empty_inside_still_gets_a_pixel() {
 	);
 	assert!(Arc::ptr_eq(&bitmap.clone(), paper.bitmap(0, 1, NAVY, 100)));
 }
+
+#[test]
+fn the_inside_is_the_window_less_its_border_on_both_sides() {
+	let mut paper = wallpaper(4, &four());
+	let size = |paper: &mut Wallpaper, window, border| {
+		let bitmap = paper.inside(window, border, NAVY, 100);
+		(bitmap.width, bitmap.height)
+	};
+	assert_eq!(size(&mut paper, (20, 12), 2), (16, 8));
+	assert_eq!(size(&mut paper, (20, 12), 0), (20, 12));
+	assert_eq!(size(&mut paper, (20, 12), 5), (10, 2));
+	// A border taking the window, or overflowing, leaves a pixel.
+	assert_eq!(size(&mut paper, (20, 12), 6), (8, 1));
+	assert_eq!(size(&mut paper, (20, 12), 10), (1, 1));
+	assert_eq!(size(&mut paper, (20, 12), usize::MAX), (1, 1));
+}
+
+#[test]
+fn the_inside_is_the_bitmap_of_its_size_and_kept_like_it() {
+	let mut paper = wallpaper(4, &four());
+	let inside = paper.inside((6, 5), 1, NAVY, 40).clone();
+	assert!(Arc::ptr_eq(&inside, paper.bitmap(4, 3, NAVY, 40)));
+	assert_eq!(*inside, **paper.inside((6, 5), 1, NAVY, 40));
+	assert!(!Arc::ptr_eq(&inside, paper.inside((6, 5), 1, NAVY, 41)));
+}

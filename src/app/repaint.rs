@@ -88,9 +88,7 @@ impl App {
 		let Some(paper) = self.wallpaper.as_mut() else {
 			return fill(p, (y, height), left, border, (edge, bg));
 		};
-		let inside = |size: usize| size.saturating_sub(2 * border);
-		let (width, total) = p.size();
-		let image = paper.bitmap(inside(width), inside(total), bg, self.wallpaper_strength);
+		let image = paper.inside(p.size(), border, bg, self.wallpaper_strength);
 		wallpaper(p, (y, height), left, border, edge, image);
 	}
 }

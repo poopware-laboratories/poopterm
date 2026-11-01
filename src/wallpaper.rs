@@ -93,6 +93,19 @@ impl Wallpaper {
 		}
 		&self.cache.as_ref().expect("made above").1
 	}
+
+	/// [`bitmap`](Self::bitmap) for the inside of a `window` (width and
+	/// height) within its `border`.
+	pub(crate) fn inside(
+		&mut self,
+		(width, height): (usize, usize),
+		border: usize,
+		background: u32,
+		strength: usize,
+	) -> &Arc<Bitmap> {
+		let inside = |size: usize| size.saturating_sub(border.saturating_mul(2));
+		self.bitmap(inside(width), inside(height), background, strength)
+	}
 }
 
 fn blend_over(pixel: [u8; 4], background: u32, strength: usize) -> u32 {
