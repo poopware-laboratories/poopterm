@@ -1,5 +1,16 @@
 # Changelog
 
+## 26.11.16 "Lunar Moth" — 2026-11-01
+
+### Fixed
+
+- Resize the grid to the window's new size when its scale changes (#216) (app).
+
+### Maintenance
+
+- Drop the gpu_whole frame kind (#217) (app).
+- Describe poopterm as hardware accelerated (#218).
+
 ## 26.11.15 "Lunar Moth" — 2026-11-01
 
 ### Added
