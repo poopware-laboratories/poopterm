@@ -90,7 +90,7 @@ fn cubic_extremes(p0: f32, p1: f32, p2: f32, p3: f32) -> [Option<f32>; 2] {
 	let c = p1 - p0;
 	let inside = |t: f32| (t > 0.0 && t < 1.0).then_some(t);
 	if a.abs() < 1e-6 {
-		return [(b != 0.0).then(|| -c / b).and_then(inside), None];
+		return [(b != 0.0).then_some(-c / b).and_then(inside), None];
 	}
 	let discriminant = b * b - 4.0 * a * c;
 	if discriminant < 0.0 {

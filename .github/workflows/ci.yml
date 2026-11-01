@@ -29,8 +29,9 @@ jobs:
         if: runner.os == 'Linux'
         # zsh and fish run the shell hooks' tests, which skip missing shells;
         # Mesa's software Vulkan driver and the validation layer run the
-        # Vulkan tests; weston, headless, the Wayland presenter's.
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers weston
+        # Vulkan tests; weston, headless, the Wayland presenter's; Xvfb and
+        # libxcb's MIT-SHM and Xlib bridge, the X11 presenter's.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev zsh fish libvulkan1 mesa-vulkan-drivers vulkan-validationlayers weston xvfb libxcb-shm0 libx11-xcb1
 
       # The checked-in SPIR-V must be what the GLSL compiles to with the
       # pinned glslc; scripts/shaders.sh names the SDK it comes from.
@@ -75,6 +76,19 @@ jobs:
             sleep 0.1
           done
           cat "$RUNNER_TEMP/weston.log"
+          exit 1
+
+      - name: Start a virtual X server
+        if: runner.os == 'Linux'
+        run: |
+          # The X11 tests then fail, not skip, without it.
+          printf '%s\n' DISPLAY=:99 POOPTERM_REQUIRE_X11=1 >> "$GITHUB_ENV"
+          nohup Xvfb :99 -screen 0 1280x800x24 -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+          for _ in $(seq 100); do
+            [ -S /tmp/.X11-unix/X99 ] && exit 0
+            sleep 0.1
+          done
+          cat "$RUNNER_TEMP/xvfb.log"
           exit 1
 
       - name: Run tests
