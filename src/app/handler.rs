@@ -105,6 +105,9 @@ impl ApplicationHandler<UserEvent> for App {
 				self.active_session().write(&bytes);
 			}
 			WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+				if let Some(recorder) = &mut self.frame_stats {
+					recorder.stats.key(Instant::now());
+				}
 				self.handle_key(event_loop, event)
 			}
 			WindowEvent::CursorMoved { position, .. } => self.handle_cursor_moved(position),
@@ -122,6 +125,15 @@ impl ApplicationHandler<UserEvent> for App {
 			_ => {}
 		}
 	}
+
+	// pr-check: window glue: winit calls this once as the event loop ends
+	fn exiting(&mut self, _: &ActiveEventLoop) {
+		let size = (self.width as usize, self.height as usize);
+		if let Some(Err(error)) = (self.frame_stats.as_ref()).map(|r| r.save(size, self.factor())) {
+			eprintln!("poopterm: cannot write frame statistics: {error}");
+		}
+	}
+	// pr-check: end window glue
 
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		let now = Instant::now();

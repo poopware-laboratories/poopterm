@@ -59,6 +59,19 @@ the tmux server, so pass `--pid` to name the emulator instead. Linux reads
 `/proc`; elsewhere `ps` gives the resident set but no peak. Compare memory
 only between runs with the same workloads, window size and scrollback limit.
 
+**Frames and typing latency**, in Poopterm's own windows:
+`POOPTERM_FRAME_STATS=<file>` makes a run write its samples as JSON on
+exit (frame kinds, then every frame's paint, show and whole-frame time and
+every key-to-frame latency, in µs). Pick the renderer with
+`POOPTERM_RENDERER=software` or `gpu`, give the window a fixed size, and
+have its shell paint full screens (waiting for a DA1 reply after each) or
+echo typed keys in raw mode; a script that does all of it on sway is to
+follow.
+
+```sh
+POOPTERM_RENDERER=gpu POOPTERM_FRAME_STATS=/tmp/gpu.json ./target/release/poopterm
+```
+
 **Parser only**, without rendering: `cargo test --release -- --ignored
 --nocapture parser_throughput`. **PTY ceiling**: `scripts/bench-pty.py`.
 **Inflate**: `inflate_throughput`, the same way (our decoder against
@@ -605,3 +618,57 @@ and 140.3 (138.1–140.8) MB/s after, every workload within a few percent
 either way; resident memory at the start 86.9 → 63.6 MiB and at the peak
 152.7 → 121.0 MiB. Glyphs are cached once drawn, so floods do not read
 font bytes and the page faults of a first use do not show.
+
+## GPU baseline (2026-11-01)
+
+Before the chrome moves to the GPU (#29): the main window draws its grid
+with Vulkan over a backdrop software paints, copied and uploaded whole each
+frame. Linux, Intel N-series (ADL-N) with its integrated GPU, sway,
+`JetBrainsMono Nerd Font Mono` 18 pt, release build. Five alternating runs
+per renderer, each a window floated and sized with `swaymsg`, whose shell
+paints 300 different full screens about 30 times a second, then echoes 40
+keys typed with `wtype` 120 ms apart; `POOPTERM_FRAME_STATS` samples, medians
+of the run medians with min–max, ms. Paint is software drawing, show is the
+GPU's recording, upload, submission and presentation (or the software
+presenter), frame is all of `draw`; latency runs from the key event to the
+end of the first frame after its echo.
+
+| Window | Renderer | Frame | Paint | Show | Latency | Latency p95 |
+|---|---|---:|---:|---:|---:|---:|
+| 1000×600, scale 1 | software | 0.98 (0.95–0.99) | 0.72 (0.71–0.73) | 0.26 (0.24–0.27) | 0.37 (0.31–0.38) | 0.76 (0.42–0.92) |
+| 1000×600, scale 1 | gpu | 1.20 (1.19–1.22) | 0.20 (0.20–0.21) | 0.99 (0.98–1.00) | 1.32 (1.30–1.32) | 1.92 (1.79–2.65) |
+| 1920×1080, scale 2 | software | 2.00 (2.00–2.05) | 1.30 (1.28–1.34) | 0.70 (0.69–0.71) | 0.42 (0.42–0.45) | 0.57 (0.51–0.96) |
+| 1920×1080, scale 2 | gpu | 3.32 (3.30–3.36) | 0.85 (0.83–0.89) | 2.48 (2.45–2.54) | 3.68 (3.60–3.73) | 4.85 (4.75–5.67) |
+
+(Scale 2 is `swaymsg output eDP-1 scale 2`; sway clamps the 1000×600
+request to the 960×540 logical output.) The GPU path is slower than
+software today: showing a frame is dominated by copying and uploading the
+whole backdrop, and typing pays it on every key, where software redraws
+only the damaged rows. Moving the chrome to the GPU removes the backdrop.
+
+Flood throughput does not depend on the renderer: the parser bounds it and
+frames are capped at 30 fps. `scripts/bench-throughput.py` (16 MiB × 3) as
+the shell of a window opened at 86×42, three alternating runs per
+renderer, MB/s, and resident memory at the end of each workload, MiB:
+
+| Workload | Software | GPU | RSS software / GPU |
+|---|---:|---:|---:|
+| log | 121 (120–122) | 124 (123–125) | 58 / 100 |
+| compiler | 117 (114–118) | 117 (115–118) | 54 / 98 |
+| ls | 115 (112–117) | 115 (108–117) | 54 / 98 |
+| source | 130 (126–133) | 130 (128–133) | 54 / 98 |
+| unicode | 80 (80–82) | 81 (80–82) | 54 / 98 |
+| cjk | 86 (84–86) | 84 (81–84) | 63 / 104 |
+| emoji | 74 (73–75) | 74 (74–75) | 62 / 102 |
+| tui | 331 (328–333) | 331 (320–341) | 68 / 103 |
+| editor | 242 (237–245) | 243 (243–243) | 68 / 103 |
+| progress | 319 (304–320) | 317 (313–320) | 69 / 105 |
+| truecolor | 259 (245–260) | 254 (249–260) | 69 / 107 |
+| cursor | 193 (192–194) | 195 (189–195) | 69 / 107 |
+| shell | 124 (124–125) | 125 (125–129) | 71 / 107 |
+| sixel | 149 (148–151) | 148 (139–148) | 78 / 107 |
+| kitty-rgba | 387 (363–395) | 391 (390–394) | 81 / 111 |
+| kitty-png | 116 (115–118) | 118 (118–118) | 83 / 113 |
+| kitty-zlib | 248 (246–249) | 245 (243–250) | 82 / 113 |
+
+The GPU path holds about 40 MiB more, mostly the Vulkan driver's.

@@ -9,6 +9,7 @@ use super::{
 	renderer::Renderer,
 };
 use crate::{gpu::quads::QuadPen, render::painter::Painter};
+use std::time::Instant;
 
 impl App {
 	/// Draws the frame on `gpu`: the renderer to draw the next with,
@@ -44,13 +45,19 @@ impl App {
 	// pr-check: window glue: paints the real window's frame for the GPU to show
 	fn around_grid(&mut self, pixels: &mut [u32], pen: &mut QuadPen) {
 		let (width, height) = (self.width as usize, self.height as usize);
+		let painting = Instant::now();
 		self.compose_around(&mut Painter::new(pixels, width, height), false);
+		self.painted(painting.elapsed(), false);
 		self.draw_terminal(pen, self.scale(), None);
 	}
+	// pr-check: end window glue
 
+	// pr-check: window glue: paints the real window's frame whole for the GPU to show
 	fn whole(&mut self, pixels: &mut [u32]) {
 		let (width, height) = (self.width as usize, self.height as usize);
+		let painting = Instant::now();
 		self.compose(&mut Painter::new(pixels, width, height));
+		self.painted(painting.elapsed(), true);
 	}
 	// pr-check: end window glue
 }

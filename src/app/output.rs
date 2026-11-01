@@ -60,6 +60,9 @@ impl App {
 			self.persist_sessions();
 		}
 		if visible {
+			if let Some(recorder) = &mut self.frame_stats {
+				recorder.stats.output();
+			}
 			self.update_hovered_link();
 			self.search_dirty |= self.search_active;
 			self.update_window_title();

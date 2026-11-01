@@ -6,6 +6,7 @@ mod draw_gpu;
 mod draw_tabs;
 mod draw_vertical_tabs;
 mod frame_pacer;
+mod frame_stats;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod gpu;
 mod handler;
@@ -135,6 +136,8 @@ pub(crate) struct App {
 	canvas: canvas::Canvas,
 	/// `POOPTERM_FULL_REDRAW` set: never redraw partially (for visual checks).
 	full_redraw_only: bool,
+	/// `POOPTERM_FRAME_STATS` set: frame timings, saved on exit.
+	frame_stats: Option<frame_stats::Recorder>,
 	/// In lines, which count evicted history, so it stays on its text.
 	selection: Option<Selection>,
 	/// Where the selection being dragged with the mouse started, in lines,
@@ -371,6 +374,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		frame: Frame::default(),
 		canvas: canvas::Canvas::new(),
 		full_redraw_only: std::env::var_os("POOPTERM_FULL_REDRAW").is_some(),
+		frame_stats: frame_stats::Recorder::from_env(std::env::var_os(frame_stats::VARIABLE)),
 		selection: None,
 		drag_anchor: None,
 		search_active: false,
