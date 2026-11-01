@@ -150,8 +150,10 @@ fn on_real_window<R>(
 			let length = (extra.image_length)(reply) as usize;
 			let bytes = slice::from_raw_parts((extra.image_data)(reply), length);
 			let pixels = bytes
-				.chunks_exact(4)
-				.map(|pixel| u32::from_ne_bytes(pixel.try_into().expect("four bytes")) & 0xff_ffff);
+				.as_chunks::<4>()
+				.0
+				.iter()
+				.map(|pixel| u32::from_ne_bytes(*pixel) & 0xff_ffff);
 			let pixels = pixels.collect();
 			libc::free(reply);
 			pixels

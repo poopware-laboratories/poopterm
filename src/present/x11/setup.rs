@@ -24,7 +24,9 @@ pub(crate) fn takes_our_pixels(setup: &[u8], depth: u8) -> bool {
 	let listed = setup
 		.get(start..end)
 		.unwrap_or_default()
-		.chunks_exact(8)
+		.as_chunks::<8>()
+		.0
+		.iter()
 		.take(formats);
 	listed
 		.into_iter()

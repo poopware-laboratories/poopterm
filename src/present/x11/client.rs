@@ -22,7 +22,7 @@ pub(crate) struct Extension {
 
 /// Any `xcb_*_cookie_t`: the sequence number of the request sent.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Cookie {
 	pub sequence: c_uint,
 }

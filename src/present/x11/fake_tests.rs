@@ -18,7 +18,7 @@ use std::{
 };
 
 /// The Xlib display; the fake never reads through it.
-pub(super) const DISPLAY: *mut c_void = 1 as *mut c_void;
+pub(super) const DISPLAY: *mut c_void = ptr::dangling_mut();
 const CONNECTION: *mut c_void = 2 as *mut c_void;
 const Z_PIXMAP: u8 = 2;
 /// The bytes of a `PutImage` request before its pixels.
@@ -197,8 +197,10 @@ impl Server {
 				self.require(unchanged, "a segment written before the server read it");
 				if let (Some(read), true) = (read, self.drawable(window, gc, None)) {
 					let pixels = read
-						.chunks_exact(4)
-						.map(|bytes| u32::from_ne_bytes(bytes.try_into().expect("four bytes")));
+						.as_chunks::<4>()
+						.0
+						.iter()
+						.map(|bytes| u32::from_ne_bytes(*bytes));
 					self.draw(window, size, 0, &pixels.collect::<Vec<_>>(), true);
 				}
 			}
@@ -478,6 +480,8 @@ extern "C" fn attach_fd(connection: *mut c_void, shmseg: u32, fd: c_int, read_on
 	// SAFETY: libxcb owns the descriptor it is given and closes it once
 	// sent; one that is not open fails `fcntl`, and is then not owned.
 	let open = unsafe { libc::fcntl(fd, libc::F_GETFD) } >= 0;
+	// SAFETY: the descriptor is open (checked above) and libxcb hands its
+	// ownership to the request, so the fake server may close it.
 	let file = open.then(|| File::from(unsafe { OwnedFd::from_raw_fd(fd) }));
 	on(connection, |server| {
 		server.require(read_only == 1, "memory the server could write");
@@ -493,7 +497,6 @@ extern "C" fn detach(connection: *mut c_void, shmseg: u32) -> Cookie {
 	on(connection, |server| server.send(Request::Detach(shmseg)))
 }
 
-#[expect(clippy::too_many_arguments, reason = "the request's fields")]
 extern "C" fn shm_put_image(
 	connection: *mut c_void,
 	window: u32,
@@ -543,7 +546,6 @@ extern "C" fn shm_put_image(
 	})
 }
 
-#[expect(clippy::too_many_arguments, reason = "the request's fields")]
 extern "C" fn put_image(
 	connection: *mut c_void,
 	format: u8,
@@ -560,10 +562,10 @@ extern "C" fn put_image(
 ) -> Cookie {
 	let size = [usize::from(width), usize::from(height)];
 	let count = size[0] * size[1];
-	// SAFETY: the caller passes `length` bytes; they are read as pixels
-	// only when that many, whose alignment `read_unaligned` does not need.
 	let pixels = (length as usize == count * 4).then(|| {
 		(0..count)
+			// SAFETY: the caller passes `length` bytes, read as pixels only
+			// when that many; `read_unaligned` needs no alignment.
 			.map(|index| unsafe { data.cast::<u32>().add(index).read_unaligned() })
 			.collect()
 	});
@@ -688,11 +690,5 @@ extern "C" fn request_check(connection: *mut c_void, cookie: Cookie) -> *mut c_v
 		allocated([0u8; 32]).cast()
 	} else {
 		ptr::null_mut()
-	}
-}
-
-impl Default for Cookie {
-	fn default() -> Self {
-		Self { sequence: 0 }
 	}
 }
