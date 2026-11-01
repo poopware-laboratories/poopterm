@@ -56,48 +56,42 @@ impl Wallpaper {
 		background: u32,
 		strength: usize,
 	) -> &Arc<Bitmap> {
-		let key = (width.max(1), height.max(1), background, strength.min(100));
-		if self.cache.as_ref().is_none_or(|(made, _)| *made != key) {
+		let made = (width.max(1), height.max(1), background, strength.min(100));
+		if self.cache.as_ref().is_none_or(|(old, _)| *old != made) {
 			// Dropped first, so the old and new bitmaps are never both held.
 			self.cache = None;
-			let bitmap = scaled(&self.image, key);
-			self.cache = Some((key, Arc::new(bitmap)));
+			let (width, height, strength) = (made.0 as u32, made.1 as u32, made.3);
+			let (source_width, source_height) = self.image.dimensions();
+			let (crop_width, crop_height) =
+				if source_width as u64 * height as u64 > source_height as u64 * width as u64 {
+					(
+						(source_height as u64 * width as u64 / height as u64) as u32,
+						source_height,
+					)
+				} else {
+					(
+						source_width,
+						(source_width as u64 * height as u64 / width as u64) as u32,
+					)
+				};
+			let crop_x = source_width.saturating_sub(crop_width) / 2;
+			let crop_y = source_height.saturating_sub(crop_height) / 2;
+			let cropped = image::imageops::crop_imm(
+				&self.image,
+				crop_x,
+				crop_y,
+				crop_width.max(1),
+				crop_height.max(1),
+			)
+			.to_image();
+			let scaled = image::imageops::resize(&cropped, width, height, FilterType::Triangle);
+			let pixels = scaled
+				.pixels()
+				.map(|pixel| blend_over(pixel.0, background, strength));
+			let bitmap = Bitmap::new(made.0, made.1, pixels.collect());
+			self.cache = Some((made, Arc::new(bitmap)));
 		}
 		&self.cache.as_ref().expect("made above").1
-	}
-}
-
-/// `image` center-cropped and scaled to the `width` by `height` of `key`,
-/// over its background at its strength.
-fn scaled(image: &RgbaImage, (width, height, background, strength): Made) -> Bitmap {
-	let (width, height) = (width as u32, height as u32);
-	let (source_width, source_height) = image.dimensions();
-	let (crop_width, crop_height) =
-		if source_width as u64 * height as u64 > source_height as u64 * width as u64 {
-			(
-				(source_height as u64 * width as u64 / height as u64) as u32,
-				source_height,
-			)
-		} else {
-			(
-				source_width,
-				(source_width as u64 * height as u64 / width as u64) as u32,
-			)
-		};
-	let crop_x = source_width.saturating_sub(crop_width) / 2;
-	let crop_y = source_height.saturating_sub(crop_height) / 2;
-	let cropped =
-		image::imageops::crop_imm(image, crop_x, crop_y, crop_width.max(1), crop_height.max(1))
-			.to_image();
-	let scaled = image::imageops::resize(&cropped, width, height, FilterType::Triangle);
-	let pixels = scaled
-		.pixels()
-		.map(|pixel| blend_over(pixel.0, background, strength));
-	Bitmap {
-		width: width as usize,
-		height: height as usize,
-		opaque: true,
-		pixels: pixels.collect(),
 	}
 }
 
