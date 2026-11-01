@@ -6,7 +6,7 @@ use super::{
 	buffer_tests::{INTEL, device},
 	commands::Commands,
 	descriptor_driver_tests::SETS,
-	descriptors::QuadSet,
+	descriptors::{QuadSet, TextureSet},
 	draw::Draw,
 	draw_driver_tests::*,
 	draw_types::*,
@@ -17,7 +17,7 @@ use super::{
 	submit_types::RawCommandBuffer,
 	timeline::Timeline,
 };
-use std::{mem::take, num::NonZeroUsize, ptr, rc::Rc};
+use std::{mem::take, num::NonZeroUsize, ops::Range, ptr, rc::Rc};
 
 /// `VK_BUFFER_USAGE_TRANSFER_SRC_BIT`, which image usage shares;
 /// `VK_IMAGE_USAGE_SAMPLED_BIT` and `_COLOR_ATTACHMENT_BIT`; and
@@ -43,6 +43,8 @@ struct Scene {
 	target: Rc<Image>,
 	unstored: Rc<Buffer>,
 	rgba: Rc<Image>,
+	/// The three quads, with one image.
+	runs: [(Range<u32>, Rc<TextureSet>); 1],
 }
 
 fn scene() -> (Commands, Scene) {
@@ -54,7 +56,9 @@ fn scene() -> (Commands, Scene) {
 		Rc::new(Buffer::new(&device, size, usage, Usage::Upload).unwrap())
 	};
 	let image = |format, usage| Rc::new(Image::new(&device, format, [16, 8, 1], usage).unwrap());
+	let shown = image(Format::Bgra, SAMPLED);
 	let scene = Scene {
+		runs: [(0..3, Rc::new(TextureSet::new(&pipeline, &shown).unwrap()))],
 		set: Rc::new(QuadSet::new(&pipeline).unwrap()),
 		pipeline,
 		quads: buffer(STORAGE),
@@ -71,7 +75,7 @@ impl Scene {
 		Draw {
 			set: &self.set,
 			quads: &self.quads,
-			count: 3,
+			runs: &self.runs,
 			atlas: &self.atlas,
 			target: &self.target,
 		}
@@ -126,6 +130,7 @@ fn the_fake_driver_reports_broken_update_rules() {
 	let (mut commands, scene) = scene();
 	let device = with(|driver| driver.live_devices[0]);
 	let set = scene.set.handle();
+	let image_set = scene.runs[0].1.handle();
 	let quads = buffer_info(scene.quads.handle(), 0);
 	let atlas = image_info(scene.atlas.view(), 5);
 	let cases = [
@@ -145,6 +150,13 @@ fn the_fake_driver_reports_broken_update_rules() {
 		write(set, 2, None, Some(&atlas)),
 		// A buffer descriptor without its buffer.
 		write(set, 0, None, None),
+		// The image set's one binding takes an image, not the quads; an
+		// image is fine.
+		write(image_set, 0, Some(&quads), None),
+		WriteDescriptorSet {
+			descriptor_type: 1,
+			..write(image_set, 0, None, Some(&atlas))
+		},
 	];
 	// SAFETY: each write and what it points to outlive the call.
 	unsafe {
@@ -159,16 +171,19 @@ fn the_fake_driver_reports_broken_update_rules() {
 			ptr::null(),
 		);
 	}
+	// A set of no live pool has no layout, so no binding either.
 	let rules = [
 		"sType and pNext",
 		"a set of a live pool",
+		"a binding of the set's layout",
 		"one descriptor",
 		"a live storage buffer",
 		"the quads from the start",
 		"a live sampled view",
 		"read only by shaders",
-		"a binding of the quad set layout",
-		"a binding of the quad set layout",
+		"a binding of the set's layout",
+		"a binding of the set's layout",
+		"a binding of the set's layout",
 		"no copies",
 	];
 	assert_eq!(
@@ -297,6 +312,7 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 	recording.draw(scene.draw()).unwrap();
 	let layout = scene.pipeline.layout();
 	let set = scene.set.handle();
+	let image_set = scene.runs[0].1.handle();
 	let viewport = Viewport {
 		x: 0.0,
 		y: 0.0,
@@ -359,6 +375,11 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 		bind_sets(BUFFER, 0, layout, 0, 1, &(SETS + 9), 0, ptr::null());
 		bind_sets(BUFFER, 0, layout, 0, 1, &set, 1, ptr::null());
 		bind_sets(BUFFER, 0, layout, 0, 2, [set, set].as_ptr(), 0, ptr::null());
+		// Past the layout's two sets, and the quad set as the image's.
+		bind_sets(BUFFER, 0, layout, 2, 1, &set, 0, ptr::null());
+		bind_sets(BUFFER, 0, layout, 1, 1, &set, 0, ptr::null());
+		// The image's own set again, for the draws below.
+		bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null());
 		push(BUFFER, layout + 9, VERTEX, 0, 8, size.as_ptr().cast());
 		push(BUFFER, layout, VERTEX, 0, 6, size.as_ptr().cast());
 		push(BUFFER, layout, VERTEX, 4, 8, size.as_ptr().cast());
@@ -393,13 +414,16 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 			"vkCmdSetViewport: depths 0 to 1",
 			"vkCmdSetScissor: one scissor",
 			"vkCmdSetScissor: a positive offset",
-			"vkCmdBindDescriptorSets: the first set for graphics",
+			"vkCmdBindDescriptorSets: set 0 or 1 for graphics",
 			"vkCmdBindDescriptorSets: a live pipeline layout",
 			"vkCmdBindDescriptorSets: a set of the layout's set layout",
 			"vkCmdBindDescriptorSets: a set of a live pool",
 			"vkCmdBindDescriptorSets: a set of the layout's set layout",
 			"vkCmdBindDescriptorSets: no dynamic offsets",
 			"vkCmdBindDescriptorSets: one set",
+			"vkCmdBindDescriptorSets: set 0 or 1 for graphics",
+			"vkCmdBindDescriptorSets: a set of the layout's set layout",
+			"vkCmdBindDescriptorSets: a set of the layout's set layout",
 			"vkCmdPushConstants: a live pipeline layout",
 			"vkCmdPushConstants: within a range of the layout for those stages",
 			"vkCmdPushConstants: whole words",
@@ -441,6 +465,8 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 		"a target of the pipeline's format",
 		"a set bound with the pipeline's layout",
 		"an atlas read only by shaders",
+		"an image set bound with the pipeline's layout",
+		"an image read only by shaders",
 		"every quad drawn in the bound buffer",
 	];
 	let mut expected: Vec<String> = ["rendering"]
@@ -454,6 +480,7 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 	// the commands while rendering.
 	let layout = scene.pipeline.layout();
 	let set = scene.set.handle();
+	let image_set = scene.runs[0].1.handle();
 	let viewport = Viewport {
 		x: 0.0,
 		y: 0.0,
@@ -476,11 +503,14 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 		set_scissor(BUFFER, 0, 1, &area);
 		bind_sets(BUFFER, 0, layout, 0, 1, &set, 0, ptr::null());
 		push(BUFFER, layout, VERTEX, 0, 8, size.as_ptr().cast());
+		bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null());
 		draw(BUFFER, 6, 1, 0, 0);
 	}
+	// Neither the atlas nor the image was made readable in this recording.
 	let rules = [
 		"vkCmdDraw: a target of the pipeline's format",
 		"vkCmdDraw: an atlas read only by shaders",
+		"vkCmdDraw: an image read only by shaders",
 	];
 	assert_eq!(reported(), rules);
 	assert!(recording.submit().is_err());

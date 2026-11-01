@@ -1,7 +1,8 @@
 //! The pipeline that draws quads: the quad shaders, reading the quads from
 //! a storage buffer and glyph texels from the atlas through a sampler
-//! fixed in the descriptor set layout, blended over a target of one
-//! format with dynamic rendering. Destroyed when dropped.
+//! fixed in the descriptor set layout, and image texels from a second set
+//! bound for each image, blended over a target of one format with dynamic
+//! rendering. Destroyed when dropped.
 use super::{
 	call::{Error, check},
 	device::Device,
@@ -47,6 +48,8 @@ pub(crate) struct QuadPipeline {
 	pipeline: RawPipeline,
 	layout: RawPipelineLayout,
 	set_layout: RawDescriptorSetLayout,
+	/// Set 1: the image the quads drawn show.
+	texture_layout: RawDescriptorSetLayout,
 	sampler: RawSampler,
 	/// What it draws to.
 	pub(super) format: Format,
@@ -74,6 +77,7 @@ impl QuadPipeline {
 			pipeline: 0,
 			layout: 0,
 			set_layout: 0,
+			texture_layout: 0,
 			sampler: 0,
 			format,
 			device: device.clone(),
@@ -135,6 +139,23 @@ impl QuadPipeline {
 		// the call.
 		check(unsafe { create(handle, &info, ptr::null(), &mut set_layout) })?;
 		made.set_layout = set_layout;
+		let binding = DescriptorSetLayoutBinding {
+			binding: 0,
+			descriptor_type: COMBINED_IMAGE_SAMPLER,
+			descriptor_count: 1,
+			stage_flags: FRAGMENT,
+			immutable_samplers: &made.sampler,
+		};
+		let info = DescriptorSetLayoutCreateInfo {
+			binding_count: 1,
+			bindings: &binding,
+			..info
+		};
+		let mut texture_layout = 0;
+		// SAFETY: as for the set layout.
+		check(unsafe { create(handle, &info, ptr::null(), &mut texture_layout) })?;
+		made.texture_layout = texture_layout;
+		let set_layouts = [made.set_layout, made.texture_layout];
 		let range = PushConstantRange {
 			stage_flags: VERTEX,
 			offset: 0,
@@ -144,14 +165,14 @@ impl QuadPipeline {
 			s_type: STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 			next: ptr::null(),
 			flags: 0,
-			set_layout_count: 1,
-			set_layouts: &made.set_layout,
+			set_layout_count: set_layouts.len() as u32,
+			set_layouts: set_layouts.as_ptr(),
 			push_constant_range_count: 1,
 			push_constant_ranges: &range,
 		};
 		let mut layout = 0;
 		let create = functions.create_pipeline_layout;
-		// SAFETY: as for the sampler; the set layout is live.
+		// SAFETY: as for the sampler; the set layouts are live.
 		check(unsafe { create(handle, &info, ptr::null(), &mut layout) })?;
 		made.layout = layout;
 		let modules = [
@@ -296,6 +317,11 @@ impl QuadPipeline {
 	pub(crate) fn set_layout(&self) -> RawDescriptorSetLayout {
 		self.set_layout
 	}
+
+	/// The layout of set 1, an image's.
+	pub(crate) fn texture_layout(&self) -> RawDescriptorSetLayout {
+		self.texture_layout
+	}
 }
 
 impl Drop for QuadPipeline {
@@ -310,8 +336,10 @@ impl Drop for QuadPipeline {
 			if self.layout != 0 {
 				(functions.destroy_pipeline_layout)(device, self.layout, ptr::null());
 			}
-			if self.set_layout != 0 {
-				(functions.destroy_set_layout)(device, self.set_layout, ptr::null());
+			for layout in [self.set_layout, self.texture_layout] {
+				if layout != 0 {
+					(functions.destroy_set_layout)(device, layout, ptr::null());
+				}
 			}
 			if self.sampler != 0 {
 				(functions.destroy_sampler)(device, self.sampler, ptr::null());

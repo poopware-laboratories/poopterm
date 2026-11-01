@@ -154,6 +154,23 @@ fn clearing_forgets_every_texture() {
 	assert_eq!(textures.bytes(), 16);
 }
 
+#[test]
+fn removing_a_texture_frees_its_bytes_and_leaves_the_rest() {
+	let mut textures = Textures::new(48);
+	let [a, b, c] = [(); 3].map(|()| bitmap(2, 2));
+	textures.begin_frame();
+	draw(&mut textures, &a, "a");
+	draw(&mut textures, &b, "b");
+	textures.remove(&a);
+	assert_eq!(textures.get(&a), None);
+	assert_eq!(textures.get(&b), Some(&"b"));
+	assert_eq!((textures.len(), textures.bytes()), (1, 16));
+	// Removing one it lacks changes nothing.
+	textures.remove(&c);
+	textures.remove(&a);
+	assert_eq!((textures.len(), textures.bytes()), (1, 16));
+}
+
 /// The runs of quads that need these textures, if any, as ranges.
 fn runs_of(needs: &[Option<char>]) -> Vec<(Range<u32>, Option<char>)> {
 	runs(needs.iter().copied())

@@ -1,7 +1,8 @@
 #version 450
 // Fills each pixel of a quad: a solid color, a glyph's coverage in its
 // color, or a color glyph's own texels, read texel for texel from the
-// atlas, unfiltered. Blending with what is below is the pipeline's; a
+// atlas, unfiltered; or an image's texels, the part of it in its source
+// rectangle scaled to the quad's size nearest-neighbor, as software does. Blending with what is below is the pipeline's; a
 // pixel left out is transparent, which leaves what is below as it was, so
 // nothing needs discarding (which Vulkan 1.3 turns into a demotion, a
 // feature the device does not turn on).
@@ -17,10 +18,13 @@ layout(std430, set = 0, binding = 0) readonly buffer Quads {
 };
 
 layout(set = 0, binding = 1) uniform sampler2DArray atlas;
+// The image the quads being drawn show, bound for each run of them.
+layout(set = 1, binding = 0) uniform sampler2DArray image;
 
 const uint SOLID = 0u;
 const uint COVERAGE = 1u;
 const uint COLOR = 2u;
+const uint IMAGE = 3u;
 
 layout(location = 0) flat in uint index;
 
@@ -36,6 +40,15 @@ void main() {
 		return;
 	}
 	ivec2 pixel = ivec2(gl_FragCoord.xy) - quad.rect.xy;
+	if (kind == IMAGE) {
+		// Source x | y << 16 and width | height << 16; integer division
+		// picks the texel software picks.
+		uvec2 from = uvec2(quad.source.x & 0xffffu, quad.source.x >> 16);
+		uvec2 size = uvec2(quad.source.y & 0xffffu, quad.source.y >> 16);
+		uvec2 texel = from + uvec2(pixel) * size / uvec2(quad.rect.zw);
+		color = texelFetch(image, ivec3(texel, 0), 0);
+		return;
+	}
 	bool italic = (quad.source.z >> 8 & 1u) != 0u && kind == COVERAGE;
 	pixel.x -= italic ? (quad.rect.w - pixel.y) / 6 : 0;
 	if (kind > COLOR || pixel.x < 0 || pixel.x >= quad.rect.z) {

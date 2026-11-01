@@ -7,7 +7,7 @@ use super::{
 	buffer::Buffer,
 	call::Error,
 	commands::Commands,
-	descriptors::QuadSet,
+	descriptors::{QuadSet, TextureSet},
 	device::Device,
 	draw::Draw,
 	image::{Format, Image},
@@ -137,6 +137,14 @@ pub(super) fn draw_known_quads(device: &Rc<Device>) -> Result<bool, Error> {
 	let target = Rc::new(Image::new(device, Format::Bgra, [WIDTH, HEIGHT, 1], usage)?);
 	let pipeline = Rc::new(QuadPipeline::new(device, Format::Bgra)?);
 	let set = Rc::new(QuadSet::new(&pipeline)?);
+	// None of the quads shows an image, but one is bound all the same.
+	let blank = Rc::new(Image::new(
+		device,
+		Format::Bgra,
+		[1, 1, 1],
+		SAMPLED | TRANSFER_DST,
+	)?);
+	let blank = Rc::new(TextureSet::new(&pipeline, &blank)?);
 	let timeline = Rc::new(Timeline::new(device)?);
 	let mut commands = Commands::new(&timeline)?;
 	let page = Region {
@@ -151,11 +159,11 @@ pub(super) fn draw_known_quads(device: &Rc<Device>) -> Result<bool, Error> {
 	};
 	let mut recording = commands.record()?;
 	recording.upload(&staging, 0, &atlas, page)?;
-	let count = scene().len() as u32;
+	let runs = [(0..scene().len() as u32, blank)];
 	recording.draw(Draw {
 		set: &set,
 		quads: &quads,
-		count,
+		runs: &runs,
 		atlas: &atlas,
 		target: &target,
 	})?;

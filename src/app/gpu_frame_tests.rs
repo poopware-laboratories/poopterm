@@ -145,8 +145,9 @@ fn a_frame_of_quads_the_gpu_cannot_draw_is_painted_whole_and_sent_as_a_backdrop(
 	assert_eq!((next, painted), (Next::Done, vec![Quads, Whole]));
 	assert!(pixels.iter().all(|&pixel| pixel == WHOLE));
 	let calls = recorded();
+	// The backdrop copied, and no quad left to draw over it.
 	assert!(calls[0].contains("size 40x30"), "{calls:?}");
-	assert_eq!(calls[1..], ["draw 6 vertices of 0 instances from 0"]);
+	assert_eq!(calls[1..], [""; 0]);
 	assert_eq!(presents(), 1);
 	close(gpu.gpu);
 }

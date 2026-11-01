@@ -9,6 +9,7 @@ use super::{
 	image::Format,
 	pipeline::QuadPipeline,
 	renderer::{Renderer, encode},
+	renderer_image_tests::{place, too_wide},
 	timeline::Timeline,
 };
 use crate::{
@@ -17,13 +18,13 @@ use crate::{
 		atlas::Slot,
 		quads::{Fill, Quad, QuadPen},
 	},
-	graphics::{Bitmap, Placement, Rect},
+	graphics::Rect,
 	render::{
 		glyphs::Glyph,
 		pen::{Ink, Pen},
 	},
 };
-use std::{rc::Rc, sync::Arc};
+use std::rc::Rc;
 
 /// The atlas: four pages of 64 pixels square.
 pub(super) const ATLAS: (usize, usize) = (64, 4);
@@ -289,28 +290,19 @@ fn an_empty_frame_draws_no_quads() {
 	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
 	drop((renderer, target, pen));
 	let driver = finish();
-	assert_eq!(drawn(&driver), ["draw 6 vertices of 0 instances from 0"]);
+	// No run, so no draw call at all.
+	assert_eq!(drawn(&driver), [""; 0]);
 }
 
 #[test]
-fn frames_with_images_or_missing_glyphs_are_refused_for_software_to_draw() {
+fn frames_with_images_too_big_or_missing_glyphs_are_refused_for_software_to_draw() {
 	let (mut renderer, target) = renderer();
 	let mut pen = QuadPen::new((40, 30), ATLAS);
 	pen.begin_frame((40, 30));
-	let bitmap = Arc::new(Bitmap {
-		width: 2,
-		height: 2,
-		opaque: true,
-		pixels: vec![0; 4],
-	});
-	let whole = Rect {
-		x: 0,
-		y: 0,
-		width: 2,
-		height: 2,
-	};
-	pen.placement(whole, &Placement::natural(bitmap, 0, 0), (0, 0), (8, 16));
+	// One texel wider than the device's 16384.
+	place(&mut pen, &too_wide());
 	assert_eq!(renderer.frame(&mut pen, &target).err(), Some(Error::Draw));
+	assert_eq!(renderer.textures.len(), 0);
 	// A glyph larger than a page leaves the frame incomplete.
 	pen.begin_frame((40, 30));
 	pen.glyph(
@@ -351,21 +343,10 @@ fn a_frame_that_fails_uploads_its_glyphs_again_on_the_next() {
 	assert!(pen.uploads.is_empty() && pen.quads.is_empty());
 	frame(&mut pen);
 	renderer.frame(&mut pen, &target).unwrap().submit().unwrap();
-	// Software draws a frame with an image; its new glyph is uploaded later.
+	// Software draws a frame with an image too wide; its new glyph is
+	// uploaded later.
 	frame(&mut pen);
-	let bitmap = Arc::new(Bitmap {
-		width: 1,
-		height: 1,
-		opaque: true,
-		pixels: vec![0],
-	});
-	let one = Rect {
-		x: 0,
-		y: 0,
-		width: 1,
-		height: 1,
-	};
-	pen.placement(one, &Placement::natural(bitmap, 0, 0), (0, 0), (8, 16));
+	place(&mut pen, &too_wide());
 	pen.glyph(
 		&glyph(1, 1, false),
 		Ink::Drawn('g', (1, 1)),

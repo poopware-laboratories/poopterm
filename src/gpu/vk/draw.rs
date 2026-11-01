@@ -1,16 +1,17 @@
 //! Drawing quads: pointing the quad set at the quads and the atlas, moving
-//! the atlas to be sampled and the target to be drawn to, and rendering
-//! the quads over what the target holds, holding what the draw uses until
-//! the GPU has finished with it.
+//! the atlas and the images to be sampled and the target to be drawn to,
+//! and rendering the quads over what the target holds, a run at a time
+//! with its image bound, holding what the draw uses until the GPU has
+//! finished with it.
 use super::{
 	buffer::Buffer,
 	call::Error,
-	descriptors::QuadSet,
+	descriptors::{QuadSet, TextureSet},
 	draw_types::*,
 	image::Image,
 	recording::{Layout, Recording},
 };
-use std::{ptr, rc::Rc};
+use std::{ops::Range, ptr, rc::Rc};
 
 /// `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`, and `VK_IMAGE_USAGE_SAMPLED_BIT`
 /// and `_COLOR_ATTACHMENT_BIT`.
@@ -33,13 +34,14 @@ const VERTEX: u32 = 0x1;
 const QUAD: u64 = 48;
 const VERTICES: u32 = 6;
 
-/// A draw of the first `count` quads in `quads` over `target`, with
-/// glyphs from `atlas`, through `set`.
+/// A draw of the `runs` of quads in `quads` over `target`, with glyphs
+/// from `atlas`, through `set`, each run with the image of its texture set
+/// bound.
 #[derive(Clone, Copy)]
 pub(crate) struct Draw<'d> {
 	pub set: &'d Rc<QuadSet>,
 	pub quads: &'d Rc<Buffer>,
-	pub count: u32,
+	pub runs: &'d [(Range<u32>, Rc<TextureSet>)],
 	pub atlas: &'d Rc<Image>,
 	pub target: &'d Rc<Image>,
 }
@@ -52,7 +54,7 @@ impl Recording<'_> {
 		let Draw {
 			set,
 			quads,
-			count,
+			runs,
 			atlas,
 			target,
 		} = draw;
@@ -66,10 +68,17 @@ impl Recording<'_> {
 		let ours = devices
 			.into_iter()
 			.all(|made| Rc::ptr_eq(made, &self.commands.device));
-		let fits = u64::from(count) * QUAD <= quads.size as u64;
+		let end = runs.iter().map(|(range, _)| range.end).max().unwrap_or(0);
+		let fits = u64::from(end) * QUAD <= quads.size as u64;
+		let images = runs.iter().all(|(_, texture)| {
+			Rc::ptr_eq(texture.pipeline(), pipeline)
+				&& texture.image.usage & SAMPLED != 0
+				&& !Rc::ptr_eq(&texture.image, target)
+		});
 		let made = quads.usage & STORAGE != 0
 			&& atlas.usage & SAMPLED != 0
-			&& target.usage & COLOR_ATTACHMENT != 0;
+			&& target.usage & COLOR_ATTACHMENT != 0
+			&& images;
 		let [width, height, layers] = target.size;
 		let drawable = target.format == pipeline.format && layers == 1 && !Rc::ptr_eq(atlas, target);
 		if !(ours && fits && made && drawable) {
@@ -84,6 +93,9 @@ impl Recording<'_> {
 		}
 		self.update(draw);
 		self.transition(atlas, Layout::ShaderReadOnly);
+		for (_, texture) in runs {
+			self.transition(&texture.image, Layout::ShaderReadOnly);
+		}
 		self.transition(target, Layout::ColorAttachment);
 		let attachment = RenderingAttachmentInfo {
 			s_type: STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -127,8 +139,9 @@ impl Recording<'_> {
 		// SAFETY: the buffer is being recorded; the pipeline, its layout, the
 		// set and the target's view are the device's and held until the GPU
 		// is done; the target was moved to the layout rendering names, and
-		// the atlas to the one the set does; and every struct and array
-		// outlives its call.
+		// the atlas and images to the one the sets do; every texture set is
+		// of the pipeline's layout; and every struct and array outlives its
+		// call.
 		unsafe {
 			(functions.begin_rendering)(buffer, &info);
 			(functions.bind_pipeline)(buffer, GRAPHICS, pipeline.handle());
@@ -143,13 +156,20 @@ impl Recording<'_> {
 				size_of_val(&size) as u32,
 				size.as_ptr().cast(),
 			);
-			(functions.draw)(buffer, VERTICES, count, 0, 0);
+			for (range, texture) in runs {
+				let image = texture.handle();
+				(functions.bind_sets)(buffer, GRAPHICS, layout, 1, 1, &image, 0, ptr::null());
+				(functions.draw)(buffer, VERTICES, range.len() as u32, 0, range.start);
+			}
 			(functions.end_rendering)(buffer);
 		}
 		self.commands.held.push(set.clone());
 		self.commands.held.push(quads.clone());
 		self.commands.held.push(atlas.clone());
 		self.commands.held.push(target.clone());
+		for (_, texture) in runs {
+			self.commands.held.push(texture.clone());
+		}
 		self.sets.push(set.clone());
 		Ok(())
 	}

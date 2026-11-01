@@ -181,6 +181,25 @@ fn with_images(mut frame: Frame) -> Frame {
 	let mut stretched = Placement::natural(bitmap(0xc0_20_e0_40, false), 17, 0);
 	stretched.extent = Extent::Cells { cols: 3, rows: 2 };
 	frame.images.push(stretched);
+	// Every pixel its own, at its own alpha: cropped, scaled unevenly and
+	// offset into its cell.
+	let pixels = (0..7 * 5)
+		.map(|n: u32| ((0x40 + n * 5) << 24) | (n * 0x07_0b_13))
+		.collect();
+	let mut cropped = Placement::natural(Arc::new(Bitmap::new(7, 5, pixels)), 25, 1);
+	cropped.source = Rect {
+		x: 2,
+		y: 1,
+		width: 5,
+		height: 3,
+	};
+	cropped.extent = Extent::Pixels {
+		width: 23,
+		height: 11,
+	};
+	cropped.offset = (3, 2);
+	cropped.z = 1;
+	frame.images.push(cropped);
 	frame
 }
 

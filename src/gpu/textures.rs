@@ -108,6 +108,13 @@ impl<T> Textures<T> {
 		&self.entries[&key(bitmap)].texture
 	}
 
+	/// Forgets `bitmap`'s texture: for one that never reached the GPU.
+	pub(crate) fn remove(&mut self, bitmap: &Arc<Bitmap>) {
+		if let Some(entry) = self.entries.remove(&key(bitmap)) {
+			self.bytes -= entry.bytes;
+		}
+	}
+
 	/// Forgets every texture: for when the GPU's are gone.
 	pub(crate) fn clear(&mut self) {
 		self.entries.clear();

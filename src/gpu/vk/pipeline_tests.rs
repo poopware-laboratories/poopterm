@@ -45,6 +45,7 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 		(pipeline.handle(), pipeline.layout(), pipeline.set_layout()),
 		(0x64_0001, 0x63_0001, 0x62_0001)
 	);
+	assert_eq!(pipeline.texture_layout(), 0x62_0002);
 	// The shader modules go once the pipeline is made.
 	let released = with(|driver| std::mem::take(&mut driver.released));
 	assert_eq!(released, ["module 0x600001", "module 0x600002"]);
@@ -54,16 +55,19 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 	let objects = driver.pipeline_objects;
 	// Nearest texels, clamped: the shaders fetch texels by index.
 	assert_eq!(objects.samplers, [[0, 0, 0, 2, 2, 2]]);
-	// The quads for both stages, and the atlas sampled by the fragments.
+	// The quads for both stages, and the atlas sampled by the fragments;
+	// then, in set 1, the image sampled by the fragments, through the same
+	// sampler.
 	let bindings: [Binding; 2] = [
 		(0, STORAGE_BUFFER, 1, VERTEX | FRAGMENT, None),
 		(1, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001)),
 	];
-	assert_eq!(objects.set_layouts, [bindings]);
+	let image: Binding = (0, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001));
+	assert_eq!(objects.set_layouts, [bindings.to_vec(), vec![image]]);
 	// The target's width and height, two floats, for the vertex stage.
 	assert_eq!(
 		objects.pipeline_layouts,
-		[(vec![0x62_0001], vec![[VERTEX, 0, 8]])]
+		[(vec![0x62_0001, 0x62_0002], vec![[VERTEX, 0, 8]])]
 	);
 	let expected = MadePipeline {
 		stages: vec![
@@ -87,6 +91,7 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 		"pipeline 0x640001",
 		"pipeline layout 0x630001",
 		"set layout 0x620001",
+		"set layout 0x620002",
 		"sampler 0x610001",
 	];
 	assert_eq!(driver.released, expected);
@@ -107,13 +112,18 @@ fn a_failure_releases_what_was_made_before_it() {
 		(c"vkCreateDescriptorSetLayout", &["sampler 0x610001"]),
 		(
 			c"vkCreatePipelineLayout",
-			&["set layout 0x620001", "sampler 0x610001"],
+			&[
+				"set layout 0x620001",
+				"set layout 0x620002",
+				"sampler 0x610001",
+			],
 		),
 		(
 			c"vkCreateShaderModule",
 			&[
 				"pipeline layout 0x630001",
 				"set layout 0x620001",
+				"set layout 0x620002",
 				"sampler 0x610001",
 			],
 		),
@@ -124,6 +134,7 @@ fn a_failure_releases_what_was_made_before_it() {
 				"module 0x600002",
 				"pipeline layout 0x630001",
 				"set layout 0x620001",
+				"set layout 0x620002",
 				"sampler 0x610001",
 			],
 		),

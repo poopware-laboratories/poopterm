@@ -374,7 +374,7 @@ fn placement(
 	offset: (usize, usize),
 ) -> Placement {
 	let pixels = (0..width * height)
-		.map(|n| 0x8000_0000 | n as u32 * 0x01_0305)
+		.map(|n| 0x8000_0000 | (n as u32 * 0x01_0305))
 		.collect();
 	let mut placement = Placement::natural(Arc::new(Bitmap::new(width, height, pixels)), 0, 0);
 	placement.source = source;
