@@ -1,12 +1,11 @@
 //! Tests of what a window drawn by the GPU puts in its swapchain images,
-//! against the fake driver of `driver_tests`: the backdrop under the quads,
-//! in the image of the swapchain the window has now, pictures as textures,
-//! and the glyphs of a frame it refused uploaded by the next one.
+//! against the fake driver of `driver_tests`: the quads alone, in the
+//! image of the swapchain the window has now, pictures as textures, and
+//! the glyphs of a frame it refused uploaded by the next one.
 use super::{
 	call::Error,
 	driver_tests::with,
 	present_driver_tests::OUT_OF_DATE,
-	renderer::Backdrop,
 	renderer_tests::glyph,
 	window::{Drawn, GpuWindow},
 	window_tests::{ATLAS, SIZE, close, open, pen, showing, swapchains, uploads},
@@ -42,7 +41,7 @@ fn lettered(
 		let placement = Placement::natural(bitmap, 0, 0);
 		pen.placement(whole, &placement, (0, 0), (8, 16));
 	}
-	window.draw(pen, SIZE, None)
+	window.draw(pen, SIZE)
 }
 
 #[test]
@@ -94,42 +93,14 @@ fn the_glyphs_of_a_refused_frame_are_uploaded_by_the_next() {
 }
 
 #[test]
-fn a_backdrop_is_copied_into_the_swapchain_image_before_the_quads() {
-	let mut window = open(showing(), false).unwrap();
-	let backdrop = vec![0x30_5070; 40 * 30];
-	let under = Backdrop {
-		pixels: &backdrop,
-		width: 40,
-	};
-	assert_eq!(
-		window.draw(&mut pen(SIZE), SIZE, Some(under)),
-		Ok(Drawn::Shown)
-	);
-	let recorded = with(|driver| driver.recorded.clone());
-	let copy = recorded.iter().position(|call| call.starts_with("upload"));
-	let draw = recorded.iter().position(|call| call.starts_with("draw"));
-	assert!(copy.is_some() && copy < draw, "{recorded:?}");
-	assert!(
-		recorded[copy.unwrap()].contains("size 40x30"),
-		"{recorded:?}"
-	);
-	close(window);
-}
-
-#[test]
-fn a_window_without_area_copies_no_backdrop_and_takes_no_image() {
+fn a_window_without_area_takes_no_image() {
 	let mut window = open(showing(), false).unwrap();
 	// Opening writes the blank texture's set; the draws record nothing.
 	let opened = with(|driver| std::mem::take(&mut driver.recorded));
 	assert_eq!(opened.len(), 1);
 	assert!(opened[0].starts_with("write"), "{opened:?}");
-	let backdrop = vec![0x30_5070; 40 * 30];
 	for size in [[0, 30], [40, 0]] {
-		let under = Backdrop {
-			pixels: &backdrop,
-			width: 40,
-		};
-		let drawn = window.draw(&mut pen(SIZE), size, Some(under));
+		let drawn = window.draw(&mut pen(SIZE), size);
 		assert_eq!(drawn, Ok(Drawn::Skipped), "{size:?}");
 	}
 	assert_eq!(with(|driver| driver.recorded.clone()), [""; 0]);
@@ -137,41 +108,36 @@ fn a_window_without_area_copies_no_backdrop_and_takes_no_image() {
 	close(window);
 }
 
-/// Draws a frame over a whole backdrop, and says where its copies went.
-fn copied(window: &mut GpuWindow, backdrop: bool) -> (Result<Drawn, Error>, Vec<String>) {
-	let pixels = vec![0x30_5070; 40 * 30];
-	let under = backdrop.then_some(Backdrop {
-		pixels: &pixels,
-		width: 40,
-	});
-	let drawn = window.draw(&mut pen(SIZE), SIZE, under);
+/// Draws a frame of one rectangle, and says what it uploaded.
+fn copied(window: &mut GpuWindow) -> (Result<Drawn, Error>, Vec<String>) {
+	let drawn = window.draw(&mut pen(SIZE), SIZE);
 	let calls = with(|driver| std::mem::take(&mut driver.recorded));
-	let copies = calls.into_iter().filter(|call| call.starts_with("upload"));
 	(
 		drawn,
-		copies
-			.map(|call| call[call.find(" of ").unwrap()..].to_owned())
+		calls
+			.into_iter()
+			.filter(|call| call.starts_with("upload"))
 			.collect(),
 	)
 }
 
 #[test]
-fn a_frame_without_a_backdrop_copies_none_into_its_image() {
+fn a_frame_of_quads_copies_nothing_into_its_image() {
+	// The quads cover the whole frame: nothing software painted goes under.
 	let mut window = open(showing(), false).unwrap();
-	assert_eq!(copied(&mut window, true).1.len(), 1);
-	assert_eq!(copied(&mut window, false), (Ok(Drawn::Shown), vec![]));
+	for _ in 0..2 {
+		assert_eq!(copied(&mut window), (Ok(Drawn::Shown), vec![]));
+	}
 	close(window);
 }
 
 #[test]
-fn after_a_remake_the_backdrop_goes_into_the_new_swapchains_image() {
+fn after_a_remake_frames_are_shown_on_the_new_swapchain() {
 	let mut window = open(showing(), false).unwrap();
-	let (_, before) = copied(&mut window, true);
+	assert_eq!(copied(&mut window).0, Ok(Drawn::Shown));
 	with(|driver| driver.present_answers = vec![OUT_OF_DATE]);
-	assert_eq!(copied(&mut window, true).0, Ok(Drawn::Again));
-	let (drawn, after) = copied(&mut window, true);
-	assert_eq!(drawn, Ok(Drawn::Shown));
+	assert_eq!(copied(&mut window), (Ok(Drawn::Again), vec![]));
+	assert_eq!(copied(&mut window), (Ok(Drawn::Shown), vec![]));
 	assert_eq!(swapchains().len(), 2);
-	assert_ne!(after, before, "an image of the new swapchain");
 	close(window);
 }

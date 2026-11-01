@@ -83,13 +83,10 @@ fn a_frame_the_swapchain_could_not_take_is_drawn_again() {
 }
 
 #[test]
-fn a_frame_the_gpu_cannot_draw_is_painted_by_software() {
-	assert_eq!(next(Err(Error::Draw)), Next::Software);
-}
-
-#[test]
-fn any_other_failure_abandons_the_gpu_and_says_why() {
+fn any_failure_abandons_the_gpu_and_says_why() {
+	// A frame the GPU cannot draw too: software draws the window from then on.
 	for error in [
+		Error::Draw,
 		Error::Failed(-4),
 		Error::Unfit(Unfit::Format),
 		Error::NoMemory,
@@ -101,7 +98,7 @@ fn any_other_failure_abandons_the_gpu_and_says_why() {
 
 #[test]
 fn a_frame_whose_grid_rows_the_pen_keeps_is_remembered_however_it_was_shown() {
-	for next in [Next::Done, Next::Redraw, Next::Software] {
+	for next in [Next::Done, Next::Redraw] {
 		assert!(remembers(true, &next), "{next:?}");
 		assert!(!remembers(false, &next), "{next:?}");
 	}
@@ -132,13 +129,10 @@ fn after(next: Next, software: Result<&str, &str>) -> (Option<String>, Vec<Strin
 }
 
 #[test]
-fn the_gpu_draws_on_after_a_frame_it_showed_or_left_to_software() {
-	// A frame software painted was shown through the GPU, which stays.
-	for next in [Next::Done, Next::Software] {
-		let (renderer, calls) = after(next, Ok("software"));
-		assert_eq!(renderer.as_deref(), Some("kept gpu"));
-		assert!(calls.is_empty(), "{calls:?}");
-	}
+fn the_gpu_draws_on_after_a_frame_it_showed() {
+	let (renderer, calls) = after(Next::Done, Ok("software"));
+	assert_eq!(renderer.as_deref(), Some("kept gpu"));
+	assert!(calls.is_empty(), "{calls:?}");
 }
 
 #[test]

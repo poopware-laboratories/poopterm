@@ -357,8 +357,7 @@ lives, least recently used first out of a 256 MiB budget); the quads draw
 in runs, each with its image's descriptor set bound (`vk::draw`), and text
 between images joins the run it is in. A frame the GPU cannot draw (glyphs
 the atlas cannot hold, images past the budget or larger than the device
-makes) is refused, so software draws it, and forgets the textures it
-made. `render::backend::preference` lets `POOPTERM_RENDERER`
+makes) is refused, and the renderer forgets the textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 
 `app::gpu::Gpu` puts the main window on it (`app::renderer::Renderer::Gpu`).
@@ -368,9 +367,9 @@ background, the wallpaper as one image (`render::background::wallpaper`; the
 once), the tab bar, the grid, search box, palette and status bar. The pen
 keeps the quads of rows the plan keeps and moves them by the scroll; rows
 showing an image are drawn again, because the frame lists its images anew.
-When the GPU refuses a frame, software paints it whole and the GPU shows it
-as a backdrop (`vk::renderer::Backdrop`) over an empty pen. Any other GPU
-error switches the window to softbuffer for good (`Renderer::after_gpu`).
+Nothing software paints goes under the quads. When the GPU refuses a
+frame, or fails in any other way, the window switches to softbuffer for good
+(`Renderer::after_gpu`), which draws that frame again.
 The Settings window has a `Renderer` of its own, chosen the same way: on the
 GPU, its scene is replayed on the pen; `app::gpu::after_drawn` decides, for
 both windows, which renderer draws the next frame.

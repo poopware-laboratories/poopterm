@@ -77,10 +77,6 @@ pub(crate) mod recording;
 mod recording_tests;
 pub(crate) mod renderer;
 #[cfg(test)]
-mod renderer_backdrop_gpu_tests;
-#[cfg(test)]
-mod renderer_backdrop_tests;
-#[cfg(test)]
 mod renderer_gpu_tests;
 #[cfg(test)]
 mod renderer_image_edge_tests;

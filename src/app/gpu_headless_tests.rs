@@ -6,14 +6,14 @@ use crate::{
 	render::{
 		glyphs::FontSet,
 		grid::draw_grid,
-		grid_case_tests::{BG, Case, SIZE, cases, direct, fonts},
+		grid_case_tests::{BG, Case, SIZE, cases, fonts},
 		pen::Pen,
 	},
 };
 
 const ATLAS: (usize, usize) = (256, 4);
 
-/// What painting the frame needs: the fonts, and the scene.
+/// What drawing the frame needs: the fonts, and the scene.
 struct Scene {
 	fonts: FontSet,
 	case: Case,
@@ -26,14 +26,8 @@ fn quads(scene: &mut Scene, pen: &mut QuadPen) {
 	draw_grid(pen, &mut scene.fonts, &scene.case.view(), None);
 }
 
-fn whole(scene: &mut Scene, pixels: &mut [u32]) {
-	let painted = direct(&scene.case.view());
-	let shared = pixels.len().min(painted.len());
-	pixels[..shared].copy_from_slice(&painted[..shared]);
-}
-
 #[test]
-fn every_scene_drawn_by_a_real_gpu_is_shown_however_it_is_painted() {
+fn every_scene_drawn_by_a_real_gpu_is_shown_as_quads() {
 	let Some(window) = headless_window(ATLAS) else {
 		return;
 	};
@@ -46,8 +40,7 @@ fn every_scene_drawn_by_a_real_gpu_is_shown_however_it_is_painted() {
 			case,
 		};
 		for size in [SIZE, (SIZE.0 / 2, SIZE.1 / 3), (1, 1), SIZE] {
-			let mut pixels = vec![BG; size.0 * size.1];
-			let next = gpu.frame(&mut scene, (size, &mut pixels), quads, whole);
+			let next = gpu.frame(size, |pen| quads(&mut scene, pen));
 			shown.push((name.clone(), size, next));
 		}
 	}

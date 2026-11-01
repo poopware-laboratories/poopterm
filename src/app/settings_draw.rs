@@ -21,7 +21,7 @@ impl App {
 	// pr-check: window glue: draws the real settings window's scene for its GPU to show
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 	fn settings_on_gpu(&mut self, mut gpu: Box<Gpu>, scene: &Scene) -> Option<Renderer> {
-		let next = gpu.scene(scene, &mut self.ui_fonts, &mut Vec::new());
+		let next = gpu.scene(scene, &mut self.ui_fonts);
 		let again = || self.redraw_settings();
 		after_drawn(gpu, next, again, Renderer::Gpu, Renderer::after_gpu)
 	}

@@ -197,8 +197,6 @@ fn child() {
 					println!("child: drawn: {drawn:?}");
 					let unlike = super::renderer_gpu_tests::unlike_software(&device);
 					println!("child: unlike software: {unlike:?}");
-					let unlike = super::renderer_backdrop_gpu_tests::unlike_software_over_backdrop(&device);
-					println!("child: unlike software over a backdrop: {unlike:?}");
 				}
 				Err(error) => println!("child: no device: {error}"),
 			}
@@ -357,10 +355,6 @@ fn instances_pass_the_khronos_validation_layer() {
 	assert!(output.contains("child: drawn: Ok(true)"), "{output}");
 	assert!(
 		output.contains("child: unlike software: Ok([])"),
-		"{output}"
-	);
-	assert!(
-		output.contains("child: unlike software over a backdrop: Ok([])"),
 		"{output}"
 	);
 	let headless = output.contains("child: headless shows: Ok(true)");

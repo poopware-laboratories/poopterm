@@ -1,12 +1,11 @@
 //! A window drawn by a real GPU, on a headless surface: the device chosen
-//! for it shows every grid scene, images included, over a backdrop,
+//! for it shows every grid scene, images included, as quads alone,
 //! through resizes and more frames than it has images. Run by the loader's
 //! tests and by its validation child.
 use super::{
 	call::Error,
 	entry::Entry,
 	loader_tests::{entry, required},
-	renderer::Backdrop,
 	surface::Window,
 	window::{Drawn, GpuWindow},
 };
@@ -35,13 +34,7 @@ pub(super) fn headless_window(entry: Entry) -> Result<Vec<Result<Drawn, Error>>,
 		pen.begin_frame(SIZE);
 		pen.rect(0, 0, width, height, BG);
 		draw_grid(&mut pen, &mut fonts, &case.view(), None);
-		// Over a backdrop of the window's size, as the app draws.
-		let backdrop = vec![BG; size[0] * size[1]];
-		let under = Backdrop {
-			pixels: &backdrop,
-			width: size[0],
-		};
-		drawn.push(window.draw(&mut pen, size.map(|n| n as u32), Some(under)));
+		drawn.push(window.draw(&mut pen, size.map(|n| n as u32)));
 	};
 	let cases = cases();
 	for size in [[width, height], [width / 2, height / 2], [1, 1]] {
