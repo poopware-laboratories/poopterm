@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
 	gpu::{
-		atlas::Slot,
+		atlas::{BUDGET, Slot, Wanted, grown},
 		quads::{Fill, Quad, QuadPen},
 		textures::{Textures, runs},
 	},
@@ -151,6 +151,21 @@ impl Renderer {
 			*pen = QuadPen::new(pen.size, (side, pages));
 		}
 		recorded
+	}
+
+	/// Makes the atlas larger for a frame that lacked room in it, when the
+	/// device and the budget allow one that holds more: whether it did.
+	/// The frames drawn before keep the atlas they sample.
+	pub(crate) fn grow(&mut self, wanted: Wanted) -> Result<bool, Error> {
+		let [side, _, pages] = self.atlas.size.map(|n| n as usize);
+		let device = &self.set.pipeline.device;
+		let Some((side, pages)) = grown((side, pages), wanted, device.image_limits, BUDGET) else {
+			return Ok(false);
+		};
+		let size = [side, side, pages].map(|n| n as u32);
+		let atlas = Image::new(device, Format::Bgra, size, SAMPLED | TRANSFER_DST)?;
+		self.atlas = Rc::new(atlas);
+		Ok(true)
 	}
 
 	/// Starts `pen` and the textures over, so the next frame uploads every

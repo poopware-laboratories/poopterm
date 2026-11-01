@@ -148,12 +148,13 @@ issue before starting a piece.
   each falling back to software for good if its GPU fails. `POOPTERM_RENDERER` overrides the configured renderer.
   Sixel, kitty and iTerm2 images and the wallpaper are drawn as textures,
   uploaded once and kept while their bitmap lives (256 MiB at most). A
-  frame the GPU refuses (glyphs past the atlas, images past the budget or
-  larger than the device makes) hands the window to software for good, as
-  a GPU failure does; software is otherwise only an opt-in. Still to do:
-  making refusals essentially impossible (an atlas that grows instead of
-  overflowing, images scaled down on the CPU to what the device makes and
-  the budget holds); and fractional scale.
+  frame lacking room in the glyph atlas grows it (up to 256 MiB) and is
+  drawn again. A frame the GPU refuses (glyphs past the largest atlas,
+  images past the budget or larger than the device makes) hands the window
+  to software for good, as a GPU failure does; software is otherwise only
+  an opt-in. Still to do: images scaled down on the CPU to what the device
+  makes and the budget holds, so refusals are essentially impossible; and
+  fractional scale.
 
 ## Resource management and memory
 

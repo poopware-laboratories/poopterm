@@ -2,7 +2,7 @@
 //! and image into a quad, in drawing order, and keeps glyph bitmaps in an
 //! atlas, listing the ones the GPU has not been sent yet.
 use super::{
-	atlas::{Atlas, Slot},
+	atlas::{Atlas, Refused, Slot, Wanted},
 	rows::Rows,
 };
 use crate::{
@@ -65,6 +65,8 @@ pub(crate) struct QuadPen {
 	pub uploads: Vec<Upload>,
 	/// False when the atlas could not hold a glyph, which the frame lacks.
 	pub complete: bool,
+	/// What the atlas lacked room for, for a larger one to hold.
+	pub wanted: Wanted,
 	pub(super) atlas: Atlas<Box<[u32]>>,
 	/// The last frame's grid rows, for the next to keep.
 	pub(super) rows: Rows,
@@ -82,6 +84,7 @@ impl QuadPen {
 			images: Vec::new(),
 			uploads: Vec::new(),
 			complete: true,
+			wanted: Wanted::default(),
 			atlas: Atlas::new(side, pages),
 			rows: Rows::default(),
 			key: Vec::new(),
@@ -94,6 +97,7 @@ impl QuadPen {
 		self.images.clear();
 		self.uploads.clear();
 		self.complete = true;
+		self.wanted = Wanted::default();
 		self.atlas.begin_frame();
 		self.begin_rows();
 	}
@@ -126,9 +130,16 @@ impl QuadPen {
 		if let Some(slot) = self.atlas.get(&self.key[..]) {
 			return Some(slot);
 		}
-		let Ok(slot) = self.atlas.insert(self.key.as_slice().into(), size) else {
-			self.complete = false;
-			return None;
+		let slot = match self.atlas.insert(self.key.as_slice().into(), size) {
+			Ok(slot) => slot,
+			Err(refused) => {
+				self.complete = false;
+				match refused {
+					Refused::TooBig => self.wanted.side = self.wanted.side.max(size.0).max(size.1),
+					Refused::Full => self.wanted.pages = true,
+				}
+				return None;
+			}
 		};
 		let pixels = pixels();
 		self.uploads.push(Upload { slot, pixels });

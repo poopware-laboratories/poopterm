@@ -355,9 +355,13 @@ is out of date or suboptimal. Images are textures of their own
 (`gpu::textures` keeps one per bitmap, by its address, while the bitmap
 lives, least recently used first out of a 256 MiB budget); the quads draw
 in runs, each with its image's descriptor set bound (`vk::draw`), and text
-between images joins the run it is in. A frame the GPU cannot draw (glyphs
-the atlas cannot hold, images past the budget or larger than the device
-makes) is refused, and the renderer forgets the textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
+between images joins the run it is in. A frame whose glyphs lack room in
+the atlas grows it (`gpu::atlas::grown`: twice the pages when they ran out,
+pages the next power of two holding a glyph larger than one, within the
+device's limits and 256 MiB) and is drawn again. A frame the GPU still
+cannot draw (glyphs no atlas it can make holds, images past the budget or
+larger than the device makes) is refused, and the renderer forgets the
+textures it made. `render::backend::preference` lets `POOPTERM_RENDERER`
 override the configured renderer for one run.
 
 `app::gpu::Gpu` puts the main window on it (`app::renderer::Renderer::Gpu`).

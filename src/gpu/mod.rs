@@ -4,6 +4,8 @@
 //! and our own Vulkan bindings.
 pub(crate) mod atlas;
 #[cfg(test)]
+mod atlas_growth_tests;
+#[cfg(test)]
 mod atlas_tests;
 pub(crate) mod bands;
 #[cfg(test)]

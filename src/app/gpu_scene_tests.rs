@@ -1,15 +1,11 @@
 //! Tests of drawing a scene, such as a page of the Settings window, on the
-//! GPU: as quads, or refused, for software to draw the window from then
-//! on, when its glyphs overflow the atlas; on the fake Vulkan driver and on
-//! a real GPU.
+//! GPU: as quads, drawn again after the atlas grew when its glyphs did not
+//! fit; on the fake Vulkan driver and on a real GPU.
 use super::{Gpu, Next};
 use crate::{
-	gpu::vk::{
-		call::Error,
-		outside_tests::{
-			FAKE_ATLAS, fake_close as close, fake_presents as presents, fake_recorded as recorded,
-			fake_window, headless_window,
-		},
+	gpu::vk::outside_tests::{
+		FAKE_ATLAS, fake_close as close, fake_presents as presents, fake_recorded as recorded,
+		fake_window, headless_window,
 	},
 	render::{grid_case_tests::fonts, painter::ButtonStyle, scene::Scene},
 };
@@ -54,9 +50,16 @@ fn draw<W>(gpu: &mut Gpu<W>, scene: &Scene) -> Next {
 	gpu.scene(scene, &mut fonts())
 }
 
-/// What a scene the GPU refused comes to: the window goes to software.
-fn refused() -> Next {
-	Next::Abandon(Error::Draw.to_string())
+/// Draws `scene` until it is not to be drawn again: what it came to, and
+/// how many times it was drawn again.
+fn drawn<W>(gpu: &mut Gpu<W>, scene: &Scene) -> (Next, usize) {
+	for again in 0..8 {
+		match draw(gpu, scene) {
+			Next::Redraw => {}
+			next => return (next, again),
+		}
+	}
+	panic!("drawn again forever");
 }
 
 #[test]
@@ -81,28 +84,29 @@ fn a_scene_is_drawn_as_quads_and_shown_without_a_backdrop() {
 }
 
 #[test]
-fn a_scene_whose_glyphs_overflow_the_atlas_hands_the_window_to_software() {
+fn a_scene_with_a_glyph_wider_than_a_page_is_drawn_again_once_the_atlas_grew() {
 	let mut gpu = Gpu::with(fake_window(), "settings", FAKE_ATLAS);
-	assert_eq!(draw(&mut gpu, &overflowing()), refused());
+	assert_eq!(draw(&mut gpu, &overflowing()), Next::Redraw);
 	let calls = recorded();
 	assert!(
 		calls.iter().all(|call| !call.starts_with("draw")),
 		"{calls:?}"
 	);
 	assert_eq!(presents(), 0);
-	// The pen started over: a page that fits would be drawn whole.
-	assert_eq!(draw(&mut gpu, &page(SIZE, 1)), Next::Done);
+	// Drawn whole, as quads, on the GPU.
+	assert_eq!(draw(&mut gpu, &overflowing()), Next::Done);
 	assert!(
 		recorded()
 			.last()
 			.unwrap()
 			.starts_with("draw 6 vertices of ")
 	);
+	assert_eq!(presents(), 1);
 	close(gpu.gpu);
 }
 
 #[test]
-fn the_pen_fills_the_atlas_of_its_window_and_never_uploads_past_it() {
+fn the_pen_fills_the_atlas_of_its_window_and_grows_with_it() {
 	// Glyphs that each fit an atlas page of the fake window, but not all
 	// together: a pen sized for a larger atlas would place some outside it.
 	let mut scene = page(SIZE, 1);
@@ -118,8 +122,11 @@ fn the_pen_fills_the_atlas_of_its_window_and_never_uploads_past_it() {
 		);
 	}
 	let mut gpu = Gpu::with(fake_window(), "settings", FAKE_ATLAS);
-	assert_eq!(draw(&mut gpu, &scene), refused());
-	// The page alone still fits, and nothing was placed past the atlas.
+	// Pages double until they hold every letter: nothing is placed past
+	// them, which the driver would refuse.
+	let (next, again) = drawn(&mut gpu, &scene);
+	assert_eq!(next, Next::Done);
+	assert!(again >= 1, "the atlas grew");
 	assert_eq!(draw(&mut gpu, &page(SIZE, 1)), Next::Done);
 	close(gpu.gpu);
 }
@@ -146,6 +153,8 @@ fn every_scene_drawn_by_a_real_gpu_is_shown_at_every_scale_and_size() {
 			shown.push(((scale, size), draw(&mut gpu, &page(size, scale))));
 		}
 	}
+	// A glyph wider than a page: drawn again once, on a larger atlas.
+	shown.push(((1, SIZE), drawn(&mut gpu, &overflowing()).0));
 	let unshown: Vec<_> = shown
 		.iter()
 		.filter(|(_, next)| *next != Next::Done)
