@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.17 "Lunar Moth" — 2026-11-01
+
+### Maintenance
+
+- Record the final GPU benchmark (#219) (performance).
+
 ## 26.11.16 "Lunar Moth" — 2026-11-01
 
 ### Fixed
