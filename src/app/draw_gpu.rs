@@ -1,11 +1,12 @@
-//! Drawing a frame of the main window on the GPU: software paints the
-//! wallpaper and chrome, and the GPU draws the grid over them. A frame the
-//! GPU cannot draw, with an overlay over the grid or images in it, is
-//! painted whole by software and shown through the GPU.
+//! Drawing a frame of the main window on the GPU: all of it as quads, or
+//! with a wallpaper, which quads cannot show, the grid over the wallpaper
+//! and chrome software painted. A frame the GPU cannot draw, with images
+//! in it or an overlay over a wallpaper's grid, is painted whole by
+//! software and shown through the GPU.
 use super::{
 	App,
 	canvas::DrawKey,
-	gpu::{Gpu, Next},
+	gpu::{Gpu, Next, layers},
 	renderer::Renderer,
 };
 use crate::{gpu::quads::QuadPen, render::painter::Painter};
@@ -25,7 +26,8 @@ impl App {
 		self.canvas.plan(&self.frame, key, size, false);
 		let mut pixels = std::mem::take(&mut self.canvas.pixels);
 		let pixels_of = (size, &mut pixels[..]);
-		let next = gpu.frame(self, pixels_of, key.overlay, Self::around_grid, Self::whole);
+		let layers = layers(self.wallpaper.is_some(), key.overlay);
+		let next = gpu.frame(self, pixels_of, layers, Self::around_grid, Self::whole);
 		self.canvas.pixels = pixels;
 		match next {
 			Next::Done | Next::Software => Some(Renderer::Gpu(gpu)),
@@ -43,9 +45,13 @@ impl App {
 	}
 
 	// pr-check: window glue: paints the real window's frame for the GPU to show
-	fn around_grid(&mut self, pixels: &mut [u32], pen: &mut QuadPen) {
+	fn around_grid(&mut self, pixels: Option<&mut [u32]>, pen: &mut QuadPen) {
 		let (width, height) = (self.width as usize, self.height as usize);
 		let painting = Instant::now();
+		let Some(pixels) = pixels else {
+			self.compose_plain(pen);
+			return self.painted(painting.elapsed(), false);
+		};
 		self.compose_around(&mut Painter::new(pixels, width, height), false);
 		self.painted(painting.elapsed(), false);
 		self.draw_terminal(pen, self.scale(), None);

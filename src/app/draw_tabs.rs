@@ -1,7 +1,7 @@
 //! The horizontal tab strip, drawn as the header bar from each tab's state.
 use super::{draw::UiFont, *};
 use crate::{
-	render::{header::draw_header, painter::Painter, scene::paint},
+	render::{header::draw_header, pen::Pen, scene::paint},
 	ui::{
 		header::{HeaderInput, TabInfo, header},
 		tabs::tab_marker,
@@ -16,7 +16,7 @@ pub(super) fn hit(cursor: (f64, f64), (x, y, w, h): (usize, usize, usize, usize)
 }
 
 impl App {
-	pub(super) fn draw_tab_bar(&mut self, p: &mut Painter, ui: UiFont) {
+	pub(super) fn draw_tab_bar(&mut self, p: &mut impl Pen, ui: UiFont) {
 		if !self.preferences.show_tabs {
 			return;
 		}

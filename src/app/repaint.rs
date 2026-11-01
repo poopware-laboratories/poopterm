@@ -4,7 +4,7 @@ use super::{
 	canvas::{merge_bands, scroll_pixels},
 	*,
 };
-use crate::render::{damage::GridDamage, painter::Painter};
+use crate::render::{background::fill, damage::GridDamage, painter::Painter};
 
 impl App {
 	/// Updates the previous frame's pixels: shifts scrolled rows, redraws
@@ -84,10 +84,11 @@ impl App {
 		let inner_w = width.saturating_sub(2 * border);
 		let inner_h = total.saturating_sub(2 * border);
 		let (bg, strength) = (self.theme.bg, self.wallpaper_strength);
-		let image = self
-			.wallpaper
-			.as_mut()
-			.map(|wallpaper| wallpaper.pixels(inner_w as u32, inner_h as u32, bg, strength));
+		let Some(wallpaper) = self.wallpaper.as_mut() else {
+			fill(p, (y, height), left, border, (self.theme.border, bg));
+			return;
+		};
+		let image = Some(wallpaper.pixels(inner_w as u32, inner_h as u32, bg, strength));
 		let image_w = inner_w.max(1);
 		for row in y..(y + height).min(total) {
 			let line = &mut p.pixels[row * width..(row + 1) * width];

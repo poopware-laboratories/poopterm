@@ -646,6 +646,29 @@ software today: showing a frame is dominated by copying and uploading the
 whole backdrop, and typing pays it on every key, where software redraws
 only the damaged rows. Moving the chrome to the GPU removes the backdrop.
 
+### Chrome as quads
+
+With the chrome drawn as quads, a window without a wallpaper sends no
+backdrop: the whole frame is quads. Same machine, method and configuration,
+`main` before the change and the branch after, alternated:
+
+| Window | Build | Renderer | Frame | Paint | Show | Latency | Latency p95 |
+|---|---|---|---:|---:|---:|---:|---:|
+| 1000×600, scale 1 | before | software | 0.95 (0.94–1.06) | 0.71 (0.70–0.76) | 0.24 (0.23–0.28) | 0.36 (0.30–0.37) | 0.71 (0.44–0.99) |
+| 1000×600, scale 1 | before | gpu | 1.19 (1.17–1.26) | 0.20 (0.19–0.23) | 0.97 (0.96–1.02) | 1.34 (1.30–2.33) | 1.71 (1.58–4.03) |
+| 1000×600, scale 1 | after | software | 0.97 (0.96–1.26) | 0.70 (0.70–0.84) | 0.25 (0.24–0.39) | 0.35 (0.31–0.36) | 0.44 (0.44–0.83) |
+| 1000×600, scale 1 | after | gpu | 0.38 (0.37–0.40) | 0.12 (0.11–0.12) | 0.25 (0.24–0.27) | 0.54 (0.54–0.59) | 0.82 (0.76–1.01) |
+| 1920×1080, scale 2 | before | software | 2.03 (2.01–2.04) | 1.32 (1.29–1.33) | 0.70 (0.69–0.70) | 0.43 (0.38–0.44) | 0.56 (0.55–0.56) |
+| 1920×1080, scale 2 | before | gpu | 3.27 (3.25–3.34) | 0.85 (0.84–0.87) | 2.45 (2.41–2.52) | 3.74 (3.73–3.83) | 4.84 (4.66–5.14) |
+| 1920×1080, scale 2 | after | software | 2.01 (1.98–2.05) | 1.30 (1.29–1.32) | 0.70 (0.69–0.71) | 0.43 (0.40–0.45) | 0.51 (0.49–0.90) |
+| 1920×1080, scale 2 | after | gpu | 0.27 (0.26–0.27) | 0.06 (0.05–0.06) | 0.20 (0.19–0.21) | 0.68 (0.65–0.70) | 0.81 (0.79–1.24) |
+
+The GPU now draws a full frame 2.5× (scale 1) to 7× (scale 2) faster than
+software, whose cost grows with the pixels it paints. Typing latency is
+still higher than software's, which redraws only the damaged rows: the GPU
+redraws every quad and waits on presentation. Wallpapers keep the backdrop
+until images are drawn on the GPU (#27).
+
 Flood throughput does not depend on the renderer: the parser bounds it and
 frames are capped at 30 fps. `scripts/bench-throughput.py` (16 MiB × 3) as
 the shell of a window opened at 86×42, three alternating runs per
