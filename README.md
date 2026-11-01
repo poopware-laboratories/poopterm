@@ -5,8 +5,8 @@
 <h1 align="center">Poopterm 💩</h1>
 
 <p align="center">
-  A fast, software-rendered terminal emulator written in Rust, with its own
-  escape-sequence parser, font engine and image decoders.
+  A fast, hardware-accelerated terminal emulator written in Rust, with its
+  own Vulkan renderer, escape-sequence parser, font engine and image decoders.
 </p>
 
 <p align="center">
@@ -27,6 +27,7 @@ implementation; see [protocols and compatibility](docs/protocols.md).
 
 | | |
 |---|---|
+| **Rendering** | On Linux and FreeBSD, whole frames are drawn on the GPU through our own Vulkan bindings: text, chrome, images and wallpaper. Our software renderer is the fallback and an opt-in (`renderer = "software"`); macOS draws in software until its Metal renderer lands. |
 | **Speed** | A background PTY reader with backpressure, a SIMD tokenizer, an O(columns) row grid with 16-byte cells, redraws paced to the display, and synchronized updates that cost one screen copy. |
 | **Text** | 16, 256 and truecolor (semicolon and colon forms), bold, italic, styled and colored underlines, DEC line drawing, wide characters, combining marks, and color emoji with ZWJ sequences, flags and skin tones. |
 | **Fonts** | Any installed family or font file, with the bundled DejaVu Sans Mono for Powerline, Nerd Font symbols and a system fallback for missing glyphs. |
