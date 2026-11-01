@@ -17,6 +17,7 @@ spirit of kitty's `kitten __benchmark__`, but using nothing terminal-specific:
   along with min/max so noisy runs are visible.
 * Workloads are generated for the window's size, which is recorded, because
   rendering cost scales with the grid. Compare terminals at the same size.
+* The terminal's resident memory is reported too; see docs/performance.md.
 
 Usage (run inside the terminal under test):
 
@@ -49,6 +50,63 @@ Payload = namedtuple("Payload", "key name data warm_up")
 
 class NoReply(Exception):
     pass
+
+
+def proc_stat(pid):
+    """(parent, terminal) of `pid` from /proc, else from `ps`; None if gone."""
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text()
+        fields = text[text.rindex(")") + 1:].split()
+        return int(fields[1]), fields[4]
+    except FileNotFoundError:
+        if Path("/proc/self").exists():
+            return None
+    except (OSError, ValueError, IndexError):
+        return None
+    ps = subprocess.run(["ps", "-o", "ppid=,tty=", "-p", str(pid)], capture_output=True, text=True)
+    fields = ps.stdout.split()
+    return (int(fields[0]), fields[1]) if ps.returncode == 0 and len(fields) == 2 else None
+
+
+def terminal_pid(pid, stat=proc_stat):
+    """The first ancestor of `pid` not attached to the terminal `pid` is:
+    the terminal emulator serving it. None if the chain ends first."""
+    own = stat(pid)
+    for _ in range(64):
+        if own is None:
+            return None
+        info = stat(pid)
+        if info is None:
+            return None
+        if info[1] != own[1]:
+            return pid
+        pid = info[0]
+    return None
+
+
+def parse_status(text):
+    """Resident and peak resident KiB from /proc/<pid>/status."""
+    fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+    kib = lambda name: int(fields[name].split()[0]) if name in fields else None
+    return {"rss_kib": kib("VmRSS"), "peak_kib": kib("VmHWM")}
+
+
+def memory(pid):
+    """What `pid` holds resident now and at its peak, in KiB; None if unknown."""
+    try:
+        return parse_status(Path(f"/proc/{pid}/status").read_text())
+    except FileNotFoundError:
+        if Path("/proc/self").exists():
+            return None
+    except OSError:
+        return None
+    ps = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True)
+    rss = ps.stdout.strip()
+    return {"rss_kib": int(rss), "peak_kib": None} if ps.returncode == 0 and rss.isdigit() else None
+
+
+def mib(kib):
+    return None if kib is None else round(kib / 1024, 1)
 
 
 def wait_for_terminal(fd, timeout, query=b""):
@@ -142,6 +200,9 @@ def main():
                         help="seconds to wait for each DA1 reply")
     parser.add_argument("--output", help="also append results to this file")
     parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--pid", type=int, help="the terminal's process, if not found by itself")
+    parser.add_argument("--settle", type=float, default=1.0,
+                        help="seconds to wait after each workload before reading memory")
     args = parser.parse_args()
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         sys.exit("bench-throughput: stdin and stdout must be the terminal under test")
@@ -154,6 +215,9 @@ def main():
         sys.exit(f"bench-throughput: {error}")
     if args.only and len(payloads) != len(set(args.only)):
         sys.exit("bench-throughput: unknown workload; see `poopterm --benchmark --list`")
+    pid = args.pid or terminal_pid(os.getpid())
+    resident = lambda: mib((memory(pid) or {}).get("rss_kib")) if pid else None
+    start = resident()
     results = []
     try:
         # Environment variables such as TERM_PROGRAM may come from a parent
@@ -163,10 +227,12 @@ def main():
             measure(fd, out, warm_up, args.timeout)
             seconds = [measure(fd, out, data, args.timeout) for _ in range(args.repeat)]
             rates = [len(data) / s / 1e6 for s in seconds]
+            if pid:
+                time.sleep(args.settle)
             results.append({
                 "payload": key, "name": name, "bytes": len(data),
                 "median_mb_s": statistics.median(rates), "min_mb_s": min(rates),
-                "max_mb_s": max(rates),
+                "max_mb_s": max(rates), "rss_mib": resident(),
             })
     except NoReply as error:
         sys.exit(f"bench-throughput: {error}")
@@ -181,19 +247,28 @@ def main():
         "term_program": os.environ.get("TERM_PROGRAM", ""),
         "columns": size.columns, "lines": size.lines, "repeat": args.repeat, "results": results,
         "overall_mb_s": total_bytes / total_seconds / 1e6 if results else 0,
+        "pid": pid, "rss_start_mib": start,
+        "peak_mib": mib((memory(pid) or {}).get("peak_kib")) if pid else None,
     }
-    if args.format == "json":
-        text = json.dumps(report, indent=2)
-    else:
-        header = (f"{terminal or report['term_program'] or report['term']}  {size.columns}x{size.lines}  "
-                  f"{args.mib} MiB x {args.repeat} (median, min-max)")
-        rows = [f"{r['payload']:<11} {r['median_mb_s']:9.1f} MB/s  "
-                f"({r['min_mb_s']:.1f}-{r['max_mb_s']:.1f})  {r['name']}" for r in results]
-        text = "\n".join([header, *rows, f"{'overall':<11} {report['overall_mb_s']:9.1f} MB/s"])
+    text = json.dumps(report, indent=2) if args.format == "json" else as_text(report, args.mib)
     print(text)
     if args.output:
         with open(args.output, "a") as handle:
             handle.write(text + "\n")
+
+
+def as_text(report, mib_each):
+    """The report as a table, memory in MiB where the terminal was found."""
+    shown = lambda value: "-" if value is None else f"{value:.1f}"
+    header = (f"{report['terminal'] or report['term_program'] or report['term']}  "
+              f"{report['columns']}x{report['lines']}  {mib_each} MiB x {report['repeat']} "
+              f"(median, min-max; resident MiB after each)")
+    rows = [f"{r['payload']:<11} {r['median_mb_s']:9.1f} MB/s  "
+            f"({r['min_mb_s']:.1f}-{r['max_mb_s']:.1f})  {shown(r['rss_mib']):>7}  {r['name']}"
+            for r in report["results"]]
+    memory = (f"memory      {shown(report['rss_start_mib'])} MiB at start, "
+              f"{shown(report['peak_mib'])} MiB at peak (pid {report['pid'] or '-'})")
+    return "\n".join([header, *rows, f"{'overall':<11} {report['overall_mb_s']:9.1f} MB/s", memory])
 
 
 if __name__ == "__main__":
