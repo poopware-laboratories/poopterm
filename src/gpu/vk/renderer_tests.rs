@@ -59,8 +59,47 @@ fn quads_encode_as_the_shaders_read_them() {
 	// Only coverage leans: an italic emoji keeps its shape.
 	assert_eq!(encode(&quad(Fill::Color(glyph), true)), Some(color));
 	assert_eq!(encode(&quad(Fill::Solid, true)), Some(solid));
-	// Images are not drawn by the quad shaders.
-	assert_eq!(encode(&quad(Fill::Image(0), false)), None);
+	// Images: source x | y << 16, width | height << 16, kind 3; no color.
+	let source = Rect {
+		x: 0x12,
+		y: 0x345,
+		width: 0x6789,
+		height: 0xffff,
+	};
+	let image = encode(&quad(Fill::Image(7, source), true)).unwrap();
+	assert_eq!(image[..8], place);
+	assert_eq!(image[8..], [0x0345_0012, 0xffff_6789, 3, 0x00ab_cdef]);
+}
+
+#[test]
+fn an_image_source_past_sixteen_bits_does_not_encode() {
+	let fits = Rect {
+		x: 0xffff,
+		y: 0xffff,
+		width: 0xffff,
+		height: 0xffff,
+	};
+	assert!(encode(&quad(Fill::Image(0, fits), false)).is_some());
+	for past in [
+		Rect {
+			x: 0x1_0000,
+			..fits
+		},
+		Rect {
+			y: 0x1_0000,
+			..fits
+		},
+		Rect {
+			width: 0x1_0000,
+			..fits
+		},
+		Rect {
+			height: 0x1_0000,
+			..fits
+		},
+	] {
+		assert_eq!(encode(&quad(Fill::Image(0, past), false)), None, "{past:?}");
+	}
 }
 
 /// A renderer on a fake device, with the pipeline and timeline it draws

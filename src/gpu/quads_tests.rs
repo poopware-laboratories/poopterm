@@ -7,8 +7,9 @@ use super::{
 };
 use crate::{
 	fonts::Metrics,
-	graphics::Rect,
+	graphics::{Bitmap, Extent, Placement, Rect},
 	render::{
+		blend::blend,
 		glyphs::{Glyph, Presentation, Shape},
 		grid::{GridView, draw_grid},
 		grid_case_tests::{BG, SAMPLE, SIZE, assert_paints_like_software, cases, fonts, frame, view},
@@ -17,6 +18,7 @@ use crate::{
 		pen::{Ink, Pen},
 	},
 };
+use std::sync::Arc;
 
 const SIDE: usize = 256;
 
@@ -71,23 +73,21 @@ impl Gpu {
 					};
 					p.glyph(&glyph, quad.at, quad.clip, quad.italic, quad.color);
 				}
-				Fill::Image(index) => {
-					let image = &pen.images[index];
+				Fill::Image(index, source) => {
+					// As the fragment shader maps each pixel to a texel.
+					let bitmap = &pen.images[index].placement.bitmap;
 					let (left, top, right, bottom) = quad.clip;
-					let clip = Rect {
-						x: left as usize,
-						y: top as usize,
-						width: (right - left) as usize,
-						height: (bottom - top) as usize,
-					};
-					draw_placement(
-						p.pixels,
-						p.width,
-						clip,
-						&image.placement,
-						image.at,
-						image.cell,
-					);
+					let (w, h) = (quad.size.0 as i32, quad.size.1 as i32);
+					let columns = x.max(left).max(0)..(x + w).min(right).min(width as i32);
+					for row in y.max(top).max(0)..(y + h).min(bottom).min(height as i32) {
+						let texel_y = source.y + (row - y) as usize * source.height / h as usize;
+						for column in columns.clone() {
+							let texel_x = source.x + (column - x) as usize * source.width / w as usize;
+							let texel = bitmap.pixels[texel_y * bitmap.width + texel_x];
+							let out = &mut p.pixels[row as usize * width + column as usize];
+							*out = blend(*out, texel & 0xff_ffff, texel >> 24);
+						}
+					}
 				}
 			}
 		}
@@ -354,13 +354,146 @@ fn quads_cover_the_rectangles_and_images_they_were_given() {
 		((3, 5), (7, 2), (3, 5, 10, 7))
 	);
 	assert_eq!((rect.fill, rect.color), (Fill::Solid, 0xff_0000));
-	assert_eq!((picture.at, picture.size), ((4, 6), (9, 3)));
+	// The whole picture, which the clip cuts down.
+	assert_eq!((picture.at, picture.size), ((-1, 2), (2, 2)));
+	let whole = image.source;
 	assert_eq!(
 		(picture.clip, picture.fill),
-		((4, 6, 13, 9), Fill::Image(0))
+		((4, 6, 13, 9), Fill::Image(0, whole))
 	);
 	let drawn = &pen.images[0];
 	assert_eq!((drawn.at, drawn.cell), ((-1, 2), (8, 16)));
+}
+
+/// A placement of a `width` × `height` bitmap showing `source` as `extent`,
+/// `offset` into its first cell.
+fn placement(
+	(width, height): (usize, usize),
+	source: Rect,
+	extent: Extent,
+	offset: (usize, usize),
+) -> Placement {
+	let pixels = (0..width * height)
+		.map(|n| 0x8000_0000 | n as u32 * 0x01_0305)
+		.collect();
+	let mut placement = Placement::natural(Arc::new(Bitmap::new(width, height, pixels)), 0, 0);
+	placement.source = source;
+	placement.extent = extent;
+	placement.offset = offset;
+	placement
+}
+
+const fn rect(x: usize, y: usize, width: usize, height: usize) -> Rect {
+	Rect {
+		x,
+		y,
+		width,
+		height,
+	}
+}
+
+#[test]
+fn an_image_quad_covers_the_scaled_picture_from_its_offset_and_keeps_its_source() {
+	let mut pen = pen();
+	pen.begin_frame(SIZE);
+	let source = rect(1, 2, 3, 4);
+	let scaled = placement((5, 7), source, Extent::Cells { cols: 2, rows: 1 }, (3, 1));
+	pen.placement(rect(0, 0, 100, 100), &scaled, (8, 16), (8, 16));
+	let [picture] = &pen.quads[..] else {
+		panic!("{:?}", pen.quads)
+	};
+	// Two cells wide and one high, from 3 pixels right and 1 down.
+	assert_eq!((picture.at, picture.size), ((11, 17), (16, 16)));
+	assert_eq!(picture.fill, Fill::Image(0, source));
+	assert_eq!(picture.clip, (0, 0, 100, 100));
+}
+
+#[test]
+fn an_image_showing_nothing_draws_no_quad() {
+	let mut pen = pen();
+	pen.begin_frame(SIZE);
+	let empty = [
+		placement((4, 4), rect(0, 0, 0, 4), Extent::Natural, (0, 0)),
+		placement(
+			(4, 4),
+			rect(0, 0, 4, 4),
+			Extent::Pixels {
+				width: 0,
+				height: 9,
+			},
+			(0, 0),
+		),
+		placement(
+			(4, 4),
+			rect(0, 0, 4, 4),
+			Extent::Pixels {
+				width: 9,
+				height: 0,
+			},
+			(0, 0),
+		),
+	];
+	for image in &empty {
+		pen.placement(rect(0, 0, 50, 50), image, (0, 0), (8, 16));
+	}
+	assert!(
+		pen.quads.is_empty() && pen.images.is_empty(),
+		"{:?}",
+		pen.quads
+	);
+}
+
+#[test]
+fn image_quads_drawn_as_the_gpu_does_paint_what_software_paints() {
+	let cases = [
+		("natural", rect(0, 0, 5, 7), Extent::Natural, (0, 0)),
+		("cropped", rect(1, 2, 3, 4), Extent::Natural, (2, 3)),
+		(
+			"scaled up",
+			rect(0, 0, 5, 7),
+			Extent::Pixels {
+				width: 13,
+				height: 17,
+			},
+			(1, 0),
+		),
+		(
+			"scaled down",
+			rect(1, 1, 4, 6),
+			Extent::Pixels {
+				width: 3,
+				height: 2,
+			},
+			(0, 5),
+		),
+		(
+			"in cells",
+			rect(0, 0, 5, 7),
+			Extent::Cells { cols: 3, rows: 2 },
+			(7, 15),
+		),
+	];
+	let clips = [
+		rect(0, 0, SIZE.0, SIZE.1),
+		rect(10, 20, 9, 11),
+		rect(17, 25, 3, 40),
+	];
+	for (name, source, extent, offset) in cases {
+		let image = placement((5, 7), source, extent, offset);
+		for clip in clips {
+			for at in [(8, 16), (-6, -9), (14, 30)] {
+				let (mut pen, gpu) = (pen(), Gpu::default());
+				pen.begin_frame(SIZE);
+				pen.placement(clip, &image, at, (8, 16));
+				let mut want = vec![BG; SIZE.0 * SIZE.1];
+				draw_placement(&mut want, SIZE.0, clip, &image, at, (8, 16));
+				assert!(
+					gpu.draw(&pen) == want,
+					"{name} clipped to {clip:?} at {at:?}"
+				);
+			}
+		}
+	}
 }
 
 #[test]

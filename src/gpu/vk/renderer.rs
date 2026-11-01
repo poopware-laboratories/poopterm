@@ -14,7 +14,10 @@ use super::{
 	recording::{Recording, Region},
 	timeline::Timeline,
 };
-use crate::gpu::quads::{Fill, Quad, QuadPen};
+use crate::gpu::{
+	atlas::Slot,
+	quads::{Fill, Quad, QuadPen},
+};
 use std::{num::NonZeroUsize, rc::Rc};
 
 /// `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT` and `_TRANSFER_SRC_BIT`, and
@@ -27,18 +30,27 @@ const TRANSFER_DST: u32 = 0x2;
 const SOLID: u32 = 0;
 const COVERAGE: u32 = 1;
 const COLOR: u32 = 2;
+const IMAGE: u32 = 3;
 /// Words a quad.
 const QUAD: usize = 12;
 
 /// `quad` as the shaders read it: its rectangle, its clip, and its atlas
-/// position, page, kind and color; `None` for an image, which they do not
-/// draw.
+/// position and page, or its image's source corner and size, then its kind
+/// and color; `None` for an image source past what 16 bits hold.
 pub(crate) fn encode(quad: &Quad) -> Option<[u32; QUAD]> {
-	let (kind, slot) = match quad.fill {
-		Fill::Solid => (SOLID, None),
-		Fill::Coverage(slot) => (COVERAGE | u32::from(quad.italic) << 8, Some(slot)),
-		Fill::Color(slot) => (COLOR, Some(slot)),
-		Fill::Image(_) => return None,
+	let (kind, from) = match quad.fill {
+		Fill::Solid => (SOLID, [0, 0]),
+		Fill::Coverage(slot) => (COVERAGE | u32::from(quad.italic) << 8, place(slot)),
+		Fill::Color(slot) => (COLOR, place(slot)),
+		Fill::Image(_, source) => {
+			let [x, y, width, height] =
+				[source.x, source.y, source.width, source.height].map(u16::try_from);
+			let pair = |low: u16, high: u16| u32::from(low) | u32::from(high) << 16;
+			(
+				IMAGE,
+				[pair(x.ok()?, y.ok()?), pair(width.ok()?, height.ok()?)],
+			)
+		}
 	};
 	let (x, y) = quad.at;
 	let (left, top, right, bottom) = quad.clip;
@@ -52,13 +64,17 @@ pub(crate) fn encode(quad: &Quad) -> Option<[u32; QUAD]> {
 		right,
 		bottom,
 	];
-	let (at, page) = slot.map_or((0, 0), |slot| (slot.x | slot.y << 16, slot.page));
 	let mut words = [0; QUAD];
 	for (word, value) in words.iter_mut().zip(place) {
 		*word = value as u32;
 	}
-	words[8..].copy_from_slice(&[at as u32, page as u32, kind, quad.color]);
+	words[8..].copy_from_slice(&[from[0], from[1], kind, quad.color]);
 	Some(words)
+}
+
+/// A slot's atlas position x | y << 16 and its page.
+fn place(slot: Slot) -> [u32; 2] {
+	[(slot.x | slot.y << 16) as u32, slot.page as u32]
 }
 
 pub(crate) struct Renderer {
