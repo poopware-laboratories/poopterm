@@ -32,17 +32,17 @@ const LINES: [&str; 8] = [
 	"\x1b[0;1mseven\x1b[K",
 ];
 
-fn pen() -> QuadPen {
+pub(super) fn pen() -> QuadPen {
 	QuadPen::new(SIZE, (256, 4))
 }
 
-fn plain(view: GridView) -> GridView {
+pub(super) fn plain(view: GridView) -> GridView {
 	view
 }
 
 /// `view` with the whole window as padding, which the edge rows extend
 /// their backgrounds into.
-fn padded<'f>(view: GridView<'f>) -> GridView<'f> {
+pub(super) fn padded<'f>(view: GridView<'f>) -> GridView<'f> {
 	let whole = crate::graphics::Rect {
 		x: 0,
 		y: 0,
@@ -57,7 +57,7 @@ fn padded<'f>(view: GridView<'f>) -> GridView<'f> {
 
 /// Draws a frame as the app does: chrome, the grid's rows the pen says to
 /// draw, and chrome over it.
-fn draw(pen: &mut QuadPen, view: &GridView) {
+pub(super) fn draw(pen: &mut QuadPen, view: &GridView) {
 	pen.begin_frame(SIZE);
 	pen.rect(0, 0, SIZE.0, 2, TOP);
 	let rows = pen.rows_to_draw().map(<[bool]>::to_vec);
@@ -66,20 +66,20 @@ fn draw(pen: &mut QuadPen, view: &GridView) {
 }
 
 /// A pen that drew frames, and the stand-in GPU it sent their glyphs to.
-struct Drawn {
-	pen: QuadPen,
+pub(super) struct Drawn {
+	pub pen: QuadPen,
 	gpu: Gpu,
 }
 
 impl Drawn {
-	fn new() -> Self {
+	pub(super) fn new() -> Self {
 		Self {
 			pen: pen(),
 			gpu: Gpu::default(),
 		}
 	}
 
-	fn draw(&mut self, view: &GridView) {
+	pub(super) fn draw(&mut self, view: &GridView) {
 		draw(&mut self.pen, view);
 		self.gpu.upload(&self.pen.uploads);
 	}
@@ -107,7 +107,7 @@ fn placed(pen: &QuadPen) -> Vec<Quad> {
 
 /// Asserts that `drawn` holds the quads a new pen draws for `view` whole,
 /// in the same order, and that the GPU paints the same pixels from them.
-fn assert_same(drawn: &Drawn, view: &GridView, what: &str) {
+pub(super) fn assert_same(drawn: &Drawn, view: &GridView, what: &str) {
 	let mut whole = Drawn::new();
 	whole.draw(view);
 	assert_eq!(placed(&drawn.pen), placed(&whole.pen), "{what}");
@@ -128,7 +128,7 @@ fn partly(prev: &Frame, next: &Frame, allow_scroll: bool, look: fn(GridView) -> 
 	drawn
 }
 
-fn lines(range: std::ops::Range<usize>) -> String {
+pub(super) fn lines(range: std::ops::Range<usize>) -> String {
 	LINES[range].join("\r\n")
 }
 
