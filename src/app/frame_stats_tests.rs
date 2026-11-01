@@ -147,6 +147,51 @@ fn sub_microsecond_times_keep_their_tenths() {
 	assert!(report.contains("\"total_us\": [0.1]"), "{report}");
 }
 
+/// The numbers of the report's list `name`.
+fn listed(report: &str, name: &str) -> Vec<f64> {
+	let start = report.find(&format!("\"{name}\": [")).unwrap() + name.len() + 5;
+	let list = &report[start..start + report[start..].find(']').unwrap()];
+	list
+		.split(", ")
+		.filter(|n| !n.is_empty())
+		.map(|n| n.parse().unwrap())
+		.collect()
+}
+
+#[test]
+fn every_sample_is_reported_once_in_order_to_a_tenth_of_a_microsecond() {
+	let mut stats = FrameStats::default();
+	let key = Instant::now();
+	// Uneven times, from under a microsecond to over a second.
+	let times: Vec<_> = (0..500u64)
+		.map(|n| Duration::from_nanos(n * n * 7_919 + n))
+		.collect();
+	for (n, &time) in times.iter().enumerate() {
+		stats.key(key);
+		stats.output();
+		stats.frame(Kind::Software, [time, time / 2, time * 3], key + time);
+		assert_eq!(stats.latency.len(), n + 1);
+	}
+	let report = stats.report((1, 1), 1.0);
+	assert!(!report.contains('\n'), "one line");
+	for (name, scale) in [
+		("paint_us", 1.0),
+		("show_us", 0.5),
+		("total_us", 3.0),
+		("latency_us", 1.0),
+	] {
+		let numbers = listed(&report, name);
+		assert_eq!(numbers.len(), times.len(), "{name}");
+		for (number, time) in numbers.iter().zip(&times) {
+			let micros = time.as_nanos() as f64 * scale / 1e3;
+			assert!(
+				(number - micros).abs() <= 0.051,
+				"{name}: {number} for {micros}"
+			);
+		}
+	}
+}
+
 #[test]
 fn long_times_are_not_cut_short() {
 	let mut stats = FrameStats::default();

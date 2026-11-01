@@ -119,6 +119,7 @@ impl App {
 		self.renderer = after_shown(renderer, shown, again, renderer::Renderer::after_presenter);
 	}
 
+	// pr-check: window glue: hands a real window's frame times to the tested frame_stats::Recorder
 	/// Software painted for `took` this frame (the whole of it if `whole`),
 	/// for the frame statistics.
 	pub(super) fn painted(&mut self, took: Duration, whole: bool) {
@@ -133,6 +134,7 @@ impl App {
 			recorder.finish(gpu, showing, started, Instant::now());
 		}
 	}
+	// pr-check: end window glue
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.
 	fn selection_rows(&self) -> Option<Selection> {
