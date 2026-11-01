@@ -1,5 +1,20 @@
 # Changelog
 
+## 26.11.2 "Lunar Moth" — 2026-11-01
+
+### Fixed
+
+- Choose startup symbol fonts by coverage, not directory order (#195) (fonts).
+
+### Maintenance
+
+- Refresh the screenshot, throughput figures and package names (#196) (readme).
+- Cover every module in the architecture tables and fix a stale path (#198).
+- Keep pull request screenshots on main (#197).
+- Retry the connection to a busy X server in CI (#200) (x11).
+- Check the settle wait with a lower bound (#199) (bench).
+- Fill the results table of the tokenizer plan (#201) (vt).
+
 ## 26.11.1 "Lunar Moth" — 2026-11-01
 
 ### Fixed
