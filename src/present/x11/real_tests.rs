@@ -119,7 +119,16 @@ fn on_real_window<R>(
 	// window is the root's child, of the root's depth and visual. The
 	// image reply is malloc'd and holds the bytes it says.
 	unsafe {
-		let display = (extra.open)(ptr::null());
+		// A busy CI server can refuse a connection for a moment (seen once
+		// on GitHub's runners), so retry for up to two seconds.
+		let mut display = (extra.open)(ptr::null());
+		for _ in 0..20 {
+			if !display.is_null() {
+				break;
+			}
+			std::thread::sleep(std::time::Duration::from_millis(100));
+			display = (extra.open)(ptr::null());
+		}
 		assert!(!display.is_null(), "no X server at DISPLAY");
 		let connection = (client.connection)(display);
 		let root = *(extra.roots)((client.setup)(connection)).data;
