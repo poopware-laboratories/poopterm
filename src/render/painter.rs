@@ -1,7 +1,7 @@
 //! Rectangle, button and text rasterization into a 0RGB pixel buffer.
 use super::{
 	blend::{blend, blend_coverage_row},
-	glyphs::{FontSet, Glyph},
+	glyphs::Glyph,
 };
 
 /// Fills a clipped rectangle with a solid color.
@@ -77,87 +77,6 @@ impl<'a> Painter<'a> {
 	) {
 		let size = (self.width, self.height);
 		super::shapes::round_rect(self.pixels, size, (x, y, w, h), radius, color);
-	}
-
-	pub(crate) fn button(
-		&mut self,
-		(x, y, w, h): (usize, usize, usize, usize),
-		style: ButtonStyle,
-		hovered: bool,
-	) {
-		let s = style.scale;
-		let (outline, face) = if hovered {
-			(style.accent, blend(style.background, style.accent, 52))
-		} else {
-			(
-				blend(style.background, style.border, 90),
-				blend(style.background, style.border, 38),
-			)
-		};
-		self.round_rect(x, y, w, h, 7 * s, outline);
-		self.round_rect(
-			x + s,
-			y + s,
-			w.saturating_sub(2 * s),
-			h.saturating_sub(2 * s),
-			6 * s,
-			face,
-		);
-	}
-
-	/// Draws a line of text whose top edge is `y`; `ascent` is the baseline
-	/// offset. Window chrome records text in a scene instead; tests draw
-	/// directly to compare.
-	#[cfg(test)]
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn text(
-		&mut self,
-		fonts: &mut FontSet,
-		x: usize,
-		y: usize,
-		text: &str,
-		px: f32,
-		ascent: i32,
-		color: u32,
-	) {
-		self.text_clipped(
-			fonts,
-			x,
-			y,
-			text,
-			px,
-			ascent,
-			color,
-			(0, 0, self.width, self.height),
-		);
-	}
-
-	/// Draws a line of text clipped to the given pixel rectangle.
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn text_clipped(
-		&mut self,
-		fonts: &mut FontSet,
-		x: usize,
-		y: usize,
-		text: &str,
-		px: f32,
-		ascent: i32,
-		color: u32,
-		(clip_x, clip_y, clip_width, clip_height): (usize, usize, usize, usize),
-	) {
-		let clip_right = clip_x.saturating_add(clip_width).min(self.width) as i32;
-		let clip_bottom = clip_y.saturating_add(clip_height).min(self.height) as i32;
-		let clip = (clip_x as i32, clip_y as i32, clip_right, clip_bottom);
-		let mut cursor_x = x as i32;
-		for ch in text.chars() {
-			let glyph = fonts.glyph(ch, px);
-			let origin = (cursor_x + glyph.metrics.xmin, glyph_top(glyph, y, ascent));
-			self.glyph(glyph, origin, clip, false, color);
-			cursor_x += glyph.metrics.advance_width.ceil() as i32;
-			if cursor_x >= clip_right {
-				break;
-			}
-		}
 	}
 
 	/// Blends `glyph` with its top-left corner at `(x, y)`, clipped to
@@ -251,6 +170,7 @@ pub(crate) fn glyph_top(glyph: &Glyph, y: usize, ascent: i32) -> i32 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::render::glyphs::FontSet;
 
 	#[test]
 	fn rectangles_are_clipped_to_the_buffer() {

@@ -13,6 +13,8 @@ pub(crate) mod curves;
 mod curves_tests;
 pub(crate) mod quads;
 #[cfg(test)]
+mod quads_chrome_tests;
+#[cfg(test)]
 mod quads_tests;
 pub(crate) mod record;
 #[cfg(test)]

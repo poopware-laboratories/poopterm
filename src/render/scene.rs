@@ -1,9 +1,8 @@
 //! Drawing recorded as data: window chrome records a scene, which the
 //! software renderer replays into pixels and a GPU renderer can draw.
-use super::{
-	glyphs::FontSet,
-	painter::{ButtonStyle, Painter},
-};
+#[cfg(doc)]
+use super::painter::Painter;
+use super::{chrome, glyphs::FontSet, painter::ButtonStyle, pen::Pen};
 
 /// A rectangle in physical pixels: x, y, width, height.
 pub(crate) type Rect = (usize, usize, usize, usize);
@@ -39,11 +38,12 @@ pub(crate) struct Scene {
 /// Records what `draw` draws into a scene the size of `p`, then replays it
 /// into `p`.
 pub(crate) fn paint(
-	p: &mut Painter,
+	p: &mut impl Pen,
 	fonts: &mut FontSet,
 	draw: impl FnOnce(&mut Scene, &mut FontSet),
 ) {
-	let mut scene = Scene::new(p.width, p.height);
+	let (width, height) = p.size();
+	let mut scene = Scene::new(width, height);
 	draw(&mut scene, fonts);
 	scene.replay(p, fonts);
 }
@@ -123,15 +123,18 @@ impl Scene {
 		});
 	}
 
-	/// Paints the scene into `p`, pixel for pixel as drawing each operation
-	/// there directly would.
-	pub(crate) fn replay(&self, p: &mut Painter, fonts: &mut FontSet) {
+	/// Draws the scene with `p`, pixel for pixel as drawing each operation
+	/// with a [`Painter`] directly would.
+	pub(crate) fn replay(&self, p: &mut impl Pen, fonts: &mut FontSet) {
 		for command in &self.commands {
 			match *command {
-				Command::Fill(color) => p.fill(color),
-				Command::Button(rect, style, hovered) => p.button(rect, style, hovered),
+				Command::Fill(color) => {
+					let (width, height) = p.size();
+					p.rect(0, 0, width, height, color);
+				}
+				Command::Button(rect, style, hovered) => chrome::button(p, rect, style, hovered),
 				Command::Rect((x, y, w, h), color) => p.rect(x, y, w, h, color),
-				Command::RoundRect((x, y, w, h), r, color) => p.round_rect(x, y, w, h, r, color),
+				Command::RoundRect(rect, r, color) => p.round_rect(rect, r, color),
 				Command::Text {
 					at,
 					ref text,
@@ -139,9 +142,7 @@ impl Scene {
 					ascent,
 					color,
 					clip,
-				} => {
-					p.text_clipped(fonts, at.0, at.1, text, px, ascent, color, clip);
-				}
+				} => chrome::text_clipped(p, fonts, at, text, px, ascent, color, clip),
 			}
 		}
 	}

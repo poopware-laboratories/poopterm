@@ -19,6 +19,8 @@ pub(crate) enum Ink<'a> {
 	/// A box drawing, block, Braille or Powerline character made to fill a
 	/// cell of this size.
 	Drawn(char, (usize, usize)),
+	/// A character of window chrome text, from the UI fonts, at a pixel size.
+	Ui(char, f32),
 }
 
 pub(crate) trait Pen {
@@ -26,6 +28,10 @@ pub(crate) trait Pen {
 	fn size(&self) -> (usize, usize);
 
 	fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32);
+
+	/// Fills `(x, y, w, h)` with `color`, its corners rounded to `radius`
+	/// and antialiased as [`super::shapes::round_rect`] paints them.
+	fn round_rect(&mut self, rect: (usize, usize, usize, usize), radius: usize, color: u32);
 
 	/// Draws `glyph`, the bitmap of `ink`, with its top-left corner at
 	/// `origin`, clipped to `clip` (left, top, right, bottom).
@@ -57,6 +63,10 @@ impl Pen for Painter<'_> {
 
 	fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
 		Painter::rect(self, x, y, w, h, color);
+	}
+
+	fn round_rect(&mut self, (x, y, w, h): (usize, usize, usize, usize), radius: usize, color: u32) {
+		Painter::round_rect(self, x, y, w, h, radius, color);
 	}
 
 	#[inline]

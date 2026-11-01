@@ -1,13 +1,60 @@
 //! Tests of scenes: a recorded scene keeps every operation in order, and
 //! replaying it paints exactly what drawing directly paints.
 use super::{
+	chrome,
 	glyphs::FontSet,
 	painter::{ButtonStyle, Painter},
+	pen::Pen,
 	scene::{Command, Scene},
 };
 use crate::fonts::{BUNDLED, Font};
 
 const BACKGROUND: u32 = 0x123456;
+
+/// Chrome painted directly, with a [`Scene`]'s methods, for tests to compare
+/// with a replayed scene.
+impl Painter<'_> {
+	pub(crate) fn button(
+		&mut self,
+		rect: (usize, usize, usize, usize),
+		style: ButtonStyle,
+		hovered: bool,
+	) {
+		chrome::button(self, rect, style, hovered);
+	}
+
+	/// A line of text whose top edge is `y`; `ascent` is the baseline offset.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn text(
+		&mut self,
+		fonts: &mut FontSet,
+		x: usize,
+		y: usize,
+		text: &str,
+		px: f32,
+		ascent: i32,
+		color: u32,
+	) {
+		let (width, height) = self.size();
+		self.text_clipped(fonts, x, y, text, px, ascent, color, (0, 0, width, height));
+	}
+
+	/// A line of text clipped to `clip`.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn text_clipped(
+		&mut self,
+		fonts: &mut FontSet,
+		x: usize,
+		y: usize,
+		text: &str,
+		px: f32,
+		ascent: i32,
+		color: u32,
+		clip: (usize, usize, usize, usize),
+	) {
+		chrome::text_clipped(self, fonts, (x, y), text, px, ascent, color, clip);
+	}
+}
 
 fn style(scale: usize) -> ButtonStyle {
 	ButtonStyle {
