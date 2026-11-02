@@ -62,6 +62,10 @@ pub(crate) enum Reason {
 	/// Vulkan could not start, as said.
 	Unavailable(String),
 	/// The GPU failed while drawing, as said.
+	#[cfg_attr(
+		all(target_os = "macos", not(test)),
+		expect(dead_code, reason = "macOS has no GPU renderer to fail yet")
+	)]
 	Abandoned(String),
 }
 
