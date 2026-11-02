@@ -266,7 +266,7 @@ impl App {
 }
 
 /// The main page: theme, wallpaper, steppers and session restore.
-fn compose_main_settings(
+pub(super) fn compose_main_settings(
 	editor: &SettingsEditor,
 	style: ButtonStyle,
 	p: &mut Scene,

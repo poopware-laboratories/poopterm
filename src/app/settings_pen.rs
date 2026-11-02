@@ -1,6 +1,26 @@
 //! Text and widgets shared by the Settings window's pages.
 use super::settings_view::ROW_HEIGHT;
-use crate::render::{painter::ButtonStyle, scene::Scene};
+use crate::render::{
+	painter::ButtonStyle,
+	scene::{Rect, Scene},
+};
+
+/// The "Settings" back button of a window `width` physical pixels wide.
+pub(super) fn back_rect(width: usize, s: usize) -> Rect {
+	(width.saturating_sub(164 * s), 20 * s, 140 * s, 36 * s)
+}
+
+/// The footer's button, `button_w` logical pixels wide, in a window
+/// `(width, height)` physical pixels large: 20 from the right edge.
+pub(super) fn footer_rect((width, height): (usize, usize), button_w: usize, s: usize) -> Rect {
+	let w = button_w * s;
+	(
+		width.saturating_sub(w + 20 * s),
+		height.saturating_sub(52 * s),
+		w,
+		36 * s,
+	)
+}
 
 /// Text drawing for one Settings frame; every label shares the base ascent.
 pub(super) struct Pen<'a> {
@@ -50,14 +70,9 @@ impl Pen<'_> {
 		style: ButtonStyle,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
-		let s = self.scale;
-		let back_x = p.width.saturating_sub(164 * s);
-		p.button(
-			(back_x, 20 * s, 140 * s, 36 * s),
-			style,
-			hovered(back_x, 20 * s, 140 * s, 36 * s),
-		);
-		self.text(p, back_x + 22 * s, 27, "Settings", 0.8);
+		let (s, back) = (self.scale, back_rect(p.width, self.scale));
+		p.button(back, style, hovered(back.0, back.1, back.2, back.3));
+		self.text(p, back.0 + 22 * s, 27, "Settings", 0.8);
 	}
 
 	/// A wide button at the right of `row` labelled `label`.
@@ -119,11 +134,7 @@ impl Pen<'_> {
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
 		let s = self.scale;
-		let (save_w, save_h) = (width * s, 36 * s);
-		let (save_x, save_y) = (
-			p.width.saturating_sub(save_w + 20 * s),
-			p.height.saturating_sub(52 * s),
-		);
+		let (save_x, save_y, save_w, save_h) = footer_rect((p.width, p.height), width, s);
 		p.button(
 			(save_x, save_y, save_w, save_h),
 			style,

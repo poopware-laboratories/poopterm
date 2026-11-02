@@ -2,8 +2,8 @@
 //! and what each section draws, read from the recorded scene.
 use super::{
 	settings_diagnostics::{
-		CONTENT_TOP, COPY_BUTTON, FACT_STRIDE, LOG_STRIDE, NOTE, STATUS_STRIDE, compose_diagnostics,
-		diagnostics_target, log_capacity,
+		CONTENT_TOP, COPY_BUTTON, FACT_STRIDE, FACTS_TOP, LOG_STRIDE, NOTE, STATUS_STRIDE,
+		compose_diagnostics, diagnostics_target, log_capacity,
 	},
 	settings_hit::{SettingsPage, SettingsTarget, settings_target},
 	settings_pen_tests::{buttons, inside, record, texts},
@@ -13,7 +13,7 @@ use crate::{
 	fonts::{BUNDLED, Font},
 	render::scene::Command,
 	ui::{
-		diagnostics::{Diagnostics, Drawing, Reason},
+		diagnostics::{Diagnostics, Drawing, Reason, report},
 		diagnostics_page::Section,
 	},
 	warnings::Warning,
@@ -397,4 +397,57 @@ fn every_button_drawn_is_the_one_a_click_there_lands_on() {
 			}
 		}
 	}
+}
+
+#[test]
+fn graphics_says_of_each_feature_what_the_copied_report_says() {
+	for drawing in [
+		Drawing::Gpu,
+		Drawing::Software(Reason::Asked),
+		Drawing::Software(Reason::Unsupported),
+		Drawing::Software(Reason::Unavailable("no Vulkan loader".into())),
+		Drawing::Software(Reason::Abandoned("device lost".into())),
+	] {
+		let diagnostics = sample(drawing, 0);
+		let commands = record(1, |pen, p, style| {
+			p.width = 1300;
+			let none = &|_, _, _, _| false;
+			compose_diagnostics(&diagnostics, Section::Graphics, "", style, p, pen, none)
+		});
+		let report = report(&diagnostics);
+		for i in 0..5 {
+			let top = CONTENT_TOP + i * STATUS_STRIDE;
+			let [name, how, detail] =
+				[(48, top), (220, top), (220, top + 24)].map(|at| text_at(&commands, 1, at).unwrap());
+			let line = format!("\n  {name:<17}{how}: {detail}\n");
+			assert!(report.contains(&line), "{line:?} not in\n{report}");
+		}
+	}
+}
+
+#[test]
+fn a_long_fact_is_cut_to_the_smallest_window() {
+	let mut diagnostics = sample(Drawing::Gpu, 0);
+	diagnostics.facts[1].1 = "Radeon ".repeat(30);
+	let commands = record(1, |pen, p, style| {
+		(p.width, p.height) = MIN_SIZE;
+		let none = &|_, _, _, _| false;
+		compose_diagnostics(&diagnostics, Section::Graphics, "", style, p, pen, none)
+	});
+	let value = text_at(&commands, 1, (220, FACTS_TOP + FACT_STRIDE)).unwrap();
+	assert!(
+		value.starts_with("Radeon Radeon") && value.ends_with('…'),
+		"{value}"
+	);
+	let advance = Font::from_bytes(BUNDLED, 0)
+		.unwrap()
+		.metrics('M', 18.0 * 0.76)
+		.advance_width;
+	let drawn = value.chars().count() as f32 * advance;
+	assert!(220.0 + drawn <= (MIN_SIZE.0 - 24) as f32, "{drawn}");
+	// The short fact above it is drawn whole.
+	assert_eq!(
+		text_at(&commands, 1, (220, FACTS_TOP)).as_deref(),
+		Some("auto")
+	);
 }

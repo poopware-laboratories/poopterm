@@ -83,6 +83,17 @@ pub(crate) struct Status {
 	pub(crate) detail: String,
 }
 
+impl Status {
+	/// How the feature is drawn, in two words or three.
+	pub(crate) fn how(&self) -> &'static str {
+		if self.accelerated {
+			"Hardware accelerated"
+		} else {
+			"Software only"
+		}
+	}
+}
+
 /// Each feature's status, in [`Feature::ALL`] order.
 pub(crate) fn statuses(drawing: &Drawing) -> [Status; 5] {
 	Feature::ALL.map(|feature| match drawing {
@@ -150,11 +161,7 @@ fn row(out: &mut String, label: &str, value: &str) {
 pub(crate) fn report(diagnostics: &Diagnostics) -> String {
 	let mut out = format!("Poopterm {} diagnostics\n\nGraphics\n", diagnostics.version);
 	for status in statuses(&diagnostics.drawing) {
-		let how = if status.accelerated {
-			"Hardware accelerated"
-		} else {
-			"Software only"
-		};
+		let how = status.how();
 		row(
 			&mut out,
 			status.feature.name(),

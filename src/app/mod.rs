@@ -26,6 +26,8 @@ mod settings_diagnostics;
 mod settings_diagnostics_tests;
 mod settings_draw;
 mod settings_fonts;
+#[cfg(test)]
+mod settings_header_tests;
 mod settings_hit;
 mod settings_keys;
 mod settings_pen;
