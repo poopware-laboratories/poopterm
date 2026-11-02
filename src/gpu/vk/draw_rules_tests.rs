@@ -133,6 +133,11 @@ fn the_fake_driver_reports_broken_update_rules() {
 	let image_set = scene.runs[0].1.handle();
 	let quads = buffer_info(scene.quads.handle(), 0);
 	let atlas = image_info(scene.atlas.view(), 5);
+	// Bound here, as the writes point at them.
+	let unstored = buffer_info(scene.unstored.handle(), 0);
+	let past_start = buffer_info(scene.quads.handle(), 16);
+	let target = image_info(scene.target.view(), 5);
+	let writable = image_info(scene.atlas.view(), 7);
 	let cases = [
 		WriteDescriptorSet {
 			s_type: 0,
@@ -143,10 +148,10 @@ fn the_fake_driver_reports_broken_update_rules() {
 			descriptor_count: 2,
 			..write(set, 0, Some(&quads), None)
 		},
-		write(set, 0, Some(&buffer_info(scene.unstored.handle(), 0)), None),
-		write(set, 0, Some(&buffer_info(scene.quads.handle(), 16)), None),
-		write(set, 1, None, Some(&image_info(scene.target.view(), 5))),
-		write(set, 1, None, Some(&image_info(scene.atlas.view(), 7))),
+		write(set, 0, Some(&unstored), None),
+		write(set, 0, Some(&past_start), None),
+		write(set, 1, None, Some(&target)),
+		write(set, 1, None, Some(&writable)),
 		write(set, 2, None, Some(&atlas)),
 		// A buffer descriptor without its buffer.
 		write(set, 0, None, None),
@@ -268,6 +273,24 @@ fn rendering(attachment: &RenderingAttachmentInfo) -> RenderingInfo {
 fn the_fake_driver_reports_broken_rendering_rules() {
 	let (mut commands, scene) = scene();
 	let target = attachment(scene.target.view());
+	// Bound here, as the infos point at them.
+	let chained = RenderingAttachmentInfo {
+		next: ptr::from_ref(&target).cast(),
+		..attachment(scene.target.view())
+	};
+	let atlas = attachment(scene.atlas.view());
+	let general = RenderingAttachmentInfo {
+		image_layout: 5,
+		..attachment(scene.target.view())
+	};
+	let resolving = RenderingAttachmentInfo {
+		resolve_mode: 1,
+		..attachment(scene.target.view())
+	};
+	let storing = RenderingAttachmentInfo {
+		store_op: 1,
+		..attachment(scene.target.view())
+	};
 	let infos = [
 		RenderingInfo {
 			s_type: 0,
@@ -281,23 +304,11 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 			color_attachment_count: 2,
 			..rendering(&target)
 		},
-		rendering(&RenderingAttachmentInfo {
-			next: ptr::from_ref(&target).cast(),
-			..attachment(scene.target.view())
-		}),
-		rendering(&attachment(scene.atlas.view())),
-		rendering(&RenderingAttachmentInfo {
-			image_layout: 5,
-			..attachment(scene.target.view())
-		}),
-		rendering(&RenderingAttachmentInfo {
-			resolve_mode: 1,
-			..attachment(scene.target.view())
-		}),
-		rendering(&RenderingAttachmentInfo {
-			store_op: 1,
-			..attachment(scene.target.view())
-		}),
+		rendering(&chained),
+		rendering(&atlas),
+		rendering(&general),
+		rendering(&resolving),
+		rendering(&storing),
 		RenderingInfo {
 			render_area: Rect2D {
 				offset: [1, 0],
