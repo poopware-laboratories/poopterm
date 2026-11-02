@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.23 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Remove scratch directories when tests finish (#225).
+
 ## 26.11.22 "Lunar Moth" — 2026-11-02
 
 ### Performance
