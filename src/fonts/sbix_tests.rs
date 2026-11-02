@@ -173,8 +173,9 @@ fn the_advance_comes_from_hmtx_scaled_to_the_strike() {
 	assert_eq!(advance(&[0, 2048, 512]), (64, 16));
 	// A monospace font lists one metric; later glyphs share it.
 	assert_eq!(advance(&[0, 1536]), (48, 48));
-	// Rounded to the nearest strike pixel: 100 units are 3.125 pixels.
-	assert_eq!(advance(&[0, 100, 1000]), (3, 31));
+	// Rounded to the nearest strike pixel: 100 units are 3.125 pixels,
+	// 1500 are 46.875.
+	assert_eq!(advance(&[0, 100, 1500]), (3, 47));
 }
 
 #[test]
@@ -243,11 +244,10 @@ fn a_dupe_of_a_glyph_past_the_strike_or_a_short_one_is_no_bitmap() {
 #[test]
 fn other_graphic_types_are_skipped_for_a_strike_that_has_png() {
 	for kind in [b"jpg ", b"tiff", b"mask", b"emjc", b"PNG "] {
+		// Skipped by its type alone: the data is a valid PNG.
 		let other = Some(Graphic {
-			x: 0,
-			y: 0,
 			kind: *kind,
-			data: vec![1, 2, 3, 4],
+			..graphic(0, 0, (2, 2), BLUE).unwrap()
 		});
 		let font = load(font_of(&[strike(64, vec![None, other.clone()])]));
 		assert_eq!(found(&font, 'a'), None, "{kind:?}");
@@ -270,10 +270,16 @@ fn a_png_without_a_readable_header_is_no_bitmap() {
 			data,
 		})
 	};
-	let mut png = png(2, 2, &[RED; 4]);
+	let whole = png(2, 2, &[RED; 4]);
 	// The IHDR chunk's type, eight bytes after the signature's start.
-	png[12..16].copy_from_slice(b"IDAT");
-	for data in [png, b"\x89PNG\r\n\x1a\n".to_vec(), Vec::new()] {
+	let mut no_ihdr = whole.clone();
+	no_ihdr[12..16].copy_from_slice(b"IDAT");
+	// An intact IHDR behind a broken signature.
+	let mut unsigned = whole.clone();
+	unsigned[1] = b'X';
+	let font = load(font_of(&[strike(32, vec![None, record(whole)])]));
+	assert!(found(&font, 'a').is_some());
+	for data in [no_ihdr, unsigned, b"\x89PNG\r\n\x1a\n".to_vec(), Vec::new()] {
 		let font = load(font_of(&[strike(32, vec![None, record(data)])]));
 		assert_eq!(found(&font, 'a'), None);
 	}
@@ -310,22 +316,27 @@ fn only_version_1_tables_are_read() {
 
 #[test]
 fn glyphs_past_the_glyph_count_have_no_bitmap() {
-	// Strikes hold maxp.numGlyphs records; 'b' is glyph 2, past maxp's 2.
-	let records = vec![
-		None,
-		graphic(0, 0, (2, 2), RED),
-		graphic(0, 0, (2, 2), BLUE),
-	];
-	let mut font = sbix_font(
-		&['a', 'b'],
-		&[0, 1024],
-		sbix_table(1, 3, &[strike(32, records)]),
-	);
-	let maxp = table_start(&font, b"maxp");
-	font[maxp + 4..maxp + 6].copy_from_slice(&2u16.to_be_bytes());
-	let font = load(font);
+	// Strikes hold maxp.numGlyphs records; glyph 2 is past maxp's 2, though
+	// the strike has a record for it.
+	let past_the_count = |a: Option<Graphic>| {
+		let records = vec![None, a, graphic(0, 0, (2, 2), BLUE)];
+		let mut font = sbix_font(
+			&['a', 'b'],
+			&[0, 1024],
+			sbix_table(1, 3, &[strike(32, records)]),
+		);
+		let maxp = table_start(&font, b"maxp");
+		font[maxp + 4..maxp + 6].copy_from_slice(&2u16.to_be_bytes());
+		load(font)
+	};
+	let font = past_the_count(graphic(0, 0, (2, 2), RED));
 	assert!(found(&font, 'a').is_some());
+	// The cmap gives 'b' glyph 0 now; by index, glyph 2 has no bitmap.
 	assert_eq!(found(&font, 'b'), None);
+	assert!(font.rasterize_color_glyph(1, 20.0).is_some());
+	assert!(font.rasterize_color_glyph(2, 20.0).is_none());
+	// Nor does a dupe of it.
+	assert_eq!(found(&past_the_count(dupe(2)), 'a'), None);
 }
 
 /// Where the table `tag` starts in `font`, from the table directory.
@@ -373,6 +384,11 @@ fn offsets_out_of_order_or_out_of_the_table_are_no_bitmap() {
 	// Glyph 2's start before glyph 1's: 'a' runs backwards.
 	let font = patched(2, 4);
 	assert_eq!(found(&font, 'a'), None);
+	// 'a' shorter than the eight bytes of origin and type, which start
+	// after ppem, ppi and four offsets.
+	for length in 0..8 {
+		assert_eq!(found(&patched(2, 20 + length), 'a'), None, "{length}");
+	}
 	// The last end past the table.
 	let font = patched(3, u32::MAX);
 	assert!(found(&font, 'a').is_some());
