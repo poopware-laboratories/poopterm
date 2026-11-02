@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.25 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Trim build paths from release binaries (#227) (release).
+
 ## 26.11.24 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
