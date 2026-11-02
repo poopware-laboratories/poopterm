@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.34 "Lunar Moth" — 2026-11-02
+
+### Fixed
+
+- Draw the diagnostics page as the approved design does (#236) (ui).
+
 ## 26.11.33 "Lunar Moth" — 2026-11-02
 
 ### Added
