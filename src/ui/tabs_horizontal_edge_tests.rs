@@ -18,6 +18,7 @@ fn strip(
 		scale,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll,
 			show_plus,
 			show_settings,
@@ -185,6 +186,7 @@ fn horizontal_left_reserve_reduces_the_available_tab_region() {
 		1,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: true,
 			show_settings: true,
@@ -198,6 +200,7 @@ fn horizontal_left_reserve_reduces_the_available_tab_region() {
 		1,
 		TabStripOptions {
 			left_reserve: 120,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: true,
 			show_settings: true,

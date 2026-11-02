@@ -17,6 +17,8 @@ pub(crate) mod quads;
 #[cfg(test)]
 mod quads_chrome_tests;
 #[cfg(test)]
+mod quads_icon_tests;
+#[cfg(test)]
 mod quads_tests;
 pub(crate) mod record;
 #[cfg(test)]

@@ -26,6 +26,7 @@ fn theme() -> Theme {
 fn options(active: usize, show_buttons: bool) -> TabStripOptions {
 	TabStripOptions {
 		left_reserve: 0,
+		right_reserve: 0,
 		scroll: 0,
 		show_plus: show_buttons,
 		show_settings: show_buttons,

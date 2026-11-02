@@ -24,13 +24,20 @@ impl App {
 		}
 	}
 
+	/// Where the window buttons sit in the header.
+	pub(super) fn window_controls(&self) -> Placement {
+		place(&self.window_buttons, self.width as usize, self.scale())
+	}
+
 	pub(super) fn tab_layout(&self) -> TabLayout {
+		let controls = self.window_controls();
 		tab_layout_with_compaction(
 			self.width as usize,
 			self.sessions.len(),
 			self.scale(),
 			TabStripOptions {
-				left_reserve: self.tab_left_reserve(),
+				left_reserve: self.tab_left_reserve().max(controls.left_reserve),
+				right_reserve: controls.right_reserve,
 				scroll: self.tab_scroll,
 				show_plus: self.preferences.show_new_tab_button,
 				show_settings: self.preferences.show_settings_button,

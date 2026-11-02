@@ -101,6 +101,8 @@ pub(crate) struct VerticalTabOptions {
 
 pub(crate) struct TabStripOptions {
 	pub(crate) left_reserve: usize,
+	/// Room the window buttons take at the right end.
+	pub(crate) right_reserve: usize,
 	pub(crate) scroll: usize,
 	pub(crate) show_plus: bool,
 	pub(crate) show_settings: bool,
@@ -124,6 +126,7 @@ pub(crate) fn tab_layout(
 		scale,
 		TabStripOptions {
 			left_reserve,
+			right_reserve: 0,
 			scroll,
 			show_plus,
 			show_settings,
@@ -141,6 +144,7 @@ pub(crate) fn tab_layout_with_compaction(
 ) -> TabLayout {
 	let TabStripOptions {
 		left_reserve,
+		right_reserve,
 		scroll,
 		show_plus,
 		show_settings,
@@ -155,7 +159,7 @@ pub(crate) fn tab_layout_with_compaction(
 	} else {
 		0
 	};
-	let right = 8 * scale;
+	let right = right_reserve + 8 * scale;
 	let settings_x = width.saturating_sub(right + settings_w);
 	let plus_x = settings_x.saturating_sub(controls_gap + plus_w);
 	let controls_left = if show_plus {
@@ -372,6 +376,7 @@ mod tests {
 			1,
 			TabStripOptions {
 				left_reserve: 0,
+				right_reserve: 0,
 				scroll: 0,
 				show_plus: true,
 				show_settings: true,
