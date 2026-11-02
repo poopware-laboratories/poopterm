@@ -108,7 +108,9 @@ impl Pen for GridRecord {
 				InkKey::Cluster(start..self.chars.len(), px)
 			}
 			Ink::Drawn(ch, cell) => InkKey::Drawn(ch, cell),
-			Ink::Ui(..) | Ink::Icon(..) => unreachable!("the grid draws with the terminal's fonts"),
+			Ink::Ui(..) | Ink::Mono(..) | Ink::Icon(..) => {
+				unreachable!("the grid draws with the terminal's fonts")
+			}
 		};
 		self.strokes.push(Stroke::Glyph {
 			ink,

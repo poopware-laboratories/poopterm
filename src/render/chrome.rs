@@ -40,12 +40,41 @@ pub(crate) fn button(
 pub(crate) fn text_clipped(
 	pen: &mut impl Pen,
 	fonts: &mut FontSet,
-	(x, y): (usize, usize),
+	at: (usize, usize),
 	text: &str,
 	px: f32,
 	ascent: i32,
 	color: u32,
+	clip: (usize, usize, usize, usize),
+) {
+	line(pen, fonts, at, text, (px, ascent, color), clip, false);
+}
+
+/// A line of `text` as [`text_clipped`] draws it, in the fonts' monospace
+/// face.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn mono_clipped(
+	pen: &mut impl Pen,
+	fonts: &mut FontSet,
+	at: (usize, usize),
+	text: &str,
+	px: f32,
+	ascent: i32,
+	color: u32,
+	clip: (usize, usize, usize, usize),
+) {
+	line(pen, fonts, at, text, (px, ascent, color), clip, true);
+}
+
+/// A line of `text`, from the monospace face when `mono`.
+fn line(
+	pen: &mut impl Pen,
+	fonts: &mut FontSet,
+	(x, y): (usize, usize),
+	text: &str,
+	(px, ascent, color): (f32, i32, u32),
 	(clip_x, clip_y, clip_width, clip_height): (usize, usize, usize, usize),
+	mono: bool,
 ) {
 	let (width, height) = pen.size();
 	let clip_right = clip_x.saturating_add(clip_width).min(width) as i32;
@@ -53,9 +82,13 @@ pub(crate) fn text_clipped(
 	let clip = (clip_x as i32, clip_y as i32, clip_right, clip_bottom);
 	let mut cursor_x = x as i32;
 	for ch in text.chars() {
-		let glyph = fonts.glyph(ch, px);
+		let (glyph, ink) = if mono {
+			(fonts.mono_glyph(ch, px), Ink::Mono(ch, px))
+		} else {
+			(fonts.glyph(ch, px), Ink::Ui(ch, px))
+		};
 		let origin = (cursor_x + glyph.metrics.xmin, glyph_top(glyph, y, ascent));
-		pen.glyph(glyph, Ink::Ui(ch, px), origin, clip, false, color);
+		pen.glyph(glyph, ink, origin, clip, false, color);
 		cursor_x += glyph.metrics.advance_width.ceil() as i32;
 		if cursor_x >= clip_right {
 			break;

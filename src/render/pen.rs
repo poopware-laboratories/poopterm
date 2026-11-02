@@ -21,6 +21,8 @@ pub(crate) enum Ink<'a> {
 	Drawn(char, (usize, usize)),
 	/// A character of window chrome text, from the UI fonts, at a pixel size.
 	Ui(char, f32),
+	/// A character of monospace chrome text, from the UI fonts' mono face.
+	Mono(char, f32),
 	/// A window button's icon at a scale.
 	Icon(super::window_icons::WindowIcon, usize),
 }

@@ -19,6 +19,9 @@ pub(crate) struct DiagnosticsColors {
 	pub(crate) rule: u32,
 	/// The log's background.
 	pub(crate) well: u32,
+	/// The page behind everything, and the edge of the log's well.
+	pub(crate) page: u32,
+	pub(crate) border: u32,
 }
 
 /// How far from the page toward its border the well and the rules sit,
@@ -41,5 +44,7 @@ pub(crate) fn diagnostics_colors(theme: &Theme) -> DiagnosticsColors {
 		software: muted,
 		rule,
 		well,
+		page: theme.bg,
+		border: theme.border,
 	}
 }

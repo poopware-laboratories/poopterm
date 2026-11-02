@@ -46,6 +46,51 @@ impl Pen<'_> {
 		);
 	}
 
+	/// Draws `text` as [`Self::text`] does, in `color`.
+	#[allow(clippy::too_many_arguments)]
+	pub(super) fn tinted(
+		&mut self,
+		p: &mut Scene,
+		x: usize,
+		y: usize,
+		text: &str,
+		size: f32,
+		color: u32,
+	) {
+		let own = std::mem::replace(&mut self.color, color);
+		self.text(p, x, y, text, size);
+		self.color = own;
+	}
+
+	/// Draws `text` in the monospace face, as [`Self::tinted`] does.
+	#[allow(clippy::too_many_arguments)]
+	pub(super) fn mono(
+		&mut self,
+		p: &mut Scene,
+		x: usize,
+		y: usize,
+		text: &str,
+		size: f32,
+		color: u32,
+	) {
+		let (px, ascent) = (self.px * size, self.ascent);
+		p.mono_text(x, y * self.scale, text, px, ascent, color);
+	}
+
+	/// How wide `text` is in the monospace face at `size`, in physical
+	/// pixels: the sum of its advances, as drawing moves.
+	pub(super) fn mono_width(&mut self, text: &str, size: f32) -> usize {
+		let px = self.px * size;
+		text.chars().map(|c| self.fonts.mono_advance(c, px)).sum()
+	}
+
+	/// `text` cut with an ellipsis to fit `width` physical pixels in the
+	/// monospace face at `size`.
+	pub(super) fn mono_fit(&mut self, text: &str, width: usize, size: f32) -> String {
+		let px = self.px * size;
+		ellipsize_to_width(text, width, |c| self.fonts.mono_advance(c, px))
+	}
+
 	/// How wide `text` is at `size` times the base size, in physical
 	/// pixels: the sum of the primary font's advances.
 	pub(super) fn width(&mut self, text: &str, size: f32) -> usize {

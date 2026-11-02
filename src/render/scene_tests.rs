@@ -120,6 +120,7 @@ fn a_scene_records_each_operation_in_order() {
 	scene.round_rect(6, 7, 8, 9, 2, 10);
 	scene.button((2, 3, 30, 12), style(2), true);
 	scene.text_clipped(fonts, 3, 4, "hi", 12.0, 9, 11, (1, 1, 20, 20));
+	scene.mono_text(5, 6, "log", 10.0, 8, 12);
 	assert_eq!(
 		scene.commands,
 		[
@@ -134,6 +135,16 @@ fn a_scene_records_each_operation_in_order() {
 				ascent: 9,
 				color: 11,
 				clip: (1, 1, 20, 20),
+				mono: false,
+			},
+			Command::Text {
+				at: (5, 6),
+				text: "log".to_owned(),
+				px: 10.0,
+				ascent: 9 - 1,
+				color: 12,
+				clip: (0, 0, 40, 30),
+				mono: true,
 			},
 		]
 	);

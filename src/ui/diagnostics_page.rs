@@ -21,6 +21,41 @@ impl Section {
 			Self::Log => "Log",
 		}
 	}
+
+	/// The line in the footer while the section is shown.
+	pub(crate) fn footnote(self) -> &'static str {
+		match self {
+			Self::Graphics => "Updated each time the page opens.",
+			Self::Log => "Environment variables appear by name only.",
+		}
+	}
+}
+
+/// The line above the log.
+pub(crate) fn log_intro() -> String {
+	let kept = crate::warnings::KEPT;
+	format!("Warnings Poopterm printed to standard error, oldest first. The last {kept} are kept.")
+}
+
+/// The footer's status after a copy that worked.
+const COPIED: &str = "Copied: every section as plain text, ready to paste into an issue.";
+
+/// Copy report's label after `status`: "Copied" once a copy worked.
+pub(crate) fn copy_label(status: &str) -> &'static str {
+	if status == COPIED {
+		"Copied"
+	} else {
+		"Copy report"
+	}
+}
+
+/// A log row's time, empty for a note, and its message.
+pub(crate) fn split_time(row: &str) -> (&str, &str) {
+	const SEPARATOR: &str = " UTC  ";
+	match row.find(SEPARATOR) {
+		Some(at) => (&row[..at + 4], &row[at + SEPARATOR.len()..]),
+		None => ("", row),
+	}
 }
 
 /// How a window draws after starting on `chosen`, once the GPU, if tried,
@@ -64,7 +99,7 @@ pub(crate) fn log_rows(diagnostics: &Diagnostics, rows: usize) -> Vec<String> {
 /// The footer's status after Copy report wrote to the clipboard.
 pub(crate) fn copied(written: io::Result<()>) -> String {
 	match written {
-		Ok(()) => "Copied the report. Paste it into a bug report.".into(),
+		Ok(()) => COPIED.into(),
 		Err(error) => format!("Could not copy the report: {error}"),
 	}
 }

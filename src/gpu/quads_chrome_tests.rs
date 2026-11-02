@@ -444,3 +444,24 @@ fn a_full_atlas_leaves_a_chrome_frame_incomplete() {
 	);
 	assert_eq!(pen.quads.len(), 3, "the straight parts are still drawn");
 }
+
+#[test]
+fn mono_and_proportional_text_of_one_character_keep_their_own_slots() {
+	let mut scene = Scene::new(60, 40);
+	scene.text_clipped(&mut fonts(), 0, 0, "a", 16.0, 13, 1, (0, 0, 60, 40));
+	scene.mono_text(20, 0, "aa", 16.0, 13, 1);
+	let mut pen = QuadPen::new((60, 40), ATLAS);
+	pen.begin_frame((60, 40));
+	scene.replay(&mut pen, &mut fonts());
+	assert_eq!(
+		pen.uploads.len(),
+		2,
+		"one 'a' each, the second mono 'a' reused"
+	);
+	let slot = |index: usize| match pen.quads[index].fill {
+		Fill::Coverage(slot) => slot,
+		fill => panic!("{fill:?}"),
+	};
+	assert_ne!(slot(0), slot(1), "mono text has its own slot");
+	assert_eq!(slot(1), slot(2));
+}
