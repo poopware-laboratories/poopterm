@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.20 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Add a fast profile for release-speed tests (#222).
+
 ## 26.11.19 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
