@@ -91,6 +91,7 @@ pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 			icon,
 			hovered,
 			enabled,
+			pressed: false,
 		}
 	};
 	let mut buttons = Vec::new();
@@ -131,6 +132,8 @@ pub(crate) struct WindowState {
 	pub maximized: bool,
 	/// Without focus the buttons are dim.
 	pub focused: bool,
+	/// The button held down, pressed while the pointer stays on it.
+	pub pressed: Option<WindowButton>,
 }
 
 /// Adds the window buttons `controls` places, and their dividers, to
@@ -157,11 +160,13 @@ pub(crate) fn add_window_buttons(
 			WindowButton::Maximize => WindowIcon::Maximize,
 			WindowButton::Close => WindowIcon::Close,
 		};
+		let hovered = contains(rect, cursor);
 		header.buttons.push(HeaderButton {
 			rect,
 			icon: Icon::Window(icon),
-			hovered: contains(rect, cursor),
+			hovered,
 			enabled: window.focused,
+			pressed: hovered && window.pressed == Some(kind),
 		});
 	}
 	let divider = |&x: &usize| (x, middle(DIVIDER_HEIGHT), scale, DIVIDER_HEIGHT * scale);

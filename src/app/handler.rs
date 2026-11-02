@@ -75,11 +75,7 @@ impl ApplicationHandler<UserEvent> for App {
 			return;
 		}
 		match event {
-			WindowEvent::CloseRequested => {
-				self.refresh_directories(false);
-				self.persist_sessions();
-				event_loop.exit();
-			}
+			WindowEvent::CloseRequested => self.close_window(event_loop),
 			WindowEvent::ModifiersChanged(m) => {
 				let state = m.state();
 				self.mods = Modifiers {

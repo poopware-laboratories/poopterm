@@ -110,6 +110,7 @@ pub(crate) fn sidebar<'a>(input: &SidebarInput<'a>) -> Sidebar<'a> {
 		icon,
 		hovered: state.target == Some(SidebarTarget::Button(icon)),
 		enabled: true,
+		pressed: false,
 	});
 	Sidebar {
 		area: (0, input.bounds.0, layout.sidebar_width, input.bounds.1),

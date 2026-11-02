@@ -1,12 +1,12 @@
 //! Mouse events: selection, links, wheel scrolling and mouse reporting.
-use super::draw_tabs::hit;
 use super::*;
 use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
 use crate::input::{paste::paste_bytes, scroll::alternate_scroll_bytes};
-use crate::render::header::close_rect;
 use crate::ui::{
 	copy::selection_text,
+	header_target::{HeaderTarget, header_target},
 	links::{LinkAction, link_action},
+	window_pointer::pointer_icon,
 };
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
@@ -111,15 +111,10 @@ impl App {
 			let cell = term.row_cells(point.row)?.get(point.col)?;
 			term.hyperlink_uri(cell).map(str::to_owned)
 		});
-		// Links show a hand; otherwise the program's OSC 22 shape, if any.
-		let shape = if link.is_some() {
-			Some("pointer")
-		} else {
-			self.active_term().pointer_shape()
-		};
-		let icon = shape
-			.and_then(|name| name.parse().ok())
-			.unwrap_or(winit::window::CursorIcon::Default);
+		// Edges show where they resize, links a hand; otherwise the
+		// program's OSC 22 shape, if any.
+		let edge = self.hovered_edge();
+		let icon = pointer_icon(edge, link.is_some(), self.active_term().pointer_shape());
 		if icon != self.pointer_icon
 			&& let Some(window) = &self.window
 		{
@@ -321,55 +316,29 @@ impl App {
 		if self.handle_vertical_tab_mouse(event_loop, state, button, (x, y)) {
 			return;
 		}
-		let tab_y = self.tab_y() as f64;
+		if button == MouseButton::Left && self.handle_window_pointer(event_loop, state) {
+			return;
+		}
 		if self.preferences.show_tabs
 			&& state == ElementState::Pressed
 			&& button == MouseButton::Left
 			&& y < self.top as f64
 		{
 			let layout = self.tab_layout();
-			let in_tabbar = y >= tab_y && y < self.top as f64;
-			if in_tabbar
-				&& x >= layout.settings_x as f64
-				&& x < (layout.settings_x + layout.settings_w) as f64
-			{
-				self.open_settings_window(event_loop);
-			} else if in_tabbar && x >= layout.plus_x as f64 && x < (layout.plus_x + layout.plus_w) as f64
-			{
-				self.add_tab();
-			} else if in_tabbar {
-				if x >= layout.left_arrow_x as f64
-					&& x < (layout.left_arrow_x + layout.arrow_w) as f64
-					&& layout.first_visible > 0
-				{
-					self.tab_scroll = self.tab_scroll.saturating_sub(1);
-				} else if x >= layout.right_arrow_x as f64
-					&& x < (layout.right_arrow_x + layout.arrow_w) as f64
-					&& layout.first_visible + layout.visible_count < self.sessions.len()
-				{
-					self.tab_scroll += 1;
-				}
-				for local_index in 0..layout.visible_count {
-					let index = layout.first_visible + local_index;
-					if index >= self.sessions.len() {
-						break;
-					}
-					let left = layout.tab_x(index);
-					let width = layout.tab_width(index);
-					if x >= left as f64 && x < (left + width) as f64 {
-						let close = close_rect(left, width, (self.tab_y(), self.tab_height), layout.scale);
-						if self.sessions.len() > 1 && hit((x, y), close) {
-							self.close_tab(index, event_loop);
-						} else {
-							self.activate_tab(index);
-						}
-						break;
-					}
-				}
+			let bar = (self.tab_y(), self.tab_height);
+			// pr-check: window glue: routes a press to what the tested header_target found
+			match header_target(&layout, self.sessions.len(), bar, (x, y)) {
+				Some(HeaderTarget::Settings) => self.open_settings_window(event_loop),
+				Some(HeaderTarget::NewTab) => self.add_tab(),
+				Some(HeaderTarget::ScrollLeft) => self.tab_scroll = self.tab_scroll.saturating_sub(1),
+				Some(HeaderTarget::ScrollRight) => self.tab_scroll += 1,
+				Some(HeaderTarget::Tab { index, close: true }) => self.close_tab(index, event_loop),
+				Some(HeaderTarget::Tab { index, .. }) => self.activate_tab(index),
+				Some(HeaderTarget::Bar) => self.press_bar(),
+				None => {}
 			}
-			if let Some(window) = &self.window {
-				window.request_redraw();
-			}
+			// pr-check: end window glue
+			self.request_redraw();
 		} else if state == ElementState::Pressed
 			&& button == MouseButton::Left
 			&& y < self.titlebar_height as f64

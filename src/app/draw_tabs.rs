@@ -8,13 +8,6 @@ use crate::{
 	},
 };
 
-pub(super) fn hit(cursor: (f64, f64), (x, y, w, h): (usize, usize, usize, usize)) -> bool {
-	cursor.0 >= x as f64
-		&& cursor.0 < (x + w) as f64
-		&& cursor.1 >= y as f64
-		&& cursor.1 < (y + h) as f64
-}
-
 impl App {
 	pub(super) fn draw_tab_bar(&mut self, p: &mut impl Pen, ui: UiFont) {
 		if !self.preferences.show_tabs {
@@ -48,6 +41,7 @@ impl App {
 		let window = WindowState {
 			maximized,
 			focused: self.focused,
+			pressed: self.window_presses.held(),
 		};
 		let controls = self.window_controls();
 		add_window_buttons(&mut header, &controls, window, self.cursor_pos);

@@ -30,6 +30,7 @@ mod settings_view;
 mod tabs;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod wayland;
+mod window_pointer;
 
 use portable_pty::PtySize;
 use std::{error::Error, num::NonZeroU32, path::PathBuf, sync::Arc};
@@ -65,6 +66,7 @@ use crate::{
 			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
 		},
 		window_controls::{ButtonLayout, Placement, place},
+		window_pointer::Presses,
 		zoom::{zoom_action, zoomed},
 	},
 	wallpaper::Wallpaper,
@@ -104,6 +106,10 @@ pub(crate) struct App {
 	/// The window buttons the header draws: none until the window draws
 	/// its own title bar.
 	window_buttons: ButtonLayout,
+	/// The window draws its own title bar and resize edges.
+	client_decorations: bool,
+	/// The window button held down, and the last press on the bar.
+	window_presses: Presses,
 	next_session_id: u64,
 	proxy: EventLoopProxy<UserEvent>,
 
@@ -355,6 +361,8 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		active: 0,
 		tab_scroll: 0,
 		window_buttons: ButtonLayout::default(),
+		client_decorations: false,
+		window_presses: Presses::default(),
 		next_session_id,
 		proxy,
 		window: None,

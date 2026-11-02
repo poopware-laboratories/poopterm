@@ -270,12 +270,14 @@ fn buttons_are_drawn_over_the_bar() {
 			icon: Icon::Plus,
 			hovered: true,
 			enabled: true,
+			pressed: false,
 		},
 		HeaderButton {
 			rect: (80, 150, 32, 28),
 			icon: Icon::Menu,
 			hovered: false,
 			enabled: true,
+			pressed: false,
 		},
 	];
 	let drawn = draw(&sidebar);

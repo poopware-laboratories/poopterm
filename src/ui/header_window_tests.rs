@@ -13,6 +13,7 @@ const AWAY: (f64, f64) = (-1.0, -1.0);
 const ACTIVE: WindowState = WindowState {
 	maximized: false,
 	focused: true,
+	pressed: None,
 };
 
 fn bare(scale: usize) -> Header<'static> {
@@ -130,6 +131,7 @@ fn window_buttons_come_after_the_header_buttons_already_there() {
 		icon: Icon::Plus,
 		hovered: false,
 		enabled: true,
+		pressed: false,
 	});
 	add_window_buttons(&mut header, &placement, ACTIVE, AWAY);
 	assert_eq!(header.buttons[0].icon, Icon::Plus);
@@ -174,4 +176,26 @@ fn every_drawn_button_is_where_a_press_hits_it() {
 			}
 		}
 	}
+}
+
+#[test]
+fn a_held_button_looks_pressed_only_while_the_pointer_is_on_it() {
+	let holding = WindowState {
+		pressed: Some(WindowButton::Close),
+		..ACTIVE
+	};
+	let layout = "appmenu:minimize,maximize,close";
+	let (header, _) = with(layout, holding, (1074.0, 22.0));
+	let pressed: Vec<_> = header.buttons.iter().map(|b| b.pressed).collect();
+	assert_eq!(pressed, [false, false, true]);
+	// Slid onto another button: neither looks pressed.
+	let (header, _) = with(layout, holding, (1002.0, 22.0));
+	assert!(header.buttons.iter().all(|b| !b.pressed));
+	assert!(header.buttons[0].hovered);
+}
+
+#[test]
+fn nothing_looks_pressed_when_nothing_is_held() {
+	let (header, _) = with("appmenu:minimize,maximize,close", ACTIVE, (1074.0, 22.0));
+	assert!(header.buttons.iter().all(|b| !b.pressed));
 }

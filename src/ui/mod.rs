@@ -5,6 +5,11 @@ pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;
 pub(crate) mod header;
+pub(crate) mod header_target;
+#[cfg(test)]
+mod header_target_property_tests;
+#[cfg(test)]
+mod header_target_tests;
 #[cfg(test)]
 mod header_tests;
 #[cfg(test)]
@@ -45,11 +50,16 @@ mod ui_font_drawn_tests;
 mod ui_font_tests;
 #[cfg_attr(
 	not(test),
-	expect(dead_code, reason = "presses reach the buttons and resize edges next")
+	expect(dead_code, reason = "the button layout is read from the desktop next")
 )]
 pub(crate) mod window_controls;
 #[cfg(test)]
 mod window_controls_property_tests;
 #[cfg(test)]
 mod window_controls_tests;
+pub(crate) mod window_pointer;
+#[cfg(test)]
+mod window_pointer_property_tests;
+#[cfg(test)]
+mod window_pointer_tests;
 pub(crate) mod zoom;

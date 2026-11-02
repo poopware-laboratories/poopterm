@@ -233,6 +233,7 @@ pub(super) fn button(icon: Icon, hovered: bool, enabled: bool) -> HeaderButton {
 		icon,
 		hovered,
 		enabled,
+		pressed: false,
 	}
 }
 
@@ -430,6 +431,7 @@ fn big_button(icon: Icon) -> HeaderButton {
 		icon,
 		hovered: false,
 		enabled: true,
+		pressed: false,
 	}
 }
 
@@ -602,6 +604,7 @@ fn corners_round_twice_as_wide_at_twice_the_scale() {
 			icon: Icon::Plus,
 			hovered: true,
 			enabled: true,
+			pressed: false,
 		};
 		let drawn = draw(&header(scale, Vec::new(), vec![hovered]));
 		assert_eq!(
