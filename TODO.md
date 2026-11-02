@@ -328,13 +328,11 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
 
 ## UI overhaul
 
-- **Center the chrome.** Many items sit off center: tab titles ride high in
-  their tab, the tab bar's labels, buttons and status bar text do not share
-  a baseline, and the + and settings buttons are not centered on the bar.
-  Derive every vertical position from one function of the bar height and
-  the font's real ascent and descent, and pin it with pixel tests.
-- **Drop the "poopterm" label** left of the tabs on Linux; the tabs start
-  at the window edge (after the window buttons where those sit on the left).
+Centering the chrome and dropping the "poopterm" label are done: measured
+on a 26.11 screenshot, every tab label, the + and settings icons and the
+status bar text sit on the bar's middle row, and the first tab starts at
+x = 8.
+
 - **One title line on Linux.** Merge the title bar into the tab bar: tabs,
   new tab, settings, then minimize, maximize and close, in one row, with
   the empty part of the row dragging the window (`drag_window`), a double
@@ -344,6 +342,18 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
   side decorations where the user or compositor asks for them, and draw no
   buttons on tiling compositors such as Sway. macOS already puts the tabs
   in the title bar beside the system's traffic lights.
+  - [x] Model (`ui::window_controls`): the desktop's button layout (GNOME
+    `button-layout`, all three on the right otherwise), button places
+    (36 × 32, 8 from the edge, a divider 8 either side), hits, and resize
+    edges (6 pixels, 12 at corners, none when maximized).
+  - [ ] Draw the buttons in the header, with hover, pressed, restore and
+    inactive states; shift the tabs and the + and settings buttons by the
+    reserves.
+  - [ ] Route presses: buttons, drag on the empty bar, double click to
+    maximize, resize edges with their cursors.
+  - [ ] Choose decorations: client-side where the compositor offers them,
+    none on tiling compositors; read `button-layout` from the settings
+    portal.
 
 ## Accessibility
 
