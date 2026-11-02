@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.21 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Close the sbix mutation survivors (#223) (fonts).
+
 ## 26.11.20 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
