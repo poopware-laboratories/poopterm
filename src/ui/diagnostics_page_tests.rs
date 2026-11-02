@@ -99,6 +99,8 @@ fn fitting_counts_characters_not_bytes() {
 #[test]
 fn an_empty_log_says_so() {
 	assert_eq!(log_rows(&logged(0, 0), 10, 80), ["No warnings."]);
+	// Fitted like any row, in a window too narrow for it.
+	assert_eq!(log_rows(&logged(0, 0), 10, 4), ["No …"]);
 }
 
 #[test]

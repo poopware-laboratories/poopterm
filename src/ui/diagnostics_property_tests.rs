@@ -8,27 +8,27 @@ use std::{
 };
 
 /// A small deterministic generator (xorshift), so failures reproduce.
-struct Random(u64);
+pub(super) struct Random(pub(super) u64);
 
 impl Random {
-	fn next(&mut self) -> u64 {
+	pub(super) fn next(&mut self) -> u64 {
 		self.0 ^= self.0 << 13;
 		self.0 ^= self.0 >> 7;
 		self.0 ^= self.0 << 17;
 		self.0
 	}
 
-	fn below(&mut self, n: usize) -> usize {
+	pub(super) fn below(&mut self, n: usize) -> usize {
 		(self.next() % n as u64) as usize
 	}
 
-	fn pick<'a>(&mut self, words: &[&'a str]) -> &'a str {
+	pub(super) fn pick<'a>(&mut self, words: &[&'a str]) -> &'a str {
 		words[self.below(words.len())]
 	}
 }
 
 const HOMES: [&str; 4] = ["/home/vx", "/home/a b", "/Users/ünï", "/root"];
-const WORDS: [&str; 10] = [
+pub(super) const WORDS: [&str; 10] = [
 	"font",
 	"ünïcödé",
 	"🦀",
@@ -67,7 +67,7 @@ fn drawing(random: &mut Random) -> Drawing {
 }
 
 /// Random diagnostics whose warnings went through a ring, as the page's do.
-fn diagnostics(random: &mut Random) -> Diagnostics {
+pub(super) fn diagnostics(random: &mut Random) -> Diagnostics {
 	let home = HOMES[random.below(HOMES.len())];
 	let mut ring = Ring::default();
 	let pushes = random.below(12);

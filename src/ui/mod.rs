@@ -11,6 +11,8 @@ mod decorations_tests;
 pub(crate) mod diagnostics;
 pub(crate) mod diagnostics_page;
 #[cfg(test)]
+mod diagnostics_page_property_tests;
+#[cfg(test)]
 mod diagnostics_page_tests;
 #[cfg(test)]
 mod diagnostics_property_tests;

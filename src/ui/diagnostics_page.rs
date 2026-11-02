@@ -52,7 +52,7 @@ pub(crate) fn log_rows(diagnostics: &Diagnostics, rows: usize, columns: usize) -
 		return Vec::new();
 	}
 	if warnings.is_empty() && diagnostics.dropped == 0 {
-		return vec!["No warnings.".into()];
+		return vec![fit("No warnings.", columns)];
 	}
 	let noted = diagnostics.dropped > 0 || warnings.len() > rows;
 	let shown = warnings.len().min(rows - usize::from(noted));

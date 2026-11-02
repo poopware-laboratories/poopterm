@@ -353,3 +353,48 @@ fn the_footer_offers_copy_report_and_the_note_until_copied() {
 		}
 	}
 }
+
+#[test]
+fn every_button_drawn_is_the_one_a_click_there_lands_on() {
+	let expected = [
+		SettingsTarget::Back,
+		SettingsTarget::Section(Section::Graphics),
+		SettingsTarget::Section(Section::Log),
+		SettingsTarget::CopyReport,
+	];
+	for s in [1, 2, 3] {
+		for (width, height) in [MIN_SIZE, (760, 640), (1300, 900)] {
+			let size = (width * s, height * s);
+			let commands = record(s, |pen, p, style| {
+				(p.width, p.height) = size;
+				let none = &|_, _, _, _| false;
+				compose_diagnostics(
+					&sample(Drawing::Gpu, 3),
+					Section::Log,
+					"",
+					style,
+					p,
+					pen,
+					none,
+				)
+			});
+			let drawn: Vec<_> = buttons(&commands)
+				.into_iter()
+				.map(|(rect, _)| rect)
+				.collect();
+			assert_eq!(drawn.len(), expected.len(), "x{s} {size:?}");
+			// Every few pixels of the window, at most one button and the target
+			// it stands for.
+			for y in (0..size.1).step_by(3) {
+				for x in (0..size.0).step_by(3) {
+					let under = drawn.iter().position(|&rect| inside((x, y), rect));
+					assert_eq!(
+						diagnostics_target((x, y), size, s),
+						under.map(|index| expected[index]),
+						"x{s} {size:?} at ({x}, {y})"
+					);
+				}
+			}
+		}
+	}
+}

@@ -184,3 +184,49 @@ fn centered_text_sits_inside_its_rectangle() {
 		);
 	}
 }
+
+#[test]
+fn columns_count_the_whole_characters_that_fit() {
+	for (scale, size) in [(1, 0.72), (2, 0.72), (1, 1.3)] {
+		record(scale, |pen, _, _| {
+			let advance = pen
+				.fonts
+				.primary()
+				.metrics('M', pen.px * size)
+				.advance_width;
+			for count in [1, 2, 10, 57] {
+				let exact = (count as f32 * advance).ceil() as usize;
+				assert_eq!(pen.columns(exact, size), count, "x{scale} {size}");
+				assert_eq!(pen.columns(exact - 1, size), count - 1, "x{scale} {size}");
+			}
+			assert_eq!(pen.columns(0, size), 0);
+		});
+	}
+}
+
+#[test]
+fn a_footer_button_of_any_width_keeps_the_right_margin_and_centers_its_label() {
+	for scale in [1, 2] {
+		let s = scale;
+		let commands = record(scale, |pen, p, style| {
+			pen.footer(p, style, ("Copy report", 140), "", &|_, _, _, _| false)
+		});
+		let copy = ((900 - 160) * s, (600 - 52) * s, 140 * s, 36 * s);
+		assert_eq!(buttons(&commands), [(copy, false)]);
+		let (label, (x, _)) = texts(&commands).swap_remove(0);
+		assert_eq!(label, "Copy report");
+		let (left, right) = (x - copy.0, (copy.0 + copy.2) - x);
+		assert!(
+			left > 0 && left < right,
+			"x{s}: starts in the left half at {x}"
+		);
+	}
+}
+
+#[test]
+fn a_hovered_footer_button_lights() {
+	let commands = record(1, |pen, p, style| {
+		pen.footer(p, style, ("Save", 120), "", &|x, _, _, _| x == 760)
+	});
+	assert_eq!(buttons(&commands), [((760, 548, 120, 36), true)]);
+}
