@@ -336,6 +336,11 @@ fn mono_text_replays_as_drawing_it_directly_does_even_off_the_edge() {
 			direct.iter().any(|&pixel| pixel != BACKGROUND),
 			"x {x}: nothing drawn"
 		);
+		assert_eq!(
+			(fonts.mono_cached() > 0, fonts.cached()),
+			(true, 0),
+			"x {x}: drawn from the mono face only"
+		);
 	}
 }
 

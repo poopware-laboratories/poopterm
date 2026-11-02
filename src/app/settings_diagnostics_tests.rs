@@ -674,3 +674,51 @@ fn hovering_copy_report_lights_it() {
 	let lights: Vec<bool> = buttons(&commands).iter().map(|(_, on)| *on).collect();
 	assert_eq!(lights, [true, false, true, true]);
 }
+
+/// How far `text` reaches from `x` in the bundled font at `size`, each
+/// advance rounded up as drawing moves, and one advance.
+fn reach(x: usize, text: &str, size: f32, s: usize) -> (usize, usize) {
+	let font = Font::from_bytes(BUNDLED, 0).unwrap();
+	let advance = |ch| font.metrics(ch, px(size) * s as f32).advance_width.ceil() as usize;
+	(x + text.chars().map(advance).sum::<usize>(), advance('M'))
+}
+
+#[test]
+fn a_long_message_fills_the_well_up_to_its_inset() {
+	let mut diagnostics = sample(Drawing::Gpu, 0);
+	diagnostics.warnings.push(Warning {
+		at: Duration::ZERO,
+		text: "x".repeat(400),
+	});
+	for s in [1, 2] {
+		let none = &|_, _, _, _| false;
+		let commands = draw_in(s, (760 * s, 640 * s), &diagnostics, Section::Log, "", none);
+		let (text, at) = texts(&commands)
+			.into_iter()
+			.find(|(text, _)| text.starts_with("xxx"))
+			.unwrap();
+		let (end, advance) = reach(at.0, &text, SMALL * 12.0 / 13.0, s);
+		let inset = (760 - 24 - WELL_INSET.0 + 1) * s;
+		assert!(
+			end <= inset && end + advance > inset,
+			"x{s}: ends at {end}, inset {inset}"
+		);
+	}
+}
+
+#[test]
+fn a_long_failure_stops_24_short_of_copy_report() {
+	let status = copied(Err(std::io::Error::other("x".repeat(400))));
+	for s in [1, 2] {
+		let commands = draw(s, &sample(Drawing::Gpu, 0), Section::Graphics, &status);
+		let line = text_at(&commands, s, (24, 600 - 44)).unwrap();
+		assert!(line.ends_with('…'), "{line}");
+		let (end, advance) = reach(24 * s, &line, 12.5 / 18.0, s);
+		let button = (900 - 160) * s;
+		assert!(end <= button - 24 * s, "x{s}: ends at {end}");
+		assert!(
+			end + advance > button - 24 * s,
+			"x{s}: cut too early at {end}"
+		);
+	}
+}

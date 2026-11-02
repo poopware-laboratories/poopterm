@@ -138,3 +138,16 @@ fn a_faint_palette_moves_toward_the_text_only_as_far_as_it_must() {
 		"a readable green is kept"
 	);
 }
+
+#[test]
+fn the_page_and_the_wells_edge_are_the_themes_own() {
+	for theme in built_in() {
+		let colors = diagnostics_colors(&theme);
+		assert_eq!(
+			(colors.page, colors.border),
+			(theme.bg, theme.border),
+			"{:?}",
+			theme.kind
+		);
+	}
+}
