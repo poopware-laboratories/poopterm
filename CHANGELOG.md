@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.31 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Keep warnings and model the diagnostics report (#233) (ui).
+
 ## 26.11.30 "Lunar Moth" — 2026-11-02
 
 ### Added
