@@ -2,7 +2,13 @@
 //! software renderer replays into pixels and a GPU renderer can draw.
 #[cfg(doc)]
 use super::painter::Painter;
-use super::{chrome, glyphs::FontSet, painter::ButtonStyle, pen::Pen};
+use super::{
+	chrome,
+	glyphs::FontSet,
+	painter::ButtonStyle,
+	pen::{Ink, Pen},
+	window_icons::WindowIcon,
+};
 
 /// A rectangle in physical pixels: x, y, width, height.
 pub(crate) type Rect = (usize, usize, usize, usize);
@@ -23,6 +29,13 @@ pub(crate) enum Command {
 		ascent: i32,
 		color: u32,
 		clip: Rect,
+	},
+	/// A window button's icon, its top-left corner at `at`.
+	Icon {
+		at: (usize, usize),
+		icon: WindowIcon,
+		scale: usize,
+		color: u32,
 	},
 }
 
@@ -123,6 +136,16 @@ impl Scene {
 		});
 	}
 
+	/// A window button's icon, `12 * scale` pixels square, at `at`.
+	pub(crate) fn icon(&mut self, at: (usize, usize), icon: WindowIcon, scale: usize, color: u32) {
+		(self.commands).push(Command::Icon {
+			at,
+			icon,
+			scale,
+			color,
+		});
+	}
+
 	/// Draws the scene with `p`, pixel for pixel as drawing each operation
 	/// with a [`Painter`] directly would.
 	pub(crate) fn replay(&self, p: &mut impl Pen, fonts: &mut FontSet) {
@@ -143,6 +166,18 @@ impl Scene {
 					color,
 					clip,
 				} => chrome::text_clipped(p, fonts, at, text, px, ascent, color, clip),
+				Command::Icon {
+					at: (x, y),
+					icon,
+					scale,
+					color,
+				} => {
+					let glyph = fonts.window_icon(icon, scale);
+					let (x, y) = (x as i32, y as i32);
+					let (w, h) = (glyph.metrics.width as i32, glyph.metrics.height as i32);
+					let clip = (x, y, x + w, y + h);
+					p.glyph(glyph, Ink::Icon(icon, scale), (x, y), clip, false, color);
+				}
 			}
 		}
 	}

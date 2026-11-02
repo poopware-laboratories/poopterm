@@ -14,6 +14,7 @@ fn compact_strip(
 		scale,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll,
 			show_plus: true,
 			show_settings: true,
@@ -229,6 +230,7 @@ fn compact_strip_control_mask_0_reserves_only_visible_controls() {
 		1,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: false,
 			show_settings: false,
@@ -251,6 +253,7 @@ fn compact_strip_control_mask_1_reserves_only_visible_controls() {
 		1,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: true,
 			show_settings: false,
@@ -273,6 +276,7 @@ fn compact_strip_control_mask_2_reserves_only_visible_controls() {
 		1,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: false,
 			show_settings: true,
@@ -295,6 +299,7 @@ fn compact_strip_control_mask_3_reserves_only_visible_controls() {
 		1,
 		TabStripOptions {
 			left_reserve: 0,
+			right_reserve: 0,
 			scroll: 0,
 			show_plus: true,
 			show_settings: true,

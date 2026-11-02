@@ -115,6 +115,7 @@ impl QuadPen {
 			}
 			Ink::Drawn(ch, (w, h)) => self.key.extend([2, w as u32, h as u32, ch as u32]),
 			Ink::Ui(ch, px) => self.key.extend([3, px.to_bits(), ch as u32]),
+			Ink::Icon(icon, scale) => self.key.extend([4, scale as u32, icon as u32]),
 		}
 		let size = (glyph.metrics.width, glyph.metrics.height);
 		self.slot(size, || match &glyph.color {

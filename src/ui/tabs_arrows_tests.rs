@@ -5,6 +5,7 @@ use super::tabs::{TabLayout, TabStripOptions, tab_layout_with_compaction};
 fn options(scroll: usize, compact: bool) -> TabStripOptions {
 	TabStripOptions {
 		left_reserve: 0,
+		right_reserve: 0,
 		scroll,
 		show_plus: true,
 		show_settings: true,
@@ -133,6 +134,7 @@ fn the_window_buttons_reserve_room_left_of_tabs_and_arrows() {
 	let reserved = |count| {
 		let options = TabStripOptions {
 			left_reserve: 80,
+			right_reserve: 0,
 			..options(0, false)
 		};
 		tab_layout_with_compaction(1000, count, 1, options)

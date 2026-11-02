@@ -5,6 +5,7 @@ use super::{
 	glyphs::FontSet,
 	label::{Label, draw_label},
 	scene::Scene,
+	window_icons::{self, WindowIcon},
 };
 use crate::ui::ui_font::text_width;
 
@@ -30,7 +31,11 @@ pub(crate) enum Icon {
 	Menu,
 	Left,
 	Right,
+	Window(WindowIcon),
 }
+
+/// Under a hovered close button, drawn with white: 5.5:1.
+pub(crate) const CLOSE_HOVER: u32 = 0xc42b1c;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct HeaderButton {
@@ -78,6 +83,8 @@ pub(crate) struct Header<'a> {
 	pub colors: HeaderColors,
 	pub tabs: Vec<HeaderTab<'a>>,
 	pub buttons: Vec<HeaderButton>,
+	/// Lines between the window buttons and the tabs.
+	pub dividers: Vec<Rect>,
 }
 
 /// The rounded surface of a tab `width` wide at `x`, inside a header at `y`.
@@ -102,6 +109,9 @@ pub(crate) fn draw_header(p: &mut Scene, fonts: &mut FontSet, header: &Header) {
 	let separator = (y + height).saturating_sub(scale);
 	p.rect(0, y, p.width, height, header.colors.bar);
 	p.rect(0, separator, p.width, scale, header.colors.separator);
+	for &(x, y, w, h) in &header.dividers {
+		p.rect(x, y, w, h, header.colors.separator);
+	}
 	let style = Style {
 		scale,
 		px: header.px,
@@ -189,13 +199,16 @@ pub(crate) fn draw_progress(
 pub(crate) fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, button: &HeaderButton) {
 	let (scale, colors) = (style.scale, style.colors);
 	let (x, y, width, height) = button.rect;
-	if button.hovered && button.enabled {
-		p.round_rect(x, y, width, height, 6 * scale, colors.hover);
+	let lit = button.hovered && button.enabled;
+	let close = button.icon == Icon::Window(WindowIcon::Close);
+	if lit {
+		let fill = if close { CLOSE_HOVER } else { colors.hover };
+		p.round_rect(x, y, width, height, 6 * scale, fill);
 	}
-	let color = if button.enabled {
-		colors.fg
-	} else {
-		colors.dim
+	let color = match (button.enabled, lit && close) {
+		(true, true) => 0xffffff,
+		(true, false) => colors.fg,
+		(false, _) => colors.dim,
 	};
 	let (cx, cy) = (x + width / 2, y + height / 2);
 	// Strokes 2 pixels wide at 1x, 3 at 2x.
@@ -216,6 +229,10 @@ pub(crate) fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, butt
 		}
 		Icon::Left => centered_text(p, fonts, "‹", (cx, cy), style.px * 1.3, color),
 		Icon::Right => centered_text(p, fonts, "›", (cx, cy), style.px * 1.3, color),
+		Icon::Window(icon) => {
+			let half = window_icons::SIZE * scale / 2;
+			p.icon((cx - half, cy - half), icon, scale, color);
+		}
 	}
 }
 

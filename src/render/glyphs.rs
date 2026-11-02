@@ -6,7 +6,11 @@ use crate::fonts::{
 	fallback::{SystemFallback, has},
 };
 
-use super::{boxdraw, fxhash::FxHashMap};
+use super::{
+	boxdraw,
+	fxhash::FxHashMap,
+	window_icons::{self, WindowIcon},
+};
 
 #[path = "glyph_clusters.rs"]
 pub(crate) mod clusters;
@@ -67,6 +71,8 @@ pub(crate) struct FontSet {
 	/// Box drawing and other glyphs drawn in code, for cells of `drawn_cell`.
 	drawn: FxHashMap<char, boxdraw::Drawn>,
 	drawn_cell: (usize, usize),
+	/// Window button icons by scale: four icons at the few scales in use.
+	icons: FxHashMap<(WindowIcon, usize), Glyph>,
 }
 
 impl FontSet {
@@ -81,6 +87,7 @@ impl FontSet {
 			cluster_key: Vec::new(),
 			drawn: FxHashMap::default(),
 			drawn_cell: (0, 0),
+			icons: FxHashMap::default(),
 		}
 	}
 
@@ -196,6 +203,12 @@ impl FontSet {
 				Some(entry.insert(boxdraw::compact(&coverage, cell)))
 			}
 		}
+	}
+
+	/// `icon` at `scale`, rasterized the first time it is asked for.
+	pub(crate) fn window_icon(&mut self, icon: WindowIcon, scale: usize) -> &Glyph {
+		let rasterize = || window_icons::rasterize(icon, scale);
+		self.icons.entry((icon, scale)).or_insert_with(rasterize)
 	}
 
 	/// Bounds memory use; call once per frame, before drawing.

@@ -3,7 +3,7 @@ use super::{draw::UiFont, *};
 use crate::{
 	render::{header::draw_header, pen::Pen, scene::paint},
 	ui::{
-		header::{HeaderInput, TabInfo, header},
+		header::{HeaderInput, TabInfo, WindowState, add_window_buttons, header},
 		tabs::tab_marker,
 	},
 };
@@ -32,7 +32,7 @@ impl App {
 				.min(layout.first_visible + layout.visible_count);
 		let tabs: Vec<_> = self.sessions[shown].iter().map(tab_info).collect();
 		// pr-check: window glue: hands the window's tab state to the tested header model
-		let header = header(&HeaderInput {
+		let mut header = header(&HeaderInput {
 			layout: &layout,
 			tabs: &tabs,
 			count: self.sessions.len(),
@@ -42,6 +42,15 @@ impl App {
 			px: ui.px * 0.82,
 			theme: &self.theme,
 		});
+		// pr-check: end window glue
+		// pr-check: window glue: reads the live window's focus and maximized state
+		let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
+		let window = WindowState {
+			maximized,
+			focused: self.focused,
+		};
+		let controls = self.window_controls();
+		add_window_buttons(&mut header, &controls, window, self.cursor_pos);
 		paint(p, &mut self.ui_fonts, |s, f| draw_header(s, f, &header));
 		// pr-check: end window glue
 	}

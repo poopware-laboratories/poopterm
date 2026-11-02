@@ -88,7 +88,7 @@ impl Canvas {
 }
 
 /// The distance from `(x, y)` to the segment from `a` to `b`.
-fn segment_distance((x, y): (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+pub(crate) fn segment_distance((x, y): (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
 	let (dx, dy) = (b.0 - a.0, b.1 - a.1);
 	let length = dx * dx + dy * dy;
 	let t = if length > 0.0 {

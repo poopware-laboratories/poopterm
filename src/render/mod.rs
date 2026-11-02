@@ -17,6 +17,8 @@ pub(crate) mod grid_case_tests;
 pub(crate) mod header;
 #[cfg(test)]
 mod header_tests;
+#[cfg(test)]
+mod header_window_tests;
 pub(crate) mod images;
 pub(crate) mod label;
 #[cfg(test)]
@@ -42,6 +44,9 @@ mod sidebar_tests;
 pub(crate) mod status_bar;
 #[cfg(test)]
 mod status_bar_tests;
+pub(crate) mod window_icons;
+#[cfg(test)]
+mod window_icons_tests;
 
 #[cfg(test)]
 mod backend_tests;

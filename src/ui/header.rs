@@ -5,6 +5,7 @@ use crate::{
 		blend::blend,
 		header::{Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, close_rect},
 		label::Label,
+		window_icons::WindowIcon,
 	},
 	term::{
 		status::{Progress, ProgressState},
@@ -14,6 +15,7 @@ use crate::{
 	ui::{
 		contrast::tab_text_colors,
 		tabs::{Marker, TabLayout},
+		window_controls::{Placement, WindowButton},
 	},
 };
 
@@ -50,6 +52,8 @@ const SEPARATOR: u32 = 60;
 const DISABLED: u32 = 128;
 /// A button's height, before scaling.
 const BUTTON_HEIGHT: usize = 32;
+/// A divider's height, before scaling.
+const DIVIDER_HEIGHT: usize = 20;
 
 pub(crate) fn header_colors(theme: &Theme) -> HeaderColors {
 	let shade = |amount| blend(theme.bg, theme.fg, amount);
@@ -116,7 +120,54 @@ pub(crate) fn header<'a>(input: &HeaderInput<'a>) -> Header<'a> {
 		colors,
 		tabs: tabs.collect(),
 		buttons,
+		dividers: Vec::new(),
 	}
+}
+
+/// What the window buttons show of the window.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WindowState {
+	/// Maximize shows as restore.
+	pub maximized: bool,
+	/// Without focus the buttons are dim.
+	pub focused: bool,
+}
+
+/// Adds the window buttons `controls` places, and their dividers, to
+/// `header`, centered in it as [`crate::ui::window_controls::button_at`]
+/// finds them.
+pub(crate) fn add_window_buttons(
+	header: &mut Header,
+	controls: &Placement,
+	window: WindowState,
+	cursor: (f64, f64),
+) {
+	let (y, height, scale) = (header.y, header.height, header.scale);
+	let middle = |size: usize| y + height.saturating_sub(size * scale) / 2;
+	for &(kind, x) in &controls.buttons {
+		let rect = (
+			x,
+			middle(BUTTON_HEIGHT),
+			controls.width,
+			BUTTON_HEIGHT * scale,
+		);
+		let icon = match kind {
+			WindowButton::Minimize => WindowIcon::Minimize,
+			WindowButton::Maximize if window.maximized => WindowIcon::Restore,
+			WindowButton::Maximize => WindowIcon::Maximize,
+			WindowButton::Close => WindowIcon::Close,
+		};
+		header.buttons.push(HeaderButton {
+			rect,
+			icon: Icon::Window(icon),
+			hovered: contains(rect, cursor),
+			enabled: window.focused,
+		});
+	}
+	let divider = |&x: &usize| (x, middle(DIVIDER_HEIGHT), scale, DIVIDER_HEIGHT * scale);
+	header
+		.dividers
+		.extend(controls.dividers.iter().map(divider));
 }
 
 /// The colors tabs are drawn in, worked out once per frame: finding

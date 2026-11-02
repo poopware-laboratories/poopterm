@@ -7,6 +7,8 @@ mod font_size_tests;
 pub(crate) mod header;
 #[cfg(test)]
 mod header_tests;
+#[cfg(test)]
+mod header_window_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
 pub(crate) mod overlays;
@@ -34,6 +36,8 @@ mod tabs_horizontal_tests;
 mod tabs_vertical_edge_tests;
 #[cfg(test)]
 mod tabs_vertical_tests;
+#[cfg(test)]
+mod tabs_window_reserve_tests;
 pub(crate) mod ui_font;
 #[cfg(test)]
 mod ui_font_drawn_tests;
@@ -41,7 +45,7 @@ mod ui_font_drawn_tests;
 mod ui_font_tests;
 #[cfg_attr(
 	not(test),
-	expect(dead_code, reason = "the header draws and hits the buttons next")
+	expect(dead_code, reason = "presses reach the buttons and resize edges next")
 )]
 pub(crate) mod window_controls;
 #[cfg(test)]

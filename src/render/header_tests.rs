@@ -12,9 +12,9 @@ use crate::{
 	render::{painter::Painter, scene::paint},
 };
 
-const WIDTH: usize = 400;
+pub(super) const WIDTH: usize = 400;
 const HEIGHT: usize = 100;
-const COLORS: HeaderColors = HeaderColors {
+pub(super) const COLORS: HeaderColors = HeaderColors {
 	bar: 0x202020,
 	separator: 0x505050,
 	hover: 0x303030,
@@ -39,7 +39,11 @@ fn tab(x: usize, width: usize, title: &str) -> HeaderTab<'_> {
 	}
 }
 
-fn header<'a>(scale: usize, tabs: Vec<HeaderTab<'a>>, buttons: Vec<HeaderButton>) -> Header<'a> {
+pub(super) fn header<'a>(
+	scale: usize,
+	tabs: Vec<HeaderTab<'a>>,
+	buttons: Vec<HeaderButton>,
+) -> Header<'a> {
 	Header {
 		y: 4,
 		height: 44 * scale,
@@ -48,18 +52,19 @@ fn header<'a>(scale: usize, tabs: Vec<HeaderTab<'a>>, buttons: Vec<HeaderButton>
 		colors: COLORS,
 		tabs,
 		buttons,
+		dividers: Vec::new(),
 	}
 }
 
-struct Drawn(Vec<u32>);
+pub(super) struct Drawn(Vec<u32>);
 
 impl Drawn {
-	fn at(&self, x: usize, y: usize) -> u32 {
+	pub(super) fn at(&self, x: usize, y: usize) -> u32 {
 		self.0[y * WIDTH + x]
 	}
 
 	/// Whether any pixel of `rect` is `color`.
-	fn any(&self, (x, y, w, h): Rect, color: u32) -> bool {
+	pub(super) fn any(&self, (x, y, w, h): Rect, color: u32) -> bool {
 		(y..y + h).any(|row| (x..x + w).any(|column| self.at(column, row) == color))
 	}
 
@@ -78,7 +83,7 @@ impl Drawn {
 	}
 }
 
-fn draw(header: &Header) -> Drawn {
+pub(super) fn draw(header: &Header) -> Drawn {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pixels = vec![0; WIDTH * HEIGHT];
 	let p = &mut Painter::new(&mut pixels, WIDTH, HEIGHT);
@@ -222,7 +227,7 @@ fn progress_fills_its_share_of_a_track_along_the_tab_bottom() {
 	assert!(end != COLORS.raised && end != 0x0000ff && end & 0xff > 0x40);
 }
 
-fn button(icon: Icon, hovered: bool, enabled: bool) -> HeaderButton {
+pub(super) fn button(icon: Icon, hovered: bool, enabled: bool) -> HeaderButton {
 	HeaderButton {
 		rect: (300, 10, 36, 32),
 		icon,

@@ -64,6 +64,7 @@ use crate::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
 			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
 		},
+		window_controls::{ButtonLayout, Placement, place},
 		zoom::{zoom_action, zoomed},
 	},
 	wallpaper::Wallpaper,
@@ -100,6 +101,9 @@ pub(crate) struct App {
 	sessions: Vec<Session>,
 	active: usize,
 	tab_scroll: usize,
+	/// The window buttons the header draws: none until the window draws
+	/// its own title bar.
+	window_buttons: ButtonLayout,
 	next_session_id: u64,
 	proxy: EventLoopProxy<UserEvent>,
 
@@ -350,6 +354,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		sessions,
 		active: 0,
 		tab_scroll: 0,
+		window_buttons: ButtonLayout::default(),
 		next_session_id,
 		proxy,
 		window: None,

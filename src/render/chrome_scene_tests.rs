@@ -68,6 +68,7 @@ fn assert_inside(scene: &Scene, bounds: Rect, what: &str) {
 				let width = text_width(text, |ch| fonts.advance(ch, px));
 				(at.0, at.1, width.max(1), line(fonts, px).0.max(1))
 			}
+			Command::Icon { at, scale, .. } => (at.0, at.1, 12 * scale, 12 * scale),
 		};
 		assert!(
 			inside(reach, bounds),
@@ -101,6 +102,7 @@ fn the_header_draws_only_inside_its_bar() {
 			let tabs: Vec<_> = (0..count).map(|i| info(TITLES[i % TITLES.len()])).collect();
 			let options = TabStripOptions {
 				left_reserve: 0,
+				right_reserve: 0,
 				scroll: 0,
 				show_plus: true,
 				show_settings: true,
@@ -135,6 +137,7 @@ fn header_titles_are_recorded_as_text_not_pixels() {
 	let tabs: Vec<_> = TITLES.iter().map(|title| info(title)).collect();
 	let options = TabStripOptions {
 		left_reserve: 0,
+		right_reserve: 0,
 		scroll: 0,
 		show_plus: true,
 		show_settings: true,

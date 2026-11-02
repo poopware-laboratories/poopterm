@@ -29,7 +29,7 @@ use crate::{
 	},
 };
 
-const ATLAS: (usize, usize) = (256, 4);
+pub(super) const ATLAS: (usize, usize) = (256, 4);
 
 fn style(scale: usize) -> ButtonStyle {
 	ButtonStyle {
@@ -42,7 +42,7 @@ fn style(scale: usize) -> ButtonStyle {
 
 /// `scene` replayed in software over the background, and drawn as quads
 /// by the stand-in GPU, with the pen that drew it.
-fn both(scene: &Scene) -> (Vec<u32>, Vec<u32>, QuadPen) {
+pub(super) fn both(scene: &Scene) -> (Vec<u32>, Vec<u32>, QuadPen) {
 	let size = (scene.width, scene.height);
 	let mut painted = vec![BG; size.0 * size.1];
 	scene.replay(
@@ -57,7 +57,7 @@ fn both(scene: &Scene) -> (Vec<u32>, Vec<u32>, QuadPen) {
 	(painted, gpu.draw(&pen), pen)
 }
 
-fn assert_draws_like_software(scene: &Scene, what: &str) {
+pub(super) fn assert_draws_like_software(scene: &Scene, what: &str) {
 	let (painted, drawn, pen) = both(scene);
 	assert!(pen.complete, "{what}: the atlas ran out");
 	assert!(painted.iter().any(|&pixel| pixel != BG), "{what}: blank");
@@ -249,6 +249,7 @@ fn the_window_chrome_draws_as_software_paints_it_in_every_theme() {
 			let tabs: Vec<_> = TITLES.iter().map(|title| tab(title)).collect();
 			let options = TabStripOptions {
 				left_reserve: 0,
+				right_reserve: 0,
 				scroll: 0,
 				show_plus: true,
 				show_settings: true,
