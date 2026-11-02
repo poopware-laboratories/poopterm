@@ -43,7 +43,8 @@ impl Sbix {
 			})
 			.max_by_key(|bitmap| bitmap.ppem)?;
 		let scaled = u32::from(advance) * u32::from(found.ppem);
-		let units = u32::from(units_per_em.max(1));
+		// Faces have at least 16 units per em.
+		let units = u32::from(units_per_em);
 		let advance = u16::try_from((scaled + units / 2) / units).ok()?;
 		Some(ColorBitmap { advance, ..found })
 	}
