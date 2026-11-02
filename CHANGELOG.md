@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.24 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Keep the structs fake-driver tests point at alive (#226) (gpu).
+
 ## 26.11.23 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
