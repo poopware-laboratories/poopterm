@@ -1,7 +1,10 @@
 //! Built-in color themes and the xterm 256-color palette.
 use std::env;
 
-use crate::config::{read_config_theme, read_config_value};
+use crate::{
+	config::{read_config_theme, read_config_value},
+	ui::contrast::{TEXT, luminance, readable},
+};
 
 // ---- Built-in themes --------------------------------------------------------
 
@@ -275,18 +278,27 @@ pub(crate) fn parse_color(value: &str) -> Option<u32> {
 		.flatten()
 }
 
-pub(crate) fn bright_color(index: usize) -> u32 {
-	[
-		0x808080, 0xFF5555, 0x55FF55, 0xFFFF55, 0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,
-	][index]
+/// xterm's bright colors, 8 to 15, made for dark backgrounds.
+const BRIGHT: [u32; 8] = [
+	0x808080, 0xFF5555, 0x55FF55, 0xFFFF55, 0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,
+];
+
+/// Colors 8 to 15 for a theme drawn `fg` on `bg`: xterm's, except on a
+/// background lighter than the text, where each is darkened (toward black,
+/// which keeps its hue) only as far as it must to read as text.
+pub(crate) fn bright_palette(fg: u32, bg: u32) -> [u32; 8] {
+	if luminance(bg) <= luminance(fg) {
+		return BRIGHT;
+	}
+	BRIGHT.map(|color| readable(color, 0x000000, &[bg], TEXT))
 }
 
-pub(crate) fn xterm_color(index: u8, palette: [u32; 8]) -> u32 {
+pub(crate) fn xterm_color(index: u8, palette: [u32; 8], bright: [u32; 8]) -> u32 {
 	if index < 8 {
 		return palette[index as usize];
 	}
 	if index < 16 {
-		return bright_color((index - 8) as usize);
+		return bright[index as usize - 8];
 	}
 	if index < 232 {
 		let n = index - 16;
@@ -549,5 +561,123 @@ mod tests {
 				0x101010, 0xAB4642, 0xA1B56C, 0xF7CA88, 0x7CAFC2, 0xBA8BAF, 0x86C1B9, 0xD0D0D0,
 			]
 		);
+	}
+
+	const LIGHT: [ThemeKind; 3] = [
+		ThemeKind::MacOsLight,
+		ThemeKind::RosePineDawn,
+		ThemeKind::CatppuccinLatte,
+	];
+	const XTERM_BRIGHT: [u32; 8] = [
+		0x808080, 0xFF5555, 0x55FF55, 0xFFFF55, 0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,
+	];
+
+	fn brights(kind: ThemeKind) -> [u32; 8] {
+		let theme = Theme::from_kind(kind);
+		bright_palette(theme.fg, theme.bg)
+	}
+
+	#[test]
+	fn every_bright_color_reads_as_text_on_every_light_theme() {
+		for kind in LIGHT {
+			let bg = Theme::from_kind(kind).bg;
+			for (index, color) in brights(kind).into_iter().enumerate() {
+				let ratio = contrast_ratio(color, bg);
+				assert!(
+					ratio >= 4.5,
+					"{} color {}: {color:06X} is {ratio:.2}:1",
+					kind.name(),
+					index + 8
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn the_light_mode_prompt_green_is_readable_and_still_green() {
+		// The bug: bright green 55FF55 on F5F5F7 was 1.2:1.
+		let color = brights(ThemeKind::MacOsLight)[2];
+		assert_eq!(color, 0x2B812B);
+		let [red, green, blue] = [16, 8, 0].map(|shift| color >> shift & 0xFF);
+		assert!(green > red && green > blue);
+	}
+
+	#[test]
+	fn bright_colors_on_light_themes_keep_their_hue() {
+		let channels = |color: u32| [16, 8, 0].map(|shift| color >> shift & 0xFF);
+		// Which channels are the strongest, as a bit mask.
+		let strongest = |color: u32| {
+			let c = channels(color);
+			let max = *c.iter().max().unwrap();
+			c.iter()
+				.fold(0, |mask, &v| mask << 1 | u8::from(max - v < 16))
+		};
+		for kind in LIGHT {
+			for (index, (color, xterm)) in brights(kind).into_iter().zip(XTERM_BRIGHT).enumerate() {
+				if index == 0 || index == 7 {
+					continue; // Grays have no hue to keep.
+				}
+				assert_eq!(
+					strongest(color),
+					strongest(xterm),
+					"{} {color:06X}",
+					kind.name()
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn bright_colors_darken_only_as_far_as_they_must() {
+		let theme = Theme::from_kind(ThemeKind::MacOsLight);
+		let brights = brights(ThemeKind::MacOsLight);
+		// Bright blue already reads at 4.7:1 and is left alone.
+		assert_eq!(brights[4], 0x5555FF);
+		for (color, xterm) in brights.into_iter().zip(XTERM_BRIGHT) {
+			if color != xterm {
+				let ratio = contrast_ratio(color, theme.bg);
+				assert!(
+					ratio < 4.7,
+					"{color:06X} is darker than needed: {ratio:.2}:1"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn dark_themes_keep_xterms_bright_colors() {
+		let light = LIGHT.map(Some);
+		let mut kind = ThemeKind::MacOsDark;
+		loop {
+			if !light.contains(&Some(kind)) {
+				assert_eq!(brights(kind), XTERM_BRIGHT, "{}", kind.name());
+			}
+			kind = kind.next();
+			if kind == ThemeKind::MacOsDark {
+				break;
+			}
+		}
+	}
+
+	#[test]
+	fn a_light_background_from_the_config_gets_readable_brights_too() {
+		// A dark theme with `background = "#ffffff"` and a dark foreground.
+		let brights = bright_palette(0x000000, 0xFFFFFF);
+		assert!(brights.iter().all(|&c| contrast_ratio(c, 0xFFFFFF) >= 4.5));
+		// Equal colors are not a light background.
+		assert_eq!(bright_palette(0x777777, 0x777777), XTERM_BRIGHT);
+	}
+
+	#[test]
+	fn only_colors_8_to_15_follow_the_bright_palette() {
+		let palette = Theme::from_kind(ThemeKind::MacOsLight).palette;
+		let bright = brights(ThemeKind::MacOsLight);
+		assert_eq!(xterm_color(2, palette, bright), 0x248A3D);
+		assert_eq!(xterm_color(8, palette, bright), bright[0]);
+		assert_eq!(xterm_color(10, palette, bright), 0x2B812B);
+		assert_eq!(xterm_color(15, palette, bright), bright[7]);
+		// The 6x6x6 cube and the grays stay xterm's.
+		assert_eq!(xterm_color(46, palette, bright), 0x00FF00);
+		assert_eq!(xterm_color(255, palette, bright), 0xEEEEEE);
 	}
 }

@@ -14,7 +14,7 @@ pub(crate) const UI: f64 = 3.0;
 pub(crate) const DIM: u32 = 150;
 
 /// WCAG relative luminance of an sRGB color.
-fn luminance(color: u32) -> f64 {
+pub(crate) fn luminance(color: u32) -> f64 {
 	let channel = |shift: u32| {
 		let srgb = f64::from((color >> shift) & 0xFF) / 255.0;
 		if srgb <= 0.04045 {

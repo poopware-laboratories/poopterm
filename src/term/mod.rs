@@ -1,5 +1,7 @@
 //! Terminal grid, scrollback, cursor and screen state.
 #[cfg(test)]
+mod bright_tests;
+#[cfg(test)]
 mod click_events_tests;
 pub(crate) mod clipboard;
 #[cfg(test)]
@@ -88,7 +90,7 @@ mod width_tests;
 #[cfg(test)]
 mod window_ops_tests;
 
-use crate::theme::Theme;
+use crate::theme::{Theme, bright_palette};
 pub(crate) use colors::{Colors, Dynamic, Setting};
 pub(crate) use extras::{Extras, NONE as NO_EXTRA};
 pub(crate) use frame::Frame;
@@ -280,6 +282,8 @@ pub(crate) struct Term {
 	pub(crate) theme_fg: u32,
 	pub(crate) theme_bg: u32,
 	pub(crate) palette: [u32; 8],
+	/// Colors 8 to 15, readable on the theme's background.
+	pub(crate) bright: [u32; 8],
 	pub(crate) color_overrides: [Option<u32>; 256],
 	pub(crate) colors: Colors,
 	pub(crate) color_stack: Vec<colors::Saved>,
@@ -441,6 +445,7 @@ impl Term {
 		self.theme_fg = theme.fg;
 		self.theme_bg = theme.bg;
 		self.palette = theme.palette;
+		self.bright = bright_palette(theme.fg, theme.bg);
 		self.color_overrides.fill(None);
 		self.colors = Colors::default();
 	}
@@ -511,6 +516,7 @@ impl Term {
 			theme_fg: theme.fg,
 			theme_bg: theme.bg,
 			palette: theme.palette,
+			bright: bright_palette(theme.fg, theme.bg),
 			color_overrides: [None; 256],
 			colors: Colors::default(),
 			color_stack: Vec::new(),
