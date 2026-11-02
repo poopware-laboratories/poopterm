@@ -29,7 +29,7 @@ const READ: usize = 64 << 10;
 const FRAME_EVERY: usize = 1 << 20;
 const CELL: (usize, usize) = (10, 20);
 
-struct Options {
+pub(crate) struct Options {
 	/// Bytes per workload.
 	bytes: usize,
 	size: Size,
@@ -56,7 +56,7 @@ impl Feed {
 	};
 }
 
-fn options(args: impl Iterator<Item = String>) -> Result<Options, Box<dyn Error>> {
+pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box<dyn Error>> {
 	let mut options = Options {
 		bytes: 16 << 20,
 		size: Size {
@@ -91,7 +91,10 @@ fn options(args: impl Iterator<Item = String>) -> Result<Options, Box<dyn Error>
 				}
 				std::process::exit(0);
 			}
-			_ => return Err(format!("unknown benchmark option: {arg}").into()),
+			_ => {
+				let known = crate::cli::documented("BENCHMARK OPTIONS");
+				return Err(crate::cli::unknown("benchmark option", &arg, &known).into());
+			}
 		}
 	}
 	for name in &options.only {

@@ -1,0 +1,63 @@
+Poopterm {version} "{codename}"
+A terminal emulator with its own GPU and software renderers, font engine
+and escape-sequence parser.
+
+USAGE
+  poopterm	Open a window running your login shell.
+  poopterm OPTION	Do what OPTION says instead, then exit.
+
+OPTIONS
+  -h, --help	Show this help.
+  -V, --version	Print the version number.
+      --print-terminfo	Print Poopterm's terminfo entry, which tells
+	programs what it can draw. Shells get
+	TERM=xterm-poopterm once it is installed for
+	every user, and xterm-256color until then.
+      --print-shell-integration SHELL
+	Print the hooks for zsh, bash or fish that mark
+	prompts and commands (OSC 133) and report the
+	working directory (OSC 7). Poopterm loads them
+	by itself; print them to add them by hand.
+      --benchmark [OPTIONS]	Feed real-world output to the parser and the
+	renderer without a window, and print each
+	workload's throughput. Options are below.
+      --bench-corpus NAME [OPTIONS]
+	Write one workload's bytes to standard output,
+	to time other terminals on the same input.
+
+BENCHMARK OPTIONS
+      --list	List the workloads and what each one sends.
+      --only NAME,...	Run only these workloads.
+      --mib N	Feed N MiB to each workload (1 to 4096; 16).
+      --kib N	Feed N KiB instead, for quick runs.
+      --size COLSxROWS	Terminal size (2 to 1000 each; 120x40).
+      --read BYTES	Read output in pieces this big, as from a slow
+	program (64 KiB by default).
+      --frame-every BYTES	Draw a frame after this much output (1 MiB).
+      --no-render	Only parse; draw no frames.
+
+ENVIRONMENT
+  POOPTERM_CONFIG	The config file to use instead of
+	{config}
+  POOPTERM_THEME	A theme for this run, such as nord or
+	catppuccin-latte, over the one in config.toml.
+  POOPTERM_RENDERER	auto, gpu or software for this run.
+  POOPTERM_FONT	A font file for this run, over font_path and
+	font_family in config.toml.
+  POOPTERM_FULL_REDRAW	When set, redraw the whole window every frame,
+	to rule out partial-redraw bugs.
+  POOPTERM_FRAME_STATS	A file to write frame timings to, as JSON.
+  NO_COLOR	When set, print this help without color.
+
+EXAMPLES
+  # Install the terminfo entry for every user
+  `poopterm --print-terminfo | sudo tic -x -`
+  # Add the shell hooks to zsh by hand
+  `poopterm --print-shell-integration zsh >> ~/.zshrc`
+  # Benchmark two workloads in a bigger terminal
+  `poopterm --benchmark --only log,tui --size 200x50`
+  # Try the software renderer once
+  `POOPTERM_RENDERER=software poopterm`
+
+Fonts, themes, shortcuts and the rest live in Settings.
+Documentation: https://github.com/poopware-laboratories/poopterm/tree/main/docs
