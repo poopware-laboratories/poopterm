@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.26 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Model the linux window buttons and resize edges (#228) (ui).
+
 ## 26.11.25 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
