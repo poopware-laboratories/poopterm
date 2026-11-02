@@ -25,9 +25,9 @@ use std::time::Duration;
 
 /// The recorder's window, in logical pixels, and its text color.
 const SIZE: (usize, usize) = (900, 600);
-const FG: u32 = 0xeeeeee;
+pub(super) const FG: u32 = 0xeeeeee;
 /// Colors told apart from each other and from `FG`.
-const COLORS: DiagnosticsColors = DiagnosticsColors {
+pub(super) const COLORS: DiagnosticsColors = DiagnosticsColors {
 	muted: 0x888888,
 	accelerated: 0x22aa22,
 	limited: 0xaaaa22,
@@ -48,7 +48,7 @@ struct Line {
 	mono: bool,
 }
 
-fn sample(drawing: Drawing, warnings: usize) -> Diagnostics {
+pub(super) fn sample(drawing: Drawing, warnings: usize) -> Diagnostics {
 	Diagnostics {
 		version: "26.11.30 \"Test\"".into(),
 		drawing,
@@ -69,7 +69,7 @@ fn sample(drawing: Drawing, warnings: usize) -> Diagnostics {
 
 /// The page in a window `size` physical pixels large, nothing hovered
 /// unless `hovered` says so.
-fn draw_in(
+pub(super) fn draw_in(
 	scale: usize,
 	size: (usize, usize),
 	diagnostics: &Diagnostics,

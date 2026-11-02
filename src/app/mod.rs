@@ -23,6 +23,8 @@ mod search;
 mod settings;
 mod settings_diagnostics;
 #[cfg(test)]
+mod settings_diagnostics_property_tests;
+#[cfg(test)]
 mod settings_diagnostics_tests;
 mod settings_draw;
 mod settings_fonts;
