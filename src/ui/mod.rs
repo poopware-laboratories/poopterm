@@ -8,14 +8,12 @@ pub(crate) mod copy;
 pub(crate) mod decorations;
 #[cfg(test)]
 mod decorations_tests;
-#[cfg_attr(
-	not(test),
-	expect(
-		dead_code,
-		reason = "the Diagnostics page draws it in the next pull request"
-	)
-)]
 pub(crate) mod diagnostics;
+pub(crate) mod diagnostics_page;
+#[cfg(test)]
+mod diagnostics_page_property_tests;
+#[cfg(test)]
+mod diagnostics_page_tests;
 #[cfg(test)]
 mod diagnostics_property_tests;
 #[cfg(test)]

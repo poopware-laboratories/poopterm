@@ -1,6 +1,27 @@
 //! Text and widgets shared by the Settings window's pages.
 use super::settings_view::ROW_HEIGHT;
-use crate::render::{painter::ButtonStyle, scene::Scene};
+use crate::render::{
+	painter::ButtonStyle,
+	scene::{Rect, Scene},
+};
+use crate::ui::ui_font::ellipsize_to_width;
+
+/// The "Settings" back button of a window `width` physical pixels wide.
+pub(super) fn back_rect(width: usize, s: usize) -> Rect {
+	(width.saturating_sub(164 * s), 20 * s, 140 * s, 36 * s)
+}
+
+/// The footer's button, `button_w` logical pixels wide, in a window
+/// `(width, height)` physical pixels large: 20 from the right edge.
+pub(super) fn footer_rect((width, height): (usize, usize), button_w: usize, s: usize) -> Rect {
+	let w = button_w * s;
+	(
+		width.saturating_sub(w + 20 * s),
+		height.saturating_sub(52 * s),
+		w,
+		36 * s,
+	)
+}
 
 /// Text drawing for one Settings frame; every label shares the base ascent.
 pub(super) struct Pen<'a> {
@@ -25,6 +46,14 @@ impl Pen<'_> {
 		);
 	}
 
+	/// How wide `text` is at `size` times the base size, in physical
+	/// pixels: the sum of the primary font's advances.
+	pub(super) fn width(&mut self, text: &str, size: f32) -> usize {
+		let (font, px) = (self.fonts.primary(), self.px * size);
+		let advances = text.chars().map(|c| font.metrics(c, px).advance_width);
+		advances.sum::<f32>().ceil() as usize
+	}
+
 	/// Draws `text` centered in the physical rectangle `rect`.
 	pub(super) fn centered(
 		&mut self,
@@ -33,12 +62,7 @@ impl Pen<'_> {
 		text: &str,
 		size: f32,
 	) {
-		let advance = self
-			.fonts
-			.primary()
-			.metrics('M', self.px * size)
-			.advance_width;
-		let text_w = (advance * text.chars().count() as f32) as usize;
+		let text_w = self.width(text, size);
 		let y = (rect.1 + rect.3.saturating_sub((self.px * 1.2) as usize) / 2) / self.scale;
 		self.text(p, rect.0 + rect.2.saturating_sub(text_w) / 2, y, text, size);
 	}
@@ -50,14 +74,9 @@ impl Pen<'_> {
 		style: ButtonStyle,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
-		let s = self.scale;
-		let back_x = p.width.saturating_sub(164 * s);
-		p.button(
-			(back_x, 20 * s, 140 * s, 36 * s),
-			style,
-			hovered(back_x, 20 * s, 140 * s, 36 * s),
-		);
-		self.text(p, back_x + 22 * s, 27, "Settings", 0.8);
+		let (s, back) = (self.scale, back_rect(p.width, self.scale));
+		p.button(back, style, hovered(back.0, back.1, back.2, back.3));
+		self.text(p, back.0 + 22 * s, 27, "Settings", 0.8);
 	}
 
 	/// A wide button at the right of `row` labelled `label`.
@@ -97,37 +116,39 @@ impl Pen<'_> {
 		self.text(p, x + 16 * s, row + 8, state, 0.82);
 	}
 
-	/// The Save button and the status line at the bottom of every page.
+	/// `text` cut with an ellipsis to fit `width` physical pixels at `size`
+	/// times the base size, measured with the primary font's advances.
+	pub(super) fn fit(&mut self, text: &str, width: usize, size: f32) -> String {
+		let (font, px) = (self.fonts.primary(), self.px * size);
+		ellipsize_to_width(text, width, |c| {
+			font.metrics(c, px).advance_width.ceil() as usize
+		})
+	}
+
+	/// The footer at the bottom of every page: its `button`, labelled and
+	/// as wide as given, at the right, and the status line at the left.
 	pub(super) fn footer(
 		&mut self,
 		p: &mut Scene,
 		style: ButtonStyle,
+		(label, width): (&str, usize),
 		status: &str,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
 		let s = self.scale;
-		let (save_x, save_y) = (
-			p.width.saturating_sub(140 * s),
-			p.height.saturating_sub(52 * s),
-		);
-		let (save_w, save_h) = (120 * s, 36 * s);
+		let (save_x, save_y, save_w, save_h) = footer_rect((p.width, p.height), width, s);
 		p.button(
 			(save_x, save_y, save_w, save_h),
 			style,
 			hovered(save_x, save_y, save_w, save_h),
 		);
-		let cell_width = self
-			.fonts
-			.primary()
-			.metrics('M', self.px)
-			.advance_width
-			.ceil() as usize;
-		let save_text_x = save_x + save_w.saturating_sub(4 * cell_width) / 2;
+		let label_w = self.width(label, 1.0);
+		let save_text_x = save_x + save_w.saturating_sub(label_w) / 2;
 		p.text(
 			self.fonts,
 			save_text_x,
 			save_y + 6 * s,
-			"Save",
+			label,
 			self.px,
 			self.ascent,
 			self.color,

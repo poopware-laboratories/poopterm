@@ -1,6 +1,6 @@
 //! Hit-testing for the Settings window: which control a click lands on.
-use super::settings_view::*;
-use crate::input::shortcuts::ShortcutAction;
+use super::{settings_diagnostics::diagnostics_target, settings_view::*};
+use crate::{input::shortcuts::ShortcutAction, ui::diagnostics_page::Section};
 
 /// The page the Settings window shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -11,6 +11,7 @@ pub(crate) enum SettingsPage {
 	Shortcuts,
 	About,
 	Fonts,
+	Diagnostics,
 }
 
 /// A clickable control in the Settings window.
@@ -37,15 +38,19 @@ pub(super) enum SettingsTarget {
 	Step(usize, isize),
 	/// A theme arrow: -1 or +1.
 	Theme(isize),
+	/// A Diagnostics section's switch button.
+	Section(Section),
+	CopyReport,
 }
 
 /// Header buttons of the main page: page, distance of the left edge from
 /// the window's right edge, and width, in logical pixels.
-pub(super) const HEADER_BUTTONS: [(SettingsPage, usize, usize, &str); 4] = [
-	(SettingsPage::Fonts, 464, 104, "Fonts"),
-	(SettingsPage::Layout, 352, 104, "Layout"),
-	(SettingsPage::Shortcuts, 240, 104, "Shortcuts"),
-	(SettingsPage::About, 128, 104, "About"),
+pub(super) const HEADER_BUTTONS: [(SettingsPage, usize, usize, &str); 5] = [
+	(SettingsPage::Fonts, 536, 96, "Fonts"),
+	(SettingsPage::Layout, 432, 96, "Layout"),
+	(SettingsPage::Shortcuts, 328, 96, "Shortcuts"),
+	(SettingsPage::Diagnostics, 224, 96, "Diagnostics"),
+	(SettingsPage::About, 120, 96, "About"),
 ];
 
 /// How many font list rows fit above the footer of a window `height`
@@ -77,6 +82,9 @@ pub(super) fn settings_target(
 	let right = |offset: usize| width.saturating_sub(offset * s);
 	let (save_x, save_y) = (right(140), height.saturating_sub(52 * s));
 	let on_save = (save_x..save_x + 120 * s).contains(&x) && (save_y..save_y + 36 * s).contains(&y);
+	if page == SettingsPage::Diagnostics {
+		return diagnostics_target((x, y), (width, height), s);
+	}
 	if page != SettingsPage::Main {
 		if in_header && (right(164)..right(24)).contains(&x) {
 			return Some(SettingsTarget::Back);
@@ -189,23 +197,21 @@ mod tests {
 	#[test]
 	fn clicks_map_to_main_page_controls() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Main);
-		assert_eq!(
-			target(680, 30),
-			Some(SettingsTarget::Open(SettingsPage::About))
-		);
-		assert_eq!(
-			target(570, 30),
-			Some(SettingsTarget::Open(SettingsPage::Shortcuts))
-		);
-		assert_eq!(
-			target(460, 30),
-			Some(SettingsTarget::Open(SettingsPage::Layout))
-		);
-		assert_eq!(
-			target(350, 30),
-			Some(SettingsTarget::Open(SettingsPage::Fonts))
-		);
-		assert_eq!(target(250, 30), None);
+		// Five buttons 96 wide and 8 apart, the last 24 from the right edge.
+		for (x, page) in [
+			(640, SettingsPage::About),
+			(735, SettingsPage::About),
+			(536, SettingsPage::Diagnostics),
+			(631, SettingsPage::Diagnostics),
+			(480, SettingsPage::Shortcuts),
+			(380, SettingsPage::Layout),
+			(224, SettingsPage::Fonts),
+		] {
+			assert_eq!(target(x, 30), Some(SettingsTarget::Open(page)), "x {x}");
+		}
+		for x in [223, 320, 327, 632, 639, 736] {
+			assert_eq!(target(x, 30), None, "x {x}");
+		}
 		assert_eq!(target(630, 600), Some(SettingsTarget::Save));
 		assert_eq!(target(30, 240), Some(SettingsTarget::ChooseWallpaper));
 		assert_eq!(target(200, 240), Some(SettingsTarget::ClearWallpaper));
@@ -312,13 +318,18 @@ mod tests {
 
 	#[test]
 	fn header_buttons_clear_the_title_in_a_small_window() {
-		// "Poopterm Settings" ends near x = 210 at the base size.
+		// "Settings" ends near x = 110 at the base size.
 		let leftmost = HEADER_BUTTONS
 			.iter()
 			.map(|(_, offset, ..)| offset)
 			.max()
 			.unwrap();
-		assert!(MIN_SIZE.0 - leftmost >= 212);
+		assert!(MIN_SIZE.0 - leftmost >= 136);
+		// The buttons sit 8 apart without overlapping.
+		for pair in HEADER_BUTTONS.windows(2) {
+			let ((_, left, width, _), (_, right, ..)) = (pair[0], pair[1]);
+			assert_eq!(left - width - right, 8, "{pair:?}");
+		}
 	}
 
 	#[test]

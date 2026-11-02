@@ -14,6 +14,7 @@ use crate::{
 		},
 	},
 	render::{damage::GridDamage, glyphs::FontSet, scene::Scene},
+	ui::diagnostics::{Drawing, Reason},
 };
 use winit::raw_window_handle::{
 	HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -75,6 +76,14 @@ pub(super) fn next(drawn: Result<Drawn, Error>) -> Next {
 /// while the GPU still draws.
 pub(super) fn remembers(keeps: bool, next: &Next) -> bool {
 	keeps && !matches!(next, Next::Abandon(_))
+}
+
+/// Records in `drawing` that software draws the main window once a frame
+/// came to `next` = [`Next::Abandon`], with the GPU's error as the reason.
+pub(super) fn drawn_as(drawing: &mut Drawing, next: &Next) {
+	if let Next::Abandon(error) = next {
+		*drawing = Drawing::Software(Reason::Abandoned(error.clone()));
+	}
 }
 
 /// The renderer to draw a window's next frame with, after its `gpu` drew one
@@ -157,6 +166,11 @@ impl<W> Gpu<W> {
 			pen: QuadPen::new((0, 0), atlas),
 			window,
 		}
+	}
+
+	/// The name of the device it draws on.
+	pub(super) fn device_name(&self) -> &str {
+		self.gpu.device_name()
 	}
 
 	/// The window it draws in.

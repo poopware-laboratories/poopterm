@@ -87,13 +87,6 @@ pub(crate) fn warn(message: fmt::Arguments) {
 }
 
 /// A copy of the kept warnings, oldest first, and how many were dropped.
-#[cfg_attr(
-	not(test),
-	expect(
-		dead_code,
-		reason = "the Diagnostics page reads it in the next pull request"
-	)
-)]
 pub(crate) fn recent() -> (Vec<Warning>, usize) {
 	let ring = ring();
 	(ring.warnings().cloned().collect(), ring.dropped())

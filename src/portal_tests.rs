@@ -132,11 +132,13 @@ fn portals_older_than_read_one_are_asked_with_read() {
 	let mut client = Connection::connect(&bus.address, None).unwrap();
 	let layout = button_layout(&mut client).unwrap();
 	assert_eq!((layout.left, layout.right), (vec![], vec![Close]));
-	let calls: Vec<_> = seen
-		.try_iter()
+	// The portal may note a call after replying to it: wait for each.
+	let calls: Vec<_> = (0..2)
+		.map(|_| seen.recv_timeout(Duration::from_secs(5)).unwrap())
 		.map(|call| member(&call).to_owned())
 		.collect();
 	assert_eq!(calls, ["ReadOne", "Read"]);
+	assert!(seen.try_recv().is_err(), "no third call");
 }
 
 #[test]

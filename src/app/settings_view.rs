@@ -3,6 +3,7 @@
 //! constants.
 use super::*;
 use super::{
+	settings_diagnostics::compose_diagnostics,
 	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
 	settings_pen::Pen,
 };
@@ -146,6 +147,8 @@ impl App {
 				&& cursor.1 >= y as f64
 				&& cursor.1 < (y + h) as f64
 		};
+		let diagnostics =
+			(self.settings_editor.page == SettingsPage::Diagnostics).then(|| self.diagnostics());
 		let editor = &self.settings_editor;
 		let mut pen = Pen {
 			fonts: &mut self.ui_fonts,
@@ -154,6 +157,10 @@ impl App {
 			color: self.theme.fg,
 			scale,
 		};
+		if let Some(diagnostics) = diagnostics {
+			let (section, status) = (editor.diagnostics_section, &editor.copied);
+			return compose_diagnostics(&diagnostics, section, status, style, p, &mut pen, &hovered);
+		}
 		let x = 24 * scale;
 		match editor.page {
 			SettingsPage::About => {
@@ -251,13 +258,15 @@ impl App {
 				}
 			}
 			SettingsPage::Main => compose_main_settings(editor, style, p, &mut pen, &hovered),
+			// Drawn above, with its own footer.
+			SettingsPage::Diagnostics => return,
 		}
-		pen.footer(p, style, &editor.status, &hovered);
+		pen.footer(p, style, ("Save", 120), &editor.status, &hovered);
 	}
 }
 
 /// The main page: theme, wallpaper, steppers and session restore.
-fn compose_main_settings(
+pub(super) fn compose_main_settings(
 	editor: &SettingsEditor,
 	style: ButtonStyle,
 	p: &mut Scene,
@@ -267,7 +276,7 @@ fn compose_main_settings(
 	let (width, s) = (p.width, pen.scale);
 	let x = 24 * s;
 	let content_w = width.saturating_sub(48 * s);
-	pen.text(p, x, 24, "Poopterm Settings", 1.0);
+	pen.text(p, x, 24, "Settings", 1.0);
 	for (_, offset, button_w, label) in HEADER_BUTTONS {
 		let rect = (
 			width.saturating_sub(offset * s),

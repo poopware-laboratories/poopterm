@@ -6,7 +6,14 @@ use super::{
 	*,
 };
 use crate::input::shortcuts::{ShortcutAction, Shortcuts};
-use crate::ui::font_size::{SETTINGS_MAX, SETTINGS_MIN, SETTINGS_STEP};
+use crate::{
+	render::backend,
+	ui::{
+		diagnostics::{Diagnostics, report},
+		diagnostics_page::{Section, copied, gather},
+		font_size::{SETTINGS_MAX, SETTINGS_MIN, SETTINGS_STEP},
+	},
+};
 use winit::{dpi::LogicalSize, event::MouseScrollDelta};
 
 /// Unsaved preference edits shown in the Settings window.
@@ -21,6 +28,10 @@ pub(crate) struct SettingsEditor {
 	pub(crate) shortcuts: Shortcuts,
 	/// Installed families are listed when the Fonts page first opens.
 	pub(crate) fonts: FontPicker,
+	/// The Diagnostics section shown.
+	pub(crate) diagnostics_section: Section,
+	/// What Copy report came to, empty until it is clicked.
+	pub(crate) copied: String,
 }
 
 impl SettingsEditor {
@@ -43,6 +54,8 @@ impl SettingsEditor {
 				Vec::new(),
 				&read_config_value("font_family").unwrap_or_default(),
 			),
+			diagnostics_section: Section::default(),
+			copied: String::new(),
 		}
 	}
 
@@ -51,6 +64,7 @@ impl SettingsEditor {
 	pub(super) fn open(&mut self, page: SettingsPage) {
 		self.page = page;
 		self.recording_shortcut = None;
+		self.copied.clear();
 		if page == SettingsPage::Fonts && self.fonts.families.is_empty() {
 			self.fonts.families = crate::fonts::system_fonts().monospace_families();
 			if std::env::var_os("POOPTERM_FONT").is_some()
@@ -124,7 +138,7 @@ impl App {
 				.expect("failed to create settings window"),
 		);
 		let renderer = renderer::Renderer::new(window.clone(), self.preferences.renderer);
-		let mut surface = renderer.expect("settings surface");
+		let (mut surface, _) = renderer.expect("settings surface");
 		let size = window.inner_size();
 		surface.resize(size.width.max(1), size.height.max(1));
 		self.settings_width = size.width;
@@ -300,8 +314,16 @@ impl App {
 			self.settings_cursor_pos.1.max(0.0) as usize,
 		);
 		let size = (self.settings_width as usize, self.settings_height as usize);
+		let target = settings_target(point, size, scale, self.settings_editor.page);
+		// pr-check: window glue: puts the report on the real clipboard
+		if target == Some(SettingsTarget::CopyReport) {
+			let written = clipboard_write(&report(&self.diagnostics()));
+			self.settings_editor.copied = copied(written);
+			return self.redraw_settings();
+		}
+		// pr-check: end window glue
 		let editor = &mut self.settings_editor;
-		match settings_target(point, size, scale, editor.page) {
+		match target {
 			Some(SettingsTarget::Open(page)) => editor.open(page),
 			Some(SettingsTarget::FontRow(row)) => {
 				if let Some(entry) = editor.fonts.entry_at(row) {
@@ -346,10 +368,25 @@ impl App {
 			}
 			Some(SettingsTarget::Step(row, step)) => editor.step(row, step),
 			Some(SettingsTarget::Theme(step)) => editor.theme = step_theme(editor.theme, step),
-			None => {}
+			Some(SettingsTarget::Section(section)) => editor.diagnostics_section = section,
+			Some(SettingsTarget::CopyReport) | None => {}
 		}
 		self.redraw_settings();
 	}
+
+	/// What the Diagnostics page shows now.
+	// pr-check: window glue: reads the real renderer, environment and warnings
+	pub(super) fn diagnostics(&self) -> Diagnostics {
+		let variable = std::env::var(backend::VARIABLE).ok();
+		let preference = backend::preference(self.preferences.renderer, variable.as_deref());
+		let device = self.renderer.as_ref().and_then(renderer::Renderer::device);
+		let (home, recent) = (
+			std::env::var_os("HOME").map(PathBuf::from),
+			crate::warnings::recent(),
+		);
+		gather(self.drawing.clone(), preference, device, recent, home)
+	}
+	// pr-check: end window glue
 
 	fn choose_wallpaper(&mut self) {
 		let picked = self.settings_window.as_ref().and_then(|window| {

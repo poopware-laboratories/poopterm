@@ -59,11 +59,13 @@ pub(crate) enum Reason {
 	Asked,
 	/// No GPU renderer for this platform or kind of window yet.
 	Unsupported,
-	/// The only device is drawn by the CPU, slower than our software.
-	CpuDevice,
 	/// Vulkan could not start, as said.
 	Unavailable(String),
 	/// The GPU failed while drawing, as said.
+	#[cfg_attr(
+		all(target_os = "macos", not(test)),
+		expect(dead_code, reason = "macOS has no GPU renderer to fail yet")
+	)]
 	Abandoned(String),
 }
 
@@ -72,9 +74,6 @@ impl Reason {
 		clean(&match self {
 			Self::Asked => "renderer = \"software\" in config.toml or POOPTERM_RENDERER".into(),
 			Self::Unsupported => "No GPU renderer for this platform or window system yet".into(),
-			Self::CpuDevice => {
-				"The only Vulkan device runs on the CPU; renderer = \"gpu\" uses it".into()
-			}
 			Self::Unavailable(error) => format!("Vulkan unavailable: {error}"),
 			Self::Abandoned(error) => format!("The GPU failed while drawing: {error}"),
 		})
@@ -86,6 +85,17 @@ pub(crate) struct Status {
 	pub(crate) feature: Feature,
 	pub(crate) accelerated: bool,
 	pub(crate) detail: String,
+}
+
+impl Status {
+	/// How the feature is drawn, in two words or three.
+	pub(crate) fn how(&self) -> &'static str {
+		if self.accelerated {
+			"Hardware accelerated"
+		} else {
+			"Software only"
+		}
+	}
 }
 
 /// Each feature's status, in [`Feature::ALL`] order.
@@ -155,11 +165,7 @@ fn row(out: &mut String, label: &str, value: &str) {
 pub(crate) fn report(diagnostics: &Diagnostics) -> String {
 	let mut out = format!("Poopterm {} diagnostics\n\nGraphics\n", diagnostics.version);
 	for status in statuses(&diagnostics.drawing) {
-		let how = if status.accelerated {
-			"Hardware accelerated"
-		} else {
-			"Software only"
-		};
+		let how = status.how();
 		row(
 			&mut out,
 			status.feature.name(),

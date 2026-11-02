@@ -19,7 +19,10 @@ const STYLE: ButtonStyle = ButtonStyle {
 
 /// Draws with a pen at `scale` on a 900×600 logical window and returns the
 /// recorded commands.
-fn record(scale: usize, draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle)) -> Vec<Command> {
+pub(super) fn record(
+	scale: usize,
+	draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle),
+) -> Vec<Command> {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pen = Pen {
 		fonts: &mut fonts,
@@ -33,7 +36,7 @@ fn record(scale: usize, draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle)) ->
 	scene.commands
 }
 
-fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
+pub(super) fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
 	let button = |command: &Command| match *command {
 		Command::Button(rect, _, lit) => Some((rect, lit)),
 		_ => None,
@@ -41,7 +44,7 @@ fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
 	commands.iter().filter_map(button).collect()
 }
 
-fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
+pub(super) fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
 	let text = |command: &Command| match command {
 		Command::Text { text, at, .. } => Some((text.clone(), *at)),
 		_ => None,
@@ -49,7 +52,7 @@ fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
 	commands.iter().filter_map(text).collect()
 }
 
-fn inside((x, y): (usize, usize), (rx, ry, rw, rh): Rect) -> bool {
+pub(super) fn inside((x, y): (usize, usize), (rx, ry, rw, rh): Rect) -> bool {
 	x >= rx && y >= ry && x < rx + rw && y < ry + rh
 }
 
@@ -148,7 +151,7 @@ fn the_footer_saves_at_the_bottom_right_and_shows_the_status_at_the_left() {
 		let s = scale;
 		let save = ((900 - 140) * s, (600 - 52) * s, 120 * s, 36 * s);
 		let commands = record(scale, |pen, p, style| {
-			pen.footer(p, style, "Saved", &|_, _, _, _| false)
+			pen.footer(p, style, ("Save", 120), "Saved", &|_, _, _, _| false)
 		});
 		assert_eq!(buttons(&commands), [(save, false)]);
 		let texts = texts(&commands);
@@ -179,5 +182,111 @@ fn centered_text_sits_inside_its_rectangle() {
 			left > 0 && left < rect.2 / 2,
 			"{label} starts in the left half: {texts:?}"
 		);
+	}
+}
+
+/// What one character of the bundled monospaced font costs when fitting
+/// at `size`: its advance, rounded up.
+fn cell(pen: &mut Pen, size: f32) -> usize {
+	let px = pen.px * size;
+	pen.fonts.primary().metrics('M', px).advance_width.ceil() as usize
+}
+
+#[test]
+fn fitting_keeps_text_that_fits_and_cuts_the_rest_within_the_width() {
+	let text = "renderer = \"software\" in config.toml or POOPTERM_RENDERER";
+	let length = text.chars().count();
+	for (scale, size) in [(1, 0.72), (2, 0.68), (1, 1.3)] {
+		record(scale, |pen, _, _| {
+			let c = cell(pen, size);
+			assert_eq!(pen.fit(text, length * c, size), text);
+			for room in [length * c - 1, length * c / 2, length * c / 5, c] {
+				let fitted = pen.fit(text, room, size);
+				let kept = fitted
+					.strip_suffix('…')
+					.expect("cut text ends in an ellipsis");
+				assert!(text.starts_with(kept), "{fitted:?}");
+				assert!(pen.width(&fitted, size) <= room, "{fitted:?} in {room}");
+				// As many characters as fit beside the ellipsis, less spaces
+				// cut from the end.
+				let most = room / c - 1;
+				assert!(kept.chars().count() <= most, "{fitted:?} in {room}");
+				assert_eq!(kept, text.chars().take(most).collect::<String>().trim_end());
+			}
+			assert_eq!(pen.fit(text, c - 1, size), "", "not even the ellipsis fits");
+			assert_eq!(pen.fit("", 0, size), "");
+		});
+	}
+}
+
+#[test]
+fn fitting_measures_each_character_of_the_text() {
+	record(1, |pen, _, _| {
+		let c = cell(pen, 0.72);
+		assert_eq!(pen.fit("abcdefghij", 10 * c, 0.72), "abcdefghij");
+		assert_eq!(pen.fit("abcdefghijk", 10 * c, 0.72), "abcdefghi…");
+		assert_eq!(pen.fit("abcdefghijk", 11 * c, 0.72), "abcdefghijk");
+	});
+}
+
+#[test]
+fn a_footer_button_of_any_width_keeps_the_right_margin_and_centers_its_label() {
+	for scale in [1, 2] {
+		let s = scale;
+		let commands = record(scale, |pen, p, style| {
+			pen.footer(p, style, ("Copy report", 140), "", &|_, _, _, _| false)
+		});
+		let copy = ((900 - 160) * s, (600 - 52) * s, 140 * s, 36 * s);
+		assert_eq!(buttons(&commands), [(copy, false)]);
+		let (label, (x, _)) = texts(&commands).swap_remove(0);
+		assert_eq!(label, "Copy report");
+		let (left, right) = (x - copy.0, (copy.0 + copy.2) - x);
+		assert!(
+			left > 0 && left < right,
+			"x{s}: starts in the left half at {x}"
+		);
+	}
+}
+
+#[test]
+fn a_hovered_footer_button_lights() {
+	let commands = record(1, |pen, p, style| {
+		pen.footer(p, style, ("Save", 120), "", &|x, _, _, _| x == 760)
+	});
+	assert_eq!(buttons(&commands), [((760, 548, 120, 36), true)]);
+}
+
+#[test]
+fn width_sums_the_advances_of_every_character() {
+	for (scale, size) in [(1, 0.76), (2, 0.76), (1, 1.0)] {
+		record(scale, |pen, _, _| {
+			let font = Font::from_bytes(BUNDLED, 0).unwrap();
+			let px = pen.px * size;
+			let advance = |c| font.metrics(c, px).advance_width;
+			for text in ["", "a", "Diagnostics", "Copy report", "é€"] {
+				let sum: f32 = text.chars().map(advance).sum();
+				assert_eq!(pen.width(text, size), sum.ceil() as usize, "{text:?}");
+			}
+		});
+	}
+}
+
+#[test]
+fn centered_labels_leave_equal_room_on_both_sides() {
+	for scale in [1, 2] {
+		for label in ["Log", "Graphics", "Diagnostics"] {
+			let rect = (24 * scale, 76 * scale, 96 * scale, 32 * scale);
+			let commands = record(scale, |pen, p, _| {
+				pen.centered(p, rect, label, 0.76);
+				let width = pen.width(label, 0.76);
+				let (x, _) = texts(&p.commands)[0].1;
+				let (left, right) = (x - rect.0, rect.0 + rect.2 - (x + width));
+				assert!(
+					left.abs_diff(right) <= 1,
+					"x{scale} {label}: {left} | {right}"
+				);
+			});
+			assert_eq!(texts(&commands).len(), 1);
+		}
 	}
 }

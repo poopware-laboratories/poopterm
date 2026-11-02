@@ -8,7 +8,7 @@ use std::{
 };
 
 /// Every reason, and what each feature says for it.
-fn reasons() -> [(Reason, &'static str); 5] {
+fn reasons() -> [(Reason, &'static str); 4] {
 	[
 		(
 			Reason::Asked,
@@ -17,10 +17,6 @@ fn reasons() -> [(Reason, &'static str); 5] {
 		(
 			Reason::Unsupported,
 			"No GPU renderer for this platform or window system yet",
-		),
-		(
-			Reason::CpuDevice,
-			"The only Vulkan device runs on the CPU; renderer = \"gpu\" uses it",
 		),
 		(
 			Reason::Unavailable("no Vulkan loader".into()),

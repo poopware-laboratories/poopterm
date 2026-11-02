@@ -21,8 +21,13 @@ mod renderer;
 mod repaint;
 mod search;
 mod settings;
+mod settings_diagnostics;
+#[cfg(test)]
+mod settings_diagnostics_tests;
 mod settings_draw;
 mod settings_fonts;
+#[cfg(test)]
+mod settings_header_tests;
 mod settings_hit;
 mod settings_keys;
 mod settings_pen;
@@ -152,6 +157,9 @@ pub(crate) struct App {
 	/// The pointer shape last set on the window.
 	pointer_icon: winit::window::CursorIcon,
 	pacer: frame_pacer::FramePacer,
+	/// How the main window draws, for the Diagnostics page: set when the
+	/// window opens, and when the GPU gives it up.
+	drawing: crate::ui::diagnostics::Drawing,
 	/// The active terminal's visible screen, copied for rendering.
 	frame: Frame,
 	/// Back buffer holding the last frame, for partial redraws.
@@ -401,6 +409,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		notifications: notifications::Notifications::default(),
 		hovered_link: None,
 		pointer_icon: winit::window::CursorIcon::Default,
+		drawing: crate::ui::diagnostics::Drawing::Gpu,
 		pacer: frame_pacer::FramePacer::new(std::time::Duration::from_micros(16_667)),
 		frame: Frame::default(),
 		canvas: canvas::Canvas::new(),
