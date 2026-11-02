@@ -21,6 +21,9 @@ pub(crate) struct OutputQueue {
 	batch_target: usize,
 	#[cfg(test)]
 	coalescing: std::sync::atomic::AtomicBool,
+	/// Notifications sent: (data, space).
+	#[cfg(test)]
+	wakes: [std::sync::atomic::AtomicUsize; 2],
 }
 
 #[derive(Default)]
@@ -48,12 +51,46 @@ impl OutputQueue {
 			batch_target: limit.clamp(1, 4 << 10),
 			#[cfg(test)]
 			coalescing: std::sync::atomic::AtomicBool::new(false),
+			#[cfg(test)]
+			wakes: Default::default(),
 		}
 	}
 
 	/// Bytes the queue holds before the reader waits.
 	pub(crate) fn limit(&self) -> usize {
 		self.limit
+	}
+
+	/// The parser's batch target; none where it does not batch.
+	fn batch_target(&self) -> usize {
+		#[cfg(any(target_os = "macos", test))]
+		return self.batch_target;
+		#[cfg(not(any(target_os = "macos", test)))]
+		usize::MAX
+	}
+
+	/// Wakes the parser, waiting for bytes.
+	fn wake_parser(&self) {
+		#[cfg(test)]
+		self.wakes[0].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		self.data.notify_one();
+	}
+
+	/// Wakes the reader, waiting for space.
+	fn wake_reader(&self) {
+		#[cfg(test)]
+		self.wakes[1].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		self.space.notify_all();
+	}
+
+	/// The notifications sent so far: (data, space).
+	#[cfg(test)]
+	fn wakes(&self) -> (usize, usize) {
+		let [data, space] = self
+			.wakes
+			.each_ref()
+			.map(|n| n.load(std::sync::atomic::Ordering::Relaxed));
+		(data, space)
 	}
 
 	fn lock(&self) -> MutexGuard<'_, State> {
@@ -72,18 +109,13 @@ impl OutputQueue {
 				.wait(state)
 				.unwrap_or_else(|poisoned| poisoned.into_inner());
 		}
-		#[cfg(any(target_os = "macos", test))]
-		let previous = state.bytes.len();
+		let before = state.bytes.len();
 		state.bytes.extend_from_slice(data);
 		#[cfg(any(target_os = "macos", test))]
-		{
-			state.burst.received(data.len(), Instant::now());
-			if previous == 0 || (previous < self.batch_target && state.bytes.len() >= self.batch_target) {
-				self.data.notify_one();
-			}
+		state.burst.received(data.len(), Instant::now());
+		if wakes_parser(before, state.bytes.len(), self.batch_target()) {
+			self.wake_parser();
 		}
-		#[cfg(not(any(target_os = "macos", test)))]
-		self.data.notify_one();
 	}
 
 	/// Waits for queued bytes and moves them into `out`. Returns false once
@@ -122,9 +154,13 @@ impl OutputQueue {
 				.coalescing
 				.store(false, std::sync::atomic::Ordering::Release);
 		}
+		// The reader waits only while the queue is full.
+		let full = state.bytes.len() >= self.limit;
 		// Swapping keeps both buffers' capacity.
 		std::mem::swap(out, &mut state.bytes);
-		self.space.notify_all();
+		if full {
+			self.wake_reader();
+		}
 		true
 	}
 
@@ -135,6 +171,13 @@ impl OutputQueue {
 		self.space.notify_all();
 		self.data.notify_all();
 	}
+}
+
+/// Whether a push that took the queue from `before` to `after` bytes must
+/// wake the parser, which sleeps only on an empty queue or, batching, below
+/// `batch_target` bytes.
+fn wakes_parser(before: usize, after: usize, batch_target: usize) -> bool {
+	after > before && (before == 0 || (before < batch_target && after >= batch_target))
 }
 
 #[cfg(test)]
@@ -204,3 +247,7 @@ mod batch_tests;
 #[cfg(test)]
 #[path = "queue_stream_tests.rs"]
 mod stream_tests;
+
+#[cfg(test)]
+#[path = "queue_wake_tests.rs"]
+mod wake_tests;
