@@ -13,6 +13,7 @@ use crate::{
 		damage::GridDamage,
 	},
 	term::Frame,
+	ui::{diagnostics::Drawing, diagnostics_page::started},
 };
 use std::num::NonZeroU32;
 
@@ -157,7 +158,12 @@ impl Software {
 }
 
 impl Renderer {
-	pub(super) fn new(window: Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
+	/// The renderer for `window`, and how it draws: on the GPU, or in
+	/// software and why.
+	pub(super) fn new(
+		window: Arc<Window>,
+		preference: RendererPreference,
+	) -> Result<(Self, Drawing), String> {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(preference, variable.as_deref());
 		let selected = select(preference, |backend| match backend {
@@ -172,8 +178,25 @@ impl Renderer {
 				selected.backend.name()
 			);
 		}
-		Ok(selected.value)
+		let gpu_failure = selected
+			.failures
+			.iter()
+			.find(|(tried, _)| *tried == Backend::Gpu);
+		let gpu_here = cfg!(any(target_os = "linux", target_os = "freebsd"));
+		let failure = gpu_failure.map(|(_, error)| error.as_str());
+		Ok((selected.value, started(selected.backend, failure, gpu_here)))
 	}
+
+	/// The device the GPU draws the window on, when it does.
+	// pr-check: window glue: only a real window has a renderer
+	pub(super) fn device(&self) -> Option<&str> {
+		match self {
+			Self::Software(_) => None,
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			Self::Gpu(gpu) => Some(gpu.device_name()),
+		}
+	}
+	// pr-check: end window glue
 
 	// pr-check: window glue: the GPU draws in a real window's surface
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]

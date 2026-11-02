@@ -57,12 +57,11 @@ fn text(random: &mut Random, home: &str) -> String {
 }
 
 fn drawing(random: &mut Random) -> Drawing {
-	match random.below(6) {
+	match random.below(5) {
 		0 => Drawing::Gpu,
 		1 => Drawing::Software(Reason::Asked),
 		2 => Drawing::Software(Reason::Unsupported),
-		3 => Drawing::Software(Reason::CpuDevice),
-		4 => Drawing::Software(Reason::Unavailable(random.pick(&WORDS).into())),
+		3 => Drawing::Software(Reason::Unavailable(random.pick(&WORDS).into())),
 		_ => Drawing::Software(Reason::Abandoned(random.pick(&WORDS).into())),
 	}
 }

@@ -43,10 +43,9 @@ impl ApplicationHandler<UserEvent> for App {
 			let term = self.active_term();
 			(term.cols, term.rows)
 		};
-		self.renderer = Some(
-			renderer::Renderer::new(window.clone(), self.preferences.renderer)
-				.expect("failed to create renderer"),
-		);
+		let (renderer, drawing) = renderer::Renderer::new(window.clone(), self.preferences.renderer)
+			.expect("failed to create renderer");
+		(self.renderer, self.drawing) = (Some(renderer), drawing);
 		self.window = Some(window);
 		// pr-check: window glue: runs once the real window exists
 		self.apply_scale();

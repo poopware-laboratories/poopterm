@@ -59,8 +59,6 @@ pub(crate) enum Reason {
 	Asked,
 	/// No GPU renderer for this platform or kind of window yet.
 	Unsupported,
-	/// The only device is drawn by the CPU, slower than our software.
-	CpuDevice,
 	/// Vulkan could not start, as said.
 	Unavailable(String),
 	/// The GPU failed while drawing, as said.
@@ -72,9 +70,6 @@ impl Reason {
 		clean(&match self {
 			Self::Asked => "renderer = \"software\" in config.toml or POOPTERM_RENDERER".into(),
 			Self::Unsupported => "No GPU renderer for this platform or window system yet".into(),
-			Self::CpuDevice => {
-				"The only Vulkan device runs on the CPU; renderer = \"gpu\" uses it".into()
-			}
 			Self::Unavailable(error) => format!("Vulkan unavailable: {error}"),
 			Self::Abandoned(error) => format!("The GPU failed while drawing: {error}"),
 		})

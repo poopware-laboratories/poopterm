@@ -1,7 +1,7 @@
 //! Tests of drawing the main window's frames on the GPU against the fake
 //! Vulkan driver: the whole frame drawn as quads, a frame the GPU cannot
 //! draw handing the window to software, and what each outcome leads to.
-use super::{Gpu, Next};
+use super::{Gpu, Next, drawn_as};
 use crate::{
 	fonts::Metrics,
 	gpu::{
@@ -19,6 +19,7 @@ use crate::{
 		glyphs::Glyph,
 		pen::{Ink, Pen},
 	},
+	ui::diagnostics::{Drawing, Reason},
 };
 
 const SIZE: (usize, usize) = (40, 30);
@@ -241,4 +242,32 @@ fn a_frame_refused_or_failed_leaves_the_pen_without_rows() {
 	fake_failing(None);
 	assert!(!gpu.keeps_rows());
 	close(gpu.gpu);
+}
+
+#[test]
+fn the_gpu_names_the_device_it_draws_on_for_the_diagnostics_page() {
+	let gpu = gpu();
+	// The fake driver's window draws on its integrated device.
+	assert_eq!(gpu.device_name(), "Integrated");
+	close(gpu.gpu);
+}
+
+#[test]
+fn frames_the_gpu_drew_leave_the_window_drawn_on_it() {
+	for next in [Next::Done, Next::Redraw] {
+		let mut drawing = Drawing::Gpu;
+		drawn_as(&mut drawing, &next);
+		assert_eq!(drawing, Drawing::Gpu, "{next:?}");
+	}
+}
+
+#[test]
+fn a_frame_the_gpu_abandoned_says_why_the_window_is_now_software() {
+	let mut drawing = Drawing::Gpu;
+	drawn_as(&mut drawing, &Next::Abandon("device lost".into()));
+	let abandoned = Drawing::Software(Reason::Abandoned("device lost".into()));
+	assert_eq!(drawing, abandoned);
+	// Software draws later frames, so nothing changes the reason back.
+	drawn_as(&mut drawing, &Next::Done);
+	assert_eq!(drawing, abandoned);
 }

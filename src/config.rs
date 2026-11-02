@@ -31,6 +31,15 @@ impl RendererPreference {
 		}
 	}
 
+	/// The preference's name in `config.toml`, which [`Self::named`] reads.
+	pub(crate) const fn name(self) -> &'static str {
+		match self {
+			Self::Auto => "auto",
+			Self::Software => "software",
+			Self::Gpu => "gpu",
+		}
+	}
+
 	fn parse(value: Option<String>) -> Self {
 		value.as_deref().and_then(Self::named).unwrap_or_default()
 	}

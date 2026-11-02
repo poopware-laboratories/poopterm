@@ -19,7 +19,10 @@ const STYLE: ButtonStyle = ButtonStyle {
 
 /// Draws with a pen at `scale` on a 900×600 logical window and returns the
 /// recorded commands.
-fn record(scale: usize, draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle)) -> Vec<Command> {
+pub(super) fn record(
+	scale: usize,
+	draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle),
+) -> Vec<Command> {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pen = Pen {
 		fonts: &mut fonts,
@@ -33,7 +36,7 @@ fn record(scale: usize, draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle)) ->
 	scene.commands
 }
 
-fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
+pub(super) fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
 	let button = |command: &Command| match *command {
 		Command::Button(rect, _, lit) => Some((rect, lit)),
 		_ => None,
@@ -41,7 +44,7 @@ fn buttons(commands: &[Command]) -> Vec<(Rect, bool)> {
 	commands.iter().filter_map(button).collect()
 }
 
-fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
+pub(super) fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
 	let text = |command: &Command| match command {
 		Command::Text { text, at, .. } => Some((text.clone(), *at)),
 		_ => None,
@@ -49,7 +52,7 @@ fn texts(commands: &[Command]) -> Vec<(String, (usize, usize))> {
 	commands.iter().filter_map(text).collect()
 }
 
-fn inside((x, y): (usize, usize), (rx, ry, rw, rh): Rect) -> bool {
+pub(super) fn inside((x, y): (usize, usize), (rx, ry, rw, rh): Rect) -> bool {
 	x >= rx && y >= ry && x < rx + rw && y < ry + rh
 }
 
@@ -148,7 +151,7 @@ fn the_footer_saves_at_the_bottom_right_and_shows_the_status_at_the_left() {
 		let s = scale;
 		let save = ((900 - 140) * s, (600 - 52) * s, 120 * s, 36 * s);
 		let commands = record(scale, |pen, p, style| {
-			pen.footer(p, style, "Saved", &|_, _, _, _| false)
+			pen.footer(p, style, ("Save", 120), "Saved", &|_, _, _, _| false)
 		});
 		assert_eq!(buttons(&commands), [(save, false)]);
 		let texts = texts(&commands);

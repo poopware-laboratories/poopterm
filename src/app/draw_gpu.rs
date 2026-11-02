@@ -6,7 +6,7 @@
 use super::{
 	App,
 	canvas::{DrawKey, Plan},
-	gpu::{Gpu, after_drawn, remembers},
+	gpu::{Gpu, after_drawn, drawn_as, remembers},
 	renderer::Renderer,
 };
 use crate::gpu::quads::QuadPen;
@@ -39,6 +39,7 @@ impl App {
 			// Software would redraw in part pixels that never held the grid.
 			self.canvas.invalidate();
 		}
+		drawn_as(&mut self.drawing, &next);
 		let again = || self.request_redraw();
 		after_drawn(gpu, next, again, Renderer::Gpu, Renderer::after_gpu)
 	}

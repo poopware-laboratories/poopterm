@@ -97,20 +97,33 @@ impl Pen<'_> {
 		self.text(p, x + 16 * s, row + 8, state, 0.82);
 	}
 
-	/// The Save button and the status line at the bottom of every page.
+	/// How many characters of text `size` times the base size fit in
+	/// `width` physical pixels, counting each as wide as `M`.
+	pub(super) fn columns(&mut self, width: usize, size: f32) -> usize {
+		let advance = self
+			.fonts
+			.primary()
+			.metrics('M', self.px * size)
+			.advance_width;
+		(width as f32 / advance.max(1.0)) as usize
+	}
+
+	/// The footer at the bottom of every page: its `button`, labelled and
+	/// as wide as given, at the right, and the status line at the left.
 	pub(super) fn footer(
 		&mut self,
 		p: &mut Scene,
 		style: ButtonStyle,
+		(label, width): (&str, usize),
 		status: &str,
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
 		let s = self.scale;
+		let (save_w, save_h) = (width * s, 36 * s);
 		let (save_x, save_y) = (
-			p.width.saturating_sub(140 * s),
+			p.width.saturating_sub(save_w + 20 * s),
 			p.height.saturating_sub(52 * s),
 		);
-		let (save_w, save_h) = (120 * s, 36 * s);
 		p.button(
 			(save_x, save_y, save_w, save_h),
 			style,
@@ -122,12 +135,13 @@ impl Pen<'_> {
 			.metrics('M', self.px)
 			.advance_width
 			.ceil() as usize;
-		let save_text_x = save_x + save_w.saturating_sub(4 * cell_width) / 2;
+		let label_w = label.chars().count() * cell_width;
+		let save_text_x = save_x + save_w.saturating_sub(label_w) / 2;
 		p.text(
 			self.fonts,
 			save_text_x,
 			save_y + 6 * s,
-			"Save",
+			label,
 			self.px,
 			self.ascent,
 			self.color,
