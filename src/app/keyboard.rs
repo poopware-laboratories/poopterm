@@ -26,7 +26,7 @@ impl App {
 			return;
 		};
 		if let Err(error) = clipboard_write(&text) {
-			eprintln!("poopterm: could not copy command output: {error}");
+			crate::warnings::warning!("could not copy command output: {error}");
 		}
 	}
 

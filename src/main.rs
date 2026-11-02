@@ -65,6 +65,11 @@ mod theme;
 mod ui;
 mod vt;
 mod wallpaper;
+mod warnings;
+#[cfg(test)]
+mod warnings_property_tests;
+#[cfg(test)]
+mod warnings_tests;
 mod width;
 
 use std::{env, error::Error};

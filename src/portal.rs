@@ -61,6 +61,6 @@ pub(crate) fn read_button_layout(
 		.name("desktop settings".into())
 		.spawn(move || done(read().unwrap_or_else(|_| ButtonLayout::fallback())));
 	if let Err(error) = spawned {
-		eprintln!("poopterm: could not read the desktop's window buttons: {error}");
+		crate::warnings::warning!("could not read the desktop's window buttons: {error}");
 	}
 }

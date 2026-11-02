@@ -113,7 +113,7 @@ pub(crate) fn clipboard_read() -> std::io::Result<String> {
 pub(crate) fn write_from_program(write: ClipboardWrite) {
 	thread::spawn(move || {
 		if let Err(error) = write_selection(&write) {
-			eprintln!("poopterm: clipboard write from a program failed: {error}");
+			crate::warnings::warning!("clipboard write from a program failed: {error}");
 		}
 	});
 }

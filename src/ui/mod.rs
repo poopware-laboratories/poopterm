@@ -8,6 +8,18 @@ pub(crate) mod copy;
 pub(crate) mod decorations;
 #[cfg(test)]
 mod decorations_tests;
+#[cfg_attr(
+	not(test),
+	expect(
+		dead_code,
+		reason = "the Diagnostics page draws it in the next pull request"
+	)
+)]
+pub(crate) mod diagnostics;
+#[cfg(test)]
+mod diagnostics_property_tests;
+#[cfg(test)]
+mod diagnostics_tests;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;

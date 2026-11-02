@@ -54,7 +54,8 @@ pub(super) fn after_shown<S>(
 		}
 		Shown::Failed(error) => {
 			again();
-			let failed = |error: &String| eprintln!("poopterm: software renderer unavailable: {error}");
+			let failed =
+				|error: &String| crate::warnings::warning!("software renderer unavailable: {error}");
 			fallback(sink, &error).inspect_err(failed).ok()
 		}
 	}
@@ -107,7 +108,7 @@ impl Software {
 		let window = self.window.clone();
 		// Its buffers go before softbuffer attaches its own.
 		drop(self);
-		eprintln!("poopterm: wayland presenter failed: {error}; using softbuffer");
+		crate::warnings::warning!("wayland presenter failed: {error}; using softbuffer");
 		let size = window.inner_size();
 		let mut software = Self::softbuffer(window)?;
 		software.resize(size.width, size.height);
@@ -165,8 +166,8 @@ impl Renderer {
 		})
 		.map_err(|failures| format_failures(&failures))?;
 		if !selected.failures.is_empty() {
-			eprintln!(
-				"poopterm: {}; using {} renderer",
+			crate::warnings::warning!(
+				"{}; using {} renderer",
 				format_failures(&selected.failures),
 				selected.backend.name()
 			);
@@ -193,7 +194,7 @@ impl Renderer {
 		let window = gpu.window().clone();
 		// Its swapchain goes before software presents in the window.
 		drop(gpu);
-		eprintln!("poopterm: gpu renderer failed: {error}; using software renderer");
+		crate::warnings::warning!("gpu renderer failed: {error}; using software renderer");
 		let size = window.inner_size();
 		let mut renderer = Software::new(window).map(Self::Software)?;
 		renderer.resize(size.width, size.height);
@@ -317,5 +318,30 @@ mod tests {
 	#[test]
 	fn no_failures_produce_no_diagnostic_text() {
 		assert_eq!(format_failures(&[]), "");
+	}
+
+	#[test]
+	fn a_sink_that_failed_with_no_replacement_says_why_in_the_diagnostics_log() {
+		let shown = Shown::Failed("buffer lost".into());
+		let next = follow(shown, Err("no softbuffer (renderer 91aa)".into()));
+		assert_eq!(next, (None, true, Some("buffer lost".into())));
+		let (kept, _) = crate::warnings::recent();
+		let said = "software renderer unavailable: no softbuffer (renderer 91aa)";
+		assert_eq!(
+			kept.iter().filter(|warning| warning.text == said).count(),
+			1
+		);
+	}
+
+	#[test]
+	fn a_sink_replaced_after_a_failure_logs_nothing_of_its_own() {
+		let next = follow(Shown::Failed("lost (renderer 5e02)".into()), Ok(2));
+		assert_eq!(next, (Some(2), true, Some("lost (renderer 5e02)".into())));
+		let (kept, _) = crate::warnings::recent();
+		assert!(
+			!kept
+				.iter()
+				.any(|warning| warning.text.contains("renderer 5e02"))
+		);
 	}
 }

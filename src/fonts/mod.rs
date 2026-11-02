@@ -75,8 +75,8 @@ pub(crate) fn load_fonts() -> (Font, Vec<Font>) {
 		Some((path, index)) => match load_font(&path, index) {
 			Ok(font) => (font, vec![bundled]),
 			Err(error) => {
-				eprintln!(
-					"poopterm: couldn't load font {}: {error}; using bundled font",
+				crate::warnings::warning!(
+					"couldn't load font {}: {error}; using bundled font",
 					path.display()
 				);
 				(bundled, Vec::new())
@@ -133,7 +133,7 @@ fn locate(source: FontSource) -> Option<(PathBuf, u32)> {
 				.find(&family, 400, false)
 				.map(|(path, index)| (path.to_owned(), index));
 			if found.is_none() {
-				eprintln!("poopterm: no installed font family {family:?}; using bundled font");
+				crate::warnings::warning!("no installed font family {family:?}; using bundled font");
 			}
 			found
 		}

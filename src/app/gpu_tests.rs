@@ -155,3 +155,37 @@ fn a_window_whose_gpu_and_software_both_failed_has_no_renderer() {
 	assert_eq!(renderer, None);
 	assert_eq!(calls, ["again", "gpu failed: device lost"]);
 }
+
+fn logged(text: &str) -> bool {
+	crate::warnings::recent()
+		.0
+		.iter()
+		.any(|warning| warning.text == text)
+}
+
+#[test]
+fn a_gpu_with_no_software_to_fall_back_on_says_why_in_the_diagnostics_log() {
+	let (renderer, _) = after(
+		Next::Abandon("lost".into()),
+		Err("no surface (gpu_tests 7f30)"),
+	);
+	assert_eq!(renderer, None);
+	assert!(logged(
+		"software renderer unavailable: no surface (gpu_tests 7f30)"
+	));
+}
+
+#[test]
+fn falling_back_to_software_that_works_logs_nothing_of_its_own() {
+	let (renderer, _) = after(
+		Next::Abandon("lost (gpu_tests 0c94)".into()),
+		Ok("software"),
+	);
+	assert_eq!(renderer.as_deref(), Some("software"));
+	let (kept, _) = crate::warnings::recent();
+	assert!(
+		!kept
+			.iter()
+			.any(|warning| warning.text.contains("gpu_tests 0c94"))
+	);
+}

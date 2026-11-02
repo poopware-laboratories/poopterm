@@ -352,3 +352,29 @@ fn frames_show_on_a_real_compositor_through_the_system_libwayland() {
 	);
 	assert!(done >= 3, "{outcomes:?}");
 }
+
+#[test]
+fn a_presenter_that_cannot_open_says_why_in_the_diagnostics_log() {
+	let surface = (fake_client(), fake_surface(6)).1;
+	let load = || Err::<Client, _>("libwayland-client.so.0: not found (4d1e)".to_owned());
+	// SAFETY: the fake's display and surface live as long as the thread.
+	let presenter = unsafe { open(Some((FAKE_DISPLAY, surface)), load) };
+	assert!(presenter.is_none());
+	let (kept, _) = crate::warnings::recent();
+	let said = "wayland presenter unavailable: libwayland-client.so.0: not found (4d1e)";
+	assert_eq!(
+		kept.iter().filter(|warning| warning.text == said).count(),
+		1
+	);
+}
+
+#[test]
+fn a_window_without_handles_logs_nothing() {
+	// X11 windows never try the presenter, so there is nothing to report.
+	let load = || Err::<Client, _>("never loaded (wayland_tests 2b71)".to_owned());
+	// SAFETY: no handles, so nothing is used.
+	let presenter = unsafe { open(None, load) };
+	assert!(presenter.is_none());
+	let (kept, _) = crate::warnings::recent();
+	assert!(!kept.iter().any(|warning| warning.text.contains("2b71")));
+}

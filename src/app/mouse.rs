@@ -46,7 +46,7 @@ impl App {
 		if let Some(text) = self.selected_text()
 			&& let Err(error) = clipboard_write(&text)
 		{
-			eprintln!("poopterm: clipboard copy failed: {error}");
+			crate::warnings::warning!("clipboard copy failed: {error}");
 		}
 	}
 
@@ -97,7 +97,7 @@ impl App {
 			None => return false,
 		};
 		if let Err(error) = result {
-			eprintln!("poopterm: could not follow link {target}: {error}");
+			crate::warnings::warning!("could not follow link {target}: {error}");
 		}
 		true
 	}
@@ -133,7 +133,7 @@ impl App {
 				let bytes = paste_bytes(&text, self.active_term().bracketed_paste);
 				self.active_session().write(&bytes);
 			}
-			Err(error) => eprintln!("poopterm: clipboard paste failed: {error}"),
+			Err(error) => crate::warnings::warning!("clipboard paste failed: {error}"),
 		}
 	}
 

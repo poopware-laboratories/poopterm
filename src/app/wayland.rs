@@ -61,7 +61,7 @@ pub(super) unsafe fn open(
 		// SAFETY: as the caller vouches.
 		unsafe { Presenter::new(client, display, surface, [0, 0]) }.map_err(describe)
 	});
-	let failed = |error: &String| eprintln!("poopterm: wayland presenter unavailable: {error}");
+	let failed = |error: &String| crate::warnings::warning!("wayland presenter unavailable: {error}");
 	opened.inspect_err(failed).ok()
 }
 

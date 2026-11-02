@@ -115,7 +115,7 @@ impl App {
 					window.request_redraw();
 				}
 			}
-			Err(error) => eprintln!("poopterm: could not open tab: {error}"),
+			Err(error) => crate::warnings::warning!("could not open tab: {error}"),
 		}
 	}
 
@@ -224,7 +224,7 @@ impl App {
 			.map(|session| session.term().cwd.clone())
 			.collect();
 		if let Err(error) = save_session_dirs(&dirs) {
-			eprintln!("poopterm: could not save sessions: {error}");
+			crate::warnings::warning!("could not save sessions: {error}");
 		}
 	}
 }
