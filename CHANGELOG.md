@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.29 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Route presses on the linux window buttons and edges (#231) (ui).
+
 ## 26.11.28 "Lunar Moth" — 2026-11-02
 
 ### Added
