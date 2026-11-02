@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.32 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Show the diagnostics page in settings (#234) (ui).
+
 ## 26.11.31 "Lunar Moth" — 2026-11-02
 
 ### Added
