@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.18 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Draw color glyphs from sbix tables (#220) (fonts).
+
 ## 26.11.17 "Lunar Moth" — 2026-11-01
 
 ### Maintenance
