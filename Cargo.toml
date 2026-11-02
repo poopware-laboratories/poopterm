@@ -56,6 +56,16 @@ inherits = "release"
 debug = "full"
 strip = "none"
 
+# Release speed for tests that need it (differential tests on real fonts,
+# mutation checks): no LTO and parallel, incremental code generation, so the
+# test binary rebuilds in about 4 s instead of 160 s after an edit. Runs a
+# few percent slower than release on some workloads, so never benchmark it.
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+
 [dev-dependencies]
 # Oracle for the generated width table (src/width.rs).
 unicode-width = "^0.2"

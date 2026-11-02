@@ -24,6 +24,7 @@ cargo fmt --check
 cargo build --release                   # binary: target/release/poopterm
 cargo build --profile debugging         # release speed with debug info, assertions, overflow checks, backtraces
 cargo build --profile profiling         # release plus symbols, for perf and callgrind
+cargo test --profile fast               # near release speed, rebuilds in seconds; not for benchmarks
 cargo test --release -- --ignored --nocapture parser_throughput   # parser benchmark
 ```
 

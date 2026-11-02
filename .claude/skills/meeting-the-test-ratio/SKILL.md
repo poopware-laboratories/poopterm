@@ -31,7 +31,8 @@ behavior you have not pinned yet, not a line count to reach.
    `batched_printing_matches_per_character_printing` (`src/term/tests.rs`).
    They also gain random coverage.
 5. **Mutation check.** Break each production line you added (flip a
-   comparison, drop a branch, shift a bound) and run the tests. A mutant
+   comparison, drop a branch, shift a bound) and run the tests (`cargo
+   test --profile fast` when they need release speed). A mutant
    that survives is a missing test; write it. A line no mutant can expose
    does nothing observable: delete it, or comment why it exists.
 
