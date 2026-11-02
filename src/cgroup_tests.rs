@@ -1,6 +1,7 @@
 //! Per-shell cgroups: detecting the unified hierarchy, the memory limit,
 //! the systemd request, and the worker against a fake systemd on a
 //! private bus.
+use crate::scratch_tests::Scratch;
 use std::{io, path::Path, sync::mpsc, thread, time::Duration};
 
 use super::{
@@ -586,10 +587,8 @@ fn nowhere() -> Delegation {
 }
 
 /// A fake delegated cgroup holding only `pid`, laid out as a tree.
-fn fake_tree(name: &str, pid: u32) -> (std::path::PathBuf, Tree) {
-	let dir = std::env::temp_dir().join(format!("poopterm-worker-{}-{name}", std::process::id()));
-	let _ = std::fs::remove_dir_all(&dir);
-	std::fs::create_dir_all(&dir).unwrap();
+fn fake_tree(name: &str, pid: u32) -> (Scratch, Tree) {
+	let dir = Scratch::new("worker", name);
 	std::fs::write(dir.join("cgroup.procs"), pid.to_string()).unwrap();
 	let tree = Tree::adopt(&dir, pid, true, None).unwrap();
 	(dir, tree)
@@ -716,9 +715,8 @@ fn fake_mount(
 	name: &str,
 	procs: &str,
 	meminfo: &'static str,
-) -> (std::path::PathBuf, impl Fn(&str) -> String + Send + 'static) {
-	let mount = std::env::temp_dir().join(format!("poopterm-mount-{}-{name}", std::process::id()));
-	let _ = std::fs::remove_dir_all(&mount);
+) -> (Scratch, impl Fn(&str) -> String + Send + 'static) {
+	let mount = Scratch::new("mount", name);
 	let dir = mount.join(name);
 	std::fs::create_dir_all(&dir).unwrap();
 	std::fs::write(dir.join("cgroup.procs"), procs).unwrap();
@@ -749,7 +747,7 @@ fn without_a_bus_the_worker_lays_out_our_own_cgroup_with_the_memory_limit() {
 		|| Err(io::ErrorKind::NotFound.into()),
 		77,
 		Delegation {
-			mount: mount.clone(),
+			mount: mount.to_path_buf(),
 			attempts: 1,
 		},
 	);
@@ -782,7 +780,7 @@ fn the_worker_lays_out_the_scope_systemd_made_even_with_shells_in_it() {
 		move || Connection::connect(&address, None),
 		77,
 		Delegation {
-			mount: mount.clone(),
+			mount: mount.to_path_buf(),
 			attempts: 1,
 		},
 	);

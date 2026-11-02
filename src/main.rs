@@ -49,6 +49,8 @@ mod platform;
 mod present;
 mod pty;
 mod render;
+#[cfg(test)]
+mod scratch_tests;
 mod session_store;
 mod shell_integration;
 mod sixel;

@@ -1,17 +1,13 @@
 //! The delegated subtree on a fake cgroupfs: a temporary directory whose
 //! control files are plain files, so the tests see what was written.
-use std::{
-	fs,
-	path::{Path, PathBuf},
-};
+use crate::scratch_tests::Scratch;
+use std::{fs, path::Path};
 
 use super::{TERMINAL_CPU_WEIGHT, Tree, delegated, own_cgroup};
 
 /// A fresh fake cgroup directory holding `procs`, offering `controllers`.
-fn cgroup(name: &str, procs: &str, controllers: &str) -> PathBuf {
-	let dir = std::env::temp_dir().join(format!("poopterm-cgroup-{}-{name}", std::process::id()));
-	let _ = fs::remove_dir_all(&dir);
-	fs::create_dir_all(&dir).unwrap();
+fn cgroup(name: &str, procs: &str, controllers: &str) -> Scratch {
+	let dir = Scratch::new("cgroup", name);
 	fs::write(dir.join("cgroup.procs"), procs).unwrap();
 	fs::write(dir.join("cgroup.controllers"), controllers).unwrap();
 	dir

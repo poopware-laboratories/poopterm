@@ -3,15 +3,18 @@
 use super::{FontSet, tests::bundled};
 use crate::fonts::Font;
 use crate::fonts::fallback::SystemFallback;
+use crate::scratch_tests::Scratch;
 
 /// A system fallback whose only installed font has `ch`, counting how
 /// often the font database is opened.
-fn system_with(ch: char, name: &str) -> (SystemFallback, std::rc::Rc<std::cell::Cell<u32>>) {
+fn system_with(
+	ch: char,
+	name: &str,
+) -> (SystemFallback, std::rc::Rc<std::cell::Cell<u32>>, Scratch) {
 	use crate::fonts::{coverage::tests::ranges, db, fallback_tests::font_with_only};
-	let dir = std::env::temp_dir().join(format!("poopterm-glyphs-{}-{name}", std::process::id()));
-	std::fs::create_dir_all(&dir).unwrap();
+	let dir = Scratch::new("glyphs", name);
 	std::fs::write(dir.join("only.ttf"), font_with_only(ch)).unwrap();
-	let (mut cache, _) = db::refresh(&[dir], None);
+	let (mut cache, _) = db::refresh(&[dir.to_path_buf()], None);
 	cache.files[0].faces[0].coverage = ranges([(0, 0x10ffff)]).into();
 	let opened = std::rc::Rc::new(std::cell::Cell::new(0));
 	let counter = opened.clone();
@@ -19,12 +22,13 @@ fn system_with(ch: char, name: &str) -> (SystemFallback, std::rc::Rc<std::cell::
 		counter.set(counter.get() + 1);
 		cache
 	});
-	(system, opened)
+	// The font is read from the directory when first drawn: keep it.
+	(system, opened, dir)
 }
 
 #[test]
 fn characters_no_font_has_are_drawn_from_an_installed_font() {
-	let (system, opened) = system_with('漢', "found");
+	let (system, opened, _dir) = system_with('漢', "found");
 	let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
 	let letter_a = bundled().rasterize('A', 16.0);
 	let han = fonts.glyph('漢', 16.0);
@@ -34,7 +38,7 @@ fn characters_no_font_has_are_drawn_from_an_installed_font() {
 
 #[test]
 fn the_installed_fonts_are_not_opened_for_characters_the_fonts_have() {
-	let (system, opened) = system_with('漢', "present");
+	let (system, opened, _dir) = system_with('漢', "present");
 	let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
 	for ch in ['a', '─', '\u{e0b0}'] {
 		fonts.glyph(ch, 16.0);
@@ -44,7 +48,7 @@ fn the_installed_fonts_are_not_opened_for_characters_the_fonts_have() {
 
 #[test]
 fn a_character_no_font_anywhere_has_falls_back_to_the_primary_font() {
-	let (system, _) = system_with('漢', "nowhere");
+	let (system, _, _dir) = system_with('漢', "nowhere");
 	let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
 	let tofu = bundled().rasterize('字', 16.0);
 	let glyph = fonts.glyph('字', 16.0);
@@ -63,7 +67,7 @@ fn without_a_system_fallback_missing_characters_use_the_primary_font() {
 
 #[test]
 fn a_found_font_serves_every_size_and_survives_clearing_the_cache() {
-	let (system, opened) = system_with('漢', "sizes");
+	let (system, opened, _dir) = system_with('漢', "sizes");
 	let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
 	let small = fonts.glyph('漢', 12.0).metrics;
 	let large = fonts.glyph('漢', 24.0).metrics;
@@ -77,7 +81,7 @@ fn a_found_font_serves_every_size_and_survives_clearing_the_cache() {
 #[test]
 fn the_primary_font_wins_over_installed_fonts_that_also_have_a_character() {
 	// The installed font draws 'a' as an 'A'; the primary has its own 'a'.
-	let (system, opened) = system_with('a', "primary");
+	let (system, opened, _dir) = system_with('a', "primary");
 	let mut fonts = FontSet::new(bundled(), Vec::new()).with_system_fallback(system);
 	assert_eq!(
 		fonts.glyph('a', 16.0).coverage,

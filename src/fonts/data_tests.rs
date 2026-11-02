@@ -1,3 +1,4 @@
+use crate::scratch_tests::Scratch;
 use std::{
 	fs,
 	io::ErrorKind,
@@ -12,11 +13,8 @@ use super::{
 	load_font,
 };
 
-fn scratch(name: &str) -> PathBuf {
-	let dir = std::env::temp_dir().join(format!("poopterm-data-{}-{name}", std::process::id()));
-	let _ = fs::remove_dir_all(&dir);
-	fs::create_dir_all(&dir).unwrap();
-	dir
+fn scratch(name: &str) -> Scratch {
+	Scratch::new("data", name)
 }
 
 fn bundled_file(dir: &Path) -> PathBuf {
