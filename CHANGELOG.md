@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.33 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Explain every option in a colored help (#235) (cli).
+
 ## 26.11.32 "Lunar Moth" — 2026-11-02
 
 ### Added
