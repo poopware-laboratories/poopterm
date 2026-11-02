@@ -13,6 +13,7 @@ links keep working. Each folder belongs to one pull request:
 | `rename-screenshots/` | #141, palette kept open to rename a tab |
 | `gpu-images/` | images drawn as GPU textures, beside software |
 | `gpu-settings/` | the Settings window drawn on the GPU, beside software |
+| `light-brights/` | bright colors (bold prompts) readable on light themes |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

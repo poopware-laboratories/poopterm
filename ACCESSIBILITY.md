@@ -36,7 +36,9 @@ to fix, not a design decision.
   Ctrl+0 (Cmd on macOS) zoom the font from 6 to 72 points for the session,
   and can be rebound like the other shortcuts.
 - **Contrast and color.** Every built-in theme's default text foreground and
-  background meet WCAG AA contrast (4.5:1). AMOLED Black uses pure black,
+  background meet WCAG AA contrast (4.5:1). On a light background, the
+  bright colors 8 to 15 (and bold text, which uses them) are darkened just
+  enough to meet it too. AMOLED Black uses pure black,
   and the `custom` theme or color keys override any color, so you can build
   a high-contrast palette (see [Themes](docs/configuration.md#themes)). Programs can also
   change the palette through OSC 4, 10, 11 and 12.

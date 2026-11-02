@@ -182,7 +182,8 @@ impl Term {
 	}
 
 	pub(crate) fn indexed_color(&self, index: u8) -> u32 {
-		self.color_overrides[index as usize].unwrap_or_else(|| xterm_color(index, self.palette))
+		self.color_overrides[index as usize]
+			.unwrap_or_else(|| xterm_color(index, self.palette, self.bright))
 	}
 }
 
