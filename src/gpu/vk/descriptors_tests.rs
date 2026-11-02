@@ -157,35 +157,32 @@ fn a_pool_runs_out_of_sets_and_descriptors_as_a_driver_would() {
 		count,
 	};
 	let (mut pool, mut sets) = (0, [0; 2]);
-	let pools = [
+	// The sizes live in their own bindings: the infos point at them.
+	let sizes = [
 		// Room for two sets: the second allocation has none left.
-		pool_info(
-			2,
-			0,
-			&[size(STORAGE_BUFFER, 2), size(COMBINED_IMAGE_SAMPLER, 2)],
-		),
+		vec![size(STORAGE_BUFFER, 2), size(COMBINED_IMAGE_SAMPLER, 2)],
 		// Room for one set's samplers but not its buffer.
-		pool_info(1, 0, &[size(COMBINED_IMAGE_SAMPLER, 1)]),
+		vec![size(COMBINED_IMAGE_SAMPLER, 1)],
 		// Room for one buffer of two sets' worth.
-		pool_info(
-			2,
-			0,
-			&[size(STORAGE_BUFFER, 1), size(COMBINED_IMAGE_SAMPLER, 2)],
-		),
+		vec![size(STORAGE_BUFFER, 1), size(COMBINED_IMAGE_SAMPLER, 2)],
 	];
+	let pools =
+		[(2, &sizes[0]), (1, &sizes[1]), (2, &sizes[2])].map(|(max, sizes)| pool_info(max, 0, sizes));
 	let mut results = Vec::new();
 	// SAFETY: the infos and handles outlive each call.
 	unsafe {
 		for info in &pools {
 			create_pool(handle, info, ptr::null(), &mut pool);
-			let one = allocate_info(pool, &[layout]);
+			let one = [layout];
+			let one = allocate_info(pool, &one);
 			results.push(allocate_sets(handle, &one, sets.as_mut_ptr()));
 			results.push(allocate_sets(handle, &one, sets.as_mut_ptr()));
 			destroy_pool(handle, pool, ptr::null());
 		}
 		// Two sets in one call.
 		create_pool(handle, &pools[0], ptr::null(), &mut pool);
-		let two = allocate_info(pool, &[layout, layout]);
+		let two = [layout, layout];
+		let two = allocate_info(pool, &two);
 		results.push(allocate_sets(handle, &two, sets.as_mut_ptr()));
 		destroy_pool(handle, pool, ptr::null());
 	}
@@ -232,7 +229,8 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 			ptr::null(),
 			&mut pool,
 		);
-		let mut wrong_type = allocate_info(pool, &[layout]);
+		let one = [layout];
+		let mut wrong_type = allocate_info(pool, &one);
 		wrong_type.s_type = 0;
 		allocate_sets(handle, &wrong_type, &mut set);
 		allocate_sets(handle, &allocate_info(POOLS + 9, &[layout]), &mut set);

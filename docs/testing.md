@@ -80,6 +80,16 @@ Run mutation checks and slow differential tests with `cargo test --profile
 fast`: release-like speed, but the test binary rebuilds in seconds, where
 `--release` (fat LTO, one codegen unit) takes minutes per mutant.
 
+After changing `unsafe` code, or tests that hand raw pointers to it (the
+fake Vulkan driver's create infos), run the suite under AddressSanitizer.
+A pointer into a dropped temporary passes in debug builds, where the stack
+slot keeps its bytes, and fails only under optimization:
+
+```sh
+RUSTFLAGS=-Zsanitizer=address ASAN_OPTIONS=detect_leaks=0 CARGO_TARGET_DIR=target/asan \
+	cargo test --target x86_64-unknown-linux-gnu
+```
+
 ## Writing emulation tests
 
 Use the helpers at the top of `src/term/tests.rs`:
