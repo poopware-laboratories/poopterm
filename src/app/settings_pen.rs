@@ -4,6 +4,7 @@ use crate::render::{
 	painter::ButtonStyle,
 	scene::{Rect, Scene},
 };
+use crate::ui::ui_font::ellipsize_to_width;
 
 /// The "Settings" back button of a window `width` physical pixels wide.
 pub(super) fn back_rect(width: usize, s: usize) -> Rect {
@@ -115,15 +116,13 @@ impl Pen<'_> {
 		self.text(p, x + 16 * s, row + 8, state, 0.82);
 	}
 
-	/// How many characters of text `size` times the base size fit in
-	/// `width` physical pixels, counting each as wide as `M`.
-	pub(super) fn columns(&mut self, width: usize, size: f32) -> usize {
-		let advance = self
-			.fonts
-			.primary()
-			.metrics('M', self.px * size)
-			.advance_width;
-		(width as f32 / advance.max(1.0)) as usize
+	/// `text` cut with an ellipsis to fit `width` physical pixels at `size`
+	/// times the base size, measured with the primary font's advances.
+	pub(super) fn fit(&mut self, text: &str, width: usize, size: f32) -> String {
+		let (font, px) = (self.fonts.primary(), self.px * size);
+		ellipsize_to_width(text, width, |c| {
+			font.metrics(c, px).advance_width.ceil() as usize
+		})
 	}
 
 	/// The footer at the bottom of every page: its `button`, labelled and

@@ -185,23 +185,48 @@ fn centered_text_sits_inside_its_rectangle() {
 	}
 }
 
+/// What one character of the bundled monospaced font costs when fitting
+/// at `size`: its advance, rounded up.
+fn cell(pen: &mut Pen, size: f32) -> usize {
+	let px = pen.px * size;
+	pen.fonts.primary().metrics('M', px).advance_width.ceil() as usize
+}
+
 #[test]
-fn columns_count_the_whole_characters_that_fit() {
-	for (scale, size) in [(1, 0.72), (2, 0.72), (1, 1.3)] {
+fn fitting_keeps_text_that_fits_and_cuts_the_rest_within_the_width() {
+	let text = "renderer = \"software\" in config.toml or POOPTERM_RENDERER";
+	let length = text.chars().count();
+	for (scale, size) in [(1, 0.72), (2, 0.68), (1, 1.3)] {
 		record(scale, |pen, _, _| {
-			let advance = pen
-				.fonts
-				.primary()
-				.metrics('M', pen.px * size)
-				.advance_width;
-			for count in [1, 2, 10, 57] {
-				let exact = (count as f32 * advance).ceil() as usize;
-				assert_eq!(pen.columns(exact, size), count, "x{scale} {size}");
-				assert_eq!(pen.columns(exact - 1, size), count - 1, "x{scale} {size}");
+			let c = cell(pen, size);
+			assert_eq!(pen.fit(text, length * c, size), text);
+			for room in [length * c - 1, length * c / 2, length * c / 5, c] {
+				let fitted = pen.fit(text, room, size);
+				let kept = fitted
+					.strip_suffix('…')
+					.expect("cut text ends in an ellipsis");
+				assert!(text.starts_with(kept), "{fitted:?}");
+				assert!(pen.width(&fitted, size) <= room, "{fitted:?} in {room}");
+				// As many characters as fit beside the ellipsis, less spaces
+				// cut from the end.
+				let most = room / c - 1;
+				assert!(kept.chars().count() <= most, "{fitted:?} in {room}");
+				assert_eq!(kept, text.chars().take(most).collect::<String>().trim_end());
 			}
-			assert_eq!(pen.columns(0, size), 0);
+			assert_eq!(pen.fit(text, c - 1, size), "", "not even the ellipsis fits");
+			assert_eq!(pen.fit("", 0, size), "");
 		});
 	}
+}
+
+#[test]
+fn fitting_measures_each_character_of_the_text() {
+	record(1, |pen, _, _| {
+		let c = cell(pen, 0.72);
+		assert_eq!(pen.fit("abcdefghij", 10 * c, 0.72), "abcdefghij");
+		assert_eq!(pen.fit("abcdefghijk", 10 * c, 0.72), "abcdefghi…");
+		assert_eq!(pen.fit("abcdefghijk", 11 * c, 0.72), "abcdefghijk");
+	});
 }
 
 #[test]

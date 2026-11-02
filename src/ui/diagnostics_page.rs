@@ -35,24 +35,15 @@ pub(crate) fn started(chosen: Backend, gpu_failure: Option<&str>, gpu_here: bool
 	}
 }
 
-/// `text` in at most `columns` characters, ending in `…` when cut.
-pub(crate) fn fit(text: &str, columns: usize) -> String {
-	if text.chars().count() <= columns {
-		return text.to_owned();
-	}
-	let kept = text.chars().take(columns.saturating_sub(1));
-	kept.chain((columns > 0).then_some('…')).collect()
-}
-
-/// The log in at most `rows` rows of `columns` characters: the newest
-/// warnings, oldest first, under a line counting those left out.
-pub(crate) fn log_rows(diagnostics: &Diagnostics, rows: usize, columns: usize) -> Vec<String> {
+/// The log in at most `rows` rows: the newest warnings, oldest first, under
+/// a line counting those left out.
+pub(crate) fn log_rows(diagnostics: &Diagnostics, rows: usize) -> Vec<String> {
 	let warnings = &diagnostics.warnings;
 	if rows == 0 {
 		return Vec::new();
 	}
 	if warnings.is_empty() && diagnostics.dropped == 0 {
-		return vec![fit("No warnings.", columns)];
+		return vec!["No warnings.".into()];
 	}
 	let noted = diagnostics.dropped > 0 || warnings.len() > rows;
 	let shown = warnings.len().min(rows - usize::from(noted));
@@ -67,12 +58,7 @@ pub(crate) fn log_rows(diagnostics: &Diagnostics, rows: usize, columns: usize) -
 		format!("{} UTC  {text}", clock(warning.at))
 	};
 	let newest = warnings[warnings.len() - shown..].iter().map(row);
-	noted
-		.then_some(note)
-		.into_iter()
-		.chain(newest)
-		.map(|line| fit(&line, columns))
-		.collect()
+	noted.then_some(note).into_iter().chain(newest).collect()
 }
 
 /// The footer's status after Copy report wrote to the clipboard.

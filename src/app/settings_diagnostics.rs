@@ -12,7 +12,7 @@ use crate::{
 	},
 	ui::{
 		diagnostics::{Diagnostics, statuses},
-		diagnostics_page::{Section, fit, log_rows},
+		diagnostics_page::{Section, log_rows},
 	},
 };
 
@@ -89,10 +89,13 @@ pub(super) fn compose_diagnostics(
 	match section {
 		Section::Graphics => graphics(diagnostics, p, pen),
 		Section::Log => {
-			let columns = pen.columns(p.width.saturating_sub(48 * s), 0.72);
-			let rows = log_rows(diagnostics, log_capacity(p.height, s), columns);
-			for (i, row) in rows.iter().enumerate() {
-				pen.text(p, 24 * s, CONTENT_TOP + i * LOG_STRIDE, row, 0.72);
+			let width = p.width.saturating_sub(48 * s);
+			for (i, row) in log_rows(diagnostics, log_capacity(p.height, s))
+				.iter()
+				.enumerate()
+			{
+				let row = pen.fit(row, width, 0.72);
+				pen.text(p, 24 * s, CONTENT_TOP + i * LOG_STRIDE, &row, 0.72);
 			}
 		}
 	}
@@ -119,13 +122,13 @@ fn graphics(diagnostics: &Diagnostics, p: &mut Scene, pen: &mut Pen) {
 		}
 		pen.text(p, 48 * s, top, status.feature.name(), 0.82);
 		pen.text(p, value_x, top, status.how(), 0.82);
-		let detail = fit(&status.detail, pen.columns(width, 0.68));
+		let detail = pen.fit(&status.detail, width, 0.68);
 		pen.text(p, value_x, top + 24, &detail, 0.68);
 	}
-	let columns = pen.columns(width, 0.76);
 	for (i, (label, value)) in diagnostics.facts.iter().enumerate() {
 		let top = FACTS_TOP + i * FACT_STRIDE;
 		pen.text(p, 48 * s, top, label, 0.76);
-		pen.text(p, value_x, top, &fit(value, columns), 0.76);
+		let value = pen.fit(value, width, 0.76);
+		pen.text(p, value_x, top, &value, 0.76);
 	}
 }

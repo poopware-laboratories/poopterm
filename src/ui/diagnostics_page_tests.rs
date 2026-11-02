@@ -1,7 +1,7 @@
 //! Tests of the Diagnostics page's plain data: its sections, how a window
 //! came to draw as it does, the log rows that fit, and Copy report's status.
 use super::diagnostics::{Diagnostics, Drawing, Reason, report};
-use super::diagnostics_page::{Section, copied, fit, gather, log_rows, started};
+use super::diagnostics_page::{Section, copied, gather, log_rows, started};
 use crate::{config::RendererPreference, render::backend::Backend, warnings::Warning};
 use std::{io, path::PathBuf, time::Duration};
 
@@ -74,39 +74,14 @@ fn software_where_no_gpu_renderer_exists_is_unsupported_not_a_failure() {
 }
 
 #[test]
-fn text_that_fits_is_kept_whole() {
-	assert_eq!(fit("", 0), "");
-	assert_eq!(fit("", 5), "");
-	assert_eq!(fit("abcde", 5), "abcde");
-	assert_eq!(fit("abcde", 6), "abcde");
-}
-
-#[test]
-fn text_too_long_ends_in_an_ellipsis_within_the_columns() {
-	assert_eq!(fit("abcdef", 5), "abcd…");
-	assert_eq!(fit("abcdef", 1), "…");
-	assert_eq!(fit("abcdef", 0), "");
-}
-
-#[test]
-fn fitting_counts_characters_not_bytes() {
-	// Five characters of two, three and four bytes fit five columns.
-	assert_eq!(fit("éé€🦀a", 5), "éé€🦀a");
-	assert_eq!(fit("éé€🦀ab", 5), "éé€🦀…");
-	assert_eq!(fit("€€€", 2), "€…");
-}
-
-#[test]
 fn an_empty_log_says_so() {
-	assert_eq!(log_rows(&logged(0, 0), 10, 80), ["No warnings."]);
-	// Fitted like any row, in a window too narrow for it.
-	assert_eq!(log_rows(&logged(0, 0), 10, 4), ["No …"]);
+	assert_eq!(log_rows(&logged(0, 0), 10), ["No warnings."]);
 }
 
 #[test]
 fn a_log_that_fits_lists_every_warning_oldest_first_in_utc() {
 	assert_eq!(
-		log_rows(&logged(3, 0), 3, 80),
+		log_rows(&logged(3, 0), 3),
 		[
 			"08:00:00 UTC  warning 0",
 			"08:01:00 UTC  warning 1",
@@ -118,7 +93,7 @@ fn a_log_that_fits_lists_every_warning_oldest_first_in_utc() {
 #[test]
 fn a_log_too_long_shows_the_newest_after_counting_the_rest() {
 	assert_eq!(
-		log_rows(&logged(5, 0), 3, 80),
+		log_rows(&logged(5, 0), 3),
 		[
 			"3 older warnings not shown",
 			"08:03:00 UTC  warning 3",
@@ -126,20 +101,14 @@ fn a_log_too_long_shows_the_newest_after_counting_the_rest() {
 		]
 	);
 	// One row short: the note takes one row, so two warnings are left out.
-	assert_eq!(
-		log_rows(&logged(4, 0), 3, 80)[0],
-		"2 older warnings not shown"
-	);
-	assert_eq!(
-		log_rows(&logged(2, 0), 1, 80),
-		["2 older warnings not shown"]
-	);
+	assert_eq!(log_rows(&logged(4, 0), 3)[0], "2 older warnings not shown");
+	assert_eq!(log_rows(&logged(2, 0), 1), ["2 older warnings not shown"]);
 }
 
 #[test]
 fn dropped_warnings_are_counted_with_those_left_out() {
 	assert_eq!(
-		log_rows(&logged(2, 1), 3, 80),
+		log_rows(&logged(2, 1), 3),
 		[
 			"1 older warning not shown",
 			"08:00:00 UTC  warning 0",
@@ -147,7 +116,7 @@ fn dropped_warnings_are_counted_with_those_left_out() {
 		]
 	);
 	assert_eq!(
-		log_rows(&logged(3, 7), 3, 80),
+		log_rows(&logged(3, 7), 3),
 		[
 			"8 older warnings not shown",
 			"08:01:00 UTC  warning 1",
@@ -155,35 +124,40 @@ fn dropped_warnings_are_counted_with_those_left_out() {
 		]
 	);
 	// Every warning dropped and none kept still says what happened.
-	assert_eq!(
-		log_rows(&logged(0, 4), 3, 80),
-		["4 older warnings not shown"]
-	);
+	assert_eq!(log_rows(&logged(0, 4), 3), ["4 older warnings not shown"]);
 }
 
 #[test]
 fn no_rows_shows_nothing() {
-	assert!(log_rows(&logged(0, 0), 0, 80).is_empty());
-	assert!(log_rows(&logged(3, 2), 0, 80).is_empty());
+	assert!(log_rows(&logged(0, 0), 0).is_empty());
+	assert!(log_rows(&logged(3, 2), 0).is_empty());
 }
 
 #[test]
-fn log_rows_fit_the_columns_and_hide_the_home_directory() {
+fn log_rows_hide_the_home_directory() {
 	let mut diagnostics = logged(0, 0);
 	diagnostics
 		.warnings
 		.push(warning(0, "wallpaper ignored: /home/ada/Pictures/a.png"));
 	assert_eq!(
-		log_rows(&diagnostics, 5, 80),
+		log_rows(&diagnostics, 5),
 		["00:00:00 UTC  wallpaper ignored: ~/Pictures/a.png"]
 	);
-	assert_eq!(log_rows(&diagnostics, 5, 24), ["00:00:00 UTC  wallpaper…"]);
-	let rows = log_rows(&logged(9, 3), 4, 10);
-	assert!(rows.iter().all(|row| row.chars().count() <= 10), "{rows:?}");
+}
+
+#[test]
+fn the_note_counts_kept_warnings_left_out_and_dropped_ones_together() {
 	// Three of nine kept warnings fit under the note, which counts the
 	// other six and the three dropped.
-	assert_eq!(rows[0], "9 older w…");
-	assert_eq!(rows[3], "08:08:00 …");
+	assert_eq!(
+		log_rows(&logged(9, 3), 4),
+		[
+			"9 older warnings not shown",
+			"08:06:00 UTC  warning 6",
+			"08:07:00 UTC  warning 7",
+			"08:08:00 UTC  warning 8",
+		]
+	);
 }
 
 #[test]

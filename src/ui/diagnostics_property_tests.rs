@@ -28,7 +28,7 @@ impl Random {
 }
 
 const HOMES: [&str; 4] = ["/home/vx", "/home/a b", "/Users/ünï", "/root"];
-pub(super) const WORDS: [&str; 10] = [
+const WORDS: [&str; 10] = [
 	"font",
 	"ünïcödé",
 	"🦀",
