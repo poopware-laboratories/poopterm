@@ -191,7 +191,7 @@ impl App {
 
 	pub(super) fn apply_theme(&mut self, kind: ThemeKind) {
 		if let Err(error) = save_config_theme(kind) {
-			eprintln!("poopterm: could not save theme config: {error}");
+			crate::warnings::warning!("could not save theme config: {error}");
 		}
 		self.theme = Theme::load();
 		for session in &self.sessions {
@@ -322,7 +322,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		.and_then(|path| match Wallpaper::load(&PathBuf::from(path)) {
 			Ok(wallpaper) => Some(wallpaper),
 			Err(error) => {
-				eprintln!("poopterm: wallpaper ignored: {error}");
+				crate::warnings::warning!("wallpaper ignored: {error}");
 				None
 			}
 		});

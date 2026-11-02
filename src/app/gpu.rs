@@ -96,7 +96,8 @@ pub(super) fn after_drawn<G, R>(
 		}
 		Next::Abandon(error) => {
 			again();
-			let failed = |error: &String| eprintln!("poopterm: software renderer unavailable: {error}");
+			let failed =
+				|error: &String| crate::warnings::warning!("software renderer unavailable: {error}");
 			fallback(gpu, &error).inspect_err(failed).ok()
 		}
 	}
@@ -117,7 +118,7 @@ impl Gpu {
 		let handles = handle.ok().zip(display.ok());
 		// SAFETY: the handles are the window's, which the clone keeps alive.
 		let gpu = unsafe { Self::open(window.clone(), handles, Entry::load, preference) }?;
-		eprintln!("poopterm: drawing on {}", gpu.gpu.device_name());
+		crate::warnings::warning!("drawing on {}", gpu.gpu.device_name());
 		Ok(gpu)
 	}
 	// pr-check: end window glue

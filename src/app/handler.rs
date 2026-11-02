@@ -129,7 +129,7 @@ impl ApplicationHandler<UserEvent> for App {
 	fn exiting(&mut self, _: &ActiveEventLoop) {
 		let size = (self.width as usize, self.height as usize);
 		if let Some(Err(error)) = (self.frame_stats.as_ref()).map(|r| r.save(size, self.factor())) {
-			eprintln!("poopterm: cannot write frame statistics: {error}");
+			crate::warnings::warning!("cannot write frame statistics: {error}");
 		}
 	}
 	// pr-check: end window glue
