@@ -1,6 +1,8 @@
 //! The command line: what `poopterm` accepts, its help and version text, and
 //! errors that suggest the option meant.
 #[cfg(test)]
+mod property_tests;
+#[cfg(test)]
 mod tests;
 
 use std::{env, ffi::OsString, io::IsTerminal};

@@ -437,3 +437,12 @@ fn each_section_documents_its_own_options() {
 	);
 	assert!(documented("NO SUCH SECTION").is_empty());
 }
+
+#[test]
+fn output_that_is_not_a_terminal_is_never_colored() {
+	// A file, as when help is redirected, whatever NO_COLOR and TERM say.
+	let path = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+	let file = std::fs::File::open(path).unwrap();
+	assert_eq!(Paint::of(&file), Paint(false));
+	assert_eq!(help(Paint::of(&file)), help(Paint(false)));
+}
