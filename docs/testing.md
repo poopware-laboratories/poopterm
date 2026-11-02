@@ -76,6 +76,10 @@ such mutant must make one fail. A mutant no test catches is either a
 missing test or code that does nothing observable (often a performance-only
 guard), which is worth a comment in the code.
 
+Run mutation checks and slow differential tests with `cargo test --profile
+fast`: release-like speed, but the test binary rebuilds in seconds, where
+`--release` (fat LTO, one codegen unit) takes minutes per mutant.
+
 ## Writing emulation tests
 
 Use the helpers at the top of `src/term/tests.rs`:
