@@ -451,3 +451,55 @@ fn a_long_fact_is_cut_to_the_smallest_window() {
 		Some("auto")
 	);
 }
+
+#[test]
+fn hovering_back_or_copy_report_lights_only_that_button() {
+	let diagnostics = sample(Drawing::Gpu, 0);
+	for (hover_x, lit) in [(900 - 164, 0), (900 - 160, 3)] {
+		let commands = record(1, |pen, p, style| {
+			let over = |x: usize, _: usize, _: usize, _: usize| x == hover_x;
+			compose_diagnostics(&diagnostics, Section::Log, "", style, p, pen, &over)
+		});
+		let lights: Vec<bool> = buttons(&commands).iter().map(|(_, on)| *on).collect();
+		let mut expected = [false, false, true, false];
+		expected[lit] = true;
+		assert_eq!(lights, expected, "hovering x {hover_x}");
+	}
+}
+
+#[test]
+fn an_empty_log_says_so_where_the_rows_start() {
+	for s in [1, 2] {
+		let commands = draw(s, &sample(Drawing::Gpu, 0), Section::Log, "");
+		assert_eq!(
+			text_at(&commands, s, (24, CONTENT_TOP)).as_deref(),
+			Some("No warnings.")
+		);
+		assert_eq!(text_at(&commands, s, (24, CONTENT_TOP + LOG_STRIDE)), None);
+	}
+}
+
+#[test]
+fn long_log_rows_are_cut_to_the_window_at_every_scale() {
+	let mut diagnostics = sample(Drawing::Gpu, 0);
+	diagnostics.warnings.push(Warning {
+		at: Duration::ZERO,
+		text: "gpu renderer failed: ".repeat(20),
+	});
+	for s in [1, 2] {
+		let commands = record(s, |pen, p, style| {
+			(p.width, p.height) = (MIN_SIZE.0 * s, MIN_SIZE.1 * s);
+			let none = &|_, _, _, _| false;
+			compose_diagnostics(&diagnostics, Section::Log, "", style, p, pen, none)
+		});
+		let row = text_at(&commands, s, (24, CONTENT_TOP)).unwrap();
+		assert!(row.starts_with("00:00:00 UTC  gpu renderer failed") && row.ends_with('…'));
+		let font = Font::from_bytes(BUNDLED, 0).unwrap();
+		let advance = font.metrics('M', 18.0 * s as f32 * 0.72).advance_width;
+		let drawn = row.chars().count() as f32 * advance;
+		assert!(
+			24.0 * s as f32 + drawn <= ((MIN_SIZE.0 - 24) * s) as f32,
+			"x{s}: {drawn}"
+		);
+	}
+}
