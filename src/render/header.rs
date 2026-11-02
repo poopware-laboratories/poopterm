@@ -36,6 +36,13 @@ pub(crate) enum Icon {
 
 /// Under a hovered close button, drawn with white: 5.5:1.
 pub(crate) const CLOSE_HOVER: u32 = 0xc42b1c;
+/// Under a pressed close button: 7.2:1 with white.
+pub(crate) const CLOSE_PRESSED: u32 = 0xa32418;
+
+/// Under any other pressed button: a step past hover toward the text.
+pub(crate) fn pressed_fill(colors: HeaderColors) -> u32 {
+	blend(colors.hover, colors.fg, 32)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct HeaderButton {
@@ -43,6 +50,8 @@ pub(crate) struct HeaderButton {
 	pub icon: Icon,
 	pub hovered: bool,
 	pub enabled: bool,
+	/// Held down with the pointer still on it.
+	pub pressed: bool,
 }
 
 /// The sign before a tab's title.
@@ -202,7 +211,12 @@ pub(crate) fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, butt
 	let lit = button.hovered && button.enabled;
 	let close = button.icon == Icon::Window(WindowIcon::Close);
 	if lit {
-		let fill = if close { CLOSE_HOVER } else { colors.hover };
+		let fill = match (close, button.pressed) {
+			(true, true) => CLOSE_PRESSED,
+			(true, false) => CLOSE_HOVER,
+			(false, true) => pressed_fill(colors),
+			(false, false) => colors.hover,
+		};
 		p.round_rect(x, y, width, height, 6 * scale, fill);
 	}
 	let color = match (button.enabled, lit && close) {

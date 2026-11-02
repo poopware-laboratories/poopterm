@@ -1,8 +1,8 @@
 //! Pixel tests of the window buttons and dividers in the header bar.
 use super::{
-	header::{CLOSE_HOVER, HeaderButton, Icon},
+	header::{CLOSE_HOVER, CLOSE_PRESSED, HeaderButton, Icon, pressed_fill},
 	header_tests::{COLORS, button, draw, header},
-	window_icons::WindowIcon::*,
+	window_icons::WindowIcon::{self, *},
 };
 
 /// The middle of [`button`]'s 36 by 32 rectangle at (300, 10).
@@ -90,6 +90,7 @@ fn window_icons_double_at_twice_the_scale() {
 		icon: Icon::Window(Close),
 		hovered: false,
 		enabled: true,
+		pressed: false,
 	};
 	let drawn = draw(&header(2, Vec::new(), vec![big]));
 	// The 24 pixel icon starts at (124, 30); its arms start 2.5 units in.
@@ -97,4 +98,38 @@ fn window_icons_double_at_twice_the_scale() {
 	assert_eq!(drawn.at(129, 35), COLORS.fg);
 	assert_eq!(drawn.at(127, 33), COLORS.bar);
 	assert_eq!(drawn.at(142, 35), COLORS.fg, "the other arm");
+}
+
+fn pressed(icon: WindowIcon) -> HeaderButton {
+	HeaderButton {
+		pressed: true,
+		..button(Icon::Window(icon), true, true)
+	}
+}
+
+#[test]
+fn a_pressed_close_button_turns_a_deeper_red_with_white_ink() {
+	let drawn = one(pressed(Close));
+	assert_eq!(drawn.at(302, 26), CLOSE_PRESSED);
+	assert_eq!(drawn.at(MIDDLE.0, MIDDLE.1), 0xffffff);
+	assert!(!drawn.any((300, 10, 36, 32), CLOSE_HOVER));
+}
+
+#[test]
+fn other_pressed_buttons_go_deeper_than_hover_toward_the_text() {
+	let drawn = one(pressed(Minimize));
+	let fill = drawn.at(302, 26);
+	assert_ne!(fill, COLORS.hover);
+	assert_eq!(fill, pressed_fill(COLORS));
+	assert!(!drawn.any((300, 10, 36, 32), CLOSE_PRESSED));
+}
+
+#[test]
+fn a_disabled_button_never_looks_pressed() {
+	let drawn = one(HeaderButton {
+		enabled: false,
+		..pressed(Close)
+	});
+	assert!(!drawn.any((300, 10, 36, 32), CLOSE_PRESSED));
+	assert_eq!(drawn.at(302, 26), COLORS.bar);
 }
