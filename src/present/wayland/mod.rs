@@ -16,6 +16,8 @@ pub(crate) mod presenter;
 #[cfg(test)]
 mod presenter_edge_tests;
 #[cfg(test)]
+mod presenter_globals_tests;
+#[cfg(test)]
 mod presenter_tests;
 #[cfg(test)]
 mod real_tests;

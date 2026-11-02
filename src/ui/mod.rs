@@ -1,6 +1,13 @@
 //! Window-system-independent UI models: selection, search and tab layout.
 pub(crate) mod contrast;
 pub(crate) mod copy;
+#[cfg_attr(
+	target_os = "macos",
+	allow(dead_code, reason = "macOS keeps its own title bar")
+)]
+pub(crate) mod decorations;
+#[cfg(test)]
+mod decorations_tests;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;
@@ -49,8 +56,8 @@ mod ui_font_drawn_tests;
 #[cfg(test)]
 mod ui_font_tests;
 #[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "the button layout is read from the desktop next")
+	target_os = "macos",
+	allow(dead_code, reason = "macOS keeps its own window buttons")
 )]
 pub(crate) mod window_controls;
 #[cfg(test)]

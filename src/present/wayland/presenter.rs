@@ -104,6 +104,13 @@ impl Presenter {
 		Ok(presenter)
 	}
 
+	/// Whether the compositor offers the global `interface`, as it said
+	/// while the presenter bound `wl_shm`.
+	pub(crate) fn offers(&mut self, interface: &[u8]) -> bool {
+		let globals = &self.listener.events().globals;
+		globals.iter().any(|(_, name, _)| name == interface)
+	}
+
 	/// Binds the compositor's `wl_shm` on our queue, and learns its formats.
 	fn bind_shm(&mut self) -> Result<(), Error> {
 		let client = &self.client;

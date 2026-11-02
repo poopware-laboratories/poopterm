@@ -42,6 +42,10 @@ mod mapped;
 mod notifier;
 mod parser;
 mod platform;
+#[cfg(not(target_os = "macos"))]
+mod portal;
+#[cfg(all(test, not(target_os = "macos")))]
+mod portal_tests;
 #[cfg_attr(
 	not(test),
 	expect(dead_code, reason = "the Wayland present path uses it next")

@@ -7,7 +7,10 @@ use std::{
 };
 
 use crate::theme::ThemeKind;
-use crate::ui::font_size::{FontSize, SETTINGS_MAX, SETTINGS_MIN};
+use crate::ui::{
+	decorations::DecorationPreference,
+	font_size::{FontSize, SETTINGS_MAX, SETTINGS_MIN},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum RendererPreference {
@@ -50,6 +53,8 @@ pub struct Preferences {
 	/// Hold animations still (kitty graphics) instead of playing them.
 	pub reduce_motion: bool,
 	pub(crate) renderer: RendererPreference,
+	/// Who draws the title bar on Linux and FreeBSD.
+	pub(crate) decorations: DecorationPreference,
 }
 
 impl Default for Preferences {
@@ -68,6 +73,7 @@ impl Default for Preferences {
 			padding: 0,
 			reduce_motion: false,
 			renderer: RendererPreference::Auto,
+			decorations: DecorationPreference::Auto,
 		}
 	}
 }
@@ -117,6 +123,7 @@ impl Preferences {
 				.and_then(|s| s.parse().ok())
 				.unwrap_or(defaults.reduce_motion),
 			renderer: RendererPreference::parse(value(text, "renderer")),
+			decorations: DecorationPreference::parse(value(text, "decorations")),
 		}
 	}
 	pub fn load() -> Self {

@@ -346,14 +346,18 @@ x = 8.
     `button-layout`, all three on the right otherwise), button places
     (36 × 32, 8 from the edge, a divider 8 either side), hits, and resize
     edges (6 pixels, 12 at corners, none when maximized).
-  - [ ] Draw the buttons in the header, with hover, pressed, restore and
+  - [x] Draw the buttons in the header, with hover, pressed, restore and
     inactive states; shift the tabs and the + and settings buttons by the
     reserves.
-  - [ ] Route presses: buttons, drag on the empty bar, double click to
+  - [x] Route presses: buttons, drag on the empty bar, double click to
     maximize, resize edges with their cursors.
-  - [ ] Choose decorations: client-side where the compositor offers them,
-    none on tiling compositors; read `button-layout` from the settings
-    portal.
+  - [x] Choose decorations (`decorations` key): our own where the compositor
+    offers no xdg-decoration (GNOME) and the horizontal header is shown;
+    read `button-layout` from the settings portal.
+  - [ ] Follow `SettingChanged` from the portal, so a new `button-layout`
+    applies without a restart.
+  - [ ] Client decorations with vertical or hidden tabs: a slim title row
+    to hold the buttons, so `auto` can use them there too.
 
 ## Accessibility
 

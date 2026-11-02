@@ -39,6 +39,9 @@ pub(crate) enum UserEvent {
 	Closed(u64),
 	/// The desktop reported on the notification shown with this key.
 	Notification(u64, crate::term::notifications::Event),
+	/// The desktop said which window buttons it wants.
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	ButtonLayout(crate::ui::window_controls::ButtonLayout),
 }
 
 pub(crate) struct Session {

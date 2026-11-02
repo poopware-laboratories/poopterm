@@ -36,6 +36,14 @@ pub(super) fn open_for(window: &Window) -> Option<Presenter> {
 }
 // pr-check: end window glue
 
+/// Whether the compositor showing `window` offers to draw its title bar;
+/// `None` for windows not on Wayland.
+// pr-check: window glue: only a real window has a compositor to ask
+pub(super) fn offers_server_decorations(window: &Window) -> Option<bool> {
+	open_for(window).map(|mut presenter| presenter.offers(b"zxdg_decoration_manager_v1"))
+}
+// pr-check: end window glue
+
 /// A presenter for the window with `handles`: none for other windows,
 /// which are never loaded for, or when it fails to open, which is said.
 /// It takes the size of each frame.
