@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.27 "Lunar Moth" — 2026-11-02
+
+### Fixed
+
+- Make bright colors readable on light themes (#229) (theme).
+
 ## 26.11.26 "Lunar Moth" — 2026-11-02
 
 ### Added
