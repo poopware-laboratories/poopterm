@@ -198,7 +198,7 @@ fn caches_written_before_exact_coverage_are_rebuilt() {
 	// A version 2 face line has no drawable or color flags, or coverage.
 	let old = "poopterm-fonts 2\nF\t1\t2\t/f.ttf\nf\t0\t400\t0\t1\tMono\tRegular\tMono\tMono\nend\n";
 	assert_eq!(decode(old), None);
-	let current = old.replace("fonts 2", "fonts 5");
+	let current = old.replace("fonts 2", "fonts 6");
 	assert_eq!(
 		decode(&current),
 		None,
@@ -214,11 +214,11 @@ fn caches_written_before_exact_coverage_are_rebuilt() {
 	// Version 4 recorded pages: "0-2" meant U+0000 to U+02FF. Read as code
 	// points it would claim three characters, so the cache is rebuilt.
 	let pages = fixed
-		.replace("fonts 5", "fonts 4")
+		.replace("fonts 6", "fonts 4")
 		.replace("20-7e,23f5", "0-2");
 	assert_eq!(decode(&pages), None);
 	assert!(
-		decode(&pages.replace("fonts 4", "fonts 5")).is_some(),
+		decode(&pages.replace("fonts 4", "fonts 6")).is_some(),
 		"only the header differs"
 	);
 }
@@ -234,6 +234,8 @@ fn the_cache_keeps_the_color_flag_apart_from_drawable() {
 	assert!(text.contains("\t1\t1\t20-7e\tEmoji\t"), "{text}");
 	assert!(text.contains("\t1\t0\t=0\tMono\t"), "the same set");
 	assert_eq!(decode(&text), Some(cache));
-	// Caches from before the color flag are rebuilt.
-	assert_eq!(decode(&text.replace("fonts 5", "fonts 3")), None);
+	// Caches from before the color flag are rebuilt, and so are those
+	// that recorded sbix faces as neither drawable nor color.
+	assert_eq!(decode(&text.replace("fonts 6", "fonts 3")), None);
+	assert_eq!(decode(&text.replace("fonts 6", "fonts 5")), None);
 }

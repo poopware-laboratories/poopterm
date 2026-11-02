@@ -29,7 +29,7 @@ const MAX_CACHE_FILE: u64 = 64 << 20;
 /// Paths with their stamps.
 type Stamped = Vec<(PathBuf, Stamp)>;
 /// Bumped when face data changes meaning, so old caches are rebuilt.
-const HEADER: &str = "poopterm-fonts 5";
+const HEADER: &str = "poopterm-fonts 6";
 
 /// Modification time in nanoseconds and size. A missing path has the
 /// default stamp.

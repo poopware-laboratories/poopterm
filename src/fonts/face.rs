@@ -10,6 +10,7 @@ use super::{
 	gsub::{Gsub, MAX_GLYPHS},
 	otl::Gdef,
 	read::Bytes,
+	sbix::Sbix,
 };
 
 /// Receives a glyph outline in font units, y up.
@@ -76,6 +77,7 @@ pub(crate) struct Face {
 	pub(crate) long_loca: bool,
 	cff: Option<Cff>,
 	cbdt: Option<Cbdt>,
+	sbix: Option<Sbix>,
 	gsub: Option<Gsub>,
 	gdef: Option<Gdef>,
 }
@@ -147,7 +149,8 @@ impl Face {
 			(Some(cblc), Some(cbdt)) => Some(Cbdt { cblc, cbdt }),
 			_ => None,
 		};
-		if cff.is_none() && glyf.len == 0 && cbdt.is_none() {
+		let sbix = find(b"sbix").map(|table| Sbix { table });
+		if cff.is_none() && glyf.len == 0 && cbdt.is_none() && sbix.is_none() {
 			return Err("no glyf or CFF outlines or color bitmaps");
 		}
 		let face = Self {
@@ -164,6 +167,7 @@ impl Face {
 			long_loca: head.i16_at(50) == Some(1),
 			cff,
 			cbdt,
+			sbix,
 			gsub: find(b"GSUB").and_then(|table| Gsub::parse(bytes, table)),
 			gdef: find(b"GDEF").and_then(|table| Gdef::parse(bytes, table)),
 			data: Data::Static(&[]),
@@ -211,9 +215,14 @@ impl Face {
 		hmtx.u16_at(4 * usize::from(index)).unwrap_or(0)
 	}
 
-	/// `glyph`'s color bitmap, if the face has one for it.
+	/// `glyph`'s color bitmap, if the face has one for it: from `CBDT`
+	/// first, then `sbix`.
 	pub(crate) fn color_bitmap(&self, glyph: u16) -> Option<ColorBitmap<'_>> {
-		self.cbdt?.glyph(&self.data, glyph)
+		let cbdt = self.cbdt.and_then(|cbdt| cbdt.glyph(&self.data, glyph));
+		cbdt.or_else(|| {
+			let em = (self.advance(glyph), self.units_per_em);
+			self.sbix?.glyph(&self.data, glyph, self.glyphs, em)
+		})
 	}
 
 	/// Sends `glyph`'s outline to `sink` and returns its bounds, or `None`

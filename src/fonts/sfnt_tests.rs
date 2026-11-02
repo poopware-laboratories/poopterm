@@ -491,12 +491,14 @@ fn unreadable_cmaps_leave_the_face_without_coverage() {
 
 #[test]
 fn outline_and_color_bitmap_tables_mark_fonts_that_can_be_drawn() {
-	// Color bitmap fonts like Noto Color Emoji have only CBDT.
-	for tag in [b"glyf", b"CFF ", b"CFF2", b"CBDT"] {
+	// Color bitmap fonts like Noto Color Emoji have only CBDT, Apple Color
+	// Emoji only sbix.
+	for tag in [b"glyf", b"CFF ", b"CFF2", b"CBDT", b"sbix"] {
 		assert!(covering(None, Some(tag)).drawable, "{tag:?}");
 	}
-	// sbix and SVG emoji are not drawn yet.
-	assert!(!covering(None, Some(b"sbix")).drawable);
+	// SVG and COLR emoji are not drawn yet.
+	assert!(!covering(None, Some(b"SVG ")).drawable);
+	assert!(!covering(None, Some(b"COLR")).drawable);
 	assert!(!covering(None, None).drawable);
 }
 
@@ -583,9 +585,10 @@ fn monospace_detection_still_reads_latin_from_a_long_format12_table() {
 }
 
 #[test]
-fn only_cbdt_marks_a_face_as_color() {
+fn only_color_bitmap_tables_mark_a_face_as_color() {
 	assert!(covering(None, Some(b"CBDT")).color);
-	for tag in [b"glyf", b"CFF ", b"sbix", b"COLR"] {
+	assert!(covering(None, Some(b"sbix")).color);
+	for tag in [b"glyf", b"CFF ", b"COLR", b"SVG "] {
 		assert!(!covering(None, Some(tag)).color, "{tag:?}");
 	}
 	assert!(!faces(BUNDLED).unwrap()[0].color);
