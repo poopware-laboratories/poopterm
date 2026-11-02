@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.19 "Lunar Moth" — 2026-11-02
+
+### Maintenance
+
+- Keep only line tables as debug info (#221) (dev).
+
 ## 26.11.18 "Lunar Moth" — 2026-11-02
 
 ### Added
