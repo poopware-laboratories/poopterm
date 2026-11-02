@@ -39,4 +39,13 @@ pub(crate) mod ui_font;
 mod ui_font_drawn_tests;
 #[cfg(test)]
 mod ui_font_tests;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "the header draws and hits the buttons next")
+)]
+pub(crate) mod window_controls;
+#[cfg(test)]
+mod window_controls_property_tests;
+#[cfg(test)]
+mod window_controls_tests;
 pub(crate) mod zoom;
