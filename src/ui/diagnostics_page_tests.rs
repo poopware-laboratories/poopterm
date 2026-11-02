@@ -164,7 +164,7 @@ fn the_note_counts_kept_warnings_left_out_and_dropped_ones_together() {
 fn copy_report_says_whether_the_clipboard_took_it() {
 	assert_eq!(
 		copied(Ok(())),
-		"Copied the report. Paste it into a bug report."
+		"Copied: every section as plain text, ready to paste into an issue."
 	);
 	let failed = io::Error::new(io::ErrorKind::NotFound, "wl-copy not found");
 	assert_eq!(
@@ -236,4 +236,72 @@ fn software_has_no_device_to_name() {
 		[("Renderer setting", "software".to_owned())]
 	);
 	assert!(report(&diagnostics).contains("  Renderer setting software\n"));
+}
+
+#[test]
+fn each_section_has_the_designs_footnote() {
+	assert_eq!(
+		Section::Graphics.footnote(),
+		"Updated each time the page opens."
+	);
+	assert_eq!(
+		Section::Log.footnote(),
+		"Environment variables appear by name only."
+	);
+}
+
+#[test]
+fn the_log_intro_counts_what_the_log_keeps() {
+	let intro = super::diagnostics_page::log_intro();
+	assert!(intro.starts_with("Warnings Poopterm printed to standard error, oldest first."));
+	assert!(
+		intro.ends_with(&format!("The last {} are kept.", crate::warnings::KEPT)),
+		"{intro}"
+	);
+}
+
+#[test]
+fn copy_report_says_copied_only_after_a_copy_that_worked() {
+	use super::diagnostics_page::copy_label;
+	assert_eq!(copy_label(""), "Copy report");
+	assert_eq!(copy_label(&copied(Ok(()))), "Copied");
+	let failed = std::io::Error::other("no clipboard");
+	assert_eq!(
+		copy_label(&copied(Err(failed))),
+		"Copy report",
+		"a failure offers to retry"
+	);
+}
+
+#[test]
+fn a_log_row_splits_into_its_time_and_its_message() {
+	use super::diagnostics_page::split_time;
+	assert_eq!(
+		split_time("00:01:00 UTC  warning 1"),
+		("00:01:00 UTC", "warning 1")
+	);
+	assert_eq!(
+		split_time("00:01:00 UTC  a  UTC  b"),
+		("00:01:00 UTC", "a  UTC  b"),
+		"only the first"
+	);
+	assert_eq!(
+		split_time("2 older warnings not shown"),
+		("", "2 older warnings not shown")
+	);
+	assert_eq!(split_time("No warnings."), ("", "No warnings."));
+	assert_eq!(split_time(""), ("", ""));
+}
+
+#[test]
+fn every_log_row_splits_back_into_itself() {
+	for row in log_rows(&logged(9, 3), 6) {
+		let (time, message) = super::diagnostics_page::split_time(&row);
+		let joined = if time.is_empty() {
+			message.to_owned()
+		} else {
+			format!("{time}  {message}")
+		};
+		assert_eq!(joined, row);
+	}
 }

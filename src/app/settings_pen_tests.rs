@@ -290,3 +290,132 @@ fn centered_labels_leave_equal_room_on_both_sides() {
 		}
 	}
 }
+
+/// The bundled font's advance at `px`, rounded up as text drawing moves.
+fn bundled_advance(px: f32) -> usize {
+	let font = Font::from_bytes(BUNDLED, 0).unwrap();
+	font.metrics('M', px).advance_width.ceil() as usize
+}
+
+/// Each recorded line's place, color, size and face.
+fn lines(commands: &[Command]) -> Vec<((usize, usize), u32, f32, bool)> {
+	let line = |command: &Command| match *command {
+		Command::Text {
+			at,
+			color,
+			px,
+			mono,
+			..
+		} => (at, color, px, mono),
+		ref other => panic!("{other:?}"),
+	};
+	commands.iter().map(line).collect()
+}
+
+#[test]
+fn tinted_text_is_drawn_in_its_color_and_the_pen_keeps_its_own() {
+	for scale in [1, 2] {
+		let commands = record(scale, |pen, p, _| {
+			pen.tinted(p, 30, 50, "Muted", 0.5, 0x123456);
+			pen.text(p, 30, 80, "Plain", 0.5);
+		});
+		let px = 9.0 * scale as f32;
+		assert_eq!(
+			lines(&commands),
+			[
+				((30, 50 * scale), 0x123456, px, false),
+				((30, 80 * scale), 0xeeeeee, px, false)
+			]
+		);
+	}
+}
+
+#[test]
+fn mono_text_is_recorded_in_the_mono_face_at_the_pens_scale() {
+	for scale in [1, 2] {
+		let commands = record(scale, |pen, p, _| {
+			pen.mono(p, 37, 165, "10:00:00 UTC", 12.0 / 18.0, 0x654321);
+		});
+		let [
+			Command::Text {
+				at,
+				text,
+				px,
+				ascent,
+				color,
+				clip,
+				mono,
+			},
+		] = commands.as_slice()
+		else {
+			panic!("{commands:?}");
+		};
+		assert_eq!((*at, text.as_str()), ((37, 165 * scale), "10:00:00 UTC"));
+		assert_eq!((*px, *ascent), (12.0 * scale as f32, 14 * scale as i32));
+		assert_eq!((*color, *mono), (0x654321, true));
+		assert_eq!(*clip, (0, 0, 900 * scale, 600 * scale), "the whole window");
+	}
+}
+
+#[test]
+fn mono_text_leaves_the_pens_color_alone() {
+	let commands = record(1, |pen, p, _| {
+		pen.mono(p, 0, 0, "a", 1.0, 0x111111);
+		pen.text(p, 0, 20, "b", 1.0);
+	});
+	assert_eq!(lines(&commands)[1].1, 0xeeeeee);
+}
+
+#[test]
+fn mono_width_sums_each_characters_advance_rounded_up() {
+	for scale in [1, 2] {
+		let advance = bundled_advance(12.0 * scale as f32);
+		let mut widths = (1, 0, 0);
+		record(scale, |pen, _, _| {
+			let size = 12.0 / 18.0;
+			widths = (
+				pen.mono_width("", size),
+				pen.mono_width("ab", size),
+				pen.mono_width("10:00:00 UTC", size),
+			);
+		});
+		assert_eq!(widths, (0, 2 * advance, 12 * advance), "x{scale}");
+	}
+}
+
+#[test]
+fn mono_fit_keeps_what_fits_and_cuts_the_rest_with_an_ellipsis() {
+	let size = 12.0 / 18.0;
+	let advance = bundled_advance(12.0);
+	record(1, |pen, _, _| {
+		assert_eq!(pen.mono_fit("abcdef", 6 * advance, size), "abcdef");
+		let cut = pen.mono_fit("abcdefgh", 6 * advance, size);
+		assert_eq!(cut, "abcde…", "five characters beside the ellipsis");
+		assert!(pen.mono_width(&cut, size) <= 6 * advance);
+		assert_eq!(
+			pen.mono_fit("ab   cdefgh", 6 * advance, size),
+			"ab…",
+			"no trailing spaces"
+		);
+		assert_eq!(
+			pen.mono_fit("abc", advance - 1, size),
+			"",
+			"not even the ellipsis fits"
+		);
+		assert_eq!(pen.mono_fit("", 0, size), "");
+	});
+}
+
+#[test]
+fn mono_fit_measures_at_the_pens_scale() {
+	let size = 12.0 / 18.0;
+	let advance = bundled_advance(24.0);
+	record(2, |pen, _, _| {
+		assert_eq!(pen.mono_fit("abcd", 4 * advance, size), "abcd");
+		assert_eq!(
+			pen.mono_fit("abcd", 4 * advance - 1, size),
+			"ab…",
+			"the ellipsis is a full advance"
+		);
+	});
+}

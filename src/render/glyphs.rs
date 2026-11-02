@@ -14,6 +14,11 @@ use super::{
 
 #[path = "glyph_clusters.rs"]
 pub(crate) mod clusters;
+#[path = "glyphs_mono.rs"]
+mod mono;
+#[cfg(test)]
+#[path = "glyphs_mono_tests.rs"]
+mod mono_tests;
 pub(crate) use clusters::{Shape, joins};
 
 /// Upper bound on cached rasterizations before the cache is reset.
@@ -73,6 +78,9 @@ pub(crate) struct FontSet {
 	drawn_cell: (usize, usize),
 	/// Window button icons by scale: four icons at the few scales in use.
 	icons: FxHashMap<(WindowIcon, usize), Glyph>,
+	/// The face for monospace UI text, and what it rasterized.
+	mono: Option<Font>,
+	mono_cache: FxHashMap<(char, u32), Glyph>,
 }
 
 impl FontSet {
@@ -88,6 +96,8 @@ impl FontSet {
 			drawn: FxHashMap::default(),
 			drawn_cell: (0, 0),
 			icons: FxHashMap::default(),
+			mono: None,
+			mono_cache: FxHashMap::default(),
 		}
 	}
 
@@ -106,13 +116,15 @@ impl FontSet {
 	}
 
 	/// Chrome fonts: `found`, then the bundled font, which is primary when
-	/// no UI font was found.
+	/// no UI font was found. The bundled font, monospaced, also draws
+	/// monospace text.
 	pub(crate) fn ui(found: Option<Font>) -> Self {
-		let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
+		let bundled = || Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
 		match found {
-			Some(font) => Self::new(font, vec![bundled]),
-			None => Self::new(bundled, Vec::new()),
+			Some(font) => Self::new(font, vec![bundled()]),
+			None => Self::new(bundled(), Vec::new()),
 		}
+		.with_mono(bundled())
 	}
 
 	/// Also searches installed fonts for characters no given font has.
@@ -219,6 +231,9 @@ impl FontSet {
 		if self.clusters.len() > MAX_CACHED_GLYPHS {
 			self.clusters.clear();
 		}
+		if self.mono_cache.len() > MAX_CACHED_GLYPHS {
+			self.mono_cache.clear();
+		}
 	}
 
 	/// Drops every rasterization, e.g. after the font size changes.
@@ -226,6 +241,7 @@ impl FontSet {
 		self.cache.clear();
 		self.clusters.clear();
 		self.drawn.clear();
+		self.mono_cache.clear();
 	}
 
 	#[cfg(test)]

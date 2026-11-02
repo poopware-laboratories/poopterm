@@ -9,6 +9,9 @@ pub(crate) mod decorations;
 #[cfg(test)]
 mod decorations_tests;
 pub(crate) mod diagnostics;
+pub(crate) mod diagnostics_colors;
+#[cfg(test)]
+mod diagnostics_colors_tests;
 pub(crate) mod diagnostics_page;
 #[cfg(test)]
 mod diagnostics_page_property_tests;

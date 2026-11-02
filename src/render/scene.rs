@@ -29,6 +29,8 @@ pub(crate) enum Command {
 		ascent: i32,
 		color: u32,
 		clip: Rect,
+		/// Drawn in the fonts' monospace face.
+		mono: bool,
 	},
 	/// A window button's icon, its top-left corner at `at`.
 	Icon {
@@ -133,6 +135,29 @@ impl Scene {
 			ascent,
 			color,
 			clip,
+			mono: false,
+		});
+	}
+
+	/// A line of text in the fonts' monospace face, as [`Self::text`] draws
+	/// proportional text.
+	pub(crate) fn mono_text(
+		&mut self,
+		x: usize,
+		y: usize,
+		text: &str,
+		px: f32,
+		ascent: i32,
+		color: u32,
+	) {
+		self.commands.push(Command::Text {
+			at: (x, y),
+			text: text.to_owned(),
+			px,
+			ascent,
+			color,
+			clip: (0, 0, self.width, self.height),
+			mono: true,
 		});
 	}
 
@@ -165,7 +190,17 @@ impl Scene {
 					ascent,
 					color,
 					clip,
+					mono: false,
 				} => chrome::text_clipped(p, fonts, at, text, px, ascent, color, clip),
+				Command::Text {
+					at,
+					ref text,
+					px,
+					ascent,
+					color,
+					clip,
+					mono: true,
+				} => chrome::mono_clipped(p, fonts, at, text, px, ascent, color, clip),
 				Command::Icon {
 					at: (x, y),
 					icon,

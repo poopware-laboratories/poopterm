@@ -120,6 +120,7 @@ fn a_scene_records_each_operation_in_order() {
 	scene.round_rect(6, 7, 8, 9, 2, 10);
 	scene.button((2, 3, 30, 12), style(2), true);
 	scene.text_clipped(fonts, 3, 4, "hi", 12.0, 9, 11, (1, 1, 20, 20));
+	scene.mono_text(5, 6, "log", 10.0, 8, 12);
 	assert_eq!(
 		scene.commands,
 		[
@@ -134,6 +135,16 @@ fn a_scene_records_each_operation_in_order() {
 				ascent: 9,
 				color: 11,
 				clip: (1, 1, 20, 20),
+				mono: false,
+			},
+			Command::Text {
+				at: (5, 6),
+				text: "log".to_owned(),
+				px: 10.0,
+				ascent: 9 - 1,
+				color: 12,
+				clip: (0, 0, 40, 30),
+				mono: true,
 			},
 		]
 	);
@@ -295,4 +306,85 @@ fn random_overlapping_operations_replay_like_direct_drawing() {
 			}
 		});
 	}
+}
+
+/// `text` replayed as mono text at `(x, y)` on a `width`×`height` buffer
+/// with `fonts`.
+fn mono_pixels(
+	fonts: &mut FontSet,
+	(width, height): (usize, usize),
+	(x, y): (usize, usize),
+	text: &str,
+) -> Vec<u32> {
+	let mut scene = Scene::new(width, height);
+	scene.mono_text(x, y, text, 14.0, 11, 0xffffff);
+	let mut pixels = vec![BACKGROUND; width * height];
+	scene.replay(&mut Painter::new(&mut pixels, width, height), fonts);
+	pixels
+}
+
+#[test]
+fn mono_text_replays_as_drawing_it_directly_does_even_off_the_edge() {
+	for x in [2, 20, 28] {
+		let fonts = &mut fonts().with_mono(Font::from_bytes(BUNDLED, 0).unwrap());
+		let mut direct = vec![BACKGROUND; 30 * 20];
+		let whole = (0, 0, 30, 20);
+		let painter = &mut Painter::new(&mut direct, 30, 20);
+		chrome::mono_clipped(painter, fonts, (x, 2), "Wg", 14.0, 11, 0xffffff, whole);
+		assert_eq!(direct, mono_pixels(fonts, (30, 20), (x, 2), "Wg"), "x {x}");
+		assert!(
+			direct.iter().any(|&pixel| pixel != BACKGROUND),
+			"x {x}: nothing drawn"
+		);
+		assert_eq!(
+			(fonts.mono_cached() > 0, fonts.cached()),
+			(true, 0),
+			"x {x}: drawn from the mono face only"
+		);
+	}
+}
+
+#[test]
+fn without_a_mono_face_mono_text_looks_like_text() {
+	let fonts = &mut fonts();
+	let mut text = vec![BACKGROUND; 40 * 20];
+	let mut scene = Scene::new(40, 20);
+	scene.text(fonts, 2, 2, "Wig", 14.0, 11, 0xffffff);
+	scene.replay(&mut Painter::new(&mut text, 40, 20), fonts);
+	assert_eq!(text, mono_pixels(fonts, (40, 20), (2, 2), "Wig"));
+}
+
+#[test]
+fn mono_text_the_mono_face_lacks_comes_from_the_usual_fonts() {
+	// The bundled font has no '中': both draw the primary font's notdef.
+	let fonts = &mut fonts().with_mono(Font::from_bytes(BUNDLED, 0).unwrap());
+	let mut text = vec![BACKGROUND; 40 * 20];
+	let mut scene = Scene::new(40, 20);
+	scene.text(fonts, 2, 2, "中", 14.0, 11, 0xffffff);
+	scene.replay(&mut Painter::new(&mut text, 40, 20), fonts);
+	assert_eq!(text, mono_pixels(fonts, (40, 20), (2, 2), "中"));
+	assert_eq!(fonts.mono_cached(), 0);
+}
+
+#[test]
+fn mono_text_spans_the_whole_scene_after_it_is_recorded() {
+	let mut scene = Scene::new(40, 30);
+	scene.mono_text(0, 0, "x", 10.0, 8, 1);
+	scene.width = 80;
+	scene.mono_text(0, 0, "y", 10.0, 8, 1);
+	let clips: Vec<_> = scene
+		.commands
+		.iter()
+		.map(|command| match command {
+			Command::Text {
+				clip, mono: true, ..
+			} => *clip,
+			other => panic!("{other:?}"),
+		})
+		.collect();
+	assert_eq!(
+		clips,
+		[(0, 0, 40, 30), (0, 0, 80, 30)],
+		"the size when recorded"
+	);
 }

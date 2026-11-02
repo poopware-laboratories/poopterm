@@ -150,6 +150,7 @@ impl App {
 		let diagnostics =
 			(self.settings_editor.page == SettingsPage::Diagnostics).then(|| self.diagnostics());
 		let editor = &self.settings_editor;
+		let colors = crate::ui::diagnostics_colors::diagnostics_colors(&self.theme);
 		let mut pen = Pen {
 			fonts: &mut self.ui_fonts,
 			px,
@@ -159,7 +160,16 @@ impl App {
 		};
 		if let Some(diagnostics) = diagnostics {
 			let (section, status) = (editor.diagnostics_section, &editor.copied);
-			return compose_diagnostics(&diagnostics, section, status, style, p, &mut pen, &hovered);
+			return compose_diagnostics(
+				&diagnostics,
+				section,
+				status,
+				&colors,
+				style,
+				p,
+				&mut pen,
+				&hovered,
+			);
 		}
 		let x = 24 * scale;
 		match editor.page {
