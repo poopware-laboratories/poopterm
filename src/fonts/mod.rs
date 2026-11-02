@@ -38,6 +38,9 @@ pub(crate) mod quads;
 mod quads_tests;
 mod raster;
 mod read;
+mod sbix;
+#[cfg(test)]
+mod sbix_tests;
 mod sfnt;
 #[cfg(test)]
 mod sfnt_tests;

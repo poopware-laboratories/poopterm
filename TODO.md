@@ -300,9 +300,10 @@ least as fast.
   and skin-tone modifiers: the term keeps them in separate cells, as
   wcwidth counts them, and the renderer draws the font's joined glyph
   across both (`render::cell_joins`). Installed fallback fonts are chosen
-  by rank, never by what loaded first (#127). Next: sbix
-  ([#129](https://github.com/poopware-laboratories/poopterm/issues/129)), then
-  COLR v0 with CPAL, then COLR v1.
+  by rank, never by what loaded first (#127). sbix strikes are drawn
+  ([#129](https://github.com/poopware-laboratories/poopterm/issues/129)): PNG and
+  `dupe` records, the largest strike holding a PNG; Apple's compressed
+  `emjc` type is skipped. Next: COLR v0 with CPAL, then COLR v1.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and

@@ -18,14 +18,14 @@ pub(crate) struct Cbdt {
 /// per em.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ColorBitmap<'a> {
-	pub ppem: u8,
-	pub width: u8,
-	pub height: u8,
+	pub ppem: u16,
+	pub width: u16,
+	pub height: u16,
 	/// From the pen to the left edge.
-	pub left: i8,
+	pub left: i16,
 	/// From the baseline up to the top edge.
-	pub top: i8,
-	pub advance: u8,
+	pub top: i16,
+	pub advance: u16,
 	pub png: &'a [u8],
 }
 
@@ -87,12 +87,12 @@ fn locate<'a>(
 	};
 	let length = image.u32_at(metrics)? as usize;
 	Some(ColorBitmap {
-		ppem,
-		height: image.u8_at(0)?,
-		width: image.u8_at(1)?,
-		left: image.u8_at(2)? as i8,
-		top: image.u8_at(3)? as i8,
-		advance: image.u8_at(4)?,
+		ppem: ppem.into(),
+		height: image.u8_at(0)?.into(),
+		width: image.u8_at(1)?.into(),
+		left: (image.u8_at(2)? as i8).into(),
+		top: (image.u8_at(3)? as i8).into(),
+		advance: image.u8_at(4)?.into(),
 		png: image.slice_at(metrics + 4, length)?,
 	})
 }

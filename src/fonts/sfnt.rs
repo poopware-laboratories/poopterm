@@ -31,9 +31,9 @@ pub(crate) struct FaceInfo {
 	/// and digits are mapped, which rules out emoji and symbol fonts.
 	pub monospace: bool,
 	/// Has glyphs it can draw: outlines (`glyf`, `CFF `, `CFF2`) or color
-	/// bitmaps (`CBDT`).
+	/// bitmaps (`CBDT`, `sbix`).
 	pub drawable: bool,
-	/// Has color bitmaps (`CBDT`), as emoji fonts do.
+	/// Has color bitmaps (`CBDT`, `sbix`), as emoji fonts do.
 	pub color: bool,
 	/// The code points its `cmap` maps to a glyph other than 0.
 	pub coverage: Shared,
@@ -146,13 +146,13 @@ fn read_face<R: Read + Seek>(file: &mut R, start: u64, index: u32) -> io::Result
 		read_cmap(file, offset, length, glyphs).unwrap_or_default()
 	});
 	let monospace = fixed_width && latin;
-	let drawable = [b"glyf", b"CFF ", b"CFF2", b"CBDT"]
+	let drawable = [b"glyf", b"CFF ", b"CFF2", b"CBDT", b"sbix"]
 		.into_iter()
 		.any(|tag| find(tag).is_some());
 	Ok(Some(FaceInfo {
 		index,
 		drawable,
-		color: find(b"CBDT").is_some(),
+		color: find(b"CBDT").is_some() || find(b"sbix").is_some(),
 		coverage: coverage.into(),
 		postscript: names.get(6).unwrap_or_default(),
 		family,

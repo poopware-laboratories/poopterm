@@ -161,10 +161,10 @@ fn strike(ppem: u8, first: u16, formats: (u16, u16), images: Vec<Option<Image>>)
 	}
 }
 
-fn bitmap(font: &[u8], ch: char) -> Option<(u8, [u8; 5], usize)> {
+fn bitmap(font: &[u8], ch: char) -> Option<(u16, [u8; 5], usize)> {
 	let font = Font::from_bytes(font.to_vec(), 0).ok()?;
 	font.color_bitmap(ch).map(|b: ColorBitmap| {
-		let metrics = [b.height, b.width, b.left as u8, b.top as u8, b.advance];
+		let metrics = [b.height, b.width, b.left as u16, b.top as u16, b.advance].map(|v| v as u8);
 		(b.ppem, metrics, b.png.len())
 	})
 }
