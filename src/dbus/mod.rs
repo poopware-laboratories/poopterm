@@ -163,6 +163,11 @@ impl Connection {
 		}
 	}
 
+	/// Makes [`Self::call`] fail after waiting `timeout` for a message.
+	pub(crate) fn set_timeout(&self, timeout: std::time::Duration) {
+		self.receiver.set_timeout(timeout);
+	}
+
 	/// Asks the bus for signals matching `rule`.
 	pub(crate) fn add_match(&mut self, rule: &str) -> io::Result<()> {
 		let mut message = Message::method_call(BUS, BUS_PATH, BUS, "AddMatch");
@@ -250,10 +255,10 @@ impl Receiver {
 		}
 	}
 
-	/// Makes [`Self::receive`] fail after waiting `timeout`.
-	#[cfg(test)]
+	/// Makes [`Self::receive`] fail after waiting `timeout`; a zero
+	/// timeout, which sockets refuse, waits forever.
 	pub(crate) fn set_timeout(&self, timeout: std::time::Duration) {
-		self.stream.set_read_timeout(Some(timeout)).unwrap();
+		self.stream.set_read_timeout(Some(timeout)).ok();
 	}
 
 	fn fill(&mut self) -> io::Result<()> {

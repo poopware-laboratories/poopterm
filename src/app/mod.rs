@@ -1,5 +1,7 @@
 //! Application state and the winit event loop.
 mod canvas;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod decorations;
 mod draw;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod draw_gpu;
@@ -108,6 +110,13 @@ pub(crate) struct App {
 	window_buttons: ButtonLayout,
 	/// The window draws its own title bar and resize edges.
 	client_decorations: bool,
+	/// Whether the compositor offers to draw the title bar; `None` when
+	/// unknown, as on X11.
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	server_decorations: Option<bool>,
+	/// The buttons the desktop asks for, once it has said.
+	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	desktop_buttons: Option<ButtonLayout>,
 	/// The window button held down, and the last press on the bar.
 	window_presses: Presses,
 	next_session_id: u64,
@@ -362,6 +371,10 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		tab_scroll: 0,
 		window_buttons: ButtonLayout::default(),
 		client_decorations: false,
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		server_decorations: None,
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		desktop_buttons: None,
 		window_presses: Presses::default(),
 		next_session_id,
 		proxy,

@@ -14,7 +14,7 @@ links keep working. Each folder belongs to one pull request:
 | `gpu-images/` | images drawn as GPU textures, beside software |
 | `gpu-settings/` | the Settings window drawn on the GPU, beside software |
 | `light-brights/` | bright colors (bold prompts) readable on light themes |
-| `window-buttons/` | Linux window buttons in the header: light and dark, hovered and pressed |
+| `window-buttons/` | Linux window buttons in the header: light and dark, hovered and pressed; `auto` on sway (none) and `client` with the portal's `appmenu:close` |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

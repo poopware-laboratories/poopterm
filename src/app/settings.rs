@@ -198,6 +198,8 @@ impl App {
 			self.font_points = preferences.font_size;
 		}
 		self.preferences = preferences;
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		self.apply_decorations();
 		self.theme = Theme::load();
 		self.shortcuts = Shortcuts::load();
 		self.wallpaper_strength = self.settings_editor.wallpaper_strength;

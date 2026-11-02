@@ -50,6 +50,8 @@ impl ApplicationHandler<UserEvent> for App {
 		self.window = Some(window);
 		// pr-check: window glue: runs once the real window exists
 		self.apply_scale();
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		self.start_decorations();
 		// pr-check: end window glue
 		let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
 		let size = PhysicalSize::new(width as u32, height as u32);
@@ -167,6 +169,8 @@ impl ApplicationHandler<UserEvent> for App {
 		match event {
 			UserEvent::Output(id) => self.process_output(id),
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
+			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			UserEvent::ButtonLayout(layout) => self.desktop_buttons(layout),
 			UserEvent::Closed(id) => {
 				if let Some(index) = self.sessions.iter().position(|s| s.id == id) {
 					self.close_tab(index, event_loop);

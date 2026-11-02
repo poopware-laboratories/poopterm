@@ -75,6 +75,16 @@ window or the GPU fails while drawing. The `POOPTERM_RENDERER` environment varia
 of the same three values, overrides `renderer` for one run without changing the
 file; any other value is ignored.
 
+`decorations` chooses who draws the title bar on Linux and FreeBSD Wayland:
+`auto` (the default), `client` or `server`. With `auto`, Poopterm puts the
+minimize, maximize and close buttons in its tab header, and lets the edges
+resize the window, only where the compositor draws no title bar of its own
+(GNOME) and the horizontal tab header is shown; elsewhere (sway, KDE, X11) the
+desktop keeps decorating. `client` always draws them, `server` never does. The
+buttons follow the desktop's `button-layout` read from the settings portal, or
+sit on the right as minimize, maximize and close when the portal does not
+answer. The settings window does not change this key; edit the file.
+
 ### Theme names and custom colors
 
 `theme` accepts `darkmode`, `light-mode`, `nord`, `rose-pine` (or the legacy
