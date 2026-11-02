@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.30 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Draw the title bar on compositors that leave it to the window (#232) (ui).
+
 ## 26.11.29 "Lunar Moth" — 2026-11-02
 
 ### Added
