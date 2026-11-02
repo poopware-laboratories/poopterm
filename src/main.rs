@@ -17,6 +17,7 @@ mod bench;
 mod cgroup;
 #[cfg(target_os = "linux")]
 mod cgroup_tree;
+mod cli;
 mod clipboard;
 #[cfg(test)]
 #[path = "../build/codename.rs"]
@@ -72,37 +73,35 @@ mod warnings_property_tests;
 mod warnings_tests;
 mod width;
 
-use std::{env, error::Error};
+use cli::{Command, Paint};
+use std::{
+	env,
+	error::Error,
+	io::{stderr, stdout},
+	process::ExitCode,
+};
 
-const HELP: &str =
-	"Usage: poopterm [--version | --help | --print-terminfo | --print-shell-integration SHELL]
-       poopterm --benchmark [--mib N] [--size COLSxROWS] [--only a,b] [--no-render] [--list]
-
-Launches your login shell. Configure appearance and session restore with Settings.
-POOPTERM_CONFIG overrides the config path; POOPTERM_THEME overrides the theme.
-
-Print shell hooks with --print-shell-integration zsh|bash|fish.
-Install the terminfo entry with: poopterm --print-terminfo | tic -x -";
-
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ExitCode {
 	allocator::purge_eagerly();
-	let mut args = env::args().skip(1);
-	let Some(argument) = args.next() else {
-		return app::run();
-	};
-	match argument.as_str() {
-		"--version" | "-V" => println!("poopterm {}", env!("CARGO_PKG_VERSION")),
-		"--help" | "-h" => println!("Poopterm {}\n\n{HELP}", env!("CARGO_PKG_VERSION")),
-		"--print-terminfo" => print!("{}", terminfo::SOURCE),
-		"--benchmark" => bench::run(args)?,
-		"--bench-corpus" => bench::print_corpus(args)?,
-		"--print-shell-integration" => {
-			let shell = args
-				.next()
-				.ok_or("missing shell name; choose zsh, bash, or fish")?;
-			print!("{}", shell_integration::script(&shell)?);
+	match run() {
+		Ok(()) => ExitCode::SUCCESS,
+		Err(error) => {
+			eprint!("{}", cli::error(&error.to_string(), Paint::of(&stderr())));
+			ExitCode::FAILURE
 		}
-		_ => return Err(format!("unknown option: {argument}; try --help").into()),
+	}
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
+	let paint = Paint::of(&stdout());
+	match cli::parse(env::args().skip(1))? {
+		Command::Run => app::run()?,
+		Command::Help => print!("{}", cli::help(paint)),
+		Command::Version => println!("{}", cli::version(paint)),
+		Command::PrintTerminfo => print!("{}", terminfo::SOURCE),
+		Command::ShellIntegration(shell) => print!("{}", shell_integration::script(&shell)?),
+		Command::Benchmark(args) => bench::run(args.into_iter())?,
+		Command::BenchCorpus(args) => bench::print_corpus(args.into_iter())?,
 	}
 	Ok(())
 }

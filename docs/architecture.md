@@ -416,5 +416,10 @@ All encoders are pure functions with unit tests:
 - `terminfo.rs`: the bundled `xterm-poopterm` entry, and choosing `TERM`
   for spawned shells by whether that entry is installed.
 - `platform.rs`: per-platform window tweaks, such as window opacity on macOS.
+- `cli/`: the command line. `parse` turns arguments into a `Command`;
+  `help.txt` is the help, with light markup that `render` lays out and
+  colors (only on a terminal, and never under `NO_COLOR`); errors suggest
+  the option meant. Tests check that every option the help lists is
+  accepted, and every one accepted is listed.
 - `bench/`: `poopterm --benchmark` and `--bench-corpus`, the headless
   benchmark and the workloads that `scripts/bench-throughput.py` also uses.
