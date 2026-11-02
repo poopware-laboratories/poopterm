@@ -1,17 +1,10 @@
-use std::{
-	fs,
-	io::ErrorKind,
-	path::{Path, PathBuf},
-	thread,
-};
+use crate::scratch_tests::Scratch;
+use std::{fs, io::ErrorKind, path::Path, thread};
 
 use super::*;
 
-fn scratch(name: &str) -> PathBuf {
-	let dir = std::env::temp_dir().join(format!("poopterm-mapped-{}-{name}", std::process::id()));
-	let _ = fs::remove_dir_all(&dir);
-	fs::create_dir_all(&dir).unwrap();
-	dir
+fn scratch(name: &str) -> Scratch {
+	Scratch::new("mapped", name)
 }
 
 /// Bytes that differ at every position of a page, so an offset slip shows.
