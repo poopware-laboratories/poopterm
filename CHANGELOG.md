@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.28 "Lunar Moth" — 2026-11-02
+
+### Added
+
+- Draw the linux window buttons in the header (#230) (ui).
+
 ## 26.11.27 "Lunar Moth" — 2026-11-02
 
 ### Fixed
