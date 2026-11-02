@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.22 "Lunar Moth" — 2026-11-02
+
+### Performance
+
+- Notify queue waiters only when the queue's state changes (#224) (pty).
+
 ## 26.11.21 "Lunar Moth" — 2026-11-02
 
 ### Maintenance
