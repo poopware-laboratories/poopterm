@@ -230,3 +230,38 @@ fn a_hovered_footer_button_lights() {
 	});
 	assert_eq!(buttons(&commands), [((760, 548, 120, 36), true)]);
 }
+
+#[test]
+fn width_sums_the_advances_of_every_character() {
+	for (scale, size) in [(1, 0.76), (2, 0.76), (1, 1.0)] {
+		record(scale, |pen, _, _| {
+			let font = Font::from_bytes(BUNDLED, 0).unwrap();
+			let px = pen.px * size;
+			let advance = |c| font.metrics(c, px).advance_width;
+			for text in ["", "a", "Diagnostics", "Copy report", "é€"] {
+				let sum: f32 = text.chars().map(advance).sum();
+				assert_eq!(pen.width(text, size), sum.ceil() as usize, "{text:?}");
+			}
+		});
+	}
+}
+
+#[test]
+fn centered_labels_leave_equal_room_on_both_sides() {
+	for scale in [1, 2] {
+		for label in ["Log", "Graphics", "Diagnostics"] {
+			let rect = (24 * scale, 76 * scale, 96 * scale, 32 * scale);
+			let commands = record(scale, |pen, p, _| {
+				pen.centered(p, rect, label, 0.76);
+				let width = pen.width(label, 0.76);
+				let (x, _) = texts(&p.commands)[0].1;
+				let (left, right) = (x - rect.0, rect.0 + rect.2 - (x + width));
+				assert!(
+					left.abs_diff(right) <= 1,
+					"x{scale} {label}: {left} | {right}"
+				);
+			});
+			assert_eq!(texts(&commands).len(), 1);
+		}
+	}
+}

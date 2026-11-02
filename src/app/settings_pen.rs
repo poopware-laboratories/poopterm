@@ -45,6 +45,14 @@ impl Pen<'_> {
 		);
 	}
 
+	/// How wide `text` is at `size` times the base size, in physical
+	/// pixels: the sum of the primary font's advances.
+	pub(super) fn width(&mut self, text: &str, size: f32) -> usize {
+		let (font, px) = (self.fonts.primary(), self.px * size);
+		let advances = text.chars().map(|c| font.metrics(c, px).advance_width);
+		advances.sum::<f32>().ceil() as usize
+	}
+
 	/// Draws `text` centered in the physical rectangle `rect`.
 	pub(super) fn centered(
 		&mut self,
@@ -53,12 +61,7 @@ impl Pen<'_> {
 		text: &str,
 		size: f32,
 	) {
-		let advance = self
-			.fonts
-			.primary()
-			.metrics('M', self.px * size)
-			.advance_width;
-		let text_w = (advance * text.chars().count() as f32) as usize;
+		let text_w = self.width(text, size);
 		let y = (rect.1 + rect.3.saturating_sub((self.px * 1.2) as usize) / 2) / self.scale;
 		self.text(p, rect.0 + rect.2.saturating_sub(text_w) / 2, y, text, size);
 	}
@@ -140,13 +143,7 @@ impl Pen<'_> {
 			style,
 			hovered(save_x, save_y, save_w, save_h),
 		);
-		let cell_width = self
-			.fonts
-			.primary()
-			.metrics('M', self.px)
-			.advance_width
-			.ceil() as usize;
-		let label_w = label.chars().count() * cell_width;
+		let label_w = self.width(label, 1.0);
 		let save_text_x = save_x + save_w.saturating_sub(label_w) / 2;
 		p.text(
 			self.fonts,

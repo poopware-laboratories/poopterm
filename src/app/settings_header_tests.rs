@@ -59,7 +59,7 @@ fn every_header_button_drawn_opens_the_page_a_click_there_opens() {
 				.collect();
 			assert_eq!(header.len(), pages.len(), "x{s} {size:?}");
 			let labels = texts(&commands);
-			for (rect, (_, .., label)) in header.iter().zip(HEADER_BUTTONS) {
+			for (rect, (.., label)) in header.iter().zip(HEADER_BUTTONS) {
 				let (_, at) = labels.iter().find(|(text, _)| text == label).unwrap();
 				assert!(inside(*at, *rect), "{label} outside {rect:?}");
 			}
