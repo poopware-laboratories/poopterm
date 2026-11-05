@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.35 "Lunar Moth" — 2026-11-05
+
+### Maintenance
+
+- Bump anthropics/claude-code-action from 1.0.261 to 1.0.265 (#238) (deps).
+
 ## 26.11.34 "Lunar Moth" — 2026-11-02
 
 ### Fixed
