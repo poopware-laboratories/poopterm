@@ -28,16 +28,15 @@ use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 /// The glyph atlas: four pages 1024 pixels square, 16 MiB of the GPU's.
 const ATLAS: (usize, usize) = (1024, 4);
 
-/// Whether Metal may draw: only when the GPU is asked for by name, until
-/// it is measured against software on more Macs (#26).
+/// Whether Metal may draw: unless software is asked for by name.
 #[cfg(target_os = "macos")]
 pub(super) const fn allows_metal(preference: RendererPreference) -> bool {
-	matches!(preference, RendererPreference::Gpu)
+	!matches!(preference, RendererPreference::Software)
 }
 
-/// Why Metal does not draw when it was not asked for.
+/// Why Metal does not draw when software was asked for.
 #[cfg(target_os = "macos")]
-pub(super) const NOT_ASKED: &str = "Metal draws only when asked for (renderer = \"gpu\")";
+pub(super) const TURNED_OFF: &str = "Metal is turned off (renderer = \"software\")";
 
 /// The `NSView` of a window with this handle: AppKit windows only.
 #[cfg(target_os = "macos")]
@@ -172,7 +171,7 @@ impl Gpu {
 #[cfg(target_os = "macos")]
 impl<W> Gpu<W> {
 	/// Metal drawing in `window`, whose `NSView` is `view`, when the
-	/// `preference` names the GPU.
+	/// `preference` does not ask for software.
 	///
 	/// # Safety
 	///
@@ -183,7 +182,7 @@ impl<W> Gpu<W> {
 		preference: RendererPreference,
 	) -> Result<Self, String> {
 		if !allows_metal(preference) {
-			return Err(NOT_ASKED.into());
+			return Err(TURNED_OFF.into());
 		}
 		let view = view.ok_or("Metal cannot draw in this kind of window")?;
 		// SAFETY: as the caller vouches; the GPU drops before `window`, and

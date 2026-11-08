@@ -2,7 +2,7 @@
 //! windows it draws in, that any Metal failure abandons the GPU, and
 //! frames and Settings scenes drawn by a real GPU on a layer no view hosts,
 //! through resizes and changes of scale.
-use super::{Gpu, NOT_ASKED, Next, allows_metal, next, ns_view};
+use super::{Gpu, Next, TURNED_OFF, allows_metal, next, ns_view};
 use crate::{
 	config::RendererPreference,
 	gpu::mtl::{
@@ -31,24 +31,33 @@ fn headless() -> Option<Gpu<()>> {
 }
 
 #[test]
-fn metal_draws_only_when_the_gpu_is_asked_for_by_name() {
+fn metal_draws_unless_software_is_asked_for() {
 	assert!(allows_metal(RendererPreference::Gpu));
-	assert!(!allows_metal(RendererPreference::Auto));
+	assert!(allows_metal(RendererPreference::Auto));
 	assert!(!allows_metal(RendererPreference::Software));
 }
 
 #[test]
-fn metal_not_asked_for_is_refused_before_it_looks_for_a_device() {
+fn metal_turned_off_is_refused_before_it_looks_for_a_device() {
 	let view = NonNull::new(0x1000 as *mut c_void);
-	for preference in [RendererPreference::Auto, RendererPreference::Software] {
-		// SAFETY: refused before the view is used.
-		let refused = unsafe { Gpu::open((), view, preference) };
-		assert_eq!(refused.err().as_deref(), Some(NOT_ASKED));
+	// SAFETY: refused before the view is used.
+	let refused = unsafe { Gpu::open((), view, RendererPreference::Software) };
+	assert_eq!(refused.err().as_deref(), Some(TURNED_OFF));
+	assert_eq!(TURNED_OFF, "Metal is turned off (renderer = \"software\")");
+}
+
+#[test]
+fn metal_by_default_still_needs_a_view_to_draw_in() {
+	// Allowed by default, it reaches the view check; with no view it is
+	// refused there, never with the turned-off reason.
+	for preference in [RendererPreference::Auto, RendererPreference::Gpu] {
+		// SAFETY: no view.
+		let refused = unsafe { Gpu::open((), None, preference) };
+		assert_eq!(
+			refused.err().as_deref(),
+			Some("Metal cannot draw in this kind of window")
+		);
 	}
-	assert_eq!(
-		NOT_ASKED,
-		"Metal draws only when asked for (renderer = \"gpu\")"
-	);
 }
 
 #[test]
@@ -211,7 +220,7 @@ fn a_frame_after_one_metal_showed_redraws_only_the_rows_planned() {
 }
 
 #[test]
-fn software_says_why_when_metal_was_not_asked_for() {
+fn software_says_why_when_metal_was_turned_off() {
 	use crate::{
 		render::backend::Backend,
 		ui::{
@@ -219,15 +228,15 @@ fn software_says_why_when_metal_was_not_asked_for() {
 			diagnostics_page::started,
 		},
 	};
-	let drawing = started(Backend::Software, Some(NOT_ASKED), true);
+	let drawing = started(Backend::Software, Some(TURNED_OFF), true);
 	assert_eq!(
 		drawing,
-		Drawing::Software(Reason::Unavailable(NOT_ASKED.into()))
+		Drawing::Software(Reason::Unavailable(TURNED_OFF.into()))
 	);
 	let [status, ..] = statuses(&drawing);
 	assert_eq!(
 		status.detail,
-		"Metal unavailable: Metal draws only when asked for (renderer = \"gpu\")"
+		"Metal unavailable: Metal is turned off (renderer = \"software\")"
 	);
 	// Asked for software, it says so instead.
 	let asked = started(Backend::Software, None, true);

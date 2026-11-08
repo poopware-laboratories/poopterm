@@ -160,10 +160,10 @@ issue before starting a piece.
   the grid renderer (matching software in the pixel-equivalence tests on
   the real GPU) and windows through a `CAMetalLayer` (drawables at the
   window's size in pixels, Retina scale, three in flight, software when
-  Metal fails). Opt-in (`renderer = "gpu"`) until it is measured: next,
+  Metal fails). The default (`renderer = "software"` turns it off). Next:
   frame latency and throughput against software on several Macs, and the
   quads written for frame N while the GPU draws N − 1 (each frame now waits
-  for the last before writing), then make it the default.
+  for the last before writing).
 
 ## Resource management and memory
 

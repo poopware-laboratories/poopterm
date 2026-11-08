@@ -10,7 +10,7 @@ skill is fixed.
 
 Poopterm is a hardware-accelerated terminal emulator written in Rust: winit
 for windows, its own Vulkan renderer on Linux and FreeBSD and Metal
-renderer on macOS (`src/gpu`, opt-in on macOS for now) with a software
+renderer on macOS (`src/gpu`) with a software
 renderer as fallback (softbuffer, or our own presenters in `src/present`), portable-pty for shells, its own font engine
 (`src/fonts`, tested against fontdue), and its own SIMD escape-sequence
 tokenizer (`src/vt`), tested against vte.
