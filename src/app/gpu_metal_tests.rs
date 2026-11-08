@@ -143,3 +143,93 @@ fn a_settings_scene_is_drawn_by_metal_as_quads() {
 	assert_eq!(drawn, Next::Done);
 	assert!(!gpu.device_name().is_empty());
 }
+
+#[test]
+fn a_new_scale_reaches_the_layer_with_the_next_frame_and_not_before() {
+	use crate::gpu::mtl::window::tests::told;
+	let Some(mut gpu) = headless() else { return };
+	let background = |pen: &mut crate::gpu::quads::QuadPen| {
+		let (width, height) = pen.size();
+		pen.rect(0, 0, width, height, BG);
+	};
+	gpu.rescale(2.0);
+	assert_eq!(gpu.frame((60, 40), background), Next::Done);
+	assert_eq!(told(&gpu.gpu).1, 2.0);
+	gpu.rescale(1.5);
+	assert_eq!(told(&gpu.gpu).1, 2.0);
+	assert_eq!(gpu.frame((60, 40), background), Next::Done);
+	let (size, scale) = told(&gpu.gpu);
+	// The size is the window's in pixels, whatever the scale.
+	assert_eq!((size.width, size.height, scale), (60.0, 40.0, 1.5));
+}
+
+#[test]
+fn a_frame_after_one_metal_showed_redraws_only_the_rows_planned() {
+	use crate::render::damage::GridDamage;
+	let Some(mut gpu) = headless() else { return };
+	let mut fonts = fonts();
+	let case = cases().into_iter().next().unwrap();
+	let view = case.view();
+	let size = (160, 96);
+	let mut planned = Vec::new();
+	let mut draw = |gpu: &mut Gpu<()>, planned: &mut Vec<Option<Vec<bool>>>| {
+		for _ in 0..4 {
+			let next = gpu.frame(size, |pen| {
+				planned.push(pen.rows_to_draw().map(<[bool]>::to_vec));
+				let (width, height) = pen.size();
+				pen.rect(0, 0, width, height, BG);
+				draw_grid(pen, &mut fonts, &view, None);
+			});
+			if next != Next::Redraw {
+				return next;
+			}
+		}
+		Next::Redraw
+	};
+	assert_eq!(draw(&mut gpu, &mut planned), Next::Done);
+	assert!(gpu.keeps_rows());
+	let rows = view.frame.rows;
+	let mut damaged = vec![false; rows];
+	damaged[1] = true;
+	gpu.plan_rows(
+		Some(GridDamage {
+			scroll: 0,
+			rows: damaged.clone(),
+		}),
+		16,
+	);
+	planned.clear();
+	assert_eq!(draw(&mut gpu, &mut planned), Next::Done);
+	// Only the row that changed is drawn again; the others are kept.
+	assert_eq!(planned, [Some(damaged)]);
+	assert!(gpu.keeps_rows());
+	// Without damage, every row.
+	gpu.plan_rows(None, 16);
+	planned.clear();
+	assert_eq!(draw(&mut gpu, &mut planned), Next::Done);
+	assert_eq!(planned, [None]);
+}
+
+#[test]
+fn software_says_why_when_metal_was_not_asked_for() {
+	use crate::{
+		render::backend::Backend,
+		ui::{
+			diagnostics::{Drawing, Reason, statuses},
+			diagnostics_page::started,
+		},
+	};
+	let drawing = started(Backend::Software, Some(NOT_ASKED), true);
+	assert_eq!(
+		drawing,
+		Drawing::Software(Reason::Unavailable(NOT_ASKED.into()))
+	);
+	let [status, ..] = statuses(&drawing);
+	assert_eq!(
+		status.detail,
+		"Metal unavailable: Metal draws only when asked for (renderer = \"gpu\")"
+	);
+	// Asked for software, it says so instead.
+	let asked = started(Backend::Software, None, true);
+	assert_eq!(asked, Drawing::Software(Reason::Asked));
+}

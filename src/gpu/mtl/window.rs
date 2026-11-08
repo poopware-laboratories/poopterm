@@ -170,4 +170,4 @@ impl MetalWindow {
 
 #[cfg(test)]
 #[path = "window_tests.rs"]
-mod tests;
+pub(crate) mod tests;

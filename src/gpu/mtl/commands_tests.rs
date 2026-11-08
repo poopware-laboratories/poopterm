@@ -430,3 +430,27 @@ fn a_frame_lets_go_of_its_command_buffer_once_waited_for_and_dropped() {
 	drop(submitted);
 	assert!(!buffer.alive());
 }
+
+#[test]
+fn a_drawable_is_presented_with_the_commands_that_drew_it() {
+	use crate::gpu::mtl::{
+		fake_commands_tests::{Call, calls},
+		fake_tests::fake,
+	};
+	let device = fake(0);
+	let mut frame = Frame::new(&device).unwrap();
+	let class = crate::objc::class(c"NSObject").unwrap();
+	// SAFETY: `NSObject` takes `new`.
+	let drawable = unsafe { class.instance() }.unwrap();
+	calls();
+	frame.present(&drawable);
+	frame.commit().wait().unwrap();
+	assert_eq!(
+		calls(),
+		[
+			Call::Present(drawable.raw() as usize),
+			Call::Commit,
+			Call::Wait
+		]
+	);
+}

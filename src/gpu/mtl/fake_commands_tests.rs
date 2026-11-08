@@ -51,6 +51,8 @@ pub(crate) enum Call {
 	},
 	Blit,
 	Synchronize(usize),
+	/// A drawable shown once the commands are done.
+	Present(usize),
 	End,
 	Commit,
 	Wait,
@@ -237,6 +239,10 @@ extern "C" fn blit_encoder(_: Raw, _: Sel) -> Raw {
 	made(encoder_class(), true)
 }
 
+extern "C" fn present(_: Raw, _: Sel, drawable: Raw) {
+	record(Call::Present(drawable as usize));
+}
+
 extern "C" fn commit(_: Raw, _: Sel) {
 	record(Call::Commit);
 }
@@ -261,7 +267,8 @@ extern "C" fn command_error(_: Raw, _: Sel) -> Raw {
 fn commands_class() -> usize {
 	static COMMANDS_CLASS: OnceLock<usize> = OnceLock::new();
 	*COMMANDS_CLASS.get_or_init(|| {
-		let methods: [(&CStr, *const c_void, &CStr); 6] = [
+		let methods: [(&CStr, *const c_void, &CStr); 7] = [
+			(c"presentDrawable:", present as *const c_void, c"v@:@"),
 			(
 				c"renderCommandEncoderWithDescriptor:",
 				render_encoder as *const c_void,

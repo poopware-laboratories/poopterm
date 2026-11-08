@@ -355,3 +355,16 @@ fn an_upload_refused_writes_not_a_texel() {
 	assert_eq!(texture.upload(1, [0, 0], [1, 1], &[0]), Err(Error::Region));
 	assert_eq!(download(&texture), before);
 }
+
+#[test]
+fn a_texture_metal_made_is_taken_at_the_size_it_says() {
+	let Some(device) = device() else { return };
+	for (width, height) in [(1, 1), (7, 3), (3, 7), (4096, 2)] {
+		let made = Texture::new(&device, [width, height, 1], false, Usage::Target).unwrap();
+		// SAFETY: a 2D BGRA texture made to be drawn to.
+		let taken = unsafe { Texture::made(made.texture.clone(), Usage::Target) };
+		assert_eq!(taken.size, [width, height, 1]);
+		assert_eq!(taken.usage, Usage::Target);
+		assert_eq!(taken.texture, made.texture);
+	}
+}

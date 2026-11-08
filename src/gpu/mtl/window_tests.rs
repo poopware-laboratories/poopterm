@@ -28,8 +28,16 @@ fn pen(size: (usize, usize)) -> QuadPen {
 	pen
 }
 
+/// Commits this thread's Core Animation transaction, as a run loop would.
+fn flush() {
+	let _pool = crate::objc::Pool::new();
+	let transaction = crate::objc::class(c"CATransaction").unwrap();
+	// SAFETY: `flush` takes nothing.
+	unsafe { transaction.send::<()>(c"flush", ()) };
+}
+
 /// What the layer says its drawables' size and contents' scale are.
-fn told(window: &MetalWindow) -> (Size, f64) {
+pub(crate) fn told(window: &MetalWindow) -> (Size, f64) {
 	// SAFETY: `drawableSize` takes nothing and returns a `CGSize`, two
 	// doubles returned in registers; `contentsScale` a `CGFloat`.
 	unsafe {
@@ -174,4 +182,42 @@ fn a_frame_lacking_room_no_atlas_holds_is_refused_for_software_to_draw() {
 	assert_eq!(window.draw(&mut pen, [32, 32], 1.0), Err(Error::Draw));
 	assert!(pen.complete && pen.quads.is_empty());
 	assert_eq!(window.renderer.atlas.size, [64, 64, 4]);
+}
+
+#[test]
+fn the_layer_draws_bgra_with_our_device_three_drawables_at_most_and_opaque() {
+	use crate::objc::{Bool, Raw};
+	let Some(window) = window() else { return };
+	// SAFETY: the layer's getters take nothing and return an enum, `BOOL`s,
+	// an `NSUInteger` and the device.
+	let (format, only, most, opaque, device): (usize, Bool, usize, Bool, Raw) = unsafe {
+		(
+			window.layer.send(c"pixelFormat", ()),
+			window.layer.send(c"framebufferOnly", ()),
+			window.layer.send(c"maximumDrawableCount", ()),
+			window.layer.send(c"isOpaque", ()),
+			window.layer.send(c"device", ()),
+		)
+	};
+	assert_eq!(format, 80);
+	assert_ne!(only, 0);
+	assert_eq!(most, DRAWABLES);
+	assert_ne!(opaque, 0);
+	assert_eq!(device, window.device.device.raw());
+	// Nothing is told the layer before the first frame.
+	assert_eq!(window.told, None);
+}
+
+#[test]
+fn a_window_dropped_lets_go_of_its_layer_once_its_frames_are_done() {
+	use crate::objc::probe_tests::Weak;
+	let Some(mut window) = window() else { return };
+	let mut pen = pen((16, 16));
+	assert_eq!(window.draw(&mut pen, [16, 16], 1.0), Ok(Drawn::Shown));
+	let mut layer = Weak::new(&window.layer);
+	drop(window);
+	// Core Animation holds layers changed on a thread until its transaction
+	// commits, which the main thread's run loop does in the app.
+	flush();
+	assert!(!layer.alive());
 }
