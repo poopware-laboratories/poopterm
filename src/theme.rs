@@ -34,7 +34,28 @@ pub(crate) struct Theme {
 	pub(crate) bg: u32,
 	pub(crate) border: u32,
 	pub(crate) palette: [u32; 8],
+	/// Colors 8 to 15 as the theme publishes them; `None` derives them from
+	/// xterm's (see [`bright_palette`]).
+	pub(crate) bright: Option<[u32; 8]>,
+	/// The cursor's color; `None` draws it in the text's color.
+	pub(crate) cursor: Option<u32>,
+	/// Selected text's foreground and background; `None` picks a readable
+	/// default for the background.
+	pub(crate) selection: Option<(u32, u32)>,
 }
+
+/// What a theme leaves to Poopterm: the Poop colors, xterm's brights, the
+/// cursor in the text color and the default selection.
+const UNSET: Theme = Theme {
+	kind: ThemeKind::Poop,
+	fg: DEFAULT_FG,
+	bg: DEFAULT_BG,
+	border: BORDER_COL,
+	palette: PALETTE,
+	bright: None,
+	cursor: None,
+	selection: None,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ThemeKind {
@@ -51,6 +72,10 @@ pub(crate) enum ThemeKind {
 	Bark,
 	AmoledBlack,
 	Poop,
+	Dracula,
+	Alucard,
+	GruvboxDark,
+	GruvboxLight,
 	Custom,
 }
 
@@ -70,6 +95,10 @@ impl ThemeKind {
 			"bark" => Some(Self::Bark),
 			"amoled-black" | "amoled" => Some(Self::AmoledBlack),
 			"poop" => Some(Self::Poop),
+			"dracula" => Some(Self::Dracula),
+			"alucard" | "dracula-light" => Some(Self::Alucard),
+			"gruvbox" | "gruvbox-dark" => Some(Self::GruvboxDark),
+			"gruvbox-light" => Some(Self::GruvboxLight),
 			"custom" => Some(Self::Custom),
 			_ => None,
 		}
@@ -89,6 +118,10 @@ impl ThemeKind {
 			Self::Bark => "bark",
 			Self::AmoledBlack => "amoled-black",
 			Self::Poop => "poop",
+			Self::Dracula => "dracula",
+			Self::Alucard => "alucard",
+			Self::GruvboxDark => "gruvbox-dark",
+			Self::GruvboxLight => "gruvbox-light",
 			Self::Custom => "custom",
 		}
 	}
@@ -105,7 +138,11 @@ impl ThemeKind {
 			Self::CatppuccinMacchiato => Self::CatppuccinMocha,
 			Self::CatppuccinMocha => Self::Bark,
 			Self::Bark => Self::AmoledBlack,
-			Self::AmoledBlack => Self::Poop,
+			Self::AmoledBlack => Self::Dracula,
+			Self::Dracula => Self::Alucard,
+			Self::Alucard => Self::GruvboxDark,
+			Self::GruvboxDark => Self::GruvboxLight,
+			Self::GruvboxLight => Self::Poop,
 			Self::Poop => Self::MacOsDark,
 			Self::Custom => Self::MacOsDark,
 		}
@@ -123,6 +160,7 @@ impl Theme {
 				palette: [
 					0x000000, 0xC23621, 0x25BC26, 0xADAD27, 0x492EE1, 0xD338D3, 0x33BBC8, 0xBBBBBB,
 				],
+				..UNSET
 			},
 			ThemeKind::MacOsLight => Self {
 				kind,
@@ -132,6 +170,7 @@ impl Theme {
 				palette: [
 					0x6E6E73, 0xC41E3A, 0x248A3D, 0x9A6700, 0x0066CC, 0x8944AB, 0x007A82, 0x1D1D1F,
 				],
+				..UNSET
 			},
 			ThemeKind::Nord => Self {
 				kind,
@@ -141,6 +180,9 @@ impl Theme {
 				palette: [
 					0x3B4252, 0xBF616A, 0xA3BE8C, 0xEBCB8B, 0x81A1C1, 0xB48EAD, 0x88C0D0, 0xE5E9F0,
 				],
+				cursor: Some(0xD8DEE9),
+				selection: Some((0xD8DEE9, 0x434C5E)),
+				..UNSET
 			},
 			ThemeKind::RosePine => Self {
 				kind,
@@ -150,6 +192,7 @@ impl Theme {
 				palette: [
 					0x26233A, 0xEB6F92, 0x31748F, 0xF6C177, 0x9CCFD8, 0xC4A7E7, 0xEBBCBA, 0xE0DEF4,
 				],
+				..UNSET
 			},
 			ThemeKind::RosePineMoon => Self {
 				kind,
@@ -159,6 +202,7 @@ impl Theme {
 				palette: [
 					0x393552, 0xEB6F92, 0x3E8FB0, 0xF6C177, 0x9CCFD8, 0xC4A7E7, 0xEA9A97, 0xE0DEF4,
 				],
+				..UNSET
 			},
 			ThemeKind::RosePineDawn => Self {
 				kind,
@@ -168,6 +212,7 @@ impl Theme {
 				palette: [
 					0xF2E9E1, 0xB4637A, 0x286983, 0xEA9D34, 0x56949F, 0x907AA9, 0xD7827E, 0x464261,
 				],
+				..UNSET
 			},
 			ThemeKind::CatppuccinLatte => Self {
 				kind,
@@ -177,6 +222,11 @@ impl Theme {
 				palette: [
 					0x5C5F77, 0xD20F39, 0x40A02B, 0xDF8E1D, 0x1E66F5, 0xEA76CB, 0x179299, 0xACB0BE,
 				],
+				bright: Some([
+					0x6C6F85, 0xD20F39, 0x40A02B, 0xDF8E1D, 0x1E66F5, 0xEA76CB, 0x179299, 0xBCC0CC,
+				]),
+				cursor: Some(0xDC8A78),
+				..UNSET
 			},
 			ThemeKind::CatppuccinFrappe => Self {
 				kind,
@@ -184,8 +234,13 @@ impl Theme {
 				bg: 0x303446,
 				border: 0x414559,
 				palette: [
-					0x51576D, 0xE78284, 0xA6D189, 0xE5C890, 0x8CAAEE, 0xCA9EE6, 0x81C8BE, 0xB5BFE2,
+					0x51576D, 0xE78284, 0xA6D189, 0xE5C890, 0x8CAAEE, 0xCA9EE6, 0x81C8BE, 0xA5ADCE,
 				],
+				bright: Some([
+					0x626880, 0xE78284, 0xA6D189, 0xE5C890, 0x8CAAEE, 0xCA9EE6, 0x81C8BE, 0xB5BFE2,
+				]),
+				cursor: Some(0xF2D5CF),
+				..UNSET
 			},
 			ThemeKind::CatppuccinMacchiato => Self {
 				kind,
@@ -193,8 +248,13 @@ impl Theme {
 				bg: 0x24273A,
 				border: 0x363A4F,
 				palette: [
-					0x494D64, 0xED8796, 0xA6DA95, 0xEED49F, 0x8AADF4, 0xF5BDE6, 0x8BD5CA, 0xB8C0E0,
+					0x494D64, 0xED8796, 0xA6DA95, 0xEED49F, 0x8AADF4, 0xF5BDE6, 0x8BD5CA, 0xA5ADCB,
 				],
+				bright: Some([
+					0x5B6078, 0xED8796, 0xA6DA95, 0xEED49F, 0x8AADF4, 0xF5BDE6, 0x8BD5CA, 0xB8C0E0,
+				]),
+				cursor: Some(0xF4DBD6),
+				..UNSET
 			},
 			ThemeKind::CatppuccinMocha => Self {
 				kind,
@@ -202,8 +262,13 @@ impl Theme {
 				bg: 0x1E1E2E,
 				border: 0x45475A,
 				palette: [
-					0x45475A, 0xF38BA8, 0xA6E3A1, 0xF9E2AF, 0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xBAC2DE,
+					0x45475A, 0xF38BA8, 0xA6E3A1, 0xF9E2AF, 0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xA6ADC8,
 				],
+				bright: Some([
+					0x585B70, 0xF38BA8, 0xA6E3A1, 0xF9E2AF, 0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xBAC2DE,
+				]),
+				cursor: Some(0xF5E0DC),
+				..UNSET
 			},
 			ThemeKind::Bark => Self {
 				kind,
@@ -213,6 +278,7 @@ impl Theme {
 				palette: [
 					0x101010, 0xAB4642, 0xA1B56C, 0xF7CA88, 0x7CAFC2, 0xBA8BAF, 0x86C1B9, 0xD0D0D0,
 				],
+				..UNSET
 			},
 			ThemeKind::AmoledBlack => Self {
 				kind,
@@ -222,14 +288,13 @@ impl Theme {
 				palette: [
 					0x121212, 0xFF5C57, 0x8CE88A, 0xF2C14E, 0xD4AF37, 0xC792EA, 0x6EDBD2, 0xE9E4D4,
 				],
+				..UNSET
 			},
-			ThemeKind::Poop => Self {
-				kind,
-				fg: DEFAULT_FG,
-				bg: DEFAULT_BG,
-				border: BORDER_COL,
-				palette: PALETTE,
-			},
+			ThemeKind::Poop => Self { kind, ..UNSET },
+			ThemeKind::Dracula
+			| ThemeKind::Alucard
+			| ThemeKind::GruvboxDark
+			| ThemeKind::GruvboxLight => crate::theme_more::theme(kind),
 			ThemeKind::Custom => {
 				let mut theme = Self::from_kind(ThemeKind::Poop);
 				theme.kind = ThemeKind::Custom;
@@ -257,14 +322,32 @@ impl Theme {
 				*target = color;
 			}
 		}
-		for (index, color) in theme.palette.iter_mut().enumerate() {
-			if let Some(value) =
-				read_config_value(&format!("color{index}")).and_then(|value| parse_color(&value))
-			{
+		let config = |index: usize| {
+			read_config_value(&format!("color{index}")).and_then(|value| parse_color(&value))
+		};
+		theme.override_colors(config);
+		theme
+	}
+
+	/// Replaces the 16 ANSI colors `config` gives, by index: 0 to 7 in the
+	/// palette, 8 to 15 in the brights (derived first when the theme has none).
+	pub(crate) fn override_colors(&mut self, config: impl Fn(usize) -> Option<u32>) {
+		for (index, color) in self.palette.iter_mut().enumerate() {
+			if let Some(value) = config(index) {
 				*color = value;
 			}
 		}
-		theme
+		for index in 0..8 {
+			if let Some(value) = config(index + 8) {
+				self.bright.get_or_insert(BRIGHT)[index] = value;
+			}
+		}
+	}
+
+	/// Colors 8 to 15: the theme's own, or else xterm's, made readable on a
+	/// light background.
+	pub(crate) fn bright_colors(&self) -> [u32; 8] {
+		readable_brights(self.bright.unwrap_or(BRIGHT), self.fg, self.bg)
 	}
 }
 
@@ -286,11 +369,19 @@ const BRIGHT: [u32; 8] = [
 /// Colors 8 to 15 for a theme drawn `fg` on `bg`: xterm's, except on a
 /// background lighter than the text, where each is darkened (toward black,
 /// which keeps its hue) only as far as it must to read as text.
+#[cfg(test)]
 pub(crate) fn bright_palette(fg: u32, bg: u32) -> [u32; 8] {
+	readable_brights(BRIGHT, fg, bg)
+}
+
+/// `brights` as they are on a dark theme; on a light one, each darkened as
+/// [`bright_palette`] does, so bold and bright text stays readable even when
+/// a theme publishes brights as light as its normal colors.
+pub(crate) fn readable_brights(brights: [u32; 8], fg: u32, bg: u32) -> [u32; 8] {
 	if luminance(bg) <= luminance(fg) {
-		return BRIGHT;
+		return brights;
 	}
-	BRIGHT.map(|color| readable(color, 0x000000, &[bg], TEXT))
+	brights.map(|color| readable(color, 0x000000, &[bg], TEXT))
 }
 
 pub(crate) fn xterm_color(index: u8, palette: [u32; 8], bright: [u32; 8]) -> u32 {
@@ -329,6 +420,10 @@ mod tests {
 			ThemeKind::CatppuccinMocha,
 			ThemeKind::Bark,
 			ThemeKind::AmoledBlack,
+			ThemeKind::Dracula,
+			ThemeKind::Alucard,
+			ThemeKind::GruvboxDark,
+			ThemeKind::GruvboxLight,
 			ThemeKind::Poop,
 		];
 
@@ -448,6 +543,10 @@ mod tests {
 			ThemeKind::CatppuccinMocha,
 			ThemeKind::Bark,
 			ThemeKind::AmoledBlack,
+			ThemeKind::Dracula,
+			ThemeKind::Alucard,
+			ThemeKind::GruvboxDark,
+			ThemeKind::GruvboxLight,
 			ThemeKind::Poop,
 		];
 		for (index, theme) in themes.iter().enumerate() {
@@ -512,7 +611,7 @@ mod tests {
 				0x303446,
 				0x414559,
 				[
-					0x51576D, 0xE78284, 0xA6D189, 0xE5C890, 0x8CAAEE, 0xCA9EE6, 0x81C8BE, 0xB5BFE2,
+					0x51576D, 0xE78284, 0xA6D189, 0xE5C890, 0x8CAAEE, 0xCA9EE6, 0x81C8BE, 0xA5ADCE,
 				],
 			),
 			(
@@ -521,7 +620,7 @@ mod tests {
 				0x24273A,
 				0x363A4F,
 				[
-					0x494D64, 0xED8796, 0xA6DA95, 0xEED49F, 0x8AADF4, 0xF5BDE6, 0x8BD5CA, 0xB8C0E0,
+					0x494D64, 0xED8796, 0xA6DA95, 0xEED49F, 0x8AADF4, 0xF5BDE6, 0x8BD5CA, 0xA5ADCB,
 				],
 			),
 			(
@@ -530,7 +629,7 @@ mod tests {
 				0x1E1E2E,
 				0x45475A,
 				[
-					0x45475A, 0xF38BA8, 0xA6E3A1, 0xF9E2AF, 0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xBAC2DE,
+					0x45475A, 0xF38BA8, 0xA6E3A1, 0xF9E2AF, 0x89B4FA, 0xF5C2E7, 0x94E2D5, 0xA6ADC8,
 				],
 			),
 		];
@@ -563,10 +662,12 @@ mod tests {
 		);
 	}
 
-	const LIGHT: [ThemeKind; 3] = [
+	const LIGHT: [ThemeKind; 5] = [
 		ThemeKind::MacOsLight,
 		ThemeKind::RosePineDawn,
 		ThemeKind::CatppuccinLatte,
+		ThemeKind::Alucard,
+		ThemeKind::GruvboxLight,
 	];
 	const XTERM_BRIGHT: [u32; 8] = [
 		0x808080, 0xFF5555, 0x55FF55, 0xFFFF55, 0x5555FF, 0xFF55FF, 0x55FFFF, 0xFFFFFF,

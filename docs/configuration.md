@@ -20,7 +20,24 @@ terminfo. Settings (the menu button, ☰, by the tabs) edits the same file.
 
 Poopterm includes Dark Mode, Light Mode, the official Nord palette, all three
 Rosé Pine variants (Main, Moon, Dawn), all four Catppuccin flavors, Bark, AMOLED
-Black, and signature Poop themes. Choose a theme in **Settings** or press
+Black, Dracula and its light Alucard, Gruvbox Dark and Light, and signature
+Poop themes. A theme recolors the terminal itself: its 16 ANSI colors, default
+foreground and background, and (where the theme publishes them) cursor and
+selection. Switching themes recolors text already on screen and in scrollback;
+colors a program set with OSC 4, 10–12, 17 or 19 stay on top of the new theme.
+On light themes, bright colors 8–15 are darkened only as far as needed to read.
+
+| Theme | Author | License | Source |
+|-------|--------|---------|--------|
+| Nord | Arctic Ice Studio & Sven Greb | MIT | nordtheme.com |
+| Rosé Pine, Moon, Dawn | Rosé Pine | MIT | rosepinetheme.com |
+| Catppuccin (all flavors) | Catppuccin | MIT | catppuccin.com |
+| Dracula, Alucard | Zeno Rocha and Dracula Theme | MIT | draculatheme.com |
+| Gruvbox Dark, Light | Pavel Pertsev | MIT | github.com/morhetz/gruvbox |
+| Bark | after Chris Kempson's base16 | MIT | github.com/chriskempson/base16 |
+| Dark/Light Mode, AMOLED Black, Poop | Poopterm contributors | AGPL-3.0-or-later | this repository |
+
+Settings shows the picked theme's credit under the picker. Choose a theme in **Settings** or press
 **Ctrl+Shift+T** to cycle through them. The selection is saved to a config file
 and restored on the next launch. AMOLED Black uses a pure black background with
 warm gold accents.
@@ -90,7 +107,9 @@ answer. The settings window does not change this key; edit the file.
 `theme` accepts `darkmode`, `light-mode`, `nord`, `rose-pine` (or the legacy
 `rosepine` alias), `rose-pine-moon`, `rose-pine-dawn`, `catppuccin-latte`,
 `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `bark`,
-`amoled-black`, `poop`, or `custom`. The custom theme starts from the Poop
+`amoled-black`, `dracula`, `alucard` (or `dracula-light`), `gruvbox-dark`
+(or `gruvbox`), `gruvbox-light`, `poop`, or `custom`. `color8` to `color15`
+set the bright colors. The custom theme starts from the Poop
 palette and accepts optional six-digit RGB overrides. Color keys can also
 override a built-in theme; AMOLED Black keeps its pure black background. The older `macos-dark` and
 `macos-light` values remain accepted for existing configs.

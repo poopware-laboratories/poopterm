@@ -90,8 +90,8 @@ pub(crate) struct Colors {
 /// Everything the color stack saves and restores.
 #[derive(Clone)]
 pub(crate) struct Saved {
-	default_fg: u32,
-	default_bg: u32,
+	pub(super) default_fg: u32,
+	pub(super) default_bg: u32,
 	overrides: [Option<u32>; 256],
 	colors: Colors,
 }
@@ -166,11 +166,16 @@ impl Term {
 	/// The current dynamic color `which`, as a query reports it.
 	pub(crate) fn dynamic_color(&self, which: Dynamic) -> u32 {
 		let colors = &self.colors;
-		let (selection_fg, selection_bg) = crate::ui::contrast::selection_colors(self.default_bg);
+		let (selection_fg, selection_bg) = self
+			.theme_selection
+			.unwrap_or_else(|| crate::ui::contrast::selection_colors(self.default_bg));
 		match which {
 			Dynamic::Foreground => self.default_fg,
 			Dynamic::Background => self.default_bg,
-			Dynamic::Cursor => colors.cursor.or(self.default_fg, self.default_fg),
+			Dynamic::Cursor => colors.cursor.or(
+				self.theme_cursor.unwrap_or(self.default_fg),
+				self.default_fg,
+			),
 			Dynamic::PointerForeground => colors.pointer_foreground.unwrap_or(self.default_fg),
 			Dynamic::PointerBackground => colors.pointer_background.unwrap_or(self.default_bg),
 			Dynamic::TektronixForeground => colors.tektronix[0].unwrap_or(self.default_fg),
@@ -215,44 +220,9 @@ impl Term {
 		if (old_fg, old_bg) == (fg, bg) {
 			return;
 		}
-		let recolor = |cells: &mut [super::Cell]| {
-			for cell in cells {
-				if cell.fg == old_fg {
-					cell.fg = fg;
-				}
-				if cell.bg == old_bg {
-					cell.bg = bg;
-				}
-			}
-		};
-		for row in self.grid.iter_mut() {
-			recolor(row);
-		}
-		recolor(self.scrollback.cells_mut());
-		if let Some((grid, _, _, saved_fg, saved_bg)) = &mut self.primary_screen {
-			for row in grid.iter_mut() {
-				recolor(row);
-			}
-			if *saved_fg == old_fg {
-				*saved_fg = fg;
-			}
-			if *saved_bg == old_bg {
-				*saved_bg = bg;
-			}
-		}
-		if self.fg == old_fg {
-			self.fg = fg;
-		}
-		if self.bg == old_bg {
-			self.bg = bg;
-		}
-		self.default_fg = fg;
-		self.default_bg = bg;
-		// Rows are measured against the padding, which just changed.
-		let pad = self.padding();
-		self.grid.sync_pad(pad);
-		if let Some((grid, ..)) = &mut self.primary_screen {
-			grid.sync_pad(pad);
-		}
+		// Reverse video draws text in the background color and back.
+		let (fgs, bgs) = ((old_fg, fg), (old_bg, bg));
+		self.remap_colors(&[fgs, bgs], &[bgs, fgs]);
+		self.adopt_default_colors(fg, bg);
 	}
 }
