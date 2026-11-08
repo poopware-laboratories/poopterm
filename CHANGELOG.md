@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.39 "Lunar Moth" — 2026-11-08
+
+### Added
+
+- Allocate pty pairs and set their size without portable-pty (#245) (pty).
+- Start every pty with explicit, sane terminal settings (#254) (pty).
+
 ## 26.11.38 "Lunar Moth" — 2026-11-08
 
 ### Maintenance
