@@ -384,10 +384,8 @@ fn a_string_of_many_pages_and_every_plane_survives_the_round_trip() {
 fn an_error_without_a_description_is_described_by_the_fallback() {
 	let silent = silent_object();
 	// SAFETY: answers `localizedDescription`, with nil.
-	assert_eq!(
-		unsafe { super::describe(silent.raw(), "said nothing") },
-		"said nothing"
-	);
+	let said = unsafe { super::describe(silent.raw(), "said nothing") };
+	assert_eq!(said, "said nothing");
 	// The error was retained and released once: it still lives.
 	let mut weak = Weak::new(&silent);
 	assert!(weak.alive());

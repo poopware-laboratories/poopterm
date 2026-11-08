@@ -198,6 +198,19 @@ function pointers the loader returns, which is `unsafe` by language rule.
 The layouts and the enumeration logic are unit-tested without a driver;
 `loader_tests.rs` creates real instances, on Mesa's software driver in CI.
 
+### Objective-C
+
+On macOS, `objc.rs` reaches the Objective-C runtime (libobjc, linked from
+the system), through which the Metal renderer will reach Metal and Core
+Animation. Sending a message is `unsafe` by language rule: the runtime
+cannot check the method's types.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `objc.rs` | `objc_getClass`, `sel_registerName`, `objc_retain`, `objc_release`, the autorelease pool push and pop | Names are C strings; a missing class comes back as nil and becomes `Missing`, never a message to nil. `Object` owns exactly one reference: `owned` takes over one a method returned to the caller (`alloc`, `new`, `copy`, `Create`), `retained` adds one for any other, `Clone` retains and `Drop` releases, so each reference is released once (`objc_tests.rs` checks the counts, `objc_probe_tests.rs` that an object is deallocated exactly when its last reference goes). A `Pool` is not `Send`, and pools pop in reverse order of their pushes, as guards on one thread do. |
+| `objc.rs` | `objc_msgSend` cast to each method's type, in `Arguments::send` | The trampoline jumps to the method's implementation with the registers and stack as the caller set them, so calling it as the method's own C function type is calling that method; `transmute` turns one function pointer into another of the same size. Each call site's `SAFETY` comment names the argument and return types it passes, as Apple's documentation gives them, and no method returning a structure is sent (that would need `objc_msgSend_stret` on x86-64). `objc_probe_tests.rs` checks every arity we send with integers of each width, floats, pointers and structures by value. Selectors that may be missing are checked with `respondsToSelector:` first, as a missing one raises an exception that must not unwind into Rust. |
+| `objc.rs` | `string`, `text`, `describe` | `initWithBytes:length:encoding:` copies the UTF-8 bytes before it returns, and consumes the `alloc`ed string it is sent to. `UTF8String` returns a C string, or null (read as empty), that lives as long as the string and the innermost pool, copied at once. |
+
 ### Wayland
 
 `present/wayland` (Linux and FreeBSD) shows software frames through
@@ -251,6 +264,10 @@ in `PutImage` requests.
   `outside_tests.rs`, and `app/gpu_open_tests.rs` (through `Gpu::open`):
   open a `GpuWindow` on the fake driver, which only records the window's
   handles, or on a headless surface, which has none.
+- `objc_probe_tests.rs` (macOS): registers classes of its own with the
+  runtime, once each, whose methods are `extern "C"` functions taking the
+  receiver and selector first, as the runtime calls them; weak references
+  live in boxes, initialized and destroyed once each.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 - `present/wayland/fake_tests.rs`, `fake_rules_tests.rs`: the fake
