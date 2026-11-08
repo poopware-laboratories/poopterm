@@ -65,7 +65,6 @@ impl App {
 			}
 			self.update_hovered_link();
 			self.search_dirty |= self.search_active;
-			self.update_window_title();
 		}
 		if visible || tab_changed {
 			self.schedule_redraw();

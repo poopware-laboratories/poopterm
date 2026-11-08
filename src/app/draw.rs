@@ -62,6 +62,9 @@ impl App {
 	pub(super) fn draw(&mut self) {
 		let started = Instant::now();
 		self.pacer.drawn(started);
+		// pr-check: window glue: once a frame, not once an output wake (thousands a second in a flood)
+		self.update_window_title();
+		// pr-check: end window glue
 		self.refresh_search_if_dirty();
 		self.fonts.trim();
 		self.ui_fonts.trim();
