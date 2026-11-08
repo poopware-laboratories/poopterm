@@ -29,6 +29,7 @@ pub(crate) mod painter;
 mod pane_view;
 #[cfg(test)]
 mod pane_view_tests;
+pub(crate) mod panes;
 pub(crate) mod pen;
 #[cfg(test)]
 mod pen_tests;

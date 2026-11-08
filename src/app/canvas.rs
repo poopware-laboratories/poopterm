@@ -328,6 +328,10 @@ mod tests {
 #[path = "canvas_pixels_tests.rs"]
 mod pixels;
 
+#[cfg(test)]
+#[path = "canvas_panes_pixels_tests.rs"]
+mod panes_pixels;
+
 #[path = "canvas_panes.rs"]
 mod panes;
 pub(super) use panes::pane_keys;

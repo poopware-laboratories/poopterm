@@ -523,14 +523,14 @@ fn a_partial_redraw_paints_the_padding_around_the_grid_and_changed_rows() {
 	// A 3 row grid of 20 pixel rows at y 40, its padding from y 30 to 120.
 	let place = rect(10, 40, 100, 70);
 	let pad = rect(1, 30, 120, 90);
-	let strips = damaged_strips(place, pad, 20, &[false, true, false]);
+	let strips = damaged_strips(place.y, pad, 20, &[false, true, false]);
 	let expected = [
 		rect(1, 30, 120, 10),
 		rect(1, 100, 120, 20),
 		rect(1, 60, 120, 20),
 	];
 	assert_eq!(strips, expected);
-	let all = damaged_strips(place, pad, 20, &[true; 3]);
+	let all = damaged_strips(place.y, pad, 20, &[true; 3]);
 	let rows = [
 		rect(1, 40, 120, 20),
 		rect(1, 60, 120, 20),
@@ -543,10 +543,10 @@ fn a_partial_redraw_paints_the_padding_around_the_grid_and_changed_rows() {
 fn padding_strips_are_empty_where_a_pane_has_none() {
 	// An inner pane's padding is its rect; its grid fills it exactly.
 	let place = rect(414, 40, 401, 60);
-	let strips = damaged_strips(place, place, 20, &[false; 3]);
+	let strips = damaged_strips(place.y, place, 20, &[false; 3]);
 	assert_eq!(strips, [rect(414, 40, 401, 0), rect(414, 100, 401, 0)]);
 	// A grid taller than its padding, as in a tiny window, stops at it.
-	let strips = damaged_strips(place, place, 20, &[false; 5]);
+	let strips = damaged_strips(place.y, place, 20, &[false; 5]);
 	assert_eq!(strips[1], rect(414, 100, 401, 0));
 }
 
@@ -557,7 +557,7 @@ fn strips_and_untouched_rows_cover_the_padding_exactly() {
 	for mask in 0..8u8 {
 		let damaged: Vec<bool> = (0..3).map(|row| mask & (1 << row) != 0).collect();
 		let mut painted = [0u8; 63];
-		for strip in damaged_strips(place, pad, 10, &damaged) {
+		for strip in damaged_strips(place.y, pad, 10, &damaged) {
 			assert_eq!((strip.x, strip.width), (2, 60), "the padding's width");
 			for count in &mut painted[strip.y..strip.y + strip.height] {
 				*count += 1;

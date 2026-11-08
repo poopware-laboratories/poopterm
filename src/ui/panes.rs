@@ -386,20 +386,20 @@ fn beside(from: Rect, to: Rect, direction: Direction) -> Option<(usize, usize)> 
 	(shared > 0).then_some((gap, shared))
 }
 
-/// What a partial redraw paints again of a pane at `rect` drawing its
-/// edge backgrounds into `pad`, its grid's rows `ch` pixels high, of which
-/// `damaged` says which changed: the padding above and below the grid,
-/// and the changed rows across the padding's width.
-pub(crate) fn damaged_strips(rect: Rect, pad: Rect, ch: usize, damaged: &[bool]) -> Vec<Rect> {
+/// What a partial redraw paints again of a pane whose grid starts at pixel
+/// row `top` and draws its edge backgrounds into `pad`, its rows `ch`
+/// pixels high, of which `damaged` says which changed: the padding above
+/// and below the grid, and the changed rows across the padding's width.
+pub(crate) fn damaged_strips(top: usize, pad: Rect, ch: usize, damaged: &[bool]) -> Vec<Rect> {
 	let bottom = pad.y + pad.height;
-	let grid_bottom = (rect.y + damaged.len() * ch).min(bottom);
+	let grid_bottom = (top + damaged.len() * ch).min(bottom);
 	let strip = |y: usize, height: usize| Rect { y, height, ..pad };
 	let mut strips = vec![
-		strip(pad.y, rect.y.saturating_sub(pad.y)),
+		strip(pad.y, top.saturating_sub(pad.y)),
 		strip(grid_bottom, bottom.saturating_sub(grid_bottom)),
 	];
 	let changed = damaged.iter().enumerate().filter(|(_, damaged)| **damaged);
-	strips.extend(changed.map(|(row, _)| strip(rect.y + row * ch, ch)));
+	strips.extend(changed.map(|(row, _)| strip(top + row * ch, ch)));
 	strips
 }
 

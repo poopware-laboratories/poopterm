@@ -238,7 +238,8 @@ impl App {
 	pub(super) fn draw_terminal(&mut self, p: &mut impl Pen, scale: usize, rows: Option<&[bool]>) {
 		if self.is_split() {
 			// Only whole frames: a split tab's partial ones draw its panes.
-			return self.draw_panes(p, scale, None);
+			self.draw_panes(p, scale, None);
+			return;
 		}
 		let (width, height) = p.size();
 		let padding = self.padding_area(width, height);

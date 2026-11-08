@@ -240,7 +240,7 @@ fn a_wallpaper_rect_paints_what_the_wallpaper_rows_do_there_and_nothing_else() {
 	] {
 		let mut pixels = vec![BEFORE; size.0 * size.1];
 		let painter = &mut Painter::new(&mut pixels, size.0, size.1);
-		super::wallpaper_rect(painter, rect, border, &image);
+		super::fill_inside(painter, rect, border, (INSIDE, Some(&image)));
 		for y in 0..size.1 {
 			for x in 0..size.0 {
 				let inside =
