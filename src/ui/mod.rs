@@ -58,6 +58,9 @@ pub(crate) mod search;
 pub(crate) mod selection;
 #[cfg(test)]
 mod selection_tests;
+pub(crate) mod settings_layout;
+#[cfg(test)]
+mod settings_layout_tests;
 pub(crate) mod sidebar;
 #[cfg(test)]
 mod sidebar_tests;

@@ -9,16 +9,17 @@ use super::{
 };
 use crate::input::shortcuts::ShortcutAction;
 use crate::render::{painter::ButtonStyle, scene::Scene};
+use crate::ui::settings_layout::{MAIN, MIN_HEIGHT};
 
-pub(super) const THEME_ROW: usize = 138;
+pub(super) const THEME_ROW: usize = MAIN.theme;
 /// The picked theme's credit, between the picker and the wallpaper label.
-pub(super) const THEME_CREDIT_ROW: usize = 184;
-pub(super) const WALLPAPER_ROW: usize = 228;
-pub(super) const FONT_ROW: usize = 270;
-pub(super) const SCROLLBACK_ROW: usize = 326;
-pub(super) const RESTORE_ROW: usize = 382;
-pub(super) const STRENGTH_ROW: usize = 438;
-pub(super) const OPACITY_ROW: usize = 494;
+pub(super) const THEME_CREDIT_ROW: usize = MAIN.credit;
+pub(super) const WALLPAPER_ROW: usize = MAIN.wallpaper;
+pub(super) const FONT_ROW: usize = MAIN.font;
+pub(super) const SCROLLBACK_ROW: usize = MAIN.scrollback;
+pub(super) const RESTORE_ROW: usize = MAIN.restore;
+pub(super) const STRENGTH_ROW: usize = MAIN.strength;
+pub(super) const OPACITY_ROW: usize = MAIN.opacity;
 pub(super) const SHOW_TABS_ROW: usize = 104;
 pub(super) const VERTICAL_TABS_ROW: usize = 152;
 pub(super) const NEW_TAB_BUTTON_ROW: usize = 200;
@@ -42,7 +43,7 @@ pub(super) const FONT_LIST_TOP: usize = 104;
 pub(super) const FONT_LIST_STRIDE: usize = 44;
 /// Default and minimum Settings window size, in logical pixels.
 pub(super) const DEFAULT_SIZE: (usize, usize) = (760, 640);
-pub(super) const MIN_SIZE: (usize, usize) = (680, 600);
+pub(super) const MIN_SIZE: (usize, usize) = (680, MIN_HEIGHT);
 /// Height of a settings row's controls.
 pub(super) const ROW_HEIGHT: usize = 40;
 
@@ -307,8 +308,8 @@ pub(super) fn compose_main_settings(
 		p.button(rect, style, hovered(rect.0, rect.1, rect.2, rect.3));
 		pen.centered(p, rect, label, 0.76);
 	}
-	pen.text(p, x, 62, "Appearance", 0.82);
-	pen.text(p, x, 112, "Color theme", 0.76);
+	pen.text(p, x, MAIN.heading, "Appearance", 0.82);
+	pen.text(p, x, MAIN.theme_label, "Color theme", 0.76);
 
 	let button_w = 48 * s;
 	let theme_y = THEME_ROW * s;
@@ -328,7 +329,7 @@ pub(super) fn compose_main_settings(
 	);
 	pen.text(p, x, THEME_CREDIT_ROW, &editor.theme.credit().line(), 0.62);
 
-	pen.text(p, x, 210, "Background wallpaper", 0.76);
+	pen.text(p, x, MAIN.wallpaper_label, "Background wallpaper", 0.76);
 	for (bx, bw, label) in [
 		(x, 152 * s, "Choose image…"),
 		(x + 164 * s, 96 * s, "Clear"),
@@ -409,10 +410,10 @@ mod tests {
 
 	#[test]
 	fn the_credit_sits_between_the_picker_and_the_wallpaper_label() {
-		// The picker ends at THEME_ROW + ROW_HEIGHT; the wallpaper label
-		// starts at 210, and the credit's small text is about 12 high.
+		// The picker ends at THEME_ROW + ROW_HEIGHT; the credit's small text
+		// is about 12 high and ends before the wallpaper label.
 		const { assert!(THEME_CREDIT_ROW >= THEME_ROW + ROW_HEIGHT) };
-		const { assert!(THEME_CREDIT_ROW + 14 <= 210) };
+		const { assert!(THEME_CREDIT_ROW + 14 <= MAIN.wallpaper_label) };
 	}
 
 	#[test]

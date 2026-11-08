@@ -213,16 +213,28 @@ mod tests {
 			assert_eq!(target(x, 30), None, "x {x}");
 		}
 		assert_eq!(target(630, 600), Some(SettingsTarget::Save));
-		assert_eq!(target(30, 240), Some(SettingsTarget::ChooseWallpaper));
-		assert_eq!(target(200, 240), Some(SettingsTarget::ClearWallpaper));
-		assert_eq!(target(530, 390), Some(SettingsTarget::ToggleRestore));
-		assert_eq!(target(530, 280), Some(SettingsTarget::Step(FONT_ROW, -1)));
 		assert_eq!(
-			target(700, 330),
+			target(30, WALLPAPER_ROW + 10),
+			Some(SettingsTarget::ChooseWallpaper)
+		);
+		assert_eq!(
+			target(200, WALLPAPER_ROW + 10),
+			Some(SettingsTarget::ClearWallpaper)
+		);
+		assert_eq!(
+			target(530, RESTORE_ROW + 10),
+			Some(SettingsTarget::ToggleRestore)
+		);
+		assert_eq!(
+			target(530, FONT_ROW + 10),
+			Some(SettingsTarget::Step(FONT_ROW, -1))
+		);
+		assert_eq!(
+			target(700, SCROLLBACK_ROW + 10),
 			Some(SettingsTarget::Step(SCROLLBACK_ROW, 1))
 		);
-		assert_eq!(target(30, 150), Some(SettingsTarget::Theme(-1)));
-		assert_eq!(target(720, 150), Some(SettingsTarget::Theme(1)));
+		assert_eq!(target(30, THEME_ROW + 10), Some(SettingsTarget::Theme(-1)));
+		assert_eq!(target(720, THEME_ROW + 10), Some(SettingsTarget::Theme(1)));
 		assert_eq!(target(300, 100), None);
 	}
 
@@ -360,7 +372,7 @@ mod tests {
 	fn hit_testing_scales_with_the_window() {
 		assert_eq!(
 			settings_target(
-				(530 * 2, 280 * 2),
+				(530 * 2, (FONT_ROW + 10) * 2),
 				(SIZE.0 * 2, SIZE.1 * 2),
 				2,
 				SettingsPage::Main
