@@ -45,6 +45,12 @@ fn every_failure_says_what_failed() {
 			"no Objective-C class CAMetalLayer",
 		),
 		(Error::Refused("buffer"), "Metal made no buffer"),
+		(
+			Error::Shader("line 3: oops".into()),
+			"Metal shaders failed: line 3: oops",
+		),
+		(Error::Gpu("hang".into()), "the GPU failed a frame: hang"),
+		(Error::Draw, "a frame the GPU cannot hold"),
 		(Error::Region, "a region outside its texture"),
 	];
 	for (error, words) in said {

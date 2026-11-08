@@ -142,4 +142,4 @@ impl Texture {
 
 #[cfg(test)]
 #[path = "texture_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -12,6 +12,10 @@ unsafe extern "C" {
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {}
 
+/// The largest side of a 2D texture and the most layers of an array one,
+/// on every Mac GPU family Metal supports (Apple7 and later, Mac2).
+pub(crate) const TEXTURE_LIMITS: [u32; 2] = [16384, 2048];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Error {
 	/// The system has no Metal device.
@@ -19,6 +23,13 @@ pub(crate) enum Error {
 	Missing(Missing),
 	/// Metal returned nil where it makes an object of this kind.
 	Refused(&'static str),
+	/// The shaders did not compile, or the pipeline was not made, as said.
+	Shader(String),
+	/// The GPU failed a frame, as said.
+	Gpu(String),
+	/// A frame the GPU cannot draw: its glyphs or images exceed what it
+	/// holds.
+	Draw,
 	/// Texels written to, or read from, outside a texture.
 	Region,
 }
@@ -29,6 +40,9 @@ impl fmt::Display for Error {
 			Self::NoDevice => write!(f, "no Metal device"),
 			Self::Missing(missing) => missing.fmt(f),
 			Self::Refused(what) => write!(f, "Metal made no {what}"),
+			Self::Shader(why) => write!(f, "Metal shaders failed: {why}"),
+			Self::Gpu(why) => write!(f, "the GPU failed a frame: {why}"),
+			Self::Draw => write!(f, "a frame the GPU cannot hold"),
 			Self::Region => write!(f, "a region outside its texture"),
 		}
 	}
