@@ -13,6 +13,7 @@ mod bands_tests;
 pub(crate) mod curves;
 #[cfg(test)]
 mod curves_tests;
+pub(crate) mod encode;
 #[cfg(target_os = "macos")]
 pub(crate) mod mtl;
 pub(crate) mod quads;
