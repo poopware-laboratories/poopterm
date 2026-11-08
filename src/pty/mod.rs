@@ -6,6 +6,7 @@ mod burst;
 	expect(dead_code, reason = "sessions move here with the child setup (#188)")
 )]
 pub(crate) mod device;
+pub(crate) mod open;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
@@ -23,7 +24,7 @@ use std::{
 	thread,
 };
 
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -140,8 +141,7 @@ pub(crate) fn spawn_session(
 	term_env: &TermEnv,
 ) -> Result<Session, Box<dyn Error>> {
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
-	let pty = native_pty_system();
-	let pair = pty.openpty(PtySize {
+	let pair = open::openpty(PtySize {
 		rows: rows as u16,
 		cols: cols as u16,
 		pixel_width: 0,

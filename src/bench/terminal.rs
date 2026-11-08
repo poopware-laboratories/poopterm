@@ -142,10 +142,10 @@ pub(crate) mod tests {
 		term::Term,
 		theme::{Theme, ThemeKind},
 	};
-	use portable_pty::{MasterPty, PtySize, native_pty_system};
+	use portable_pty::{MasterPty, PtySize};
 	use std::{
 		io::Read,
-		sync::{Arc, Mutex},
+		sync::{Arc, Condvar, Mutex},
 	};
 
 	/// How the emulator on the other side answers queries.
@@ -166,20 +166,41 @@ pub(crate) mod tests {
 	/// How late [`Answers::Slow`] answers.
 	const LATE: Duration = Duration::from_millis(250);
 
+	/// How long [`Emulator::seen_ending`] waits, far longer than any
+	/// emulator takes, so only a missing write runs it out.
+	const PATIENCE: Duration = Duration::from_secs(30);
+
+	/// Everything the emulator was sent, and a signal for each read.
+	type Seen = Arc<(Mutex<Vec<u8>>, Condvar)>;
+
 	/// What the emulator writes to the master: its replies and typed keys.
 	type Keyboard = Arc<Mutex<Box<dyn Write + Send>>>;
 
 	/// The far side of a PTY running Poopterm's own terminal as the
 	/// emulator under test: everything it was sent, and the master.
 	pub(crate) struct Emulator {
-		seen: Arc<Mutex<Vec<u8>>>,
+		seen: Seen,
 		keyboard: Keyboard,
 		master: Box<dyn MasterPty + Send>,
 	}
 
 	impl Emulator {
 		pub(crate) fn seen(&self) -> Vec<u8> {
-			self.seen.lock().unwrap().clone()
+			self.seen.0.lock().unwrap().clone()
+		}
+
+		/// Everything seen, once it ends with `tail` or [`PATIENCE`] runs out.
+		/// The emulator reads on a thread of its own, so what was just
+		/// written to the slave may not have reached it yet.
+		pub(crate) fn seen_ending(&self, tail: &[u8]) -> Vec<u8> {
+			let (seen, read) = &*self.seen;
+			let seen = seen.lock().unwrap();
+			let waiting = |seen: &mut Vec<u8>| !seen.ends_with(tail);
+			read
+				.wait_timeout_while(seen, PATIENCE, waiting)
+				.unwrap()
+				.0
+				.clone()
 		}
 
 		/// Resizes the terminal, as dragging its window would.
@@ -207,11 +228,11 @@ pub(crate) mod tests {
 			pixel_width: 0,
 			pixel_height: 0,
 		};
-		let pair = native_pty_system().openpty(size).unwrap();
+		let pair = crate::pty::open::openpty(size).unwrap();
 		let path = pair.master.tty_name().expect("the slave has a path");
 		let tty = File::options().read(true).write(true).open(path).unwrap();
 		drop(pair.slave);
-		let seen = Arc::new(Mutex::new(Vec::new()));
+		let seen: Seen = Arc::default();
 		let mut input = pair.master.try_clone_reader().unwrap();
 		let keyboard: Keyboard = Arc::new(Mutex::new(pair.master.take_writer().unwrap()));
 		let (theirs, output) = (seen.clone(), keyboard.clone());
@@ -220,7 +241,8 @@ pub(crate) mod tests {
 			let mut term = Term::new(cols as usize, rows as usize, theme, "/".into());
 			let (mut parser, mut buf) = (Parser::new(), vec![0; 1 << 16]);
 			while let Ok(n @ 1..) = input.read(&mut buf) {
-				theirs.lock().unwrap().extend_from_slice(&buf[..n]);
+				theirs.0.lock().unwrap().extend_from_slice(&buf[..n]);
+				theirs.1.notify_all();
 				parser.advance(&mut term, &buf[..n]);
 				let mut output = output.lock().unwrap();
 				for reply in term.responses.drain(..) {
@@ -314,7 +336,7 @@ pub(crate) mod tests {
 		}
 		drop(terminal);
 		assert_eq!(settings(&tty), before);
-		assert!(emulator.seen().ends_with(CLEAR));
+		assert!(emulator.seen_ending(CLEAR).ends_with(CLEAR));
 	}
 
 	#[test]
@@ -380,7 +402,7 @@ pub(crate) mod tests {
 		assert!(terminal.rate(b"lost", Mode::Cooked).is_err());
 		drop(terminal);
 		assert_eq!(settings(&tty), before);
-		assert!(emulator.seen().ends_with(CLEAR));
+		assert!(emulator.seen_ending(CLEAR).ends_with(CLEAR));
 	}
 
 	#[test]
@@ -465,6 +487,18 @@ pub(crate) mod tests {
 			"{heard:?}"
 		);
 		assert_eq!(terminal.ask(b"").unwrap(), b"");
+	}
+
+	#[test]
+	fn bytes_still_on_their_way_to_the_emulator_are_waited_for() {
+		let (mut tty, emulator) = emulator(80, 24, Answers::Never);
+		let writer = thread::spawn(move || {
+			thread::sleep(Duration::from_millis(100));
+			tty.write_all(b"late").unwrap();
+			tty
+		});
+		assert_eq!(emulator.seen_ending(b"late"), b"late");
+		drop(writer.join().unwrap());
 	}
 
 	#[test]

@@ -3,7 +3,7 @@
 //! stay ours.
 use super::*;
 use crate::bench::corpus::Rng;
-use portable_pty::{PtySize, native_pty_system};
+use portable_pty::PtySize;
 use std::{
 	fs::File,
 	io::{Read, Write},
@@ -40,14 +40,13 @@ fn stty_size(tty: &impl std::os::fd::AsFd) -> String {
 
 /// portable-pty's pair of `size`: its master, and its slave opened by path.
 fn oracle(size: WindowSize) -> (Box<dyn portable_pty::MasterPty + Send>, File) {
-	let pair = native_pty_system()
-		.openpty(PtySize {
-			rows: size.rows,
-			cols: size.cols,
-			pixel_width: size.pixel_width,
-			pixel_height: size.pixel_height,
-		})
-		.unwrap();
+	let pair = crate::pty::open::openpty(PtySize {
+		rows: size.rows,
+		cols: size.cols,
+		pixel_width: size.pixel_width,
+		pixel_height: size.pixel_height,
+	})
+	.unwrap();
 	let path = pair.master.tty_name().unwrap();
 	let slave = File::options().read(true).write(true).open(path).unwrap();
 	(pair.master, slave)

@@ -537,7 +537,8 @@ mod tests {
 		let error = benchmark(options, Some((tty, None))).err().unwrap();
 		assert_eq!(error.to_string(), "interrupted");
 		assert_eq!(terminal::tests::settings(&watch), before);
-		assert!(user.join().unwrap().seen().ends_with(terminal::CLEAR));
+		let user = user.join().unwrap();
+		assert!(user.seen_ending(terminal::CLEAR).ends_with(terminal::CLEAR));
 	}
 
 	#[test]
@@ -558,7 +559,7 @@ mod tests {
 		);
 		// Every workload byte reached the terminal, the warm-up's too, and
 		// the terminal was given back cleared.
-		let seen = emulator.seen();
+		let seen = emulator.seen_ending(terminal::CLEAR);
 		let log = corpus::find("log")
 			.unwrap()
 			.build(16 << 10, Size { cols: 93, rows: 27 });
