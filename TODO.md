@@ -231,6 +231,9 @@ least as fast.
   `tty(4)`), never from portable-pty's or any terminal's source. One module
   per platform where they differ; everything else shared. portable-pty stays
   a dev-dependency as the oracle until the replacement matches it, then goes.
+  - **Done: pairs and sizes** (`src/pty/device.rs`). Allocation, both sides
+    closed on exec and `O_NOCTTY`, and the window size in cells and pixels,
+    tested against portable-pty. Sessions do not use it yet.
   - **Spawning, per POSIX.** Open the master `O_RDWR | O_NOCTTY | O_CLOEXEC`;
     in the child, a new session (`setsid`), the slave as controlling terminal
     (`TIOCSCTTY`), stdio on it, every other descriptor closed, signal mask and
