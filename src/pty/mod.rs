@@ -1,6 +1,7 @@
 //! PTY sessions: shell spawning plus each session's reader and parser threads.
 #[cfg(any(target_os = "macos", test))]
 mod burst;
+pub(crate) mod device;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
