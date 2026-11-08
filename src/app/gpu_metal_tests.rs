@@ -233,3 +233,62 @@ fn software_says_why_when_metal_was_not_asked_for() {
 	let asked = started(Backend::Software, None, true);
 	assert_eq!(asked, Drawing::Software(Reason::Asked));
 }
+
+#[test]
+fn a_label_larger_than_a_page_grows_the_atlas_and_is_drawn() {
+	let Some(mut gpu) = headless() else { return };
+	let mut scene = Scene::new(160, 120);
+	scene.fill(0x1e_1e2e);
+	// A 600 pixel glyph, as a huge scale factor makes: past a 256 page.
+	scene.text(&mut fonts(), 0, 0, "W", 600.0, 500, 0xee_eeee);
+	let mut again = 0;
+	let mut next = gpu.scene(&scene, &mut fonts());
+	while next == Next::Redraw && again < 4 {
+		again += 1;
+		next = gpu.scene(&scene, &mut fonts());
+	}
+	assert_eq!(next, Next::Done);
+	// Drawn again once the atlas grew.
+	assert!(again > 0);
+}
+
+#[test]
+fn a_glyph_no_atlas_holds_hands_the_window_to_software_saying_why() {
+	use super::drawn_as;
+	use crate::{
+		fonts::Metrics,
+		render::{glyphs::Glyph, pen::Ink},
+		ui::diagnostics::{Drawing, Reason},
+	};
+	let Some(mut gpu) = headless() else { return };
+	// One past the widest texture Metal makes.
+	let glyph = Glyph {
+		metrics: Metrics {
+			width: 16385,
+			height: 1,
+			..Metrics::default()
+		},
+		coverage: vec![0x80; 16385],
+		color: None,
+	};
+	let mut next = Next::Redraw;
+	for _ in 0..8 {
+		next = gpu.frame((40, 30), |pen| {
+			pen.rect(0, 0, 40, 30, BG);
+			let ink = Ink::Drawn('w', (16385, 1));
+			pen.glyph(&glyph, ink, (0, 0), (0, 0, 40, 30), false, 0xff_ffff);
+		});
+		if next != Next::Redraw {
+			break;
+		}
+	}
+	assert_eq!(next, Next::Abandon(Error::Draw.to_string()));
+	// The pen started over: the next frame draws every row.
+	assert!(!gpu.keeps_rows());
+	let mut drawing = Drawing::Gpu;
+	drawn_as(&mut drawing, &next);
+	assert_eq!(
+		drawing,
+		Drawing::Software(Reason::Abandoned("a frame the GPU cannot hold".into()))
+	);
+}

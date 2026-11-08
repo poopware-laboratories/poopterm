@@ -221,3 +221,73 @@ fn a_window_dropped_lets_go_of_its_layer_once_its_frames_are_done() {
 	flush();
 	assert!(!layer.alive());
 }
+
+/// What a fake view was sent: the layer it was given, and whether it was
+/// told it wants one, in order.
+#[derive(Debug, PartialEq)]
+enum Hosted {
+	Layer(usize),
+	Wants(bool),
+}
+
+thread_local! {
+	static HOSTED: std::cell::RefCell<Vec<Hosted>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+extern "C" fn set_layer(_: crate::objc::Raw, _: crate::objc::Sel, layer: crate::objc::Raw) {
+	HOSTED.with(|hosted| hosted.borrow_mut().push(Hosted::Layer(layer as usize)));
+}
+
+extern "C" fn set_wants(_: crate::objc::Raw, _: crate::objc::Sel, wants: crate::objc::Bool) {
+	HOSTED.with(|hosted| hosted.borrow_mut().push(Hosted::Wants(wants != 0)));
+}
+
+/// A fake `NSView`, which records the layer it is given.
+fn fake_view() -> crate::objc::Object {
+	use crate::objc::probe_tests::{class_named, register};
+	use std::{ffi::c_void, sync::OnceLock};
+	static VIEW: OnceLock<usize> = OnceLock::new();
+	let raw = *VIEW.get_or_init(|| {
+		let methods: [(&std::ffi::CStr, *const c_void, &std::ffi::CStr); 2] = [
+			(c"setLayer:", set_layer as *const c_void, c"v@:@"),
+			(c"setWantsLayer:", set_wants as *const c_void, c"v@:c"),
+		];
+		register(c"PooptermFakeView", &methods).raw() as usize
+	});
+	// SAFETY: a subclass of `NSObject`, whose `init` is `NSObject`'s.
+	unsafe { class_named(raw).instance() }.unwrap()
+}
+
+#[test]
+fn a_view_is_given_the_layer_before_it_is_told_it_wants_one() {
+	use crate::objc::probe_tests::Weak;
+	if device().is_none() {
+		return;
+	}
+	let view = fake_view();
+	let mut watched = Weak::new(&view);
+	let at = std::ptr::NonNull::new(view.raw());
+	HOSTED.with(|hosted| hosted.borrow_mut().clear());
+	// SAFETY: the fake view outlives the window, on this thread.
+	let window = unsafe { MetalWindow::new(at, ATLAS) }.unwrap();
+	let hosted = HOSTED.with(|hosted| std::mem::take(&mut *hosted.borrow_mut()));
+	// Given first, it hosts our layer rather than making its own.
+	assert_eq!(
+		hosted,
+		[
+			Hosted::Layer(window.layer.raw() as usize),
+			Hosted::Wants(true)
+		]
+	);
+	// The window keeps no reference to the view: it lives as its owner says.
+	drop(window);
+	flush();
+	drop(view);
+	assert!(!watched.alive());
+}
+
+#[test]
+fn a_window_without_a_view_tells_no_view_anything() {
+	let Some(_window) = window() else { return };
+	assert_eq!(HOSTED.with(|hosted| hosted.borrow().len()), 0);
+}
