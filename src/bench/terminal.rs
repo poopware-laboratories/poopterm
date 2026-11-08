@@ -142,7 +142,7 @@ pub(crate) mod tests {
 		term::Term,
 		theme::{Theme, ThemeKind},
 	};
-	use portable_pty::{MasterPty, PtySize, native_pty_system};
+	use portable_pty::{MasterPty, PtySize};
 	use std::{
 		io::Read,
 		sync::{Arc, Mutex},
@@ -207,7 +207,7 @@ pub(crate) mod tests {
 			pixel_width: 0,
 			pixel_height: 0,
 		};
-		let pair = native_pty_system().openpty(size).unwrap();
+		let pair = crate::pty::open::openpty(size).unwrap();
 		let path = pair.master.tty_name().expect("the slave has a path");
 		let tty = File::options().read(true).write(true).open(path).unwrap();
 		drop(pair.slave);

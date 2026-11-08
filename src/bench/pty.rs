@@ -21,14 +21,14 @@ use std::{
 	time::Instant,
 };
 
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, PtySize};
 
 use super::{
 	corpus::Size,
 	mark::{MARK, UntilMark},
 };
 use crate::{
-	pty::{OUTPUT_LIMIT, OutputQueue, pump, reader},
+	pty::{OUTPUT_LIMIT, OutputQueue, open, pump, reader},
 	term::SharedTerm,
 };
 
@@ -57,7 +57,7 @@ type Outcome<T> = Result<T, Box<dyn Error>>;
 /// a fast, empty run.
 fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Outcome<f64> {
 	let start = Instant::now();
-	let pair = native_pty_system().openpty(PtySize {
+	let pair = open::openpty(PtySize {
 		rows: size.rows as u16,
 		cols: size.cols as u16,
 		pixel_width: 0,
