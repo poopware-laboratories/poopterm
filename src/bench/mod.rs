@@ -8,6 +8,7 @@
 //! terminals can be measured on identical input (`scripts/bench-throughput.py`).
 pub(crate) mod corpus;
 pub(crate) mod images;
+pub(crate) mod mark;
 pub(crate) mod pty;
 pub(crate) mod report;
 pub(crate) mod stats;

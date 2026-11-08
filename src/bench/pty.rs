@@ -10,7 +10,7 @@
 
 use std::{
 	error::Error,
-	io::Read,
+	io::{Read, Write},
 	path::PathBuf,
 	process,
 	sync::{
@@ -23,7 +23,10 @@ use std::{
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-use super::corpus::Size;
+use super::{
+	corpus::Size,
+	mark::{MARK, UntilMark},
+};
 use crate::{
 	pty::{OUTPUT_LIMIT, OutputQueue, pump, reader},
 	term::SharedTerm,
@@ -45,12 +48,13 @@ type Outcome<T> = Result<T, Box<dyn Error>>;
 
 /// Runs `argv` on a new PTY of `size` in `mode`, handing its output to
 /// `read`, and returns the seconds from spawning until `read` is done.
-/// The program runs through `sh`, which turns output processing off with
-/// `stty` in raw mode (on the slave itself, as any program would) and then
-/// becomes it, so both modes pay for the same start-up. The slave is closed
-/// here, so the output ends once the program exits; the master stays open
-/// until then, as a tab keeps it. A failed program is an error rather than
-/// a fast, empty run.
+/// The program runs under `sh`, which turns output processing off with
+/// `stty` in raw mode (on the slave itself, as any program would), so both
+/// modes pay for the same start-up. After the program, `sh` prints the
+/// [`MARK`] the output ends at and waits for a line, which it gets once the
+/// output is read: some kernels drop a PTY's unread output when its
+/// program exits. A failed program is an error rather than a fast, empty
+/// run.
 fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Outcome<f64> {
 	let start = Instant::now();
 	let pair = native_pty_system().openpty(PtySize {
@@ -59,19 +63,24 @@ fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Ou
 		pixel_width: 0,
 		pixel_height: 0,
 	})?;
+	let end = std::str::from_utf8(MARK)?;
+	let script = format!(r#""$@"; s=$?; printf %s '{end}'; read -r _; exit $s"#);
 	let script = match mode {
-		Mode::Cooked => r#"exec "$@""#,
-		Mode::Raw => r#"stty -opost && exec "$@""#,
+		Mode::Cooked => script,
+		Mode::Raw => format!("stty -opost || exit; {script}"),
 	};
 	let mut command = CommandBuilder::new("sh");
-	command.args(["-c", script, "sh"]);
+	command.args(["-c", &script, "sh"]);
 	command.args(argv);
 	// Cloned first, so a failure leaves no child unwaited.
 	let output = pair.master.try_clone_reader()?;
+	let mut keyboard = pair.master.take_writer()?;
 	let mut child = pair.slave.spawn_command(command)?;
 	drop(pair.slave);
-	read(output);
+	read(Box::new(UntilMark::new(output)));
 	let seconds = start.elapsed().as_secs_f64();
+	// Lets `sh` go; it has already gone if it never printed the mark.
+	let _ = keyboard.write_all(b"\n");
 	let status = child.wait()?;
 	if !status.success() {
 		return Err(format!("{} exited with {}", argv.join(" "), status.exit_code()).into());
@@ -176,6 +185,13 @@ mod tests {
 	#[test]
 	fn cooked_output_turns_each_newline_into_a_carriage_return_and_newline() {
 		assert_eq!(printf("a\\nb\\n"), b"a\r\nb\r\n");
+	}
+
+	#[test]
+	fn output_ending_in_what_could_begin_the_mark_arrives_whole() {
+		let almost = std::str::from_utf8(&MARK[..MARK.len() - 1]).unwrap();
+		let argv = ["printf", "%s", almost];
+		assert_eq!(output(&argv, SMALL, Mode::Raw), almost.as_bytes());
 	}
 
 	#[test]
