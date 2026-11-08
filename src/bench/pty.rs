@@ -126,6 +126,11 @@ pub(crate) fn rate(data: &[u8], size: Size, mode: Mode, parse: bool) -> Outcome<
 	Ok(data.len() as f64 / seconds / 1e6)
 }
 
+/// The calling thread's number, for file names: tests count their own.
+fn thread_number() -> String {
+	format!("{:?}", thread::current().id()).replace(|c: char| !c.is_ascii_digit(), "")
+}
+
 /// `data` in a file of its own until dropped, for `cat` to write.
 pub(crate) struct Payload(PathBuf);
 
@@ -133,7 +138,11 @@ impl Payload {
 	pub(crate) fn new(data: &[u8]) -> std::io::Result<Self> {
 		static NEXT: AtomicU64 = AtomicU64::new(0);
 		let next = NEXT.fetch_add(1, Ordering::Relaxed);
-		let name = format!("poopterm-bench-{}-{next}", process::id());
+		let name = format!(
+			"poopterm-bench-{}-{}-{next}",
+			process::id(),
+			thread_number()
+		);
 		let path = std::env::temp_dir().join(name);
 		std::fs::write(&path, data)?;
 		Ok(Self(path))
@@ -401,8 +410,26 @@ mod tests {
 		assert_eq!(temporary_files(), before);
 	}
 
+	#[test]
+	fn a_failed_run_leaves_no_file_behind() {
+		let before = temporary_files();
+		assert!(collect(&["false"], SMALL, Mode::Raw, |_| ()).is_err());
+		assert_eq!(temporary_files(), before);
+	}
+
+	#[test]
+	fn files_are_named_for_the_thread_that_made_them() {
+		let name = |payload: &Payload| payload.0.file_name().unwrap().to_owned();
+		let here = name(&Payload::new(b"x").unwrap());
+		let there = thread::spawn(move || name(&Payload::new(b"y").unwrap()));
+		let there = there.join().unwrap();
+		let prefix = format!("poopterm-bench-{}-{}-", process::id(), thread_number());
+		assert!(here.to_string_lossy().starts_with(&prefix), "{here:?}");
+		assert!(!there.to_string_lossy().starts_with(&prefix), "{there:?}");
+	}
+
 	fn temporary_files() -> usize {
-		let prefix = format!("poopterm-bench-{}-", process::id());
+		let prefix = format!("poopterm-bench-{}-{}-", process::id(), thread_number());
 		let entries = std::fs::read_dir(std::env::temp_dir()).unwrap();
 		entries
 			.filter(|entry| {
