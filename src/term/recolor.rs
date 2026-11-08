@@ -80,11 +80,13 @@ impl Term {
 		let bg = follow(self.default_bg, old_theme.1, theme.bg);
 		self.palette = theme.palette;
 		self.bright = theme.bright_colors();
-		let mut fg_map = [(self.default_fg, fg); 17];
-		let mut bg_map = [(self.default_bg, bg); 17];
+		// Each default first, then the other (reverse video), then the 16.
+		let (fgs, bgs) = ((self.default_fg, fg), (self.default_bg, bg));
+		let mut fg_map = [fgs, bgs].repeat(9);
+		let mut bg_map = [bgs, fgs].repeat(9);
 		for (index, pair) in old.into_iter().zip(self.ansi_colors()).enumerate() {
-			fg_map[index + 1] = pair;
-			bg_map[index + 1] = pair;
+			fg_map[index + 2] = pair;
+			bg_map[index + 2] = pair;
 		}
 		self.remap_colors(&fg_map, &bg_map);
 		self.adopt_default_colors(fg, bg);

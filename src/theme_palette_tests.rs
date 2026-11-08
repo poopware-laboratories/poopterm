@@ -356,3 +356,188 @@ fn a_credit_reads_as_one_line() {
 		"by Zeno Rocha and Dracula Theme · MIT · draculatheme.com"
 	);
 }
+
+#[test]
+fn exactly_the_themes_with_a_published_terminal_table_carry_brights() {
+	let published = [
+		ThemeKind::CatppuccinLatte,
+		ThemeKind::CatppuccinFrappe,
+		ThemeKind::CatppuccinMacchiato,
+		ThemeKind::CatppuccinMocha,
+		ThemeKind::Dracula,
+		ThemeKind::Alucard,
+		ThemeKind::GruvboxDark,
+		ThemeKind::GruvboxLight,
+	];
+	for kind in built_in().into_iter().chain([ThemeKind::Custom]) {
+		let has = Theme::from_kind(kind).bright.is_some();
+		assert_eq!(has, published.contains(&kind), "{}", kind.name());
+	}
+}
+
+#[test]
+fn themes_without_brights_derive_them_from_xterm() {
+	for kind in built_in() {
+		let theme = Theme::from_kind(kind);
+		if theme.bright.is_none() {
+			assert_eq!(
+				theme.bright_colors(),
+				bright_palette(theme.fg, theme.bg),
+				"{}",
+				kind.name()
+			);
+		}
+	}
+}
+
+#[test]
+fn the_light_themes_are_exactly_the_ones_with_a_light_background() {
+	use crate::ui::contrast::luminance;
+	let light: Vec<_> = built_in()
+		.into_iter()
+		.filter(|&kind| {
+			let theme = Theme::from_kind(kind);
+			luminance(theme.bg) > luminance(theme.fg)
+		})
+		.collect();
+	assert_eq!(
+		light,
+		[
+			ThemeKind::MacOsLight,
+			ThemeKind::RosePineDawn,
+			ThemeKind::CatppuccinLatte,
+			ThemeKind::Alucard,
+			ThemeKind::GruvboxLight,
+		]
+	);
+}
+
+#[test]
+fn readable_brights_are_stable_when_applied_again() {
+	// A reset rebuilds the theme from the brights already in use.
+	for kind in built_in() {
+		let theme = Theme::from_kind(kind);
+		let once = theme.bright_colors();
+		assert_eq!(
+			readable_brights(once, theme.fg, theme.bg),
+			once,
+			"{}",
+			kind.name()
+		);
+	}
+}
+
+#[test]
+fn every_bright_reads_on_every_light_theme() {
+	for kind in [
+		ThemeKind::MacOsLight,
+		ThemeKind::RosePineDawn,
+		ThemeKind::CatppuccinLatte,
+		ThemeKind::Alucard,
+		ThemeKind::GruvboxLight,
+	] {
+		let theme = Theme::from_kind(kind);
+		for index in 8..16 {
+			let color = xterm_color(index, theme.palette, theme.bright_colors());
+			let contrast = ratio(color, theme.bg);
+			assert!(contrast >= 4.5, "{} {index}: {contrast:.2}", kind.name());
+		}
+	}
+}
+
+#[test]
+fn the_new_themes_text_meets_wcag_aa() {
+	for (kind, ..) in PUBLISHED {
+		let theme = Theme::from_kind(kind);
+		let contrast = ratio(theme.fg, theme.bg);
+		assert!(contrast >= 4.5, "{}: {contrast:.2}", kind.name());
+	}
+}
+
+#[test]
+fn the_new_themes_borders_differ_from_their_backgrounds() {
+	for (kind, ..) in PUBLISHED {
+		let theme = Theme::from_kind(kind);
+		assert_ne!(theme.border, theme.bg, "{}", kind.name());
+		// A border is a quiet rule, nearer the background than the text.
+		assert!(
+			ratio(theme.border, theme.bg) < ratio(theme.fg, theme.bg),
+			"{}",
+			kind.name()
+		);
+	}
+}
+
+#[test]
+fn colors_past_15_ignore_the_theme() {
+	let dracula = Theme::from_kind(ThemeKind::Dracula);
+	let gruvbox = Theme::from_kind(ThemeKind::GruvboxLight);
+	for index in [16, 21, 196, 231, 232, 255] {
+		assert_eq!(
+			xterm_color(index, dracula.palette, dracula.bright_colors()),
+			xterm_color(index, gruvbox.palette, gruvbox.bright_colors()),
+			"{index}"
+		);
+	}
+}
+
+#[test]
+fn custom_starts_from_poop_without_brights_cursor_or_selection() {
+	let custom = Theme::from_kind(ThemeKind::Custom);
+	let poop = Theme::from_kind(ThemeKind::Poop);
+	assert_eq!(custom.kind, ThemeKind::Custom);
+	assert_eq!(
+		(custom.fg, custom.bg, custom.palette),
+		(poop.fg, poop.bg, poop.palette)
+	);
+	assert_eq!(
+		(custom.bright, custom.cursor, custom.selection),
+		(None, None, None)
+	);
+}
+
+#[test]
+fn a_config_bright_on_a_light_theme_is_made_readable_like_the_rest() {
+	let mut theme = Theme::from_kind(ThemeKind::MacOsLight);
+	theme.override_colors(|index| (index == 11).then_some(0xFFFF00));
+	assert_eq!(theme.bright.unwrap()[3], 0xFFFF00);
+	let drawn = theme.bright_colors()[3];
+	assert!(ratio(drawn, theme.bg) >= 4.5);
+	// Still yellow: red and green lead blue.
+	assert!(drawn >> 16 & 0xFF > drawn & 0xFF && drawn >> 8 & 0xFF > drawn & 0xFF);
+}
+
+#[test]
+fn poopterms_own_themes_credit_this_repository() {
+	assert_eq!(
+		ThemeKind::Poop.credit().line(),
+		"by Poopterm contributors · AGPL-3.0-or-later · github.com/poopware-laboratories/poopterm"
+	);
+	assert_eq!(
+		ThemeKind::MacOsDark.credit(),
+		ThemeKind::AmoledBlack.credit()
+	);
+}
+
+#[test]
+fn variants_of_one_theme_share_one_credit() {
+	for family in [
+		&[
+			ThemeKind::RosePine,
+			ThemeKind::RosePineMoon,
+			ThemeKind::RosePineDawn,
+		][..],
+		&[
+			ThemeKind::CatppuccinLatte,
+			ThemeKind::CatppuccinFrappe,
+			ThemeKind::CatppuccinMacchiato,
+			ThemeKind::CatppuccinMocha,
+		],
+		&[ThemeKind::Dracula, ThemeKind::Alucard],
+		&[ThemeKind::GruvboxDark, ThemeKind::GruvboxLight],
+	] {
+		for kind in family {
+			assert_eq!(kind.credit(), family[0].credit(), "{}", kind.name());
+		}
+	}
+}

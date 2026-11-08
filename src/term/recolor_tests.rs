@@ -318,3 +318,160 @@ fn text_from_a_dark_theme_reads_after_switching_to_a_light_one() {
 		assert_eq!(fg_at(&t, 0, 0), t.indexed_color(10), "{}", kind.name());
 	}
 }
+
+#[test]
+fn reverse_video_text_swaps_to_the_new_themes_defaults() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b[7mV\x1b[8mH");
+	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (0x2E3440, 0xD8DEE9));
+	t.set_theme(theme(ThemeKind::GruvboxLight));
+	let light = theme(ThemeKind::GruvboxLight);
+	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (light.bg, light.fg));
+}
+
+#[test]
+fn osc_11_swaps_reverse_video_text_too() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(
+		&mut t,
+		"\x1b[7mV\x1b[0m\x1b]10;#ABCDEF\x07\x1b]11;#010101\x07",
+	);
+	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (0x010101, 0xABCDEF));
+}
+
+#[test]
+fn a_program_set_special_color_survives_a_switch() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b]5;0;#FF00FF\x07\x1b]6;0;1\x07");
+	t.set_theme(theme(ThemeKind::Dracula));
+	assert_eq!(t.colors.special[0], Some(0xFF00FF));
+	assert!(t.colors.special_modes[0]);
+	send(&mut t, "\x1b[1mB");
+	assert_eq!(fg_at(&t, 0, 0), 0xFF00FF);
+}
+
+#[test]
+fn a_kitty_dynamic_selection_stays_dynamic_under_a_theme_selection() {
+	let mut t = terminal(ThemeKind::Poop);
+	t.set_theme(theme(ThemeKind::Nord));
+	send(&mut t, "\x1b]21;selection_background=\x07");
+	let mut frame = Frame::default();
+	t.snapshot(&mut frame);
+	assert_eq!(frame.colors.selection_background, Setting::Dynamic);
+	assert_eq!(frame.colors.selection_foreground, Setting::Color(0xD8DEE9));
+	// The cursor's text color is never the theme's to set.
+	assert_eq!(frame.colors.cursor_text, Setting::Default);
+}
+
+#[test]
+fn a_new_terminal_draws_with_its_themes_cursor_and_selection() {
+	let t = terminal(ThemeKind::Dracula);
+	let mut frame = Frame::default();
+	t.snapshot(&mut frame);
+	assert_eq!(frame.colors.cursor, Setting::Default);
+	assert_eq!(frame.colors.selection_background, Setting::Color(0x44475A));
+	let t = terminal(ThemeKind::CatppuccinFrappe);
+	t.snapshot(&mut frame);
+	assert_eq!(frame.colors.cursor, Setting::Color(0xF2D5CF));
+}
+
+#[test]
+fn the_terminals_theme_gives_back_what_it_was_made_with() {
+	for kind in [
+		ThemeKind::Nord,
+		ThemeKind::Dracula,
+		ThemeKind::CatppuccinLatte,
+		ThemeKind::GruvboxLight,
+	] {
+		let original = theme(kind);
+		let t = terminal(kind);
+		let back = t.theme();
+		assert_eq!(
+			(back.fg, back.bg, back.palette),
+			(original.fg, original.bg, original.palette)
+		);
+		assert_eq!(
+			(back.cursor, back.selection),
+			(original.cursor, original.selection)
+		);
+		// Readable brights are already readable, so a reset keeps them.
+		assert_eq!(
+			back.bright_colors(),
+			original.bright_colors(),
+			"{}",
+			kind.name()
+		);
+	}
+}
+
+#[test]
+fn the_terminals_theme_ignores_program_colors() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(
+		&mut t,
+		"\x1b]10;#ABCDEF\x07\x1b]4;1;#123456\x07\x1b]12;#00FF00\x07",
+	);
+	let back = t.theme();
+	assert_eq!(
+		(back.fg, back.palette[1], back.cursor),
+		(0xD8DEE9, 0xBF616A, Some(0xD8DEE9))
+	);
+}
+
+#[test]
+fn every_scrollback_row_is_recolored() {
+	let mut t = terminal(ThemeKind::Nord);
+	t.set_scrollback_limit(200);
+	for _ in 0..150 {
+		send(&mut t, "\x1b[34mB\x1b[0m\r\n");
+	}
+	assert!(t.scrollback.len() >= 140);
+	t.set_theme(theme(ThemeKind::Dracula));
+	let blue = theme(ThemeKind::Dracula).palette[4];
+	for row in t.scrollback.iter() {
+		assert_eq!(row[0].fg, blue);
+	}
+}
+
+#[test]
+fn a_switch_during_synchronized_output_shows_the_new_colors() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b[?2026h\x1b[31mR");
+	t.set_theme(theme(ThemeKind::Dracula));
+	assert!(t.synchronized.is_none());
+	let mut frame = Frame::default();
+	t.snapshot(&mut frame);
+	assert_eq!(frame.row(0)[0].fg, 0xFF5555);
+}
+
+#[test]
+fn stored_color_stack_slots_follow_the_theme_too() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b[1#P");
+	assert_eq!(t.color_stack.len(), 1);
+	t.set_theme(theme(ThemeKind::GruvboxDark));
+	send(&mut t, "\x1b]10;#ABCDEF\x07\x1b[1#Q");
+	assert_eq!(t.default_fg, 0xEBDBB2);
+}
+
+#[test]
+fn an_osc_4_override_of_a_bright_color_survives_a_switch() {
+	let mut t = terminal(ThemeKind::Dracula);
+	send(&mut t, "\x1b]4;9;#0A0B0C\x07\x1b[91mR\x1b[92mG");
+	t.set_theme(theme(ThemeKind::GruvboxDark));
+	assert_eq!(fg_at(&t, 0, 0), 0x0A0B0C);
+	assert_eq!(fg_at(&t, 0, 1), 0xB8BB26);
+	assert_eq!(t.indexed_color(9), 0x0A0B0C);
+}
+
+#[test]
+fn osc_104_with_no_numbers_gives_back_the_new_themes_colors() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b]4;1;#123456;10;#654321\x07");
+	t.set_theme(theme(ThemeKind::Dracula));
+	send(&mut t, "\x1b]104\x07");
+	assert_eq!(
+		(t.indexed_color(1), t.indexed_color(10)),
+		(0xFF5555, 0x69FF94)
+	);
+}

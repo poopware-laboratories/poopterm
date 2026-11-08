@@ -220,7 +220,9 @@ impl Term {
 		if (old_fg, old_bg) == (fg, bg) {
 			return;
 		}
-		self.remap_colors(&[(old_fg, fg)], &[(old_bg, bg)]);
+		// Reverse video draws text in the background color and back.
+		let (fgs, bgs) = ((old_fg, fg), (old_bg, bg));
+		self.remap_colors(&[fgs, bgs], &[bgs, fgs]);
 		self.adopt_default_colors(fg, bg);
 	}
 }
