@@ -7,7 +7,10 @@ use super::{
 	scene::Scene,
 	window_icons::{self, WindowIcon},
 };
-use crate::ui::ui_font::text_width;
+use crate::ui::{
+	metrics::{Corner, pill_radius},
+	ui_font::text_width,
+};
 
 /// `(x, y, width, height)` in pixels.
 pub(crate) type Rect = (usize, usize, usize, usize);
@@ -153,7 +156,7 @@ pub(crate) fn draw_tab(
 	let (x, y, width, height) = rect;
 	let surface = tab.fill.unwrap_or(colors.bar);
 	if let Some(fill) = tab.fill {
-		p.round_rect(x, y, width, height, 6 * scale, fill);
+		p.round_rect(x, y, width, height, Corner::Control.radius(scale), fill);
 	}
 	let mut left = x + 12 * scale;
 	let (line_height, ascent) = line(fonts, px);
@@ -162,7 +165,7 @@ pub(crate) fn draw_tab(
 		Some(Badge::Dot(color)) => {
 			let size = 6 * scale;
 			let dot_y = y + height.saturating_sub(size) / 2;
-			p.round_rect(left, dot_y, size, size, size / 2, color);
+			p.round_rect(left, dot_y, size, size, pill_radius(size), color);
 			left += size + 8 * scale;
 		}
 		Some(Badge::Bell(color)) => {
@@ -178,7 +181,14 @@ pub(crate) fn draw_tab(
 	if let Some(hovered) = tab.close {
 		let (cx, cy, size, _) = close_rect(x, width, (y, height), scale);
 		if hovered {
-			p.round_rect(cx, cy, size, size, size / 2, blend(surface, colors.fg, 40));
+			p.round_rect(
+				cx,
+				cy,
+				size,
+				size,
+				pill_radius(size),
+				blend(surface, colors.fg, 40),
+			);
 		}
 		let center = (cx + size / 2, cy + size / 2);
 		centered_text(p, fonts, "×", center, px, colors.fg);
@@ -217,7 +227,7 @@ pub(crate) fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, butt
 			(false, true) => pressed_fill(colors),
 			(false, false) => colors.hover,
 		};
-		p.round_rect(x, y, width, height, 6 * scale, fill);
+		p.round_rect(x, y, width, height, Corner::Control.radius(scale), fill);
 	}
 	let color = match (button.enabled, lit && close) {
 		(true, true) => 0xffffff,

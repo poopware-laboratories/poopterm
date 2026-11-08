@@ -6,6 +6,7 @@ use super::{
 	painter::{ButtonStyle, glyph_top},
 	pen::{Ink, Pen},
 };
+use crate::ui::metrics::{Corner, concentric};
 
 /// A rounded button at `(x, y, w, h)`: an outline, and a face inside it
 /// tinted by the accent when `hovered`.
@@ -24,14 +25,14 @@ pub(crate) fn button(
 			blend(style.background, style.border, 38),
 		)
 	};
-	pen.round_rect((x, y, w, h), 7 * s, outline);
+	pen.round_rect((x, y, w, h), Corner::Button.radius(s), outline);
 	let inner = (
 		x + s,
 		y + s,
 		w.saturating_sub(2 * s),
 		h.saturating_sub(2 * s),
 	);
-	pen.round_rect(inner, 6 * s, face);
+	pen.round_rect(inner, concentric(Corner::Button.radius(s), s), face);
 }
 
 /// A line of `text` from the UI `fonts` whose top edge is `y`, its baseline
