@@ -1,12 +1,16 @@
 //! Headless benchmarks over a corpus of real-world workloads.
 //!
 //! `poopterm --benchmark` feeds every workload through the parser and
-//! terminal, with and without rendering frames, and prints MB/s. It needs no
-//! window, so it is also the training run for profile-guided optimization.
+//! terminal, with and without rendering frames, several times, and prints
+//! the median MB/s with its spread. It needs no window, so it is also the
+//! training run for profile-guided optimization.
 //! `poopterm --bench-corpus NAME` prints a workload's bytes, so other
 //! terminals can be measured on identical input (`scripts/bench-throughput.py`).
 pub(crate) mod corpus;
 pub(crate) mod images;
+pub(crate) mod report;
+pub(crate) mod stats;
+pub(crate) mod table;
 
 use crate::{
 	parser::Parser,
@@ -19,10 +23,14 @@ use crate::{
 	theme::{Theme, ThemeKind},
 };
 use corpus::{Size, WORKLOADS, Workload};
+use report::{Stage, report};
 use std::{error::Error, io::Write, time::Instant};
+use table::Style;
 
 /// Bytes per `advance` call, like one PTY read.
 const READ: usize = 64 << 10;
+/// Timed runs per workload and stage by default; the median is reported.
+const REPEAT: usize = 3;
 /// Bytes between rendered frames: a 200 MB/s flood drawn at 30 fps is about
 /// 6.7 MB per frame; interactive programs draw far more often. This is in
 /// between, and keeps rendering in the PGO profile.
@@ -36,6 +44,9 @@ pub(crate) struct Options {
 	only: Vec<String>,
 	render: bool,
 	feed: Feed,
+	/// Timed runs of each stage, after one untimed warm-up.
+	repeat: usize,
+	style: Style,
 }
 
 /// How output reaches the terminal: floods arrive in large reads, while
@@ -66,6 +77,8 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 		only: Vec::new(),
 		render: true,
 		feed: Feed::FLOOD,
+		repeat: REPEAT,
+		style: Style::Text,
 	};
 	let mut args = args.peekable();
 	while let Some(arg) = args.next() {
@@ -85,6 +98,8 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 			"--frame-every" => options.feed.frame_every = value()?.parse::<usize>()?.clamp(1, 1 << 30),
 			"--only" => options.only.extend(value()?.split(',').map(str::to_owned)),
 			"--no-render" => options.render = false,
+			"--repeat" => options.repeat = value()?.parse::<usize>()?.clamp(1, 50),
+			"--markdown" => options.style = Style::Markdown,
 			"--list" => {
 				for workload in WORKLOADS {
 					println!("{:<11} {}", workload.name, workload.about);
@@ -191,46 +206,16 @@ fn selected(options: &Options) -> impl Iterator<Item = &'static Workload> + '_ {
 }
 
 /// `poopterm --benchmark [--mib N] [--size COLSxROWS] [--only a,b] [--read BYTES]
-/// [--frame-every BYTES] [--no-render] [--list]`
+/// [--frame-every BYTES] [--repeat N] [--no-render] [--markdown] [--list]`
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), Box<dyn Error>> {
 	let options = options(args)?;
 	let mut fonts = fonts();
-	println!(
-		"poopterm {} headless, {}x{}, {} KiB per workload, MB/s",
-		env!("CARGO_PKG_VERSION"),
-		options.size.cols,
-		options.size.rows,
-		options.bytes >> 10
-	);
-	println!(
-		"{:<11} {:>9} {:>9}",
-		"workload",
-		"parse",
-		if options.render { "+render" } else { "" }
-	);
-	let (mut total_bytes, mut total_seconds) = (0.0, 0.0);
-	for workload in selected(&options) {
-		let data = workload.build(options.bytes, options.size);
-		measure(&data[..data.len() / 8], options.size, options.feed, None);
-		let parse = measure(&data, options.size, options.feed, None);
-		total_bytes += data.len() as f64;
-		total_seconds += data.len() as f64 / parse / 1e6;
-		let rendered = if options.render {
-			format!(
-				"{:9.1}",
-				measure(&data, options.size, options.feed, Some(&mut fonts))
-			)
-		} else {
-			String::new()
-		};
-		println!("{:<11} {parse:9.1} {rendered}", workload.name);
-	}
-	// The geometric view would hide slow workloads; this is total bytes over total time.
-	println!(
-		"{:<11} {:9.1}",
-		"overall",
-		total_bytes / total_seconds / 1e6
-	);
+	let (size, feed) = (options.size, options.feed);
+	let table = report(&options, |stage, data| match stage {
+		Stage::Parse => measure(data, size, feed, None),
+		Stage::Render => measure(data, size, feed, Some(&mut fonts)),
+	});
+	print!("{}", table.render(options.style));
 	Ok(())
 }
 
@@ -307,6 +292,29 @@ mod tests {
 		assert_eq!((options.feed.read, options.feed.frame_every), (1, 1));
 		let options = parsed(&["--read", "99999999"]).unwrap();
 		assert_eq!(options.feed.read, 1 << 20);
+	}
+
+	#[test]
+	fn three_timed_runs_by_default_and_as_many_as_asked() {
+		assert_eq!(parsed(&[]).unwrap().repeat, 3);
+		assert_eq!(parsed(&["--repeat", "7"]).unwrap().repeat, 7);
+		// Zero runs would report nothing; fifty is already minutes per workload.
+		assert_eq!(parsed(&["--repeat", "0"]).unwrap().repeat, 1);
+		assert_eq!(parsed(&["--repeat", "1000"]).unwrap().repeat, 50);
+		assert_eq!(
+			parsed(&["--repeat"]).err().unwrap(),
+			"--repeat needs a value"
+		);
+		assert!(parsed(&["--repeat", "-1"]).is_err());
+	}
+
+	#[test]
+	fn text_by_default_and_markdown_when_asked() {
+		assert_eq!(parsed(&[]).unwrap().style, Style::Text);
+		assert_eq!(parsed(&["--markdown"]).unwrap().style, Style::Markdown);
+		// Later options still apply after it; it takes no value.
+		let options = parsed(&["--markdown", "--repeat", "2"]).unwrap();
+		assert_eq!((options.style, options.repeat), (Style::Markdown, 2));
 	}
 
 	#[test]

@@ -136,8 +136,8 @@ class Pgo(unittest.TestCase):
         result = self.pgo('train', '2')
         self.assertEqual(result.returncode, 0, result.stderr)
         runs = [line for line in self.log() if line.startswith('train')]
-        self.assertEqual(runs, ['train --benchmark --mib 2',
-                                'train --benchmark --kib 64 --read 16 --frame-every 64'])
+        self.assertEqual(runs, ['train --benchmark --repeat 1 --mib 2',
+                                'train --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64'])
 
     def test_dist_ships_the_optimized_build_trained_on_every_run(self):
         result = self.pgo('dist', FAKE_OS='Darwin')
@@ -150,7 +150,7 @@ class Pgo(unittest.TestCase):
 
     def test_dist_passes_the_training_size_on(self):
         self.assertEqual(self.pgo('dist', '3').returncode, 0)
-        self.assertIn('train --benchmark --mib 3', self.log())
+        self.assertIn('train --benchmark --repeat 1 --mib 3', self.log())
 
     def test_failed_training_ships_a_plain_build_and_says_so(self):
         (self.fake / 'fail-train').touch()
@@ -195,8 +195,8 @@ class Pgo(unittest.TestCase):
         self.assertEqual(log[start:], [
             f'llvm-bolt {optimized} -o {bolt}/instrumented -instrument '
             f'-instrumentation-file={bolt}/profile -instrumentation-file-append-pid',
-            'bolt-train --benchmark --mib 2',
-            'bolt-train --benchmark --kib 64 --read 16 --frame-every 64',
+            'bolt-train --benchmark --repeat 1 --mib 2',
+            'bolt-train --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64',
             'merge-fdata 2',
             f'llvm-bolt {optimized} -o {bolt}/poopterm -data={bolt}/merged.fdata {LAYOUT}',
             f'strip {bolt}/poopterm',
