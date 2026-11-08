@@ -1,6 +1,10 @@
 //! PTY sessions: shell spawning plus each session's reader and parser threads.
 #[cfg(any(target_os = "macos", test))]
 mod burst;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "sessions move here with the child setup (#188)")
+)]
 pub(crate) mod device;
 pub(crate) mod pump;
 mod queue;

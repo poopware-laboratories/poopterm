@@ -373,3 +373,24 @@ fn slaves_live_where_portable_ptys_put_theirs() {
 	assert_eq!(ours.path.parent(), theirs.parent());
 	assert_ne!(ours.path, theirs);
 }
+
+#[test]
+fn a_closed_master_hangs_the_slave_up() {
+	let pair = open(cells(80, 24)).unwrap();
+	let mut slave = File::from(pair.slave);
+	drop(pair.master);
+	// What a program sees when its terminal goes away: writes fail.
+	let error = slave.write_all(b"anyone?").unwrap_err();
+	let hung_up = [Some(libc::EIO), Some(libc::ENXIO)];
+	assert!(hung_up.contains(&error.raw_os_error()), "{error}");
+}
+
+#[test]
+fn a_grid_size_reaches_programs_with_its_pixels() {
+	let pair = open(WindowSize::of(120, 40, (10, 21))).unwrap();
+	assert_eq!(
+		size(&pair.slave).unwrap(),
+		WindowSize::of(120, 40, (10, 21))
+	);
+	assert_eq!(size(&pair.slave).unwrap().pixel_height, 840);
+}

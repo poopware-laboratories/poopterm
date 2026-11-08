@@ -2,13 +2,6 @@
 //! and `ptsname` allocate the pair, and the `TIOCSWINSZ`/`TIOCGWINSZ`
 //! ioctls set and read its window size in cells and pixels. Both sides are
 //! closed on exec and neither becomes our controlling terminal.
-#![cfg_attr(
-	not(test),
-	expect(
-		dead_code,
-		reason = "sessions spawn on these once the child setup lands (#188)"
-	)
-)]
 
 use std::{
 	fs::OpenOptions,
@@ -105,11 +98,8 @@ fn slave_path(master: &OwnedFd) -> io::Result<PathBuf> {
 		if error != 0 {
 			return Err(io::Error::from_raw_os_error(error));
 		}
-		let end = name
-			.iter()
-			.position(|&byte| byte == 0)
-			.unwrap_or(name.len());
-		Ok(PathBuf::from(std::ffi::OsStr::from_bytes(&name[..end])))
+		let name = std::ffi::CStr::from_bytes_until_nul(&name).map_err(io::Error::other)?;
+		Ok(PathBuf::from(std::ffi::OsStr::from_bytes(name.to_bytes())))
 	}
 	#[cfg(not(target_os = "linux"))]
 	{
@@ -127,27 +117,28 @@ fn slave_path(master: &OwnedFd) -> io::Result<PathBuf> {
 	}
 }
 
+/// `size` as the ioctls take it.
+fn raw(size: WindowSize) -> libc::winsize {
+	let (ws_row, ws_col) = (size.rows, size.cols);
+	let (ws_xpixel, ws_ypixel) = (size.pixel_width, size.pixel_height);
+	libc::winsize {
+		ws_row,
+		ws_col,
+		ws_xpixel,
+		ws_ypixel,
+	}
+}
+
 /// Sets the window size of the terminal `fd` is a side of.
 pub(crate) fn set_size(fd: &impl AsFd, size: WindowSize) -> io::Result<()> {
-	let size = libc::winsize {
-		ws_row: size.rows,
-		ws_col: size.cols,
-		ws_xpixel: size.pixel_width,
-		ws_ypixel: size.pixel_height,
-	};
 	// SAFETY: `TIOCSWINSZ` reads one `winsize`, which outlives the call.
-	check(unsafe { libc::ioctl(fd.as_fd().as_raw_fd(), libc::TIOCSWINSZ, &size) })?;
+	check(unsafe { libc::ioctl(fd.as_fd().as_raw_fd(), libc::TIOCSWINSZ, &raw(size)) })?;
 	Ok(())
 }
 
 /// The window size of the terminal `fd` is a side of.
 pub(crate) fn size(fd: &impl AsFd) -> io::Result<WindowSize> {
-	let mut size = libc::winsize {
-		ws_row: 0,
-		ws_col: 0,
-		ws_xpixel: 0,
-		ws_ypixel: 0,
-	};
+	let mut size = raw(WindowSize::default());
 	// SAFETY: `TIOCGWINSZ` writes one `winsize`, into `size`.
 	check(unsafe { libc::ioctl(fd.as_fd().as_raw_fd(), libc::TIOCGWINSZ, &mut size) })?;
 	Ok(WindowSize {
