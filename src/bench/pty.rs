@@ -10,7 +10,7 @@
 
 use std::{
 	error::Error,
-	io::{Read, Write},
+	io::Read,
 	path::PathBuf,
 	process,
 	sync::{
@@ -50,11 +50,11 @@ type Outcome<T> = Result<T, Box<dyn Error>>;
 /// `read`, and returns the seconds from spawning until `read` is done.
 /// The program runs under `sh`, which turns output processing off with
 /// `stty` in raw mode (on the slave itself, as any program would), so both
-/// modes pay for the same start-up. After the program, `sh` prints the
-/// [`MARK`] the output ends at and waits for a line, which it gets once the
-/// output is read: some kernels drop a PTY's unread output when its
-/// program exits. A failed program is an error rather than a fast, empty
-/// run.
+/// modes pay for the same start-up. After the program, `sh` notes its exit
+/// status in a file, prints the [`MARK`] the output ends at and sleeps
+/// until killed once the output is read: some kernels drop a PTY's unread
+/// output when its program exits. A failed program is an error rather than
+/// a fast, empty run.
 fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Outcome<f64> {
 	let start = Instant::now();
 	let pair = native_pty_system().openpty(PtySize {
@@ -64,26 +64,28 @@ fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Ou
 		pixel_height: 0,
 	})?;
 	let end = std::str::from_utf8(MARK)?;
-	let script = format!(r#""$@"; s=$?; printf %s '{end}'; read -r _; exit $s"#);
+	let script = format!(r#"s=$1; shift; "$@"; echo $? >"$s"; printf %s '{end}'; exec sleep 3600"#);
 	let script = match mode {
 		Mode::Cooked => script,
 		Mode::Raw => format!("stty -opost || exit; {script}"),
 	};
 	let mut command = CommandBuilder::new("sh");
-	command.args(["-c", &script, "sh"]);
+	let record = Payload::new(b"")?;
+	command.args(["-c", &script, "sh", record.cat()[1]]);
 	command.args(argv);
 	// Cloned first, so a failure leaves no child unwaited.
 	let output = pair.master.try_clone_reader()?;
-	let mut keyboard = pair.master.take_writer()?;
 	let mut child = pair.slave.spawn_command(command)?;
 	drop(pair.slave);
 	read(Box::new(UntilMark::new(output)));
 	let seconds = start.elapsed().as_secs_f64();
-	// Lets `sh` go; it has already gone if it never printed the mark.
-	let _ = keyboard.write_all(b"\n");
+	// `sh` sleeps past the mark; if it ended before, its own status counts.
+	let _ = child.kill();
 	let status = child.wait()?;
-	if !status.success() {
-		return Err(format!("{} exited with {}", argv.join(" "), status.exit_code()).into());
+	let noted = std::fs::read_to_string(&record.0)?.trim().parse();
+	let code = noted.unwrap_or(status.exit_code());
+	if code != 0 {
+		return Err(format!("{} exited with {code}", argv.join(" ")).into());
 	}
 	Ok(seconds)
 }
