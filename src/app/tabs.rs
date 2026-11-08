@@ -154,15 +154,6 @@ impl App {
 		self.close_pane(self.sessions[self.active].id, event_loop);
 	}
 
-	/// Stops `session`'s shell, which is no longer shown.
-	pub(super) fn end_session(&mut self, mut session: Session) {
-		self.notifications.forget(session.id);
-		let _ = session._child.kill();
-		thread::spawn(move || {
-			let _ = session._child.wait();
-		});
-	}
-
 	pub(super) fn close_tab(&mut self, index: usize, event_loop: &ActiveEventLoop) {
 		if index >= self.sessions.len() {
 			return;
@@ -190,6 +181,15 @@ impl App {
 		if let Some(window) = &self.window {
 			window.request_redraw();
 		}
+	}
+
+	/// Stops `session`'s shell, which is no longer shown.
+	pub(super) fn end_session(&mut self, mut session: Session) {
+		self.notifications.forget(session.id);
+		let _ = session._child.kill();
+		thread::spawn(move || {
+			let _ = session._child.wait();
+		});
 	}
 
 	pub(super) fn update_window_title(&mut self) {

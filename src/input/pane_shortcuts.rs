@@ -18,57 +18,18 @@ pub(crate) enum PaneCommand {
 	Cycle(isize),
 }
 
-/// The config keys, what each does, and its macOS and other default.
-/// Elsewhere brackets go with ctrl+alt: shift turns them into braces.
+/// Each binding's config key, what it does, and its macOS and other
+/// default. Elsewhere brackets go with ctrl+alt: shift makes them braces.
+#[rustfmt::skip]
 const BINDINGS: [(&str, PaneCommand, &str, &str); 8] = [
-	(
-		"shortcut_split_right",
-		PaneCommand::Split(Split::Right),
-		"super+d",
-		"ctrl+shift+d",
-	),
-	(
-		"shortcut_split_down",
-		PaneCommand::Split(Split::Down),
-		"super+shift+d",
-		"ctrl+shift+e",
-	),
-	(
-		"shortcut_focus_pane_left",
-		PaneCommand::Focus(Direction::Left),
-		"super+alt+left",
-		"ctrl+alt+left",
-	),
-	(
-		"shortcut_focus_pane_right",
-		PaneCommand::Focus(Direction::Right),
-		"super+alt+right",
-		"ctrl+alt+right",
-	),
-	(
-		"shortcut_focus_pane_up",
-		PaneCommand::Focus(Direction::Up),
-		"super+alt+up",
-		"ctrl+alt+up",
-	),
-	(
-		"shortcut_focus_pane_down",
-		PaneCommand::Focus(Direction::Down),
-		"super+alt+down",
-		"ctrl+alt+down",
-	),
-	(
-		"shortcut_next_pane",
-		PaneCommand::Cycle(1),
-		"super+]",
-		"ctrl+alt+]",
-	),
-	(
-		"shortcut_previous_pane",
-		PaneCommand::Cycle(-1),
-		"super+[",
-		"ctrl+alt+[",
-	),
+	("shortcut_split_right", PaneCommand::Split(Split::Right), "super+d", "ctrl+shift+d"),
+	("shortcut_split_down", PaneCommand::Split(Split::Down), "super+shift+d", "ctrl+shift+e"),
+	("shortcut_focus_pane_left", PaneCommand::Focus(Direction::Left), "super+alt+left", "ctrl+alt+left"),
+	("shortcut_focus_pane_right", PaneCommand::Focus(Direction::Right), "super+alt+right", "ctrl+alt+right"),
+	("shortcut_focus_pane_up", PaneCommand::Focus(Direction::Up), "super+alt+up", "ctrl+alt+up"),
+	("shortcut_focus_pane_down", PaneCommand::Focus(Direction::Down), "super+alt+down", "ctrl+alt+down"),
+	("shortcut_next_pane", PaneCommand::Cycle(1), "super+]", "ctrl+alt+]"),
+	("shortcut_previous_pane", PaneCommand::Cycle(-1), "super+[", "ctrl+alt+["),
 ];
 
 /// The pane shortcuts, read from the config with the others.
