@@ -309,7 +309,7 @@ fn an_odd_region_inside_a_wider_texture_keeps_each_row_in_its_row() {
 	let (width, height) = (7u32, 5u32);
 	let texture = Texture::new(&device, [width, height, 1], false, Usage::Target).unwrap();
 	texture
-		.upload(0, [0, 0], [width, height], &vec![0; 35])
+		.upload(0, [0, 0], [width, height], &[0; 35])
 		.unwrap();
 	// Three wide and two tall at (3, 2): rows are three texels apart in
 	// what is given, seven in the texture.

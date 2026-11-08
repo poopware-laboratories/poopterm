@@ -211,6 +211,17 @@ cannot check the method's types.
 | `objc.rs` | `objc_msgSend` cast to each method's type, in `Arguments::send` | The trampoline jumps to the method's implementation with the registers and stack as the caller set them, so calling it as the method's own C function type is calling that method; `transmute` turns one function pointer into another of the same size. Each call site's `SAFETY` comment names the argument and return types it passes, as Apple's documentation gives them, and no method returning a structure is sent (that would need `objc_msgSend_stret` on x86-64). `objc_probe_tests.rs` checks every arity we send with integers of each width, floats, pointers and structures by value. Selectors that may be missing are checked with `respondsToSelector:` first, as a missing one raises an exception that must not unwind into Rust. |
 | `objc.rs` | `string`, `text`, `describe` | `initWithBytes:length:encoding:` copies the UTF-8 bytes before it returns, and consumes the `alloc`ed string it is sent to. `UTF8String` returns a C string, or null (read as empty), that lives as long as the string and the innermost pool, copied at once. |
 
+### Metal
+
+`gpu/mtl` (macOS) reaches Metal through `objc.rs`, linking the Metal and
+Core Graphics frameworks from the system.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `gpu/mtl/device.rs` | `MTLCreateSystemDefaultDevice`, the command queue and the name | The function returns a device the caller owns, or nil (no Metal device), which becomes `NoDevice`. `newCommandQueue` returns a queue the caller owns; `name` an autoreleased string, retained and copied inside a pool, so it is released before `with` returns (`device_tests.rs` checks both on a fake device, and that a device refused its queue or name is released once). Core Graphics is linked, as Metal needs for the default device. |
+| `gpu/mtl/buffer.rs` | Making a buffer, and `bytes_mut` | `newBufferWithLength:options:` returns a buffer the caller owns, or nil. A shared buffer's `contents` points to its `length` bytes for as long as it lives; `&mut self` makes `bytes_mut` the only view in this process, and the renderer writes it only after waiting for the last frame, the only one that reads it. |
+| `gpu/mtl/texture.rs` | Making a texture, and `replaceRegion:…` | Sizes of no texels, and flat textures of several layers, are refused before Metal sees them. The descriptor is owned and released once the texture is made, or refused. Every upload's region is checked to lie inside the texture, its sums checked for overflow (`texture_tests.rs` checks this against a brute-force oracle), and to be filled by the texels passed, and its slice to be one the texture has; `MTLRegion` is `#[repr(C)]` as the header lays it out. The copy is made before the call returns. |
+
 ### Wayland
 
 `present/wayland` (Linux and FreeBSD) shows software frames through
@@ -268,6 +279,11 @@ in `PutImage` requests.
   runtime, once each, whose methods are `extern "C"` functions taking the
   receiver and selector first, as the runtime calls them; weak references
   live in boxes, initialized and destroyed once each.
+- `gpu/mtl/fake_tests.rs` (macOS): a fake `MTLDevice` class registered as
+  `objc_probe_tests.rs` registers its own, whose methods hand over objects
+  they own, or autorelease what they return unowned, as Metal's do;
+  `buffer_tests.rs` and `texture_tests.rs` read a buffer's `contents` and
+  a texture's texels (`getBytes:…`) within their sizes.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 - `present/wayland/fake_tests.rs`, `fake_rules_tests.rs`: the fake
