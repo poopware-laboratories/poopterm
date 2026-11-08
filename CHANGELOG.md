@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.38 "Lunar Moth" — 2026-11-08
+
+### Maintenance
+
+- Time workloads through a real pty and in any terminal (#240) (bench).
+
 ## 26.11.37 "Lunar Moth" — 2026-11-08
 
 ### Fixed
