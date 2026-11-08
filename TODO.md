@@ -156,10 +156,14 @@ issue before starting a piece.
   good, as a GPU failure does; software is otherwise only an opt-in.
   Fractional scales on Wayland draw at full resolution and match software,
   scale changes included. Done on Linux and FreeBSD. Metal (macOS, #26):
-  our own Objective-C runtime and Metal bindings (`objc.rs`, `gpu/mtl`)
-  and the grid renderer, drawing offscreen and matching software in the
-  pixel-equivalence tests on the real GPU; next, `CAMetalLayer` windows
-  (drawables, resize, Retina scale, frames in flight) and the fallback.
+  our own Objective-C runtime and Metal bindings (`objc.rs`, `gpu/mtl`),
+  the grid renderer (matching software in the pixel-equivalence tests on
+  the real GPU) and windows through a `CAMetalLayer` (drawables at the
+  window's size in pixels, Retina scale, three in flight, software when
+  Metal fails). Opt-in (`renderer = "gpu"`) until it is measured: next,
+  frame latency and throughput against software on several Macs, and the
+  quads written for frame N while the GPU draws N − 1 (each frame now waits
+  for the last before writing), then make it the default.
 
 ## Resource management and memory
 
