@@ -76,7 +76,7 @@ mod tests {
 
 	/// Horizontal tabs, hidden tabs and vertical tabs.
 	fn tab_modes() -> [Preferences; 3] {
-		let base = Preferences::default();
+		let base = unpadded();
 		let hidden = Preferences {
 			show_tabs: false,
 			..base
@@ -86,6 +86,24 @@ mod tests {
 			..base
 		};
 		[base, hidden, vertical]
+	}
+
+	/// The defaults without padding, so edges land on round numbers.
+	fn unpadded() -> Preferences {
+		Preferences {
+			padding: 0,
+			..Preferences::default()
+		}
+	}
+
+	#[test]
+	fn the_default_padding_keeps_the_grid_eight_pixels_off_every_edge() {
+		let padded = linux(&Preferences::default());
+		let bare = linux(&unpadded());
+		assert_eq!((padded.margin, padded.left), (8, 8));
+		assert_eq!(padded.top, bare.top + 8);
+		let retina = layout(&chrome(2.0, false), 2, &Preferences::default(), 0);
+		assert_eq!((retina.margin, retina.left), (16, 16));
 	}
 
 	fn linux(prefs: &Preferences) -> Layout {
@@ -101,14 +119,14 @@ mod tests {
 			status_height: 26,
 			left: 0,
 		};
-		assert_eq!(linux(&Preferences::default()), expected);
+		assert_eq!(linux(&unpadded()), expected);
 	}
 
 	#[test]
 	fn padding_and_the_status_bar_follow_the_chrome_scale() {
 		let prefs = Preferences {
 			padding: 6,
-			..Preferences::default()
+			..unpadded()
 		};
 		let layout = layout(&chrome(2.0, false), 2, &prefs, 0);
 		assert_eq!(layout.margin, 12);
@@ -150,7 +168,7 @@ mod tests {
 		let prefs = Preferences {
 			padding: 6,
 			vertical_tabs: true,
-			..Preferences::default()
+			..unpadded()
 		};
 		let layout = layout(&chrome(1.0, false), 1, &prefs, 180);
 		let area = layout.grid_area((1000, 700));
@@ -175,7 +193,7 @@ mod tests {
 	fn a_hidden_bottom_bar_takes_no_space() {
 		let prefs = Preferences {
 			show_bottom_bar: false,
-			..Preferences::default()
+			..unpadded()
 		};
 		assert_eq!(linux(&prefs).status_height, 0);
 	}
@@ -205,7 +223,7 @@ mod tests {
 
 	#[test]
 	fn cells_fill_the_space_left_inside_the_chrome() {
-		let layout = linux(&Preferences::default());
+		let layout = linux(&unpadded());
 		// 80 * 10 by 44 + 24 * 20 + 26.
 		assert_eq!(layout.grid_size((800, 550), (10, 20)), (80, 24));
 		assert_eq!(
@@ -222,7 +240,7 @@ mod tests {
 
 	#[test]
 	fn tiny_windows_and_empty_cells_still_give_two_by_two() {
-		let layout = linux(&Preferences::default());
+		let layout = linux(&unpadded());
 		assert_eq!(layout.grid_size((1, 1), (10, 20)), (2, 2));
 		assert_eq!(layout.grid_size((0, 0), (0, 0)), (2, 2));
 		assert_eq!(
@@ -258,7 +276,7 @@ mod tests {
 	#[test]
 	fn the_grid_never_reaches_into_the_border_or_the_status_bar() {
 		for factor in [1.0, 1.5, 2.0] {
-			let prefs = Preferences::default();
+			let prefs = unpadded();
 			let layout = layout(&chrome(factor, false), chrome_scale(factor), &prefs, 0);
 			let cell = (9, 19);
 			for width in (200..1200).step_by(37) {
@@ -281,7 +299,7 @@ mod tests {
 		// 1.5 takes the 2x one, padding and status bar included.
 		let prefs = Preferences {
 			padding: 4,
-			..Preferences::default()
+			..unpadded()
 		};
 		let at = |factor: f64| layout(&chrome(factor, false), chrome_scale(factor), &prefs, 0);
 		assert_eq!(at(1.25), at(1.0));
@@ -294,7 +312,7 @@ mod tests {
 	fn macos_padding_sits_below_the_title_bar() {
 		let prefs = Preferences {
 			padding: 4,
-			..Preferences::default()
+			..unpadded()
 		};
 		let layout = layout(&chrome(2.0, true), 2, &prefs, 0);
 		assert_eq!((layout.margin, layout.top, layout.left), (8, 88 + 8, 8));
@@ -306,7 +324,7 @@ mod tests {
 		// be painted over with the padding.
 		let prefs = Preferences {
 			padding: 3,
-			..Preferences::default()
+			..unpadded()
 		};
 		let tabs = linux(&prefs);
 		assert_eq!(tabs.top, 44 + 3);
@@ -367,7 +385,7 @@ mod tests {
 		let layout = layout(&chrome(1.0, false), 1, &vertical, 180);
 		// 180 + 80 * 10 across, 24 * 20 + 26 down.
 		assert_eq!(layout.window_size((80, 24), (10, 20)), (980, 506));
-		let horizontal = linux(&Preferences::default());
+		let horizontal = linux(&unpadded());
 		assert_eq!(horizontal.window_size((80, 24), (10, 20)), (800, 550));
 	}
 }

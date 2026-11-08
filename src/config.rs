@@ -79,7 +79,7 @@ impl Default for Preferences {
 			show_new_tab_button: true,
 			show_settings_button: true,
 			show_bottom_bar: true,
-			padding: 0,
+			padding: 8,
 			reduce_motion: false,
 			renderer: RendererPreference::Auto,
 			decorations: DecorationPreference::Auto,
@@ -377,12 +377,14 @@ mod tests {
 		assert!(!configured.show_bottom_bar);
 	}
 	#[test]
-	fn padding_defaults_to_none_and_is_bounded() {
-		assert_eq!(Preferences::default().padding, 0);
+	fn padding_defaults_to_eight_pixels_and_is_bounded() {
+		assert_eq!(Preferences::default().padding, 8);
+		assert_eq!(Preferences::parse("").padding, 8);
 		assert_eq!(Preferences::parse("padding = 0").padding, 0);
 		assert_eq!(Preferences::parse("padding = 12").padding, 12);
 		assert_eq!(Preferences::parse("padding = 400").padding, 32);
-		assert_eq!(Preferences::parse("padding = wide").padding, 0);
+		assert_eq!(Preferences::parse("padding = wide").padding, 8);
+		assert_eq!(Preferences::parse("padding = -4").padding, 8);
 	}
 	#[test]
 	fn renderer_defaults_to_auto() {

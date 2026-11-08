@@ -165,17 +165,23 @@ mod tests {
 
 	#[test]
 	fn theme_colors_move_only_as_far_as_they_must() {
-		// macOS Dark's dim text sat at the limit, so the lighter header
-		// shades move it a few steps, far short of the foreground; Rose
-		// Pine's blue reads as it is.
-		let dark = Theme::from_kind(ThemeKind::MacOsDark);
-		let start = blend(dark.bg, dark.fg, DIM);
-		let dim = tab_text_colors(&dark).0;
-		let steps = (0..=255).position(|a| blend(start, dark.fg, a) == dim);
-		assert!(
-			steps.is_some_and(|steps| steps > 0 && steps < 64),
-			"{steps:?}"
-		);
+		// Each theme's dim text stops at the first step that reads on every
+		// tab background; Rose Pine's blue reads as it is.
+		for theme in built_in() {
+			let start = blend(theme.bg, theme.fg, DIM);
+			let dim = tab_text_colors(&theme).0;
+			let steps = (0..=255).position(|a| blend(start, theme.fg, a) == dim);
+			let Some(steps) = steps else {
+				panic!("{:?} moved off the line toward its text", theme.kind);
+			};
+			let backgrounds = tab_backgrounds(&theme);
+			let reads = |color| backgrounds.iter().all(|&bg| ratio(color, bg) >= TEXT);
+			assert!(reads(dim), "{:?}", theme.kind);
+			let earlier = steps
+				.checked_sub(1)
+				.map(|a| blend(start, theme.fg, a as u32));
+			assert!(!earlier.is_some_and(reads), "{:?} went too far", theme.kind);
+		}
 		let pine = Theme::from_kind(ThemeKind::RosePine);
 		assert_eq!(tab_text_colors(&pine).1, pine.palette[4]);
 	}
