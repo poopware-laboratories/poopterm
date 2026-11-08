@@ -13,6 +13,7 @@ mod bands_tests;
 pub(crate) mod curves;
 #[cfg(test)]
 mod curves_tests;
+pub(crate) mod encode;
 pub(crate) mod quads;
 #[cfg(test)]
 mod quads_chrome_tests;
