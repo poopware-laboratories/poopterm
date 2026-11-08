@@ -1,7 +1,7 @@
 //! Tests of the Objective-C runtime bindings on the real runtime: lookups
 //! that fail, messages of every arity we send, and objects owned exactly
 //! once, so nothing leaks and nothing is released twice.
-use super::{Bool, NIL, Object, Pool, Raw, class, describe, sel, string, text};
+use super::{Bool, Missing, NIL, Object, Pool, Raw, class, describe, sel, string, text};
 
 /// How many references `object` has.
 fn references(object: &Object) -> usize {
@@ -25,13 +25,22 @@ fn a_class_the_runtime_lacks_is_missing_by_name() {
 		"no Objective-C class PooptermNoSuchClass"
 	);
 	assert!(class(c"NSObject").is_ok());
+	// Names are exact, case included.
+	assert_eq!(class(c"nsobject"), Err(Missing(c"nsobject")));
 }
 
 #[test]
 fn a_name_is_always_the_same_selector_and_two_names_two() {
 	assert_eq!(sel(c"description"), sel(c"description"));
 	assert_ne!(sel(c"description"), sel(c"hash"));
+	// A colon is part of the name: `count` takes nothing, `count:` one.
+	assert_ne!(sel(c"count"), sel(c"count:"));
 	assert!(!sel(c"PooptermNoSuchSelector").0.is_null());
+	// Registering a name twice gives the selector registered first.
+	assert_eq!(
+		sel(c"PooptermNoSuchSelector"),
+		sel(c"PooptermNoSuchSelector")
+	);
 }
 
 #[test]

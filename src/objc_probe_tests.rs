@@ -312,6 +312,9 @@ fn six_arguments_with_structures_by_value_arrive_whole() {
 
 #[test]
 fn an_object_answers_for_the_methods_its_class_was_given_and_no_others() {
+	// The class registered is the one looked up by its name.
+	let registered = probe();
+	assert_eq!(class(c"PooptermProbe"), Ok(registered));
 	let object = probed();
 	assert!(object.responds(c"six:b:c:d:e:f:"));
 	assert!(object.responds(c"description"));
