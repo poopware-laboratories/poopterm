@@ -55,6 +55,14 @@ fn check(result: libc::c_int) -> io::Result<libc::c_int> {
 
 /// A new PTY pair of `size`.
 pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
+	// macOS fails allocations made from several threads at once (errno -6,
+	// seen in CI), so it makes them one at a time.
+	#[cfg(target_os = "macos")]
+	static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+	#[cfg(target_os = "macos")]
+	let _turn = ONE_AT_A_TIME
+		.lock()
+		.unwrap_or_else(std::sync::PoisonError::into_inner);
 	// macOS refuses `O_CLOEXEC` here; it gets the flag straight after.
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 	let flags = libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC;
