@@ -11,8 +11,8 @@ correct. The numbers below are minimums, not finish lines.
 **Text: at least 200 MB/s end to end on every payload** (ASCII, Unicode,
 CSI-heavy, cursor movement). 200 MB/s is the floor, not the ceiling: go
 higher wherever that stays safe (bounded memory, no skipped state, output
-identical to the slower path). Measured with `scripts/bench-throughput.py` in a real
-window. Headless on the i3-N305 (26.10.93, `--benchmark --mib 16
+identical to the slower path). Measured with `poopterm --benchmark --terminal` in a
+real window. Headless on the i3-N305 (26.10.93, `--benchmark --mib 16
 --no-render`, median of 3) the workloads run at 116–1070 MB/s (198
 overall); emoji (135), sixel (152), shell prompts (153), Unicode (154),
 CJK (173), source (175), kitty PNG (116), cursor motion (186) and compiler
@@ -24,7 +24,7 @@ from first byte to pixels on screen. There is no target to stop at; at least
 match text throughput, within the explicit size limits on untrusted input.
 
 - **Image benchmark.** Sixel and kitty payloads (raw RGBA, PNG, zlib) are
-  in the corpus, so `--benchmark` and `bench-throughput.py` cover them. Still
+  in the corpus, so `--benchmark` and `--benchmark --terminal` cover them. Still
   missing: full-screen frames and animation, reported in frames per second.
 - **Sixel decoding.** Now decoded straight into one flat buffer of final
   pixels (~152 MB/s headless); remaining candidates are SIMD band decoding
@@ -190,7 +190,7 @@ issue before starting a piece.
     enums and indices (`u32`/`u16` over `usize`), interning repeated
     strings (hyperlinks, titles), and lazy initialization of rarely used
     state (`Option<Box<…>>`, `OnceCell`).
-  - Track it: `bench-throughput.py` reports start, settled and peak RSS,
+  - Track it: `--benchmark --terminal` reports start, end and peak RSS,
     and tests check that clearing history releases its memory. Still to
     check on macOS (`footprint`, `vmmap`).
 - **cgroups v2 per tab (Linux): join before `exec`.** The terminal asks

@@ -400,3 +400,23 @@ fn the_corpus_writes_a_workloads_bytes_and_checks_its_name() {
 	assert_eq!(run.status.code(), Some(1));
 	assert!(text(&run.stderr).starts_with("error: missing workload name"));
 }
+
+/// Measuring the terminal with none to measure fails at once, saying why,
+/// instead of a bare "No such device or address".
+#[cfg(target_os = "linux")]
+#[test]
+fn measuring_the_terminal_without_one_says_it_needs_one() {
+	for stages in [&["--terminal"][..], &["--stages", "parse,terminal-raw"]] {
+		let run = Command::new("setsid")
+			.arg(env!("CARGO_BIN_EXE_poopterm"))
+			.args(["--benchmark", "--kib", "4"])
+			.args(stages)
+			.output()
+			.expect("setsid runs");
+		assert!(!run.status.success(), "{stages:?}");
+		let error = text(&run.stderr);
+		let why = "--terminal needs a terminal to run in: ";
+		assert!(error.contains(why), "{error}");
+		assert!(run.stdout.is_empty());
+	}
+}

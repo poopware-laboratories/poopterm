@@ -24,17 +24,22 @@ pub(crate) enum Stage {
 	Pty(Mode),
 	/// The same read by a tab's reader thread, queue and parser thread.
 	Pipeline(Mode),
+	/// Written to the terminal the benchmark runs in, timed until it
+	/// answers a Device Attributes query.
+	Terminal(Mode),
 }
 
 /// Every stage with its `--stages` name and column heading, in the order
 /// they run.
-const STAGES: [(Stage, &str, &str); 6] = [
+const STAGES: [(Stage, &str, &str); 8] = [
 	(Stage::Parse, "parse", "parse"),
 	(Stage::Render, "render", "+render"),
 	(Stage::Pty(Mode::Cooked), "pty", "pty"),
 	(Stage::Pty(Mode::Raw), "pty-raw", "pty raw"),
 	(Stage::Pipeline(Mode::Cooked), "pipeline", "+pipeline"),
 	(Stage::Pipeline(Mode::Raw), "pipeline-raw", "+pipeline raw"),
+	(Stage::Terminal(Mode::Cooked), "terminal", "terminal"),
+	(Stage::Terminal(Mode::Raw), "terminal-raw", "terminal raw"),
 ];
 
 /// Stages without a PTY, run unless `--stages` says otherwise.
@@ -43,13 +48,14 @@ pub(crate) const HEADLESS: [Stage; 2] = [Stage::Parse, Stage::Render];
 /// A pipeline this close to its PTY ceiling is limited by the kernel.
 const KERNEL_BOUND: f64 = 0.9;
 
-/// The stages a comma-separated `--stages` list names; `all` names every one.
+/// The stages a comma-separated `--stages` list names; `all` names every one
+/// that needs no terminal to run in.
 pub(crate) fn stages(list: &str) -> Result<Vec<Stage>, String> {
 	let mut chosen = Vec::new();
 	for name in list.split(',') {
-		let named = STAGES
-			.iter()
-			.filter(|&&(_, known, _)| name == "all" || known == name);
+		let named = STAGES.iter().filter(|&&(stage, known, _)| {
+			known == name || name == "all" && !matches!(stage, Stage::Terminal(_))
+		});
 		let before = chosen.len();
 		chosen.extend(named.map(|&(stage, ..)| stage));
 		if chosen.len() == before {
@@ -64,7 +70,9 @@ pub(crate) fn stages(list: &str) -> Result<Vec<Stage>, String> {
 }
 
 /// Runs every selected workload through every stage: one untimed warm-up
-/// on an eighth of its bytes, then `repeat` timed runs per stage.
+/// on an eighth of its bytes, through the last stage in [`STAGES`] order,
+/// which runs the most (render beyond parse, the pipeline beyond its PTY, a
+/// terminal beyond both), then `repeat` timed runs per stage.
 /// `measure` returns MB/s; the benchmark passes the real one, tests a fake.
 pub(crate) fn report(
 	options: &Options,
@@ -74,10 +82,11 @@ pub(crate) fn report(
 		.iter()
 		.filter(|(stage, ..)| options.stages.contains(stage))
 		.collect();
+	let warm_up = stages.last().map_or(Stage::Parse, |&&(stage, ..)| stage);
 	let mut rows = Vec::new();
 	for workload in selected(options) {
 		let data = workload.build(options.bytes, options.size);
-		measure(Stage::Parse, &data[..data.len() / 8])?;
+		measure(warm_up, &data[..data.len() / 8])?;
 		let mut cells = Vec::new();
 		for &&(stage, ..) in &stages {
 			let rates = (0..options.repeat).map(|_| measure(stage, &data));
@@ -105,15 +114,18 @@ pub(crate) fn report(
 	Ok(table)
 }
 
-/// For each mode with both a PTY ceiling and a pipeline column, the
-/// workloads whose pipeline reaches [`KERNEL_BOUND`] of the ceiling: there
-/// the kernel, not Poopterm, sets the speed.
+/// For each mode with a PTY ceiling, and each pipeline or terminal column
+/// in that mode, the workloads that reach [`KERNEL_BOUND`] of the ceiling:
+/// there the kernel, not the terminal, sets the speed.
 fn kernel_bound(table: &Table, order: &[Stage]) -> Vec<String> {
 	let column = |wanted: Stage| order.iter().position(|&stage| stage == wanted);
 	let mut notes = Vec::new();
-	for mode in [Mode::Cooked, Mode::Raw] {
-		let (Some(ceiling), Some(pipeline)) = (column(Stage::Pty(mode)), column(Stage::Pipeline(mode)))
-		else {
+	let pairs = [Mode::Cooked, Mode::Raw].into_iter().flat_map(|mode| {
+		let measured = [Stage::Pipeline(mode), Stage::Terminal(mode)];
+		measured.map(|stage| (column(Stage::Pty(mode)), column(stage)))
+	});
+	for pair in pairs {
+		let (Some(ceiling), Some(pipeline)) = pair else {
 			continue;
 		};
 		let median = |row: &Row, at: usize| row.cells[at].map(|spread| spread.median);
@@ -166,13 +178,16 @@ mod tests {
 			stages("pty,pipeline-raw"),
 			Ok(vec![Stage::Pty(Mode::Cooked), Stage::Pipeline(Mode::Raw)])
 		);
-		let every: Vec<Stage> = STAGES.iter().map(|&(stage, ..)| stage).collect();
+		// Everything but the terminal, so `all` runs anywhere, CI included.
+		let every: Vec<Stage> = STAGES[..6].iter().map(|&(stage, ..)| stage).collect();
 		assert_eq!(stages("all"), Ok(every));
+		let both = Ok(vec![Stage::Terminal(Mode::Raw), Stage::Parse]);
+		assert_eq!(stages("terminal-raw,parse"), both);
 	}
 
 	#[test]
 	fn an_unknown_or_empty_stage_is_refused_with_the_known_ones() {
-		let known = "parse, render, pty, pty-raw, pipeline, pipeline-raw, all";
+		let known = "parse, render, pty, pty-raw, pipeline, pipeline-raw, terminal, terminal-raw, all";
 		assert_eq!(
 			stages("pty,fast"),
 			Err(format!("unknown stage: fast; the stages are {known}"))
@@ -211,11 +226,12 @@ mod tests {
 		];
 		let (table, calls) = fake_report(&args);
 		let stages: Vec<Stage> = calls.iter().map(|&(stage, _)| stage).collect();
-		// The warm-up stays headless: it only warms caches and allocators.
+		// The warm-up runs the pipeline, which runs a PTY too, so neither
+		// timed stage pays for a cold start.
 		assert_eq!(
 			stages,
 			[
-				Stage::Parse,
+				Stage::Pipeline(Mode::Raw),
 				Stage::Pty(Mode::Raw),
 				Stage::Pipeline(Mode::Raw)
 			]
@@ -323,9 +339,9 @@ mod tests {
 		let mut args = args.to_vec();
 		args.extend(["--stages", "pty,all,pty"]);
 		let (table, calls) = fake_report(&args);
-		assert_eq!(table.columns.len(), STAGES.len());
+		assert_eq!(table.columns.len(), 6);
 		// The warm-up, then two runs of each stage.
-		assert_eq!(calls.len(), 1 + 2 * STAGES.len());
+		assert_eq!(calls.len(), 1 + 2 * 6);
 	}
 
 	#[test]
@@ -350,6 +366,62 @@ mod tests {
 				.filter(|line| line.starts_with("kernel"))
 				.count(),
 			1
+		);
+	}
+
+	#[test]
+	fn a_terminal_is_warmed_up_through_itself() {
+		let (_, calls) = fake_report(&["--only", "log", "--kib", "8", "--terminal"]);
+		assert_eq!(calls[0].0, Stage::Terminal(Mode::Raw));
+		let raw = [
+			"--only",
+			"log",
+			"--kib",
+			"8",
+			"--stages",
+			"pty,terminal-raw",
+		];
+		let (_, calls) = fake_report(&raw);
+		assert_eq!(calls[0].0, Stage::Terminal(Mode::Raw));
+		// The warm-up gets an eighth, the timed runs the whole workload.
+		assert!(
+			calls[1..]
+				.iter()
+				.all(|&(_, len)| len == 8 * calls[0].1 + len % 8)
+		);
+	}
+
+	#[test]
+	fn headless_runs_warm_up_through_the_renderer_when_it_runs() {
+		let warm_up = |stages| fake_report(&["--only", "log", "--kib", "8", "--stages", stages]).1[0].0;
+		assert_eq!(warm_up("parse,render"), Stage::Render);
+		assert_eq!(warm_up("parse"), Stage::Parse);
+		assert_eq!(warm_up("pty,parse"), Stage::Pty(Mode::Cooked));
+	}
+
+	#[test]
+	fn a_terminal_near_its_ceiling_is_kernel_bound_too() {
+		let args = [
+			"--only",
+			"log",
+			"--kib",
+			"8",
+			"--stages",
+			"pty,pipeline,terminal",
+		];
+		let table = report_of(&args, |stage| match stage {
+			Stage::Pty(_) => 100.0,
+			Stage::Pipeline(_) => 50.0,
+			_ => 95.0,
+		});
+		assert_eq!(table.notes, ["kernel-bound (terminal ≥ 90% of pty): log"]);
+		let table = report_of(&["--only", "log", "--kib", "8", "--terminal"], |_| 1.0);
+		assert_eq!(
+			table.notes,
+			[
+				"kernel-bound (terminal ≥ 90% of pty): log",
+				"kernel-bound (terminal raw ≥ 90% of pty raw): log"
+			]
 		);
 	}
 
@@ -397,8 +469,9 @@ mod tests {
 		let len = table.rows[0].bytes;
 		// Workloads end on whole bursts, so a little over the size asked.
 		assert!((64 << 10..80 << 10).contains(&len), "{len}");
+		// Rendering parses too, so its warm-up warms both stages.
 		let stages = [
-			(Stage::Parse, len / 8),
+			(Stage::Render, len / 8),
 			(Stage::Parse, len),
 			(Stage::Parse, len),
 			(Stage::Render, len),
