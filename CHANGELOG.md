@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.36 "Lunar Moth" — 2026-11-08
+
+### Maintenance
+
+- Repeat each stage and report medians with their spread (#239) (bench).
+
 ## 26.11.35 "Lunar Moth" — 2026-11-05
 
 ### Maintenance
