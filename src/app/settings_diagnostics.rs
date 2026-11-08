@@ -162,25 +162,12 @@ fn graphics(diagnostics: &Diagnostics, colors: &DiagnosticsColors, p: &mut Scene
 /// A 12 px ring in `color` around a dot when `full`, its inside `page`.
 fn mark(p: &mut Scene, (x, y): (usize, usize), s: usize, full: bool, color: u32, page: u32) {
 	let (side, stroke) = (12 * s, (3 * s).div_ceil(2));
-	let inner = side - 2 * stroke;
+	let (inner, dot) = (side - 2 * stroke, 6 * s);
 	p.round_rect(x, y, side, side, pill_radius(side), color);
-	p.round_rect(
-		x + stroke,
-		y + stroke,
-		inner,
-		inner,
-		pill_radius(inner),
-		page,
-	);
+	let ring = pill_radius(inner);
+	p.round_rect(x + stroke, y + stroke, inner, inner, ring, page);
 	if full {
-		p.round_rect(
-			x + 3 * s,
-			y + 3 * s,
-			6 * s,
-			6 * s,
-			pill_radius(6 * s),
-			color,
-		);
+		p.round_rect(x + 3 * s, y + 3 * s, dot, dot, pill_radius(dot), color);
 	}
 }
 

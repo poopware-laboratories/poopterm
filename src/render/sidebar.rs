@@ -84,14 +84,8 @@ fn draw_rail_tab(p: &mut Scene, fonts: &mut FontSet, style: Style, row: &Sidebar
 	if let Some(hovered) = tab.close {
 		let (cx, cy, size, _) = rail_close_rect(row.rect, scale);
 		if hovered {
-			p.round_rect(
-				cx,
-				cy,
-				size,
-				size,
-				pill_radius(size),
-				blend(surface, colors.fg, 40),
-			);
+			let fill = blend(surface, colors.fg, 40);
+			p.round_rect(cx, cy, size, size, pill_radius(size), fill);
 		}
 		let center = (cx + size / 2, cy + size / 2);
 		centered_text(p, fonts, "×", center, style.px * 0.8, colors.fg);

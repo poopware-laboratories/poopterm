@@ -56,17 +56,11 @@ pub(crate) fn draw_popover(p: &mut Scene, fonts: &mut FontSet, popover: &Popover
 		colors.bar,
 	);
 	draw_field(p, fonts, popover.style, &popover.field);
+	let control = Corner::Control.radius(scale);
 	for row in &popover.rows {
 		let (x, y, width, height) = row.rect;
 		if row.selected {
-			p.round_rect(
-				x,
-				y,
-				width,
-				height,
-				Corner::Control.radius(scale),
-				colors.raised,
-			);
+			p.round_rect(x, y, width, height, control, colors.raised);
 		}
 		row_text(p, fonts, popover.style, row.rect, row.text, colors.fg);
 	}
@@ -86,14 +80,8 @@ fn row_text(p: &mut Scene, fonts: &mut FontSet, style: Style, rect: Rect, text: 
 fn draw_field(p: &mut Scene, fonts: &mut FontSet, style: Style, field: &Field) {
 	let (scale, px, colors) = (style.scale, style.px, style.colors);
 	let (x, y, width, height) = field.rect;
-	p.round_rect(
-		x,
-		y,
-		width,
-		height,
-		Corner::Control.radius(scale),
-		colors.hover,
-	);
+	let control = Corner::Control.radius(scale);
+	p.round_rect(x, y, width, height, control, colors.hover);
 	let padding = PADDING * scale;
 	let mut room = width.saturating_sub(2 * padding);
 	if let Some(trailing) = &field.trailing {

@@ -181,14 +181,8 @@ pub(crate) fn draw_tab(
 	if let Some(hovered) = tab.close {
 		let (cx, cy, size, _) = close_rect(x, width, (y, height), scale);
 		if hovered {
-			p.round_rect(
-				cx,
-				cy,
-				size,
-				size,
-				pill_radius(size),
-				blend(surface, colors.fg, 40),
-			);
+			let fill = blend(surface, colors.fg, 40);
+			p.round_rect(cx, cy, size, size, pill_radius(size), fill);
 		}
 		let center = (cx + size / 2, cy + size / 2);
 		centered_text(p, fonts, "×", center, px, colors.fg);
