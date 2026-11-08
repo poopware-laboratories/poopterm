@@ -292,3 +292,51 @@ fn a_glyph_no_atlas_holds_hands_the_window_to_software_saying_why() {
 		Drawing::Software(Reason::Abandoned("a frame the GPU cannot hold".into()))
 	);
 }
+
+#[test]
+fn a_scrolled_frame_keeps_the_moved_rows_and_redraws_those_a_scroll_leaves_wrong() {
+	use crate::render::damage::GridDamage;
+	let Some(mut gpu) = headless() else { return };
+	let mut fonts = fonts();
+	let case = cases().into_iter().next().unwrap();
+	let view = case.view();
+	let rows = view.frame.rows;
+	assert!(rows > 3, "a grid of rows to scroll");
+	let mut planned = Vec::new();
+	let mut draw = |gpu: &mut Gpu<()>, planned: &mut Vec<Option<Vec<bool>>>| {
+		let mut next = Next::Redraw;
+		for _ in 0..4 {
+			next = gpu.frame((160, 96), |pen| {
+				planned.push(pen.rows_to_draw().map(<[bool]>::to_vec));
+				let (width, height) = pen.size();
+				pen.rect(0, 0, width, height, BG);
+				draw_grid(pen, &mut fonts, &view, None);
+			});
+			if next != Next::Redraw {
+				break;
+			}
+		}
+		next
+	};
+	assert_eq!(draw(&mut gpu, &mut planned), Next::Done);
+	// Scrolled up a row, with the new last row to draw.
+	let mut damaged = vec![false; rows];
+	damaged[rows - 1] = true;
+	gpu.plan_rows(
+		Some(GridDamage {
+			scroll: 1,
+			rows: damaged,
+		}),
+		16,
+	);
+	planned.clear();
+	assert_eq!(draw(&mut gpu, &mut planned), Next::Done);
+	let mut expected = vec![false; rows];
+	// The first row, which carries the padding above the grid, and the old
+	// last row, which carried the padding below; and the new last row.
+	expected[0] = true;
+	expected[rows - 2] = true;
+	expected[rows - 1] = true;
+	assert_eq!(planned, [Some(expected)]);
+	assert!(gpu.keeps_rows());
+}
