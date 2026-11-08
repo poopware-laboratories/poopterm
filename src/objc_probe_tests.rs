@@ -190,18 +190,28 @@ pub(crate) fn class_named(raw: usize) -> Class {
 }
 
 /// A weak reference to an object, which reads nil once it is deallocated.
-struct Weak(Box<Raw>);
+pub(crate) struct Weak(Box<Raw>);
 
 impl Weak {
-	fn new(object: &Object) -> Self {
+	pub(crate) fn new(object: &Object) -> Self {
+		// SAFETY: a live object.
+		unsafe { Self::of(object.raw()) }
+	}
+
+	/// A weak reference to `raw`.
+	///
+	/// # Safety
+	///
+	/// `raw` is a live object.
+	pub(crate) unsafe fn of(raw: Raw) -> Self {
 		let mut location = Box::new(NIL);
 		// SAFETY: the location is boxed, so it stays put until destroyed.
-		unsafe { objc_initWeak(&mut *location, object.raw()) };
+		unsafe { objc_initWeak(&mut *location, raw) };
 		Self(location)
 	}
 
 	/// Whether the object still lives.
-	fn alive(&mut self) -> bool {
+	pub(crate) fn alive(&mut self) -> bool {
 		// SAFETY: the location was initialized and not yet destroyed; the
 		// object read is retained, and released as the `Object` drops.
 		unsafe { Object::owned(objc_loadWeakRetained(&mut *self.0)) }.is_some()

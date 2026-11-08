@@ -150,3 +150,30 @@ fn a_texture_metal_refuses_is_refused() {
 	// It was asked for, once.
 	assert_eq!(made().len(), 1);
 }
+
+#[test]
+fn a_texture_lets_go_of_its_descriptor_once_made_and_of_itself_when_dropped() {
+	use crate::{
+		gpu::mtl::fake_tests::{fake, passed},
+		objc::probe_tests::Weak,
+	};
+	let device = fake(0);
+	let texture = Texture::new(&device, [4, 4, 2], true, Usage::Sampled).unwrap();
+	let mut descriptors = passed();
+	assert_eq!(descriptors.len(), 1);
+	assert!(!descriptors[0].alive());
+	let mut made = Weak::new(&texture.texture);
+	assert!(made.alive());
+	drop(texture);
+	assert!(!made.alive());
+}
+
+#[test]
+fn a_texture_metal_refuses_leaves_no_descriptor_behind() {
+	use crate::gpu::mtl::fake_tests::{TEXTURE, fake, passed};
+	let device = fake(TEXTURE);
+	assert!(Texture::new(&device, [4, 4, 1], false, Usage::Sampled).is_err());
+	let mut descriptors = passed();
+	assert_eq!(descriptors.len(), 1);
+	assert!(!descriptors[0].alive());
+}

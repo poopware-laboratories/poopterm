@@ -5,7 +5,7 @@
 use super::device::Device;
 use crate::objc::{
 	Object, Raw, Sel, class,
-	probe_tests::{class_named, register},
+	probe_tests::{Weak, class_named, register},
 	string,
 };
 use std::{
@@ -46,6 +46,21 @@ pub(crate) enum Made {
 thread_local! {
 	static REFUSED: Cell<u32> = const { Cell::new(0) };
 	static MADE: RefCell<Vec<Made>> = const { RefCell::new(Vec::new()) };
+	/// Weak references to what the fake was passed or returned unowned.
+	static PASSED: RefCell<Vec<Weak>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Takes weak references to what the fake was passed (descriptors) or
+/// returned without handing it over (names), on this thread.
+pub(crate) fn passed() -> Vec<Weak> {
+	PASSED.with(|passed| std::mem::take(&mut *passed.borrow_mut()))
+}
+
+/// Keeps a weak reference to `raw`, a live object.
+fn watch(raw: Raw) {
+	// SAFETY: as said.
+	let weak = unsafe { Weak::of(raw) };
+	PASSED.with(|passed| passed.borrow_mut().push(weak));
 }
 
 /// Takes what the fake made on this thread.
@@ -85,6 +100,7 @@ extern "C" fn name(_: Raw, _: Sel) -> Raw {
 	unsafe {
 		let raw: Raw = made.send(c"autorelease", ());
 		std::mem::forget(made);
+		watch(raw);
 		raw
 	}
 }
@@ -115,6 +131,7 @@ extern "C" fn new_texture(_: Raw, _: Sel, descriptor: Raw) -> Raw {
 		usage: read(c"usage"),
 	};
 	MADE.with(|made| made.borrow_mut().push(texture));
+	watch(descriptor);
 	if refuses(TEXTURE) {
 		std::ptr::null_mut()
 	} else {
@@ -145,6 +162,7 @@ pub(crate) fn fake_device(refused: u32) -> Object {
 	});
 	REFUSED.with(|cell| cell.set(refused));
 	made();
+	passed();
 	// SAFETY: a subclass of `NSObject`, whose `init` is `NSObject`'s.
 	unsafe { class_named(raw).instance() }.unwrap()
 }
@@ -153,5 +171,7 @@ pub(crate) fn fake_device(refused: u32) -> Object {
 pub(crate) fn fake(refused: u32) -> Device {
 	let device = Device::with(fake_device(0)).unwrap();
 	REFUSED.with(|cell| cell.set(refused));
+	// What making the device passed is its tests' business.
+	passed();
 	device
 }

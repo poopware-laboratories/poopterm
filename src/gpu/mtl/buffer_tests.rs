@@ -58,3 +58,19 @@ fn a_buffer_metal_refuses_is_refused() {
 		Some(Error::Refused("buffer").to_string())
 	);
 }
+
+#[test]
+fn a_buffer_dropped_lets_go_of_what_metal_made_once() {
+	use crate::{gpu::mtl::fake_tests::fake, objc::probe_tests::Weak};
+	let device = fake(0);
+	let buffer = Buffer::new(&device, NonZeroUsize::new(48).unwrap()).unwrap();
+	let mut made = Weak::new(&buffer.buffer);
+	let other = Buffer::new(&device, NonZeroUsize::new(48).unwrap()).unwrap();
+	let mut kept = Weak::new(&other.buffer);
+	drop(buffer);
+	assert!(!made.alive());
+	// Only its own.
+	assert!(kept.alive());
+	drop(other);
+	assert!(!kept.alive());
+}

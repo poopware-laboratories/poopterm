@@ -87,3 +87,39 @@ fn a_device_whose_queue_or_name_metal_refuses_is_refused_and_let_go() {
 		assert_eq!(count(), 1, "{what}");
 	}
 }
+
+#[test]
+fn a_device_dropped_lets_go_of_its_device_and_queue_and_keeps_no_name() {
+	use crate::{
+		gpu::mtl::fake_tests::{fake_device, passed},
+		objc::probe_tests::Weak,
+	};
+	let object = fake_device(0);
+	let mut gpu = Weak::new(&object);
+	let device = Device::with(object).unwrap();
+	let mut queue = Weak::new(&device.queue);
+	// The name was copied, and its string released with the pool.
+	let mut names = passed();
+	assert_eq!(names.len(), 1);
+	assert!(!names[0].alive());
+	assert!(gpu.alive() && queue.alive());
+	drop(device);
+	assert!(!gpu.alive());
+	assert!(!queue.alive());
+}
+
+#[test]
+fn a_device_refused_its_name_lets_go_of_the_queue_it_was_given() {
+	use crate::{
+		gpu::mtl::fake_tests::{NAME, fake_device},
+		objc::probe_tests::Weak,
+	};
+	let object = fake_device(NAME);
+	let mut gpu = Weak::new(&object);
+	assert_eq!(
+		Device::with(object).err(),
+		Some(Error::Refused("device name"))
+	);
+	// The queue made before the refusal went with the device.
+	assert!(!gpu.alive());
+}
