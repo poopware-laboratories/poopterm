@@ -1,6 +1,7 @@
 //! The search box and command palette: where they float, and what their
 //! field and rows show.
 use crate::{
+	input::shortcuts::{ShortcutAction, Shortcuts},
 	render::{
 		header::{HeaderColors, Style},
 		popover::{Field, Popover, PopoverRow},
@@ -28,6 +29,28 @@ pub(crate) fn palette_matches(query: &str) -> Vec<&'static str> {
 	matching
 		.filter(|command| command.to_lowercase().contains(&query))
 		.collect()
+}
+
+/// The shortcut action `command` has a key for, if any.
+pub(crate) fn command_action(command: &str) -> Option<ShortcutAction> {
+	match command {
+		"New tab" => Some(ShortcutAction::NewTab),
+		"Cycle theme" => Some(ShortcutAction::CycleTheme),
+		"Close tab" => Some(ShortcutAction::CloseTab),
+		_ => None,
+	}
+}
+
+/// Each command's chord as the platform writes it, from the bindings in
+/// use, for the palette to show beside the command.
+pub(crate) fn shortcut_hints(
+	shortcuts: &Shortcuts,
+	mac: bool,
+) -> impl Fn(&str) -> Option<String> + '_ {
+	move |command| {
+		let action = command_action(command)?;
+		Some(shortcuts.get(action).display(mac))
+	}
 }
 
 /// Whether running `command` keeps the palette open: renaming a tab edits
@@ -144,6 +167,7 @@ pub(crate) fn command_palette<'a>(
 	let rows = rows.map(|(index, &text)| PopoverRow {
 		rect: row(index),
 		text,
+		hint: None,
 		selected: index == 0,
 	});
 	let note = match () {

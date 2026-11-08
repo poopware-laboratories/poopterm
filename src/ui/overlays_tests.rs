@@ -2,9 +2,13 @@
 //! search box and command palette float and what they show.
 use super::{
 	header::{TabPalette, header_colors},
-	overlays::{PALETTE_COMMANDS, Place, command_palette, palette_matches, search_box, stays_open},
+	overlays::{
+		PALETTE_COMMANDS, Place, command_action, command_palette, palette_matches, search_box,
+		shortcut_hints, stays_open,
+	},
 };
 use crate::{
+	input::shortcuts::{ShortcutAction, Shortcuts},
 	render::{
 		header::{HeaderColors, Rect},
 		popover::Popover,
@@ -399,4 +403,125 @@ fn what_people_type_to_rename_a_tab_keeps_the_palette_open() {
 	assert!(!enter("zzz").is_some_and(stays_open));
 	// Commands are compared whole, as the palette lists them.
 	assert!(!stays_open("rename active tab") && !stays_open("Rename"));
+}
+
+#[test]
+fn commands_with_a_shortcut_name_its_action() {
+	assert_eq!(command_action("New tab"), Some(ShortcutAction::NewTab));
+	assert_eq!(
+		command_action("Cycle theme"),
+		Some(ShortcutAction::CycleTheme)
+	);
+	assert_eq!(command_action("Close tab"), Some(ShortcutAction::CloseTab));
+	for command in [
+		"Settings",
+		"About poopterm",
+		"Rename active tab",
+		"nonsense",
+		"",
+	] {
+		assert_eq!(command_action(command), None, "{command:?}");
+	}
+}
+
+#[test]
+fn every_named_command_is_a_palette_command() {
+	let named: Vec<_> = PALETTE_COMMANDS
+		.into_iter()
+		.filter(|command| command_action(command).is_some())
+		.collect();
+	assert_eq!(named, ["New tab", "Cycle theme", "Close tab"]);
+}
+
+#[test]
+fn hints_show_each_commands_bound_chord_in_the_platform_style() {
+	let shortcuts = Shortcuts::from_config("shortcut_new_tab = ctrl+shift+n");
+	let hints = shortcut_hints(&shortcuts, false);
+	assert_eq!(hints("New tab").as_deref(), Some("Ctrl+Shift+N"));
+	assert_eq!(hints("Settings"), None);
+	let hints = shortcut_hints(&shortcuts, true);
+	assert_eq!(hints("New tab").as_deref(), Some("⌃⇧N"));
+}
+
+#[test]
+fn a_rebound_shortcut_shows_in_the_hint() {
+	let shortcuts = Shortcuts::from_config("shortcut_close_tab = alt+q");
+	assert_eq!(
+		shortcut_hints(&shortcuts, false)("Close tab").as_deref(),
+		Some("Alt+Q")
+	);
+}
+
+#[test]
+fn rows_get_their_hints_and_the_rest_stay_bare() {
+	let mut popover = palette("", false);
+	assert!(popover.rows.iter().all(|row| row.hint.is_none()));
+	let shortcuts = Shortcuts::from_config("");
+	popover.add_hints(shortcut_hints(&shortcuts, false));
+	let hinted: Vec<_> = popover
+		.rows
+		.iter()
+		.filter(|row| row.hint.is_some())
+		.map(|row| row.text)
+		.collect();
+	assert_eq!(hinted, ["New tab", "Cycle theme", "Close tab"]);
+}
+
+#[test]
+fn a_note_row_takes_no_hint() {
+	let mut popover = palette("zzz", false);
+	assert!(popover.rows.is_empty());
+	popover.add_hints(|_| Some("Ctrl+X".to_owned()));
+	assert!(popover.note.is_some() && popover.rows.is_empty());
+}
+
+#[test]
+fn hints_follow_the_rows_a_query_leaves() {
+	let shortcuts = Shortcuts::from_config("");
+	let mut popover = palette("tab", false);
+	popover.add_hints(shortcut_hints(&shortcuts, false));
+	let shown: Vec<_> = popover
+		.rows
+		.iter()
+		.map(|row| (row.text, row.hint.is_some()))
+		.collect();
+	assert_eq!(
+		shown,
+		[
+			("New tab", true),
+			("Close tab", true),
+			("Rename active tab", false)
+		]
+	);
+}
+
+#[test]
+fn hints_leave_the_rows_text_and_selection_alone() {
+	let mut plain = palette("", false);
+	let mut hinted = palette("", false);
+	hinted.add_hints(|_| Some("X".to_owned()));
+	assert_eq!(texts(&plain), texts(&hinted));
+	let selected = |popover: &Popover| {
+		popover
+			.rows
+			.iter()
+			.map(|row| row.selected)
+			.collect::<Vec<_>>()
+	};
+	assert_eq!(selected(&plain), selected(&hinted));
+	plain.add_hints(|_| None);
+	assert!(plain.rows.iter().all(|row| row.hint.is_none()));
+}
+
+#[test]
+fn adding_hints_again_replaces_the_old_ones() {
+	let mut popover = palette("", false);
+	popover.add_hints(|_| Some("old".to_owned()));
+	popover.add_hints(|command| (command == "Settings").then(|| "new".to_owned()));
+	let hints: Vec<_> = popover
+		.rows
+		.iter()
+		.filter_map(|row| row.hint.as_deref())
+		.collect();
+	assert_eq!(hints, ["new"]);
 }
