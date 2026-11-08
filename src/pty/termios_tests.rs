@@ -32,8 +32,14 @@ fn line(typed: &[u8]) -> Vec<u8> {
 #[test]
 fn backspace_is_del_and_erases_one_character() {
 	assert_eq!(line(b"ab\x7f\n"), b"a\n");
-	// ^H is a character like any other, not the erase key.
-	assert_eq!(line(b"ab\x08\n"), b"ab\x08\n");
+	// ^H is a character like any other, except on FreeBSD, whose login
+	// terminals keep it as a second erase key (VERASE2).
+	let erased = if cfg!(target_os = "freebsd") {
+		&b"a\n"[..]
+	} else {
+		b"ab\x08\n"
+	};
+	assert_eq!(line(b"ab\x08\n"), erased);
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
