@@ -71,6 +71,7 @@ pub(crate) struct HeaderTab<'a> {
 	/// The tab's background, when it has one.
 	pub fill: Option<u32>,
 	pub badge: Option<Badge>,
+	pub shape: TabShape,
 	/// The share done, `None` when unknown, and the bar's color.
 	pub progress: Option<(Option<u8>, u32)>,
 	/// `Some(hovered)` when the close button shows.
@@ -99,21 +100,62 @@ pub(crate) struct Header<'a> {
 	pub dividers: Vec<Rect>,
 }
 
-/// The rounded surface of a tab `width` wide at `x`, inside a header at `y`.
-pub(crate) fn pill(x: usize, width: usize, (y, height): (usize, usize), scale: usize) -> Rect {
-	(x, y + 6 * scale, width, height.saturating_sub(12 * scale))
+/// How a tab's fill is shaped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabShape {
+	/// Fills the whole rectangle: a row of the tab sidebar.
+	Row,
+	/// Fills an inset of its body when lit: a tab at rest or hovered.
+	Floating,
+	/// Rounded on top, outlined by the separator and open at the bottom,
+	/// so it runs into the terminal below: the active tab.
+	Joined,
 }
 
-/// The close button of a tab `width` wide at `x`, inside a header at `y`.
-pub(crate) fn close_rect(
-	x: usize,
-	width: usize,
-	(y, height): (usize, usize),
-	scale: usize,
-) -> Rect {
-	let size = 22 * scale;
+/// A tab's height in the header, before scaling.
+const TAB_HEIGHT: usize = 32;
+
+/// The body of a tab `width` wide at `x`: the bottom of a header at `y`,
+/// its separator included, which the active tab covers.
+pub(crate) fn body(x: usize, width: usize, (y, height): (usize, usize), scale: usize) -> Rect {
+	let tall = (TAB_HEIGHT * scale).min(height);
+	(x, y + height - tall, width, tall)
+}
+
+/// The fill of a hovered tab inside its body `rect`: 3 pixels in from its
+/// top and 4 from its bottom, so it floats clear of the separator.
+pub(crate) fn inset((x, y, width, height): Rect, scale: usize) -> Rect {
+	(x, y + 3 * scale, width, height.saturating_sub(7 * scale))
+}
+
+/// The fill of a hovered tab `width` wide at `x`, inside a header at `y`.
+#[cfg(test)]
+pub(crate) fn pill(x: usize, width: usize, bounds: (usize, usize), scale: usize) -> Rect {
+	inset(body(x, width, bounds, scale), scale)
+}
+
+/// The close button of a tab `width` wide at `x`, inside a header at `y`:
+/// 18 pixels square, centered on the tab's body, 6 in from its end.
+pub(crate) fn close_rect(x: usize, width: usize, bounds: (usize, usize), scale: usize) -> Rect {
+	let (_, y, _, height) = body(x, width, bounds, scale);
+	let size = 18 * scale;
 	let left = (x + width).saturating_sub(size + 6 * scale);
 	(left, y + height.saturating_sub(size) / 2, size, size)
+}
+
+/// Draws the active tab's surface `rect` in `fill`: rounded on top and
+/// square at the bottom, outlined in `line` on its top and sides.
+fn joined(p: &mut Scene, (x, y, width, height): Rect, scale: usize, (fill, line): (u32, u32)) {
+	let radius = Corner::Tab.radius(scale);
+	let (outer_x, outer_y) = (x.saturating_sub(scale), y.saturating_sub(scale));
+	let (outer_w, outer_h) = (width + (x - outer_x) * 2, height + (y - outer_y));
+	let square = height.saturating_sub(radius);
+	p.round_rect(outer_x, outer_y, outer_w, outer_h, radius + scale, line);
+	// The outline's own bottom corners start `scale` rows above the fill's.
+	let patch = square.saturating_sub(scale);
+	p.rect(outer_x, y + patch, outer_w, height - patch, line);
+	p.round_rect(x, y, width, height, radius, fill);
+	p.rect(x, y + square, width, height - square, fill);
 }
 
 pub(crate) fn draw_header(p: &mut Scene, fonts: &mut FontSet, header: &Header) {
@@ -134,7 +176,7 @@ pub(crate) fn draw_header(p: &mut Scene, fonts: &mut FontSet, header: &Header) {
 			p,
 			fonts,
 			style,
-			pill(tab.x, tab.width, (y, height), scale),
+			body(tab.x, tab.width, (y, height), scale),
 			tab,
 		);
 	}
@@ -156,7 +198,15 @@ pub(crate) fn draw_tab(
 	let (x, y, width, height) = rect;
 	let surface = tab.fill.unwrap_or(colors.bar);
 	if let Some(fill) = tab.fill {
-		p.round_rect(x, y, width, height, Corner::Control.radius(scale), fill);
+		let control = Corner::Control.radius(scale);
+		match tab.shape {
+			TabShape::Row => p.round_rect(x, y, width, height, control, fill),
+			TabShape::Floating => {
+				let (x, y, width, height) = inset(rect, scale);
+				p.round_rect(x, y, width, height, control, fill);
+			}
+			TabShape::Joined => joined(p, rect, scale, (fill, colors.separator)),
+		}
 	}
 	let mut left = x + 12 * scale;
 	let (line_height, ascent) = line(fonts, px);
@@ -182,13 +232,18 @@ pub(crate) fn draw_tab(
 		let (cx, cy, size, _) = close_rect(x, width, (y, height), scale);
 		if hovered {
 			let fill = blend(surface, colors.fg, 40);
-			p.round_rect(cx, cy, size, size, pill_radius(size), fill);
+			p.round_rect(cx, cy, size, size, Corner::Chip.radius(scale), fill);
 		}
 		let center = (cx + size / 2, cy + size / 2);
 		centered_text(p, fonts, "×", center, px, colors.fg);
 	}
 	if let Some(progress) = tab.progress {
-		draw_progress(p, scale, rect, surface, progress);
+		let track = if tab.shape == TabShape::Floating {
+			inset(rect, scale)
+		} else {
+			rect
+		};
+		draw_progress(p, scale, track, surface, progress);
 	}
 }
 

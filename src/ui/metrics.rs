@@ -4,10 +4,14 @@
 /// A kind of rounded element in the chrome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Corner {
+	/// Keycaps, and the light under a tab's close button.
+	Chip,
 	/// Hover and pressed fills, fields, selected rows and tab fills.
 	Control,
 	/// The outline of a bordered Settings button.
 	Button,
+	/// The top corners of the active tab, which joins the terminal.
+	Tab,
 	/// A floating popover: the search box and the command palette.
 	Popover,
 }
@@ -16,8 +20,10 @@ impl Corner {
 	/// The radius in device pixels at the display's integer `scale`.
 	pub(crate) fn radius(self, scale: usize) -> usize {
 		let logical = match self {
+			Self::Chip => 5,
 			Self::Control => 6,
 			Self::Button => 7,
+			Self::Tab => 8,
 			Self::Popover => 10,
 		};
 		logical * scale

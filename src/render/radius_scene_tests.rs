@@ -5,7 +5,8 @@ use super::{
 	chrome::button,
 	glyphs::{FontSet, Glyph},
 	header::{
-		Badge, HeaderButton, HeaderColors, HeaderTab, Icon, Style, close_rect, draw_button, draw_tab,
+		Badge, HeaderButton, HeaderColors, HeaderTab, Icon, Style, TabShape, close_rect, draw_button,
+		draw_tab,
 	},
 	label::Label,
 	painter::ButtonStyle,
@@ -65,6 +66,7 @@ fn tab(width: usize, close: Option<bool>) -> HeaderTab<'static> {
 		},
 		fill: Some(COLORS.raised),
 		badge: Some(Badge::Dot(0xff8800)),
+		shape: TabShape::Row,
 		progress: None,
 		close,
 	}
@@ -91,7 +93,7 @@ fn an_active_tab_rounds_its_fill_by_six_and_its_dot_into_a_circle() {
 }
 
 #[test]
-fn a_hovered_close_button_is_a_circle_of_its_own_size() {
+fn a_hovered_close_button_is_a_square_rounded_like_a_chip() {
 	for scale in SCALES {
 		let rect = (0, 0, 180 * scale, 32 * scale);
 		let mut scene = Scene::new(rect.2, rect.3);
@@ -104,7 +106,8 @@ fn a_hovered_close_button_is_a_circle_of_its_own_size() {
 		);
 		let (cx, cy, size, _) = close_rect(0, rect.2, (0, rect.3), scale);
 		let close = *round_rects(&scene).last().unwrap();
-		assert_eq!(close, ((cx, cy, size, size), size / 2), "at {scale}x");
+		let chip = crate::ui::metrics::Corner::Chip.radius(scale);
+		assert_eq!(close, ((cx, cy, size, size), chip), "at {scale}x");
 	}
 }
 
