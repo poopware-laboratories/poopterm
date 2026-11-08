@@ -331,3 +331,23 @@ fn the_target_is_an_instance_of_our_own_registered_class() {
 	let member: crate::objc::Bool = unsafe { target.send(c"isMemberOfClass:", (ours.raw(),)) };
 	assert_ne!(member, 0);
 }
+
+#[test]
+fn the_target_outlives_the_menus_pointed_at_it() {
+	let _serial = serial();
+	let (bar, about) = menu_bar();
+	// SAFETY: an `NSMenu`.
+	assert!(unsafe { redirect(&bar) });
+	let target = receiver(&about);
+	drop((bar, about));
+	// Items do not retain their targets, so ours must not go with them.
+	assert_eq!(super::target(), Some(target));
+	// SAFETY: the target lives for the whole process.
+	let target = unsafe { Object::retained(target) }.unwrap();
+	assert!(target.responds(OURS));
+	let chosen = Arc::new(AtomicUsize::new(0));
+	set_wake(Some(counting(&chosen)));
+	choose();
+	assert_eq!(chosen.load(Ordering::Relaxed), 1);
+	set_wake(None);
+}
