@@ -394,3 +394,9 @@ fn a_grid_size_reaches_programs_with_its_pixels() {
 	);
 	assert_eq!(size(&pair.slave).unwrap().pixel_height, 840);
 }
+
+#[test]
+fn writing_nothing_gives_nothing_from_either_master() {
+	let (ours, theirs) = both_outputs(b"");
+	assert!(ours.is_empty() && theirs.is_empty(), "{ours:?} {theirs:?}");
+}
