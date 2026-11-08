@@ -26,12 +26,22 @@ mod label_tests;
 mod multicell;
 pub(crate) mod padding;
 pub(crate) mod painter;
+mod pane_view;
+#[cfg(test)]
+mod pane_view_tests;
+pub(crate) mod panes;
+#[cfg(test)]
+mod panes_tests;
 pub(crate) mod pen;
 #[cfg(test)]
 mod pen_tests;
+#[cfg(test)]
+mod pen_untracked_tests;
 pub(crate) mod popover;
 #[cfg(test)]
 mod popover_tests;
+#[cfg(test)]
+mod radius_scene_tests;
 pub(crate) mod scene;
 #[cfg(test)]
 mod scene_tests;

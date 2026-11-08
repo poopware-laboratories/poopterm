@@ -200,6 +200,10 @@ impl App {
 			self.add_tab();
 			return;
 		}
+		if let Some(command) = (self.shortcuts.panes).command(&event.logical_key, self.mods) {
+			self.run_pane_command(command);
+			return;
+		}
 		let copy_shortcut = self.mods.super_key
 			&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("c"))
 			|| self.mods.ctrl

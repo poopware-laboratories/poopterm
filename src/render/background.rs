@@ -43,6 +43,21 @@ pub(crate) fn wallpaper(
 	});
 }
 
+/// Fills `rect`, which lies inside the border, with `inside`, or with the
+/// wallpaper `image` as [`wallpaper`] places it.
+pub(crate) fn fill_inside(
+	pen: &mut impl Pen,
+	rect: Rect,
+	border: usize,
+	(inside, image): (u32, Option<&Arc<Bitmap>>),
+) {
+	let Some(image) = image else {
+		return pen.rect(rect.x, rect.y, rect.width, rect.height, inside);
+	};
+	let placement = Placement::natural(image.clone(), 0, 0);
+	pen.placement(rect, &placement, (border as isize, border as isize), (1, 1));
+}
+
 /// Paints `rows` from column `left`: `edge` within `border` pixels of the
 /// window's edges, and the inside's part in them with `inside`, given its
 /// left, top, width and height.

@@ -9,6 +9,7 @@ use super::{
 	},
 	scene::Scene,
 };
+use crate::ui::metrics::{Corner, pill_radius};
 
 pub(crate) struct SidebarRow<'a> {
 	/// The tab's number, from 1, which the rail shows instead of its title.
@@ -63,7 +64,7 @@ fn draw_rail_tab(p: &mut Scene, fonts: &mut FontSet, style: Style, row: &Sidebar
 	let (x, y, width, height) = row.rect;
 	let surface = tab.fill.unwrap_or(colors.bar);
 	if let Some(fill) = tab.fill {
-		p.round_rect(x, y, width, height, 6 * scale, fill);
+		p.round_rect(x, y, width, height, Corner::Control.radius(scale), fill);
 	}
 	let center = (x + width / 2, y + height / 2);
 	centered_text(
@@ -78,12 +79,13 @@ fn draw_rail_tab(p: &mut Scene, fonts: &mut FontSet, style: Style, row: &Sidebar
 	if let Some(Badge::Dot(color) | Badge::Bell(color)) = tab.badge {
 		let size = 6 * scale;
 		let top = y + height.saturating_sub(size) / 2;
-		p.round_rect(x + 8 * scale, top, size, size, size / 2, color);
+		p.round_rect(x + 8 * scale, top, size, size, pill_radius(size), color);
 	}
 	if let Some(hovered) = tab.close {
 		let (cx, cy, size, _) = rail_close_rect(row.rect, scale);
 		if hovered {
-			p.round_rect(cx, cy, size, size, size / 2, blend(surface, colors.fg, 40));
+			let fill = blend(surface, colors.fg, 40);
+			p.round_rect(cx, cy, size, size, pill_radius(size), fill);
 		}
 		let center = (cx + size / 2, cy + size / 2);
 		centered_text(p, fonts, "×", center, style.px * 0.8, colors.fg);

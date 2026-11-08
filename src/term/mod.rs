@@ -64,6 +64,9 @@ pub(crate) mod pointer;
 mod pointer_tests;
 #[cfg(test)]
 mod prompt_tests;
+mod recolor;
+#[cfg(test)]
+mod recolor_tests;
 #[cfg(test)]
 mod reverse_screen_tests;
 #[cfg(test)]
@@ -90,7 +93,7 @@ mod width_tests;
 #[cfg(test)]
 mod window_ops_tests;
 
-use crate::theme::{Theme, bright_palette};
+use crate::theme::Theme;
 pub(crate) use colors::{Colors, Dynamic, Setting};
 pub(crate) use extras::{Extras, NONE as NO_EXTRA};
 pub(crate) use frame::Frame;
@@ -281,6 +284,9 @@ pub(crate) struct Term {
 	/// The theme's default colors, which OSC 110 and 111 restore.
 	pub(crate) theme_fg: u32,
 	pub(crate) theme_bg: u32,
+	/// The theme's cursor and selection colors, under OSC 12, 17 and 19.
+	pub(crate) theme_cursor: Option<u32>,
+	pub(crate) theme_selection: Option<(u32, u32)>,
 	pub(crate) palette: [u32; 8],
 	/// Colors 8 to 15, readable on the theme's background.
 	pub(crate) bright: [u32; 8],
@@ -439,17 +445,6 @@ impl Term {
 		}
 	}
 
-	pub(crate) fn set_theme(&mut self, theme: Theme) {
-		self.finish_sync();
-		self.set_default_colors(theme.fg, theme.bg);
-		self.theme_fg = theme.fg;
-		self.theme_bg = theme.bg;
-		self.palette = theme.palette;
-		self.bright = bright_palette(theme.fg, theme.bg);
-		self.color_overrides.fill(None);
-		self.colors = Colors::default();
-	}
-
 	#[inline(always)]
 	/// The cell trimmed from the end of scrollback rows: a blank in the
 	/// default colors.
@@ -515,8 +510,10 @@ impl Term {
 			default_bg: theme.bg,
 			theme_fg: theme.fg,
 			theme_bg: theme.bg,
+			theme_cursor: theme.cursor,
+			theme_selection: theme.selection,
 			palette: theme.palette,
-			bright: bright_palette(theme.fg, theme.bg),
+			bright: theme.bright_colors(),
 			color_overrides: [None; 256],
 			colors: Colors::default(),
 			color_stack: Vec::new(),

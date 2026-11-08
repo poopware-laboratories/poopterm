@@ -1,7 +1,7 @@
 //! Main-window frame composition: background, tab bar, grid, overlays, status bar.
 use super::*;
 use super::{
-	canvas::{DrawKey, Plan},
+	canvas::{DrawKey, Plan, pane_keys},
 	renderer::after_shown,
 	repaint::keeps_contents,
 };
@@ -73,6 +73,12 @@ impl App {
 		};
 		let size = (self.width as usize, self.height as usize);
 		self.sessions[self.active].term().snapshot(&mut self.frame);
+		// pr-check: window glue: copies a split tab's live panes for the tested canvas
+		let places = self.is_split().then(|| self.tab_places(self.active));
+		if let Some(places) = &places {
+			self.snapshot_panes(places);
+		}
+		// pr-check: end window glue
 		let key = self.draw_key();
 		#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 		if let renderer::Renderer::Gpu(gpu) = renderer {
@@ -81,9 +87,15 @@ impl App {
 			self.timed(true, showing.elapsed(), started);
 			return;
 		}
-		let plan = self
-			.canvas
-			.plan(&self.frame, key, size, self.wallpaper.is_none());
+		// pr-check: window glue: hands the window's grids to the tested canvas plans
+		let plan = match &places {
+			Some(places) => {
+				let keys = pane_keys(places, key);
+				(self.canvas).plan_panes(&self.pane_frames, &keys, places, size)
+			}
+			None => (self.canvas).plan(&self.frame, key, size, self.wallpaper.is_none()),
+		};
+		// pr-check: end window glue
 		// Debug aid for visual checks: compare against full redraws.
 		let plan = if self.full_redraw_only {
 			Plan::Full
@@ -99,11 +111,12 @@ impl App {
 				None
 			}
 			Plan::Partial(damage) => Some(self.compose_damaged(&mut painter, damage)),
+			Plan::Panes(rows) => Some(self.compose_panes_damaged(&mut painter, rows)),
 		};
 		self.painted(painting.elapsed());
 		self.canvas.pixels = pixels;
 		let damage = match &plan {
-			Plan::Full => None,
+			Plan::Full | Plan::Panes(_) => None,
 			Plan::Partial(damage) => Some(damage),
 		};
 		let damage_only = self.window.as_deref().is_some_and(keeps_contents);
@@ -117,7 +130,15 @@ impl App {
 			damage_only,
 		);
 		self.timed(false, showing.elapsed(), started);
-		self.canvas.remember(&mut self.frame, key);
+		// pr-check: window glue: tells the tested canvas what the window now shows
+		match places {
+			Some(places) => {
+				let keys = pane_keys(&places, key);
+				(self.canvas).remember_panes(&mut self.pane_frames, keys, places);
+			}
+			None => self.canvas.remember(&mut self.frame, key),
+		}
+		// pr-check: end window glue
 		let again = || self.schedule_redraw();
 		self.renderer = after_shown(renderer, shown, again, renderer::Renderer::after_presenter);
 	}
@@ -188,10 +209,16 @@ impl App {
 		}
 	}
 
-	pub(super) fn draw_terminal(&mut self, p: &mut impl Pen, scale: usize, rows: Option<&[bool]>) {
-		let (width, height) = p.size();
-		let view = GridView {
-			frame: &self.frame,
+	/// How the window draws `frame` as its grid, edge backgrounds reaching
+	/// into `padding`.
+	pub(super) fn grid_view<'a>(
+		&self,
+		frame: &'a Frame,
+		scale: usize,
+		padding: crate::graphics::Rect,
+	) -> GridView<'a> {
+		GridView {
+			frame,
 			origin: (self.grid_left(), self.top),
 			cell: (self.cw, self.ch),
 			px: self.px,
@@ -204,8 +231,19 @@ impl App {
 			selection: self.selection_rows(),
 			search_match: self.search_matches.get(self.search_match_index).copied(),
 			focused: self.focused,
-			padding: Some(self.padding_area(width, height)),
-		};
+			padding: Some(padding),
+		}
+	}
+
+	pub(super) fn draw_terminal(&mut self, p: &mut impl Pen, scale: usize, rows: Option<&[bool]>) {
+		if self.is_split() {
+			// Only whole frames: a split tab's partial ones draw its panes.
+			self.draw_panes(p, scale, None);
+			return;
+		}
+		let (width, height) = p.size();
+		let padding = self.padding_area(width, height);
+		let view = self.grid_view(&self.frame, scale, padding);
 		draw_grid(p, &mut self.fonts, &view, rows);
 		if rows.is_some() {
 			// Partial redraws restore the padding above and below the grid

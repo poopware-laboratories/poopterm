@@ -27,11 +27,7 @@ impl Notifications {
 impl App {
 	/// Shows or closes what session `id` asked for.
 	pub(super) fn deliver_notifications(&mut self, id: u64, requests: Vec<Request>) {
-		let visible = self
-			.sessions
-			.get(self.active)
-			.is_some_and(|session| session.id == id)
-			&& !self.occluded;
+		let visible = self.tab_of(id) == Some(self.active) && !self.occluded;
 		let now = Instant::now();
 		let mut refused = Vec::new();
 		for request in requests {
@@ -89,12 +85,10 @@ impl App {
 		self.report_notification(route.session, route.token, event);
 		if matches!(event, Event::Activated(_))
 			&& route.focus
-			&& let Some(index) = self
-				.sessions
-				.iter()
-				.position(|session| session.id == route.session)
+			&& let Some(index) = self.tab_of(route.session)
 		{
 			self.activate_tab(index);
+			self.focus_pane(route.session);
 			if let Some(window) = &self.window {
 				window.focus_window();
 			}
@@ -103,7 +97,7 @@ impl App {
 
 	/// Tells the program in session `id` what happened, if it asked.
 	fn report_notification(&mut self, id: u64, token: u64, event: Event) {
-		let Some(session) = self.sessions.iter().find(|session| session.id == id) else {
+		let Some(session) = self.all_sessions().find(|session| session.id == id) else {
 			return;
 		};
 		let replies = {

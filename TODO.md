@@ -239,6 +239,9 @@ least as fast.
   `tty(4)`), never from portable-pty's or any terminal's source. One module
   per platform where they differ; everything else shared. portable-pty stays
   a dev-dependency as the oracle until the replacement matches it, then goes.
+  - **Done: pairs and sizes** (`src/pty/device.rs`). Allocation, both sides
+    closed on exec and `O_NOCTTY`, and the window size in cells and pixels,
+    tested against portable-pty. Sessions do not use it yet.
   - **Spawning, per POSIX.** Open the master `O_RDWR | O_NOCTTY | O_CLOEXEC`;
     in the child, a new session (`setsid`), the slave as controlling terminal
     (`TIOCSCTTY`), stdio on it, every other descriptor closed, signal mask and
@@ -251,9 +254,10 @@ least as fast.
     `cgroup.procs`, or is created there with `clone3(CLONE_INTO_CGROUP)`, so
     nothing the shell starts escapes its group: the gap of today's
     after-the-fact move goes to zero.
-  - **termios defaults.** Set `IUTF8` (Backspace erases whole UTF-8
-    characters in canonical mode), sane `VERASE` (DEL), `VINTR`, `VEOF` and
-    speeds, matching what login terminals set on each platform.
+  - **Done: termios defaults** (`src/pty/termios.rs`). `IUTF8` where the
+    libc crate has it (Linux, macOS; not FreeBSD yet), DEL as erase, the
+    usual control characters, line editing, `\n` out as `\r\n` and 38400
+    baud, applied to every pair `device::open` makes.
   - **Window size in cells and pixels.** `TIOCSWINSZ` with real
     `ws_xpixel`/`ws_ypixel` (today they are 0), so Sixel, kitty graphics and
     image viewers size images correctly; the kernel then sends `SIGWINCH` to

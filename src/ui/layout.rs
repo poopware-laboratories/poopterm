@@ -50,6 +50,16 @@ impl Layout {
 		)
 	}
 
+	/// The pixels the grid, or a tab's panes, may fill in a `window`.
+	pub(crate) fn grid_area(&self, (width, height): (usize, usize)) -> crate::graphics::Rect {
+		crate::graphics::Rect {
+			x: self.left,
+			y: self.top,
+			width: width.saturating_sub(self.left + self.margin),
+			height: height.saturating_sub(self.top + self.margin + self.status_height),
+		}
+	}
+
 	/// The window size holding exactly a `grid` of `cell`-sized cells.
 	pub(crate) fn window_size(&self, grid: (usize, usize), cell: (usize, usize)) -> (usize, usize) {
 		(
@@ -104,6 +114,61 @@ mod tests {
 		assert_eq!(layout.margin, 12);
 		assert_eq!(layout.status_height, 52);
 		assert_eq!(layout.top, 88 + 12);
+	}
+
+	#[test]
+	fn the_grid_area_holds_the_grid_in_every_tab_mode_and_scale() {
+		for mac in [false, true] {
+			for factor in [1.0, 2.0] {
+				for prefs in tab_modes() {
+					let scale = chrome_scale(factor);
+					let chrome = chrome(factor, mac);
+					let layout = layout(&chrome, scale, &prefs, 0);
+					for window in [(800, 600), (1234, 777), (90, 70)] {
+						let area = layout.grid_area(window);
+						assert_eq!((area.x, area.y), (layout.left, layout.top));
+						let right = area.x + area.width + layout.margin;
+						let bottom = area.y + area.height + layout.margin + layout.status_height;
+						// The area reaches the margins, or is empty when they meet.
+						assert!(right == window.0 || area.width == 0, "{window:?}");
+						assert!(bottom == window.1 || area.height == 0, "{window:?}");
+						for cell in [(9, 17), (1, 1), (64, 128)] {
+							assert_eq!(
+								crate::ui::panes::grid(area, cell),
+								layout.grid_size(window, cell),
+								"{window:?} {cell:?}"
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn the_grid_area_lies_inside_the_margins_and_holds_the_grid() {
+		let prefs = Preferences {
+			padding: 6,
+			vertical_tabs: true,
+			..Preferences::default()
+		};
+		let layout = layout(&chrome(1.0, false), 1, &prefs, 180);
+		let area = layout.grid_area((1000, 700));
+		let expected = crate::graphics::Rect {
+			x: 186,
+			y: 6,
+			width: 1000 - 186 - 6,
+			height: 700 - 6 - 6 - 26,
+		};
+		assert_eq!(area, expected);
+		// One pane in it has the grid the window has.
+		let cell = (9, 17);
+		assert_eq!(
+			crate::ui::panes::grid(area, cell),
+			layout.grid_size((1000, 700), cell)
+		);
+		let tiny = layout.grid_area((10, 10));
+		assert_eq!((tiny.width, tiny.height), (0, 0));
 	}
 
 	#[test]

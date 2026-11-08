@@ -88,10 +88,10 @@ impl App {
 		self.refresh_directories(true);
 		let id = self.next_session_id;
 		self.next_session_id += 1;
-		let (cols, rows, cwd) = {
-			let term = self.active_term();
-			(term.cols, term.rows, term.cwd.clone())
-		};
+		// The whole grid: the active tab's focused pane may be smaller.
+		let window = (self.width as usize, self.height as usize);
+		let (cols, rows) = self.layout().grid_size(window, (self.cw, self.ch));
+		let cwd = self.active_term().cwd.clone();
 		match spawn_session(
 			id,
 			cols,
@@ -103,6 +103,7 @@ impl App {
 		) {
 			Ok(session) => {
 				self.describe_window(&mut session.term());
+				self.splits.push(super::panes::TabPanes::new(session.id));
 				self.sessions.push(session);
 				self.active = self.sessions.len() - 1;
 				self.ensure_active_tab_visible();
@@ -148,20 +149,20 @@ impl App {
 		}
 	}
 
+	/// Closes the active tab's focused pane, and the tab with its last.
 	pub(super) fn close_active_tab(&mut self, event_loop: &ActiveEventLoop) {
-		self.close_tab(self.active, event_loop);
+		self.close_pane(self.sessions[self.active].id, event_loop);
 	}
 
 	pub(super) fn close_tab(&mut self, index: usize, event_loop: &ActiveEventLoop) {
 		if index >= self.sessions.len() {
 			return;
 		}
-		let mut session = self.sessions.remove(index);
-		self.notifications.forget(session.id);
-		let _ = session._child.kill();
-		thread::spawn(move || {
-			let _ = session._child.wait();
-		});
+		let session = self.sessions.remove(index);
+		self.end_session(session);
+		for other in self.splits.remove(index).into_others() {
+			self.end_session(other);
+		}
 		self.persist_sessions();
 		self.search_matches.clear();
 		self.selection = None;
@@ -180,6 +181,15 @@ impl App {
 		if let Some(window) = &self.window {
 			window.request_redraw();
 		}
+	}
+
+	/// Stops `session`'s shell, which is no longer shown.
+	pub(super) fn end_session(&mut self, mut session: Session) {
+		self.notifications.forget(session.id);
+		let _ = session._child.kill();
+		thread::spawn(move || {
+			let _ = session._child.wait();
+		});
 	}
 
 	pub(super) fn update_window_title(&mut self) {
