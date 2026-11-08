@@ -26,6 +26,15 @@ mod quads_tests;
 pub(crate) mod record;
 #[cfg(test)]
 mod record_tests;
+#[cfg(test)]
+#[cfg_attr(
+	target_os = "macos",
+	expect(
+		dead_code,
+		reason = "the Metal renderer is checked against it next (#26)"
+	)
+)]
+pub(crate) mod reference_tests;
 pub(crate) mod rows;
 #[cfg(test)]
 mod rows_plan_tests;
