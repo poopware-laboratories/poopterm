@@ -38,6 +38,8 @@ pub(crate) mod rows;
 mod rows_plan_tests;
 #[cfg(test)]
 mod rows_tests;
+#[cfg(test)]
+mod rows_untracked_tests;
 pub(crate) mod shrink;
 #[cfg(test)]
 mod shrink_pen_tests;

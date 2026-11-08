@@ -17,6 +17,7 @@ use crate::{
 };
 
 /// Everything needed to draw one terminal viewport.
+#[derive(Clone, Copy)]
 pub(crate) struct GridView<'a> {
 	pub frame: &'a Frame,
 	/// Pixel position of the top-left cell.

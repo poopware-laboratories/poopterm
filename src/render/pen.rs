@@ -102,3 +102,43 @@ impl Pen for Painter<'_> {
 		draw_placement(self.pixels, self.width, clip, placement, at, cell);
 	}
 }
+
+/// Forwards drawing to a pen but not where grid rows begin and end: for
+/// grids the pen must not keep rows of, as a split tab draws several.
+pub(crate) struct Untracked<'a, P: Pen>(pub &'a mut P);
+
+impl<P: Pen> Pen for Untracked<'_, P> {
+	fn size(&self) -> (usize, usize) {
+		self.0.size()
+	}
+
+	fn rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
+		self.0.rect(x, y, w, h, color);
+	}
+
+	fn round_rect(&mut self, rect: (usize, usize, usize, usize), radius: usize, color: u32) {
+		self.0.round_rect(rect, radius, color);
+	}
+
+	fn glyph(
+		&mut self,
+		glyph: &Glyph,
+		ink: Ink,
+		origin: (i32, i32),
+		clip: (i32, i32, i32, i32),
+		italic: bool,
+		color: u32,
+	) {
+		self.0.glyph(glyph, ink, origin, clip, italic, color);
+	}
+
+	fn placement(
+		&mut self,
+		clip: Rect,
+		placement: &Placement,
+		at: (isize, isize),
+		cell: (usize, usize),
+	) {
+		self.0.placement(clip, placement, at, cell);
+	}
+}

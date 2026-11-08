@@ -21,13 +21,11 @@ impl App {
 		damage: &GridDamage,
 	) -> Vec<(usize, usize)> {
 		let scale = self.scale();
-		let ui = self.ui_font(18.0 * scale as f32);
 		let (top, ch, width) = (self.top, self.ch, p.width);
 		// With vertical tabs, grid rows are redrawn right of the sidebar only.
 		let sidebar = self.sidebar_width();
 		let grid_bottom = (top + self.frame.rows * ch).min(p.height);
-		let status_y = p.height.saturating_sub(self.status_height + self.border);
-		let mut bands = vec![(status_y, p.height)];
+		let mut bands = self.redraw_bars(p, scale);
 		if damage.scroll > 0 {
 			scroll_pixels(
 				p.pixels,
@@ -48,13 +46,6 @@ impl App {
 			self.restore_background_from(p, y, ch, sidebar);
 			bands.push((y, (y + ch).min(p.height)));
 		}
-		if sidebar > 0 {
-			bands.extend(self.redraw_sidebar_if_changed(p, ui));
-		} else {
-			self.restore_background(p, 0, top);
-			self.draw_tab_bar(p, ui);
-			bands.push((0, top.min(p.height)));
-		}
 		// The padding above and below the grid takes the first and last
 		// rows' backgrounds; it is a few pixel rows, so repaint it always.
 		let area = self.padding_area(width, p.height);
@@ -63,9 +54,25 @@ impl App {
 		self.restore_background_from(p, grid_bottom, below - grid_bottom, sidebar);
 		bands.extend([(area.y, top), (grid_bottom, below)]);
 		self.draw_terminal(p, scale, Some(&damage.rows));
+		merge_bands(&mut bands);
+		bands
+	}
+
+	/// Redraws the tab bar or the sidebar, if it changed, and the status
+	/// bar, at a whole-number `scale`. Returns the pixel rows they changed.
+	pub(super) fn redraw_bars(&mut self, p: &mut Painter, scale: usize) -> Vec<(usize, usize)> {
+		let ui = self.ui_font(18.0 * scale as f32);
+		let status_y = p.height.saturating_sub(self.status_height + self.border);
+		let mut bands = vec![(status_y, p.height)];
+		if self.sidebar_width() > 0 {
+			bands.extend(self.redraw_sidebar_if_changed(p, ui));
+		} else {
+			self.restore_background(p, 0, self.top);
+			self.draw_tab_bar(p, ui);
+			bands.push((0, self.top.min(p.height)));
+		}
 		self.restore_background(p, status_y, self.status_height + self.border);
 		self.draw_status_bar(p, scale, ui);
-		merge_bands(&mut bands);
 		bands
 	}
 

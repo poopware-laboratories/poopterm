@@ -5,6 +5,7 @@ mod decorations;
 mod draw;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod draw_gpu;
+mod draw_panes;
 mod draw_tabs;
 mod draw_vertical_tabs;
 mod frame_pacer;
@@ -17,6 +18,7 @@ mod mouse;
 mod mouse_tabs;
 mod notifications;
 mod output;
+mod panes;
 mod renderer;
 mod repaint;
 mod search;
@@ -109,7 +111,10 @@ pub(crate) struct App {
 	/// The scale factor the sizes above were made for.
 	sized_for: f64,
 
+	/// Each tab's focused pane.
 	sessions: Vec<Session>,
+	/// Each tab's panes, and the sessions of those it does not focus.
+	splits: Vec<panes::TabPanes>,
 	active: usize,
 	tab_scroll: usize,
 	/// The window buttons the header draws: none until the window draws
@@ -164,6 +169,8 @@ pub(crate) struct App {
 	drawing: crate::ui::diagnostics::Drawing,
 	/// The active terminal's visible screen, copied for rendering.
 	frame: Frame,
+	/// Each pane's visible screen in a split tab, in slot order.
+	pane_frames: Vec<Frame>,
 	/// Back buffer holding the last frame, for partial redraws.
 	canvas: canvas::Canvas,
 	/// `POOPTERM_FULL_REDRAW` set: never redraw partially (for visual checks).
@@ -204,7 +211,7 @@ impl App {
 			crate::warnings::warning!("could not save theme config: {error}");
 		}
 		self.theme = Theme::load();
-		for session in &self.sessions {
+		for session in self.all_sessions() {
 			session.term().set_theme(self.theme);
 		}
 		self.canvas.invalidate();
@@ -291,23 +298,7 @@ impl App {
 		self.width = w.max(1);
 		self.height = h.max(1);
 		self.ensure_active_tab_visible();
-
-		let window = (self.width as usize, self.height as usize);
-		let (cols, rows) = self.layout().grid_size(window, (self.cw, self.ch));
-
-		for session in &self.sessions {
-			let mut term = session.term();
-			self.describe_window(&mut term);
-			if cols != term.cols || rows != term.rows {
-				term.resize(cols, rows);
-				let _ = session.master.resize(PtySize {
-					rows: rows as u16,
-					cols: cols as u16,
-					pixel_width: 0,
-					pixel_height: 0,
-				});
-			}
-		}
+		self.fit_panes();
 
 		if let Some(renderer) = self.renderer.as_mut() {
 			renderer.resize(self.width, self.height);
@@ -355,6 +346,10 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		)?);
 	}
 	let next_session_id = sessions.len() as u64 + 1;
+	let splits = sessions
+		.iter()
+		.map(|s| panes::TabPanes::new(s.id))
+		.collect();
 	let mut app = App {
 		theme,
 		font_points: preferences.font_size,
@@ -377,6 +372,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		border: 1,
 		sized_for: 1.0,
 		sessions,
+		splits,
 		active: 0,
 		tab_scroll: 0,
 		window_buttons: ButtonLayout::default(),
@@ -414,6 +410,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		drawing: crate::ui::diagnostics::Drawing::Gpu,
 		pacer: frame_pacer::FramePacer::new(std::time::Duration::from_micros(16_667)),
 		frame: Frame::default(),
+		pane_frames: Vec::new(),
 		canvas: canvas::Canvas::new(),
 		full_redraw_only: std::env::var_os("POOPTERM_FULL_REDRAW").is_some(),
 		frame_stats: frame_stats::Recorder::from_env(std::env::var_os(frame_stats::VARIABLE)),

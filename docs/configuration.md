@@ -201,6 +201,16 @@ opens the command palette, **Ctrl+Shift+T** cycles themes, **Cmd+F** /
 above are for macOS. Tab cycling, direct tab selection, and clipboard shortcuts
 are fixed bindings.
 
+Split panes have their own keys, set here only (Settings lists the tab and
+window shortcuts): `shortcut_split_right` (**Cmd+D** / **Ctrl+Shift+D**),
+`shortcut_split_down` (**Cmd+Shift+D** / **Ctrl+Shift+E**),
+`shortcut_focus_pane_left`, `shortcut_focus_pane_right`,
+`shortcut_focus_pane_up` and `shortcut_focus_pane_down` (**Cmd+Option** /
+**Ctrl+Alt** with an arrow), and `shortcut_next_pane` and
+`shortcut_previous_pane` (**Cmd+]** and **Cmd+[** / **Ctrl+Alt+]** and
+**Ctrl+Alt+[**). `shortcut_close_tab` closes the focused pane, and the tab
+with its last pane.
+
 On Linux, clipboard shortcuts need a clipboard command-line tool: `wl-clipboard`
 for Wayland (`wl-copy` and `wl-paste`), or `xclip`/`xsel` for X11.
 

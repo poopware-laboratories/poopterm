@@ -8,12 +8,17 @@ impl App {
 	/// writes, notifications, tab markers, and a paced redraw if anything
 	/// visible changed.
 	pub(super) fn process_output(&mut self, id: u64) {
-		let active_id = self.sessions.get(self.active).map(|session| session.id);
-		let Some(session) = self.sessions.iter_mut().find(|s| s.id == id) else {
+		// Every pane of the active tab is on screen.
+		let is_active = self.tab_of(id) == Some(self.active);
+		let others = self
+			.splits
+			.iter_mut()
+			.flat_map(|tab| tab.others_mut().iter_mut());
+		let Some(session) = self.sessions.iter_mut().chain(others).find(|s| s.id == id) else {
 			return;
 		};
 		session.acknowledge_output();
-		let unseen = Some(id) != active_id || !self.focused;
+		let unseen = !is_active || !self.focused;
 		let (clipboard, notifications, window_requests, long_command_finished, now, synchronized) = {
 			let mut term = session.term();
 			let clipboard = std::mem::take(&mut term.clipboard_writes);
@@ -47,7 +52,6 @@ impl App {
 		let cwd_changed = now.cwd != seen.cwd;
 		let mut tab_changed =
 			now.bell != seen.bell || now.title != seen.title || now.status != seen.status;
-		let is_active = Some(id) == active_id;
 		let visible = is_active && !synchronized;
 		if is_active {
 			self.pacer.set_flooding(session.flooding());
@@ -93,8 +97,9 @@ impl App {
 		for request in requests {
 			match request {
 				WindowRequest::Focus => {
-					if let Some(index) = self.sessions.iter().position(|session| session.id == id) {
+					if let Some(index) = self.tab_of(id) {
 						self.activate_tab(index);
+						self.focus_pane(id);
 					}
 					if let Some(window) = &self.window {
 						window.focus_window();

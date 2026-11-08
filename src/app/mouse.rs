@@ -13,11 +13,12 @@ use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 impl App {
 	/// Where the active terminal's grid sits in the window.
 	pub(super) fn grid_geometry(&self) -> GridGeometry {
+		let area = self.focused_rect();
 		let term = self.active_term();
 		GridGeometry {
-			left: self.grid_left(),
-			top: self.top,
-			bottom: (self.height as usize).saturating_sub(self.status_height + self.margin),
+			left: area.x,
+			top: area.y,
+			bottom: area.y + area.height,
 			cell: (self.cw, self.ch),
 			cols: term.cols,
 			rows: term.rows,
@@ -346,6 +347,8 @@ impl App {
 			if let Some(window) = &self.window {
 				let _ = window.drag_window();
 			}
+		} else if state == ElementState::Pressed && self.press_pane((x, y)) {
+			// The press focused another pane.
 		} else {
 			let kind = if state == ElementState::Pressed {
 				MouseAction::Press

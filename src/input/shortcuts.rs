@@ -219,6 +219,7 @@ pub(crate) struct Shortcuts {
 	pub zoom_in: Shortcut,
 	pub zoom_out: Shortcut,
 	pub zoom_reset: Shortcut,
+	pub panes: super::pane_shortcuts::PaneShortcuts,
 }
 
 impl Shortcuts {
@@ -258,6 +259,7 @@ impl Shortcuts {
 			zoom_in: get("shortcut_zoom_in", &format!("{primary}+=")),
 			zoom_out: get("shortcut_zoom_out", &format!("{primary}+-")),
 			zoom_reset: get("shortcut_zoom_reset", &format!("{primary}+0")),
+			panes: super::pane_shortcuts::PaneShortcuts::from_config(text, mac),
 		}
 	}
 
