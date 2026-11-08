@@ -136,6 +136,16 @@ impl Frame {
 		Ok(())
 	}
 
+	/// Has `drawable`, a `CAMetalDrawable`, shown once the commands are
+	/// done.
+	pub(crate) fn present(&mut self, drawable: &Object) {
+		// SAFETY: `presentDrawable:` takes a drawable, which the command
+		// buffer holds until it is shown.
+		unsafe {
+			let _: () = self.buffer.send(c"presentDrawable:", (drawable.raw(),));
+		}
+	}
+
 	/// Commits the commands for the GPU to run.
 	pub(crate) fn commit(self) -> Submitted {
 		// SAFETY: `commit` takes nothing; every encoder ended.
