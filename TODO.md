@@ -155,7 +155,11 @@ issue before starting a piece.
   together fill the budget a texel each) hands the window to software for
   good, as a GPU failure does; software is otherwise only an opt-in.
   Fractional scales on Wayland draw at full resolution and match software,
-  scale changes included. Done on Linux and FreeBSD; Metal (macOS) is #26.
+  scale changes included. Done on Linux and FreeBSD. Metal (macOS, #26):
+  our own Objective-C runtime and Metal bindings (`objc.rs`, `gpu/mtl`)
+  and the grid renderer, drawing offscreen and matching software in the
+  pixel-equivalence tests on the real GPU; next, `CAMetalLayer` windows
+  (drawables, resize, Retina scale, frames in flight) and the fallback.
 
 ## Resource management and memory
 
