@@ -443,3 +443,52 @@ fn an_object_made_in_a_pool_and_owned_outlives_it() {
 	drop(kept);
 	assert!(!weak.alive());
 }
+
+#[test]
+fn a_pool_releases_every_object_autoreleased_in_it_across_its_pages() {
+	// Far more than one page of the runtime's pool holds (4 KiB).
+	const MANY: usize = 10_000;
+	let (mut first, mut last);
+	{
+		let _pool = Pool::new();
+		let mut weaks = Vec::new();
+		for _ in 0..MANY {
+			let object = probed();
+			// SAFETY: as in the test above: the pool releases what `retain` added.
+			unsafe {
+				let _: Raw = object.send(c"retain", ());
+				let _: Raw = object.send(c"autorelease", ());
+			}
+			weaks.push(Weak::new(&object));
+		}
+		last = weaks.pop().unwrap();
+		first = weaks.swap_remove(0);
+		assert!(first.alive() && last.alive());
+	}
+	assert!(!first.alive());
+	assert!(!last.alive());
+}
+
+#[test]
+fn an_error_s_own_description_comes_back_exactly_in_any_script() {
+	let _pool = Pool::new();
+	let said = "the GPU stopped — ハングした 💥";
+	let (key, value) = (
+		super::string("NSLocalizedDescription").unwrap(),
+		super::string(said).unwrap(),
+	);
+	let (dictionary, error) = (class(c"NSDictionary").unwrap(), class(c"NSError").unwrap());
+	// SAFETY: `dictionaryWithObject:forKey:` takes two objects and returns an
+	// autoreleased dictionary; `errorWithDomain:code:userInfo:` a string, an
+	// `NSInteger` and that dictionary, returning an autoreleased error.
+	let described = unsafe {
+		let info: Raw = dictionary.send(c"dictionaryWithObject:forKey:", (value.raw(), key.raw()));
+		let domain = super::string("Poopterm").unwrap();
+		let made: Raw = error.send(
+			c"errorWithDomain:code:userInfo:",
+			(domain.raw(), -1isize, info),
+		);
+		super::describe(made, "nothing")
+	};
+	assert_eq!(described, said);
+}
