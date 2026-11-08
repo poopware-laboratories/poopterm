@@ -1,6 +1,7 @@
 //! Tests of the header model: placement, fills, badges, close buttons,
 //! progress, buttons and colors.
 use super::{
+	chrome_colors::chrome_colors,
 	contrast::{TEXT, ratio, tab_text_colors},
 	header::{HeaderInput, TabInfo, header, header_colors},
 	tabs::{Marker, TabLayout, TabStripOptions, tab_layout_with_compaction},
@@ -198,6 +199,44 @@ fn markers_become_badges_in_their_colors() {
 }
 
 #[test]
+fn inactive_titles_are_muted_until_hovered() {
+	let (layout, theme) = (layout(3, 1, true), theme());
+	let tabs = [info("one"), info("two"), info("three")];
+	let muted = chrome_colors(&theme).muted;
+	let over_first = ((layout.tab_x(0) + 20) as f64, 20.0);
+	let header = build(&layout, &tabs, 1, over_first, &theme);
+	let titles: Vec<_> = header.tabs.iter().map(|tab| tab.label.colors.0).collect();
+	assert_eq!(titles, [theme.fg, theme.fg, muted]);
+}
+
+#[test]
+fn a_colored_tab_keeps_its_full_title_on_its_tint() {
+	let (layout, theme) = (layout(2, 0, true), theme());
+	let mut tabs = [info("one"), info("two")];
+	tabs[1].style.color = Some(0x2060c0);
+	let header = build(&layout, &tabs, 0, AWAY, &theme);
+	assert_eq!(header.tabs[1].label.colors.0, theme.fg);
+}
+
+#[test]
+fn muted_titles_read_on_the_bar_in_every_theme() {
+	let layout = layout(2, 0, true);
+	let tabs = [info("one"), info("two")];
+	let mut kind = ThemeKind::MacOsDark;
+	loop {
+		let theme = Theme::from_kind(kind);
+		let header = build(&layout, &tabs, 0, AWAY, &theme);
+		let title = header.tabs[1].label.colors.0;
+		let contrast = ratio(title, header_colors(&theme).bar);
+		assert!(contrast >= TEXT, "{kind:?}: {contrast:.2}");
+		kind = kind.next();
+		if kind == ThemeKind::MacOsDark {
+			break;
+		}
+	}
+}
+
+#[test]
 fn statuses_keep_their_color_or_take_the_dim_one() {
 	let (layout, theme) = (layout(2, 0, true), theme());
 	let (dim, _) = tab_text_colors(&theme);
@@ -210,7 +249,8 @@ fn statuses_keep_their_color_or_take_the_dim_one() {
 	let header = build(&layout, &tabs, 0, AWAY, &theme);
 	assert_eq!(header.tabs[0].label.status, Some("ok"));
 	assert_eq!(header.tabs[0].label.colors, (theme.fg, 0x00ff00));
-	assert_eq!(header.tabs[1].label.colors, (theme.fg, dim));
+	let muted = chrome_colors(&theme).muted;
+	assert_eq!(header.tabs[1].label.colors, (muted, dim));
 }
 
 #[test]
@@ -311,7 +351,7 @@ fn overflowing_tabs_add_arrows_enabled_toward_hidden_tabs() {
 }
 
 #[test]
-fn header_shades_step_from_the_background_toward_the_text() {
+fn the_header_sets_the_chrome_apart_and_raises_the_active_tab_to_the_terminal() {
 	for kind in [
 		ThemeKind::MacOsDark,
 		ThemeKind::MacOsLight,
@@ -319,11 +359,11 @@ fn header_shades_step_from_the_background_toward_the_text() {
 	] {
 		let theme = Theme::from_kind(kind);
 		let colors = header_colors(&theme);
-		let distance = |color| ratio(color, theme.bg);
-		assert!(distance(colors.bar) > 1.0, "{kind:?}");
-		assert!(distance(colors.hover) > distance(colors.bar), "{kind:?}");
-		assert!(distance(colors.raised) > distance(colors.hover), "{kind:?}");
+		assert!(ratio(colors.bar, theme.bg) > 1.0, "{kind:?}");
+		assert!(ratio(colors.hover, colors.bar) > 1.0, "{kind:?}");
+		assert_eq!(colors.raised, theme.bg, "{kind:?}");
 		assert!(ratio(colors.separator, colors.bar) > 1.1, "{kind:?}");
+		assert_eq!(colors.dim, chrome_colors(&theme).muted, "{kind:?}");
 		assert_eq!(colors.fg, theme.fg);
 	}
 }

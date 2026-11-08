@@ -13,6 +13,7 @@ use crate::{
 	},
 	theme::Theme,
 	ui::{
+		chrome_colors::chrome_colors,
 		contrast::tab_text_colors,
 		tabs::{Marker, TabLayout},
 		window_controls::{Placement, WindowButton},
@@ -42,28 +43,22 @@ pub(crate) struct HeaderInput<'a> {
 	pub theme: &'a Theme,
 }
 
-/// How far each header shade moves from the background toward the text,
-/// out of 255.
-const BAR: u32 = 10;
-const HOVER: u32 = 22;
-const RAISED: u32 = 34;
-const SEPARATOR: u32 = 60;
-/// Disabled icons, from the bar toward the text.
-const DISABLED: u32 = 128;
 /// A button's height, before scaling.
 const BUTTON_HEIGHT: usize = 32;
 /// A divider's height, before scaling.
 const DIVIDER_HEIGHT: usize = 20;
 
+/// The header's colors: the theme's chrome colors, with disabled icons in
+/// the muted text color.
 pub(crate) fn header_colors(theme: &Theme) -> HeaderColors {
-	let shade = |amount| blend(theme.bg, theme.fg, amount);
+	let chrome = chrome_colors(theme);
 	HeaderColors {
-		bar: shade(BAR),
-		separator: shade(SEPARATOR),
-		hover: shade(HOVER),
-		raised: shade(RAISED),
+		bar: chrome.chrome,
+		separator: chrome.hairline,
+		hover: chrome.hover,
+		raised: chrome.raised,
 		fg: theme.fg,
-		dim: blend(shade(BAR), theme.fg, DISABLED),
+		dim: chrome.muted,
 	}
 }
 
@@ -248,13 +243,16 @@ pub(crate) fn header_tab<'a>(
 		};
 		(progress.percent, color)
 	});
+	// A tint is drawn for the title in full; plain tabs at rest stay quiet.
+	let quiet = !active && !hovered && tab.style.color.is_none();
+	let title = if quiet { colors.dim } else { theme.fg };
 	HeaderTab {
 		x,
 		width,
 		label: Label {
 			title: &tab.title,
 			status: tab.style.status.as_deref(),
-			colors: (theme.fg, tab.style.status_color.unwrap_or(dim)),
+			colors: (title, tab.style.status_color.unwrap_or(dim)),
 		},
 		fill,
 		badge,

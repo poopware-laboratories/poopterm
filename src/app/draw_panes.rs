@@ -3,7 +3,10 @@
 use super::{canvas::merge_bands, *};
 use crate::{
 	render::{background::fill_inside, painter::Painter, panes, pen::Pen},
-	ui::panes::{Place, divider_line, pane_padding},
+	ui::{
+		chrome_colors::hairline,
+		panes::{Place, divider_line, pane_padding},
+	},
 };
 
 impl App {
@@ -58,8 +61,9 @@ impl App {
 		let dividers = self.splits[self.active]
 			.layout()
 			.dividers(area, cell, divider);
+		let line_color = hairline(&self.theme);
 		for line in dividers.into_iter().map(|gap| divider_line(gap, scale)) {
-			p.rect(line.x, line.y, line.width, line.height, self.theme.border);
+			p.rect(line.x, line.y, line.width, line.height, line_color);
 		}
 		bands
 	}

@@ -1,4 +1,7 @@
 //! Window-system-independent UI models: selection, search and tab layout.
+pub(crate) mod chrome_colors;
+#[cfg(test)]
+mod chrome_colors_tests;
 pub(crate) mod contrast;
 pub(crate) mod copy;
 #[cfg_attr(

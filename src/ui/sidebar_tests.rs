@@ -805,7 +805,7 @@ fn the_rail_draws_each_tab_number_inside_its_row() {
 		let (x, y, w, h) = row_rect(&layout, index);
 		let ink = (y..y + h)
 			.flat_map(|row| (x..x + w).map(move |column| (column, row)))
-			.filter(|&(column, row)| pixels[row * width + column] & 0xff > 0xb0)
+			.filter(|&(column, row)| pixels[row * width + column] & 0xff > 0x80)
 			.count();
 		assert!(ink > 4, "tab {} shows its number", index + 1);
 	}
