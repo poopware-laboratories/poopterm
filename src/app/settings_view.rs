@@ -378,6 +378,20 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn the_picker_lists_every_theme_once_with_custom_last() {
+		let mut kind = ThemeKind::MacOsDark;
+		loop {
+			let count = THEMES.iter().filter(|&&listed| listed == kind).count();
+			assert_eq!(count, 1, "{}", kind.name());
+			kind = kind.next();
+			if kind == ThemeKind::MacOsDark {
+				break;
+			}
+		}
+		assert_eq!(THEMES.last(), Some(&ThemeKind::Custom));
+	}
+
+	#[test]
 	fn the_picker_offers_the_new_themes_by_name() {
 		for (kind, label) in [
 			(ThemeKind::Dracula, "Dracula"),

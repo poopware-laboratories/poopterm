@@ -475,3 +475,48 @@ fn osc_104_with_no_numbers_gives_back_the_new_themes_colors() {
 		(0xFF5555, 0x69FF94)
 	);
 }
+
+#[test]
+fn erasing_after_a_switch_paints_the_new_background() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "text\r\nmore");
+	t.set_theme(theme(ThemeKind::GruvboxLight));
+	send(&mut t, "\x1b[2J\x1b[H\x1b[K");
+	for row in 0..3 {
+		assert!(
+			t.grid[row].iter().all(|cell| cell.bg == 0xFBF1C7),
+			"row {row}"
+		);
+	}
+}
+
+#[test]
+fn a_switch_from_light_to_dark_takes_the_dark_themes_colors() {
+	let mut t = terminal(ThemeKind::CatppuccinLatte);
+	send(&mut t, "\x1b[1;32mG\x1b[0;35mM\x1b[0mD");
+	t.set_theme(theme(ThemeKind::CatppuccinMocha));
+	let mocha = theme(ThemeKind::CatppuccinMocha);
+	// Bold green was Latte's darkened bright green; it is Mocha's now.
+	assert_eq!(fg_at(&t, 0, 0), mocha.bright.unwrap()[2]);
+	assert_eq!(fg_at(&t, 0, 1), mocha.palette[5]);
+	assert_eq!(fg_at(&t, 0, 2), mocha.fg);
+}
+
+#[test]
+fn a_published_black_equal_to_the_background_is_recolored_as_the_background() {
+	// Alucard's color 0 is its background and color 7 its text.
+	let mut t = terminal(ThemeKind::Alucard);
+	send(&mut t, "\x1b[30;47mX");
+	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (0xFFFBEB, 0x1F1F1F));
+	t.set_theme(theme(ThemeKind::Dracula));
+	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (0x282A36, 0xF8F8F2));
+}
+
+#[test]
+fn an_unchanged_osc_10_leaves_every_cell_alone() {
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b[31mR\x1b[7mV");
+	let before = t.grid[0].clone();
+	send(&mut t, "\x1b]10;#D8DEE9\x07\x1b]11;#2E3440\x07");
+	assert_eq!(t.grid[0], before);
+}
