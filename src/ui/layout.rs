@@ -117,6 +117,35 @@ mod tests {
 	}
 
 	#[test]
+	fn the_grid_area_holds_the_grid_in_every_tab_mode_and_scale() {
+		for mac in [false, true] {
+			for factor in [1.0, 2.0] {
+				for prefs in tab_modes() {
+					let scale = chrome_scale(factor);
+					let chrome = chrome(factor, mac);
+					let layout = layout(&chrome, scale, &prefs, 0);
+					for window in [(800, 600), (1234, 777), (90, 70)] {
+						let area = layout.grid_area(window);
+						assert_eq!((area.x, area.y), (layout.left, layout.top));
+						let right = area.x + area.width + layout.margin;
+						let bottom = area.y + area.height + layout.margin + layout.status_height;
+						// The area reaches the margins, or is empty when they meet.
+						assert!(right == window.0 || area.width == 0, "{window:?}");
+						assert!(bottom == window.1 || area.height == 0, "{window:?}");
+						for cell in [(9, 17), (1, 1), (64, 128)] {
+							assert_eq!(
+								crate::ui::panes::grid(area, cell),
+								layout.grid_size(window, cell),
+								"{window:?} {cell:?}"
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
 	fn the_grid_area_lies_inside_the_margins_and_holds_the_grid() {
 		let prefs = Preferences {
 			padding: 6,

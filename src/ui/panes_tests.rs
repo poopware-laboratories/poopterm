@@ -594,3 +594,55 @@ fn divider_lines_run_down_the_middle_of_their_gap() {
 	assert_eq!(divider_line(rect(0, 7, 50, 0), 3), rect(0, 7, 50, 0));
 	assert_eq!(divider_line(rect(0, 0, 4, 4), 0), rect(0, 1, 4, 1));
 }
+
+fn mirrored(rect: Rect) -> Rect {
+	Rect {
+		x: rect.y,
+		y: rect.x,
+		width: rect.height,
+		height: rect.width,
+	}
+}
+
+#[test]
+fn stacked_panes_are_side_by_side_ones_turned_on_their_side() {
+	for (width, height) in [(805, 600), (37, 91), (8, 8), (0, 50), (1001, 3)] {
+		for cell in [(10, 20), (7, 7), (1, 3)] {
+			let area = rect(5, 9, width, height);
+			let turned = mirrored(area);
+			let stacked = stacked();
+			let beside = columns();
+			let rows: Vec<Rect> = (stacked.places(area, cell, DIVIDER).iter())
+				.map(|place| place.rect)
+				.collect();
+			let turned_cell = (cell.1, cell.0);
+			let cols: Vec<Rect> = (beside.places(turned, turned_cell, DIVIDER).iter())
+				.map(|place| mirrored(place.rect))
+				.collect();
+			assert_eq!(rows, cols, "{area:?} {cell:?}");
+			let gaps: Vec<Rect> = (beside.dividers(turned, turned_cell, DIVIDER).into_iter())
+				.map(mirrored)
+				.collect();
+			assert_eq!(
+				stacked.dividers(area, cell, DIVIDER),
+				gaps,
+				"{area:?} {cell:?}"
+			);
+		}
+	}
+}
+
+#[test]
+fn the_big_pane_sides_mirror_each_other() {
+	// Big on the left and big on the right fill the same two columns.
+	let left = main_left().places(AREA, CELL, DIVIDER);
+	let right = main_right().places(AREA, CELL, DIVIDER);
+	assert_eq!(left[0].rect.width, right[1].rect.width);
+	assert_eq!(left[1].rect.x, right[0].rect.x);
+	assert_eq!(left[1].rect.height, right[1].rect.height);
+	assert_eq!(left[2].rect.height, right[2].rect.height);
+	assert_eq!(
+		main_left().dividers(AREA, CELL, DIVIDER)[0],
+		main_right().dividers(AREA, CELL, DIVIDER)[0]
+	);
+}

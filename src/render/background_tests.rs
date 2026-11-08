@@ -251,3 +251,24 @@ fn a_wallpaper_rect_paints_what_the_wallpaper_rows_do_there_and_nothing_else() {
 		}
 	}
 }
+
+#[test]
+fn fill_inside_without_a_wallpaper_paints_the_color_in_the_rect_only() {
+	let size = (20, 12);
+	let mut pixels = vec![BEFORE; size.0 * size.1];
+	let painter = &mut Painter::new(&mut pixels, size.0, size.1);
+	let rect = Rect {
+		x: 3,
+		y: 4,
+		width: 5,
+		height: 2,
+	};
+	super::fill_inside(painter, rect, 2, (INSIDE, None));
+	for y in 0..size.1 {
+		for x in 0..size.0 {
+			let inside = (3..8).contains(&x) && (4..6).contains(&y);
+			let want = if inside { INSIDE } else { BEFORE };
+			assert_eq!(pixels[y * size.0 + x], want, "({x}, {y})");
+		}
+	}
+}

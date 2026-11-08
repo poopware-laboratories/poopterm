@@ -344,3 +344,18 @@ fn a_split_tab_keeps_each_session_with_its_own_name() {
 		}
 	}
 }
+
+#[test]
+fn the_other_sessions_can_be_changed_in_place() {
+	let (mut tab, focused) = three();
+	for shell in tab.others_mut() {
+		shell.1 = "renamed";
+	}
+	assert!(tab.others().iter().all(|shell| shell.1 == "renamed"));
+	assert_eq!(
+		tab.find(&focused, 3),
+		Some(&Shell(3, "three")),
+		"not the focused one"
+	);
+	assert_eq!(tab.others().len(), 2);
+}

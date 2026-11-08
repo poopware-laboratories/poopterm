@@ -270,6 +270,50 @@ mod tests {
 	}
 
 	#[test]
+	fn a_resized_window_forgets_the_panes_and_its_pixels() {
+		let frames = [frame("a"), frame("b")];
+		let keys = pane_keys(&places(), FOCUSED);
+		let mut canvas = showing(&frames);
+		canvas.pixels.fill(7);
+		assert_eq!(
+			canvas.plan_panes(&frames, &keys, &places(), (120, 60)),
+			Plan::Full
+		);
+		assert_eq!(canvas.pixels.len(), 120 * 60);
+		assert!(
+			canvas.pixels.iter().all(|&pixel| pixel == 0),
+			"a fresh buffer"
+		);
+		canvas.remember_panes(&mut frames.to_vec(), keys.clone(), places());
+		let plan = canvas.plan_panes(&frames, &keys, &places(), (120, 60));
+		assert_eq!(plan, Plan::Panes(vec![vec![false; 3]; 2]));
+	}
+
+	#[test]
+	fn an_overlay_closing_draws_a_whole_frame() {
+		let frames = [frame("a"), frame("b")];
+		let mut canvas = showing(&frames);
+		let overlay = pane_keys(
+			&places(),
+			DrawKey {
+				overlay: true,
+				..FOCUSED
+			},
+		);
+		assert_eq!(
+			canvas.plan_panes(&frames, &overlay, &places(), SIZE),
+			Plan::Full
+		);
+		canvas.remember_panes(&mut frames.to_vec(), overlay, places());
+		let keys = pane_keys(&places(), FOCUSED);
+		assert_eq!(
+			canvas.plan_panes(&frames, &keys, &places(), SIZE),
+			Plan::Full,
+			"what the overlay covered must be drawn again"
+		);
+	}
+
+	#[test]
 	fn a_single_grid_between_split_frames_forgets_the_panes() {
 		let frames = [frame("a"), frame("b")];
 		let keys = pane_keys(&places(), FOCUSED);

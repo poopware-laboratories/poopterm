@@ -283,3 +283,69 @@ fn closing_a_pane_draws_the_rest_whole() {
 	tab.feed(2, "grown");
 	assert!(partial(&step(&mut canvas, &mut fonts, &tab, focused(2))));
 }
+
+#[test]
+fn erasing_and_rewriting_lines_matches_a_whole_frame() {
+	let (mut canvas, mut fonts, mut tab) = (Canvas::new(), fonts(), Tab::new(false));
+	tab.feed(1, "first line\r\nsecond line\r\nthird line");
+	tab.feed(2, "right side");
+	step(&mut canvas, &mut fonts, &tab, focused(1));
+	for input in [
+		"\x1b[2;1H\x1b[2K",
+		"\x1b[1;7Hthing",
+		"\x1b[3;1H\x1b[1K",
+		"\x1b[H\x1b[J",
+		"again",
+	] {
+		tab.feed(1, input);
+		assert!(
+			partial(&step(&mut canvas, &mut fonts, &tab, focused(1))),
+			"{input:?}"
+		);
+	}
+}
+
+#[test]
+fn scroll_regions_and_inserted_lines_match_a_whole_frame() {
+	let (mut canvas, mut fonts, mut tab) = (Canvas::new(), fonts(), Tab::new(true));
+	let lines: String = (0..12).map(|n| format!("row {n}\r\n")).collect();
+	tab.feed(2, &lines);
+	step(&mut canvas, &mut fonts, &tab, focused(2));
+	for input in [
+		"\x1b[2;4r\x1b[4;1H\n\n",
+		"\x1b[r\x1b[2;1H\x1b[2L",
+		"\x1b[3;1H\x1b[M",
+	] {
+		tab.feed(2, input);
+		step(&mut canvas, &mut fonts, &tab, focused(2));
+	}
+}
+
+#[test]
+fn the_alternate_screen_and_back_match_a_whole_frame() {
+	let (mut canvas, mut fonts, mut tab) = (Canvas::new(), fonts(), Tab::new(false));
+	tab.feed(2, "$ prompt");
+	step(&mut canvas, &mut fonts, &tab, focused(2));
+	tab.feed(2, "\x1b[?1049h\x1b[41m\x1b[2J\x1b[Hfull screen");
+	step(&mut canvas, &mut fonts, &tab, focused(2));
+	tab.feed(2, "\x1b[0m\x1b[?1049l");
+	step(&mut canvas, &mut fonts, &tab, focused(2));
+	tab.feed(1, "still here");
+	assert!(partial(&step(&mut canvas, &mut fonts, &tab, focused(2))));
+}
+
+#[test]
+fn wide_characters_and_cursor_moves_match_a_whole_frame() {
+	let (mut canvas, mut fonts, mut tab) = (Canvas::new(), fonts(), Tab::new(true));
+	step(&mut canvas, &mut fonts, &tab, focused(1));
+	for (id, input) in [
+		(1, "日本語のテキスト"),
+		(3, "\x1b[5;5H*\x1b[1;1H"),
+		(1, "\x1b[1;3Hx"),
+		(2, "\x1b[?25l"),
+		(2, "\x1b[?25h\x1b[3;3H"),
+	] {
+		tab.feed(id, input);
+		step(&mut canvas, &mut fonts, &tab, focused(1));
+	}
+}
