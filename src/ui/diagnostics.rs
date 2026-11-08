@@ -52,6 +52,13 @@ pub(crate) enum Drawing {
 	Software(Reason),
 }
 
+/// The GPU API this platform draws with.
+pub(crate) const GPU_API: &str = if cfg!(target_os = "macos") {
+	"Metal"
+} else {
+	"Vulkan"
+};
+
 /// Why the main window is drawn in software.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Reason {
@@ -59,13 +66,10 @@ pub(crate) enum Reason {
 	Asked,
 	/// No GPU renderer for this platform or kind of window yet.
 	Unsupported,
-	/// Vulkan could not start, as said.
+	/// The GPU renderer (Vulkan, or Metal on macOS) could not start, as
+	/// said.
 	Unavailable(String),
 	/// The GPU failed while drawing, as said.
-	#[cfg_attr(
-		all(target_os = "macos", not(test)),
-		expect(dead_code, reason = "macOS has no GPU renderer to fail yet")
-	)]
 	Abandoned(String),
 }
 
@@ -74,7 +78,7 @@ impl Reason {
 		clean(&match self {
 			Self::Asked => "renderer = \"software\" in config.toml or POOPTERM_RENDERER".into(),
 			Self::Unsupported => "No GPU renderer for this platform or window system yet".into(),
-			Self::Unavailable(error) => format!("Vulkan unavailable: {error}"),
+			Self::Unavailable(error) => format!("{GPU_API} unavailable: {error}"),
 			Self::Abandoned(error) => format!("The GPU failed while drawing: {error}"),
 		})
 	}

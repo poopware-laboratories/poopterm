@@ -110,8 +110,9 @@ extern "C" fn silent(_: Raw, _: Sel) -> Raw {
 	NIL
 }
 
-/// Registers `name`, a subclass of `NSObject` with `methods`, once.
-fn register(name: &'static CStr, methods: &[(&CStr, *const c_void, &CStr)]) -> Class {
+/// Registers `name`, a subclass of `NSObject` with `methods`, once: the
+/// caller registers each name once.
+pub(crate) fn register(name: &'static CStr, methods: &[(&CStr, *const c_void, &CStr)]) -> Class {
 	let object = class(c"NSObject").unwrap();
 	// SAFETY: the name is new to the runtime (each is registered once, by
 	// the `OnceLock`s below), the superclass is a class, and each method's
@@ -184,23 +185,33 @@ fn silent_object() -> Object {
 	unsafe { class_named(raw).instance() }.unwrap()
 }
 
-fn class_named(raw: usize) -> Class {
+pub(crate) fn class_named(raw: usize) -> Class {
 	Class(std::ptr::NonNull::new(raw as Raw).unwrap())
 }
 
 /// A weak reference to an object, which reads nil once it is deallocated.
-struct Weak(Box<Raw>);
+pub(crate) struct Weak(Box<Raw>);
 
 impl Weak {
-	fn new(object: &Object) -> Self {
+	pub(crate) fn new(object: &Object) -> Self {
+		// SAFETY: a live object.
+		unsafe { Self::of(object.raw()) }
+	}
+
+	/// A weak reference to `raw`.
+	///
+	/// # Safety
+	///
+	/// `raw` is a live object.
+	pub(crate) unsafe fn of(raw: Raw) -> Self {
 		let mut location = Box::new(NIL);
 		// SAFETY: the location is boxed, so it stays put until destroyed.
-		unsafe { objc_initWeak(&mut *location, object.raw()) };
+		unsafe { objc_initWeak(&mut *location, raw) };
 		Self(location)
 	}
 
 	/// Whether the object still lives.
-	fn alive(&mut self) -> bool {
+	pub(crate) fn alive(&mut self) -> bool {
 		// SAFETY: the location was initialized and not yet destroyed; the
 		// object read is retained, and released as the `Object` drops.
 		unsafe { Object::owned(objc_loadWeakRetained(&mut *self.0)) }.is_some()

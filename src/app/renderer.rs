@@ -1,9 +1,12 @@
-//! Window renderer boundary: the GPU where it can draw in the window, else
-//! the software backend, whose frames our own presenter shows on Wayland
-//! and softbuffer elsewhere.
-use super::{Arc, Window, repaint};
+//! Window renderer boundary: the GPU where it can draw in the window
+//! (Vulkan on Linux and FreeBSD, Metal on macOS), else the software
+//! backend, whose frames our own presenter shows on Wayland and softbuffer
+//! elsewhere.
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+use super::gpu::Gpu;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use super::{gpu::Gpu, wayland};
+use super::wayland;
+use super::{Arc, Window, repaint};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use crate::present::wayland::presenter::Presenter;
 use crate::{
@@ -19,7 +22,7 @@ use std::num::NonZeroU32;
 
 pub(super) enum Renderer {
 	Software(Software),
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 	Gpu(Box<Gpu>),
 }
 
@@ -182,7 +185,11 @@ impl Renderer {
 			.failures
 			.iter()
 			.find(|(tried, _)| *tried == Backend::Gpu);
-		let gpu_here = cfg!(any(target_os = "linux", target_os = "freebsd"));
+		let gpu_here = cfg!(any(
+			target_os = "linux",
+			target_os = "freebsd",
+			target_os = "macos"
+		));
 		let failure = gpu_failure.map(|(_, error)| error.as_str());
 		Ok((selected.value, started(selected.backend, failure, gpu_here)))
 	}
@@ -192,19 +199,19 @@ impl Renderer {
 	pub(super) fn device(&self) -> Option<&str> {
 		match self {
 			Self::Software(_) => None,
-			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 			Self::Gpu(gpu) => Some(gpu.device_name()),
 		}
 	}
 	// pr-check: end window glue
 
 	// pr-check: window glue: the GPU draws in a real window's surface
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 	fn gpu(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
 		Gpu::new(window, preference).map(|gpu| Self::Gpu(Box::new(gpu)))
 	}
 
-	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+	#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "macos")))]
 	fn gpu(_: &Arc<Window>, _: RendererPreference) -> Result<Self, String> {
 		Err("not available on this system yet".to_owned())
 	}
@@ -212,7 +219,7 @@ impl Renderer {
 
 	/// The software renderer, for a window whose GPU failed with `error`.
 	// pr-check: window glue: hands a real window from its failed GPU to softbuffer
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 	pub(super) fn after_gpu(gpu: Box<Gpu>, error: &str) -> Result<Self, String> {
 		let window = gpu.window().clone();
 		// Its swapchain goes before software presents in the window.
@@ -230,7 +237,7 @@ impl Renderer {
 	pub(super) fn after_presenter(self, error: &str) -> Result<Self, String> {
 		match self {
 			Self::Software(software) => software.fallback(error).map(Self::Software),
-			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 			gpu @ Self::Gpu(_) => Ok(gpu),
 		}
 	}
@@ -242,6 +249,10 @@ impl Renderer {
 			// The GPU makes its swapchain at the size of each frame.
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			Self::Gpu(_) => {}
+			// Metal's layer takes the scale with the size, as a move to
+			// another display changes both.
+			#[cfg(target_os = "macos")]
+			Self::Gpu(gpu) => gpu.follow_scale(),
 		}
 	}
 
@@ -257,7 +268,7 @@ impl Renderer {
 		match self {
 			Self::Software(software) => software.present(pixels, width, bands, damage_only),
 			// The GPU shows its frames as it draws them.
-			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 			Self::Gpu(_) => Shown::Done,
 		}
 	}
