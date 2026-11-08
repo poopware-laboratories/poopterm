@@ -35,8 +35,11 @@ pub(crate) fn draw_panes<P: Pen>(
 		};
 		let height = p.size().1;
 		for strip in damaged_strips(y, view.padding.unwrap_or(grid), view.cell.1, rows) {
-			restore(p, strip);
-			bands.push((strip.y, (strip.y + strip.height).min(height)));
+			let band = (strip.y.min(height), (strip.y + strip.height).min(height));
+			if band.0 < band.1 {
+				restore(p, strip);
+				bands.push(band);
+			}
 		}
 		draw_grid(p, fonts, view, Some(rows));
 		extend_above(p, view);

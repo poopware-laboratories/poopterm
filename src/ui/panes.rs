@@ -216,24 +216,32 @@ impl Panes {
 		}
 	}
 
-	/// Each pane's place in `area`, in slot order, cut by `divider` pixel
-	/// wide dividers that sit on whole cells from the top left, each grid
-	/// at least 2 by 2 cells.
-	pub(crate) fn places(&self, area: Rect, cell: (usize, usize), divider: usize) -> Vec<Place> {
-		let rects = match self.arrangement {
-			Arrangement::Single => vec![area],
-			Arrangement::Columns => columns(area, cell.0, divider).to_vec(),
-			Arrangement::Rows => rows(area, cell.1, divider).to_vec(),
+	/// The panes' rects in `area`, in slot order, and the gaps between
+	/// them, cut by `divider` pixel wide gaps that sit on whole cells from
+	/// the top left.
+	fn cut(&self, area: Rect, cell: (usize, usize), divider: usize) -> (Vec<Rect>, Vec<Rect>) {
+		let [left, vertical, right] = columns(area, cell.0, divider);
+		let [top, horizontal, bottom] = rows(area, cell.1, divider);
+		match self.arrangement {
+			Arrangement::Single => (vec![area], Vec::new()),
+			Arrangement::Columns => (vec![left, right], vec![vertical]),
+			Arrangement::Rows => (vec![top, bottom], vec![horizontal]),
 			Arrangement::Main(side) => {
-				let [left, right] = columns(area, cell.0, divider);
 				let (big, small) = match side {
 					Side::Left => (left, right),
 					Side::Right => (right, left),
 				};
-				let [top, bottom] = rows(small, cell.1, divider);
-				vec![big, top, bottom]
+				let [top, gap, bottom] = rows(small, cell.1, divider);
+				(vec![big, top, bottom], vec![vertical, gap])
 			}
-		};
+		}
+	}
+
+	/// Each pane's place in `area`, in slot order, each grid at least 2 by
+	/// 2 cells, the panes cut apart by `divider` pixel wide gaps that sit on
+	/// whole cells from the top left.
+	pub(crate) fn places(&self, area: Rect, cell: (usize, usize), divider: usize) -> Vec<Place> {
+		let rects = self.cut(area, cell, divider).0;
 		(self.ids.iter().zip(rects))
 			.map(|(&id, rect)| Place {
 				id,
@@ -243,36 +251,10 @@ impl Panes {
 			.collect()
 	}
 
-	/// The dividers between the panes in `area`, as [`places`](Self::places)
+	/// The gaps between the panes in `area`, as [`places`](Self::places)
 	/// lays them out.
 	pub(crate) fn dividers(&self, area: Rect, cell: (usize, usize), divider: usize) -> Vec<Rect> {
-		let [left, right] = columns(area, cell.0, divider);
-		let vertical = Rect {
-			x: left.x + left.width,
-			width: right.x - (left.x + left.width),
-			..area
-		};
-		let [top, bottom] = rows(area, cell.1, divider);
-		let horizontal = Rect {
-			y: top.y + top.height,
-			height: bottom.y - (top.y + top.height),
-			..area
-		};
-		let small = |rect: Rect| {
-			let [top, bottom] = rows(rect, cell.1, divider);
-			Rect {
-				y: top.y + top.height,
-				height: bottom.y - (top.y + top.height),
-				..rect
-			}
-		};
-		match self.arrangement {
-			Arrangement::Single => Vec::new(),
-			Arrangement::Columns => vec![vertical],
-			Arrangement::Rows => vec![horizontal],
-			Arrangement::Main(Side::Left) => vec![vertical, small(right)],
-			Arrangement::Main(Side::Right) => vec![vertical, small(left)],
-		}
+		self.cut(area, cell, divider).1
 	}
 
 	/// The pane under `point` in `area`, as [`places`](Self::places) lays
@@ -333,32 +315,33 @@ fn first_half(length: usize, cell: usize, divider: usize) -> usize {
 	length.saturating_sub(divider) / 2 / cell * cell
 }
 
-/// `area` cut into a left and a right half by a `divider` wide gap.
-fn columns(area: Rect, cell: usize, divider: usize) -> [Rect; 2] {
+/// `area` cut into a left half, a `divider` wide gap, and a right half.
+fn columns(area: Rect, cell: usize, divider: usize) -> [Rect; 3] {
 	let width = first_half(area.width, cell, divider);
 	let gap = divider.min(area.width - width);
+	let part = |x: usize, width: usize| Rect { x, width, ..area };
+	let right = area.width - width - gap;
 	[
-		Rect { width, ..area },
-		Rect {
-			x: area.x + width + gap,
-			width: area.width - width - gap,
-			..area
-		},
+		part(area.x, width),
+		part(area.x + width, gap),
+		part(area.x + width + gap, right),
 	]
 }
 
-/// `area` cut into a top and a bottom half by a `divider` high gap.
-fn rows(area: Rect, cell: usize, divider: usize) -> [Rect; 2] {
-	let height = first_half(area.height, cell, divider);
-	let gap = divider.min(area.height - height);
-	[
-		Rect { height, ..area },
-		Rect {
-			y: area.y + height + gap,
-			height: area.height - height - gap,
-			..area
-		},
-	]
+/// `area` cut as [`columns`] cuts it, across: a top half, a gap, and a
+/// bottom half.
+fn rows(area: Rect, cell: usize, divider: usize) -> [Rect; 3] {
+	columns(across(area), cell, divider).map(across)
+}
+
+/// `rect` mirrored over its diagonal: columns become rows.
+fn across(rect: Rect) -> Rect {
+	Rect {
+		x: rect.y,
+		y: rect.x,
+		width: rect.height,
+		height: rect.width,
+	}
 }
 
 /// How far `to` lies from `from` in `direction`, and how much of `from`'s

@@ -242,3 +242,105 @@ fn a_closed_tab_hands_back_every_other_session() {
 	ids.sort_unstable();
 	assert_eq!(ids, [1, 2, 3]);
 }
+
+/// A small deterministic generator, so the walk is the same every run.
+struct Steps(u64);
+
+impl Steps {
+	fn next(&mut self, below: u64) -> u64 {
+		self.0 = self
+			.0
+			.wrapping_mul(6364136223846793005)
+			.wrapping_add(1442695040888963407);
+		(self.0 >> 33) % below
+	}
+}
+
+#[test]
+fn a_long_walk_of_splits_focus_moves_and_closes_never_loses_a_session() {
+	let names = ["a", "b", "c", "d"];
+	let (area, cell, divider) = GEOMETRY;
+	let mut steps = Steps(7);
+	let (mut tab, mut focused) = (TabPanes::new(1), Shell(1, "a"));
+	let (mut next, mut stopped) = (2u64, Vec::new());
+	for step in 0..2000 {
+		let name = names[(next % 4) as usize];
+		match steps.next(6) {
+			0 | 1 => {
+				let split = if steps.next(2) == 0 {
+					Split::Right
+				} else {
+					Split::Down
+				};
+				let expected = tab.split_place(split, next, GEOMETRY);
+				match tab.split(&mut focused, split, Shell(next, name)) {
+					Ok(()) => {
+						let placed = tab.layout().places(area, cell, divider);
+						let place = placed.iter().find(|place| place.id == next);
+						assert_eq!(place, expected.as_ref(), "step {step}");
+						assert_eq!(focused.0, next, "step {step}: the new pane is focused");
+						next += 1;
+					}
+					Err(shell) => {
+						assert_eq!(shell.0, next, "step {step}");
+						assert_eq!(expected, None, "step {step}: placed but refused");
+					}
+				}
+			}
+			2 => {
+				let ids = tab.layout().ids().to_vec();
+				let id = ids[steps.next(ids.len() as u64) as usize];
+				match tab.close(&mut focused, id) {
+					Closed::Pane(shell) => stopped.push(shell.0),
+					Closed::Last => assert_eq!(ids, [id], "step {step}"),
+					Closed::Missing => panic!("step {step}: {id} is a pane"),
+				}
+			}
+			3 => {
+				let direction = [
+					Direction::Left,
+					Direction::Right,
+					Direction::Up,
+					Direction::Down,
+				][steps.next(4) as usize];
+				let before = focused.0;
+				let moved = tab.focus_by(&mut focused, |panes| {
+					panes.focus_toward(direction, area, cell, divider)
+				});
+				assert_eq!(moved, focused.0 != before, "step {step}");
+			}
+			4 => {
+				let before = focused.0;
+				let moved = tab.focus_by(&mut focused, |panes| panes.cycle(1));
+				assert_eq!(moved, tab.layout().is_split(), "step {step}");
+				assert_eq!(moved, focused.0 != before, "step {step}");
+			}
+			_ => {
+				let ids = tab.layout().ids().to_vec();
+				let id = ids[steps.next(ids.len() as u64) as usize];
+				let moved = tab.focus(&mut focused, id);
+				assert_eq!(focused.0, id, "step {step}");
+				assert_eq!(moved, tab.layout().ids().len() > 1 && moved, "step {step}");
+			}
+		}
+		assert_consistent(&tab, &focused);
+	}
+	// Every session started is shown, or was handed back to be stopped.
+	let mut all: Vec<u64> = stopped;
+	all.extend(tab.layout().ids());
+	all.sort_unstable();
+	assert_eq!(all, (1..next).collect::<Vec<_>>());
+}
+
+#[test]
+fn a_split_tab_keeps_each_session_with_its_own_name() {
+	let (mut tab, mut focused) = three();
+	for id in [1, 2, 3, 2, 1] {
+		tab.focus(&mut focused, id);
+		let name = ["one", "two", "three"][id as usize - 1];
+		assert_eq!(focused, Shell(id, name));
+		for other in tab.others() {
+			assert_eq!(tab.find(&focused, other.0), Some(other));
+		}
+	}
+}

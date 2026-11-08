@@ -150,3 +150,123 @@ fn defaults_do_not_take_the_existing_shortcuts() {
 		assert_eq!(panes.command(&key, held), None, "{action:?} {binding}");
 	}
 }
+
+/// Every binding: its config key, what it runs, and an unused chord.
+const EVERY: [(&str, PaneCommand); 8] = [
+	("shortcut_split_right", PaneCommand::Split(Split::Right)),
+	("shortcut_split_down", PaneCommand::Split(Split::Down)),
+	(
+		"shortcut_focus_pane_left",
+		PaneCommand::Focus(Direction::Left),
+	),
+	(
+		"shortcut_focus_pane_right",
+		PaneCommand::Focus(Direction::Right),
+	),
+	("shortcut_focus_pane_up", PaneCommand::Focus(Direction::Up)),
+	(
+		"shortcut_focus_pane_down",
+		PaneCommand::Focus(Direction::Down),
+	),
+	("shortcut_next_pane", PaneCommand::Cycle(1)),
+	("shortcut_previous_pane", PaneCommand::Cycle(-1)),
+];
+
+#[test]
+fn every_binding_reads_its_own_config_key() {
+	let alt_shift = mods(false, true, true, false);
+	for mac in [false, true] {
+		for (n, (key, command)) in EVERY.into_iter().enumerate() {
+			// Bind it to alt+shift and a digit no default uses.
+			let text = format!("{key} = \"alt+shift+{n}\"\n");
+			let panes = PaneShortcuts::from_config(&text, mac);
+			let digit = n.to_string();
+			assert_eq!(
+				panes.command(&chr(&digit), alt_shift),
+				Some(command),
+				"{key}"
+			);
+			// The others keep their defaults.
+			let defaults = PaneShortcuts::from_config("", mac);
+			for (other, other_command) in EVERY {
+				if other != key {
+					let found = (0..10)
+						.map(|n| n.to_string())
+						.any(|digit| panes.command(&chr(&digit), alt_shift) == Some(other_command));
+					assert!(!found, "{other} moved with {key}");
+				}
+			}
+			assert_ne!(panes, defaults, "{key} changed nothing");
+		}
+	}
+}
+
+#[test]
+fn no_two_default_bindings_share_a_chord() {
+	use super::shortcuts::Shortcut;
+	for mac in [false, true] {
+		let panes = PaneShortcuts::from_config("", mac);
+		// Each default chord runs exactly its own command.
+		for (key, command) in EVERY {
+			let found: Vec<_> = (["d", "e", "[", "]"].iter().map(|key| chr(key)))
+				.chain(
+					[
+						NamedKey::ArrowLeft,
+						NamedKey::ArrowRight,
+						NamedKey::ArrowUp,
+						NamedKey::ArrowDown,
+					]
+					.map(Key::Named),
+				)
+				.flat_map(|pressed| {
+					(0..16).map(move |bits| {
+						let held = mods(bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0);
+						(pressed.clone(), held)
+					})
+				})
+				.filter(|(pressed, held)| panes.command(pressed, *held) == Some(command))
+				.collect();
+			assert!(!found.is_empty(), "{key} has no default chord");
+			let chords: Vec<_> = (found.iter())
+				.filter_map(|(pressed, held)| Shortcut::from_event(pressed, *held))
+				.map(|shortcut| shortcut.binding())
+				.collect();
+			let mut unique = chords.clone();
+			unique.dedup();
+			assert_eq!(unique.len(), 1, "{key}: {chords:?}");
+		}
+	}
+}
+
+#[test]
+fn the_other_platforms_defaults_written_as_config_read_back_the_same() {
+	let mac = [
+		"super+d",
+		"super+shift+d",
+		"super+alt+left",
+		"super+alt+right",
+		"super+alt+up",
+		"super+alt+down",
+		"super+]",
+		"super+[",
+	];
+	let elsewhere = [
+		"ctrl+shift+d",
+		"ctrl+shift+e",
+		"ctrl+alt+left",
+		"ctrl+alt+right",
+		"ctrl+alt+up",
+		"ctrl+alt+down",
+		"ctrl+alt+]",
+		"ctrl+alt+[",
+	];
+	for (on_mac, chords) in [(true, mac), (false, elsewhere)] {
+		let text: String = (EVERY.iter().zip(chords))
+			.map(|((key, _), chord)| format!("{key} = \"{chord}\"\n"))
+			.collect();
+		// Config naming every chord overrides the platform's defaults.
+		let written = PaneShortcuts::from_config(&text, !on_mac);
+		assert_eq!(written, PaneShortcuts::from_config("", on_mac));
+		assert_ne!(written, PaneShortcuts::from_config("", !on_mac));
+	}
+}

@@ -30,6 +30,8 @@ mod pane_view;
 #[cfg(test)]
 mod pane_view_tests;
 pub(crate) mod panes;
+#[cfg(test)]
+mod panes_tests;
 pub(crate) mod pen;
 #[cfg(test)]
 mod pen_tests;
