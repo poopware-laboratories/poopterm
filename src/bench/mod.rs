@@ -117,6 +117,9 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 	for name in &options.only {
 		corpus::find(name).ok_or_else(|| format!("unknown workload: {name}; try --list"))?;
 	}
+	if options.stages.is_empty() {
+		return Err("no stages left to run".into());
+	}
 	Ok(options)
 }
 
@@ -374,6 +377,15 @@ mod tests {
 		assert_eq!(stages.len(), 5, "{stages:?}");
 		assert!(!stages.contains(&Stage::Render));
 		assert_eq!(stages[0], Stage::Parse);
+	}
+
+	#[test]
+	fn dropping_the_only_stage_is_an_error() {
+		let error = parsed(&["--stages", "render", "--no-render"])
+			.err()
+			.unwrap();
+		assert_eq!(error, "no stages left to run");
+		assert!(parsed(&["--stages", "render,pty", "--no-render"]).is_ok());
 	}
 
 	#[test]

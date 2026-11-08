@@ -230,9 +230,12 @@ fn pty_stages_run_through_a_real_terminal_in_the_order_given() {
 		"--repeat",
 		"1",
 		"--markdown",
+		"--kib",
+		"64",
 	];
 	let (_, report) = quick_benchmark(&stages);
-	// Columns keep their fixed order, whatever order --stages names them in.
+	// Columns keep their fixed order, whatever order --stages names them in;
+	// 64 KiB so a slow machine's rates still show above 0.0.
 	assert!(
 		report.contains("\n| workload | pty | +pipeline raw |\n|---|--:|--:|\n"),
 		"{report}"
@@ -256,6 +259,8 @@ fn every_pty_stage_has_its_column_and_an_overall_rate() {
 		"--repeat",
 		"1",
 		"--markdown",
+		"--kib",
+		"64",
 	];
 	let (_, report) = quick_benchmark(&stages);
 	let heading = "| workload | parse | pty | pty raw | +pipeline | +pipeline raw |";
