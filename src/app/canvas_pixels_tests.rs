@@ -74,6 +74,7 @@ fn update(canvas: &mut Canvas, fonts: &mut FontSet, frame: &mut Frame, key: Draw
 			}
 			Some(damage.rows.as_slice())
 		}
+		Plan::Panes(_) => unreachable!("one grid plans no panes"),
 	};
 	draw(&mut canvas.pixels, fonts, frame, key, rows);
 	canvas.remember(frame, key);

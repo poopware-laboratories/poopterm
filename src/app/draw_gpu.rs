@@ -22,13 +22,14 @@ impl App {
 		size: (usize, usize),
 	) -> Option<Renderer> {
 		// The canvas remembers the frame whose rows the pen keeps.
-		if !gpu.keeps_rows() || self.full_redraw_only {
+		// A split tab's panes draw no rows the pen could keep.
+		if !gpu.keeps_rows() || self.full_redraw_only || self.is_split() {
 			self.canvas.invalidate();
 		}
 		// Kept rows move on the GPU, over a background drawn again.
 		let plan = (self.canvas).plan(&self.frame, key, size, true);
 		let damage = match plan {
-			Plan::Full => None,
+			Plan::Full | Plan::Panes(_) => None,
 			Plan::Partial(damage) => Some(damage),
 		};
 		gpu.plan_rows(damage, self.ch);

@@ -29,6 +29,8 @@ pub(crate) mod painter;
 pub(crate) mod pen;
 #[cfg(test)]
 mod pen_tests;
+#[cfg(test)]
+mod pen_untracked_tests;
 pub(crate) mod popover;
 #[cfg(test)]
 mod popover_tests;

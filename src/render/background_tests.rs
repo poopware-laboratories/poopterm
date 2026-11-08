@@ -204,3 +204,50 @@ fn rows_in_the_border_alone_draw_no_wallpaper() {
 	assert!(pen.images.is_empty());
 	assert!(!pen.quads.is_empty(), "the right edge is still drawn");
 }
+
+#[test]
+fn a_wallpaper_rect_paints_what_the_wallpaper_rows_do_there_and_nothing_else() {
+	let (size, border) = ((20, 12), 2);
+	let image = paper(size, border);
+	let mut rows = vec![BEFORE; size.0 * size.1];
+	let painter = &mut Painter::new(&mut rows, size.0, size.1);
+	wallpaper(painter, (0, size.1), 0, border, EDGE, &image);
+	for rect in [
+		Rect {
+			x: 2,
+			y: 2,
+			width: 16,
+			height: 8,
+		},
+		Rect {
+			x: 5,
+			y: 3,
+			width: 4,
+			height: 6,
+		},
+		Rect {
+			x: 17,
+			y: 9,
+			width: 1,
+			height: 1,
+		},
+		Rect {
+			x: 9,
+			y: 4,
+			width: 0,
+			height: 3,
+		},
+	] {
+		let mut pixels = vec![BEFORE; size.0 * size.1];
+		let painter = &mut Painter::new(&mut pixels, size.0, size.1);
+		super::wallpaper_rect(painter, rect, border, &image);
+		for y in 0..size.1 {
+			for x in 0..size.0 {
+				let inside =
+					(rect.x..rect.x + rect.width).contains(&x) && (rect.y..rect.y + rect.height).contains(&y);
+				let want = if inside { rows[y * size.0 + x] } else { BEFORE };
+				assert_eq!(pixels[y * size.0 + x], want, "({x}, {y}) in {rect:?}");
+			}
+		}
+	}
+}

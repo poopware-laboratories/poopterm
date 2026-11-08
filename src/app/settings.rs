@@ -229,7 +229,7 @@ impl App {
 		if let Some(window) = &self.window {
 			crate::platform::set_window_opacity(window, preferences.opacity);
 		}
-		for session in &self.sessions {
+		for session in self.all_sessions() {
 			let mut term = session.term();
 			term.set_theme(self.theme);
 			term.set_scrollback_limit(preferences.scrollback_lines);

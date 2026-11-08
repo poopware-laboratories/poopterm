@@ -39,6 +39,9 @@ pub(crate) mod links;
 pub(crate) mod overlays;
 #[cfg(test)]
 mod overlays_tests;
+pub(crate) mod panes;
+#[cfg(test)]
+mod panes_tests;
 pub(crate) mod scale;
 pub(crate) mod search;
 pub(crate) mod selection;

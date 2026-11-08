@@ -138,7 +138,7 @@ impl ApplicationHandler<UserEvent> for App {
 		let (mut expired, mut animated) = (false, false);
 		// The earliest synchronized-output timeout or animation frame.
 		let mut term_wake = None;
-		for session in &self.sessions {
+		for session in self.all_sessions() {
 			let mut term = session.term();
 			expired |= term.finish_sync_if_expired(now);
 			animated |= term.advance_animations(now);
@@ -170,11 +170,7 @@ impl ApplicationHandler<UserEvent> for App {
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			UserEvent::ButtonLayout(layout) => self.desktop_buttons(layout),
-			UserEvent::Closed(id) => {
-				if let Some(index) = self.sessions.iter().position(|s| s.id == id) {
-					self.close_tab(index, event_loop);
-				}
-			}
+			UserEvent::Closed(id) => self.close_pane(id, event_loop),
 		}
 	}
 }

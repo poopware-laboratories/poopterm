@@ -23,6 +23,8 @@ pub(super) struct DrawKey {
 pub(super) enum Plan {
 	Full,
 	Partial(GridDamage),
+	/// A split tab's panes: the rows to draw again in each, in slot order.
+	Panes(Vec<Vec<bool>>),
 }
 
 pub(super) struct Canvas {
@@ -31,6 +33,8 @@ pub(super) struct Canvas {
 	height: usize,
 	/// The grid and inputs the pixels show; `None` after [`invalidate`](Self::invalidate).
 	shown: Option<(Frame, DrawKey)>,
+	/// What a split tab's panes show; `None` unless the pixels show one.
+	panes: Option<panes::ShownPanes>,
 }
 
 impl Canvas {
@@ -40,6 +44,7 @@ impl Canvas {
 			width: 0,
 			height: 0,
 			shown: None,
+			panes: None,
 		}
 	}
 
@@ -47,6 +52,19 @@ impl Canvas {
 	/// or wallpaper change.
 	pub(super) fn invalidate(&mut self) {
 		self.shown = None;
+		self.panes = None;
+	}
+
+	/// Makes the buffer `width`×`height`, forgetting what it showed if that
+	/// changes its size.
+	fn fit(&mut self, (width, height): (usize, usize)) {
+		if (self.width, self.height) != (width, height) {
+			self.width = width;
+			self.height = height;
+			self.pixels.clear();
+			self.pixels.resize(width * height, 0);
+			self.invalidate();
+		}
 	}
 
 	/// Decides how to draw `frame` at `width`×`height`, resizing the buffer
@@ -59,34 +77,11 @@ impl Canvas {
 		(width, height): (usize, usize),
 		allow_scroll: bool,
 	) -> Plan {
-		if (self.width, self.height) != (width, height) {
-			self.width = width;
-			self.height = height;
-			self.pixels.clear();
-			self.pixels.resize(width * height, 0);
-			self.shown = None;
-		}
-		let partial = match &self.shown {
-			Some((shown, shown_key))
-				if shown_key.session == key.session
-					&& shown_key.focused == key.focused
-					&& !shown_key.overlay
-					&& !key.overlay =>
-			{
-				grid_damage(shown, frame, allow_scroll).map(|mut damage| {
-					for (row, damaged) in damage.rows.iter_mut().enumerate() {
-						let old = shown.first_row + row + damage.scroll;
-						let new = frame.first_row + row;
-						*damaged |= coverage(shown_key.selection, old, frame.cols)
-							!= coverage(key.selection, new, frame.cols)
-							|| coverage(shown_key.search_match, old, frame.cols)
-								!= coverage(key.search_match, new, frame.cols);
-					}
-					damage
-				})
-			}
-			_ => None,
-		};
+		self.fit((width, height));
+		// The pixels no longer show a split tab's panes.
+		self.panes = None;
+		let partial = (self.shown.as_ref())
+			.and_then(|(shown, shown_key)| damage((shown, *shown_key), (frame, key), allow_scroll));
 		partial.map_or(Plan::Full, Plan::Partial)
 	}
 
@@ -101,6 +96,33 @@ impl Canvas {
 			None => self.shown = Some((std::mem::take(frame), key)),
 		}
 	}
+}
+
+/// The rows of `frame` drawn with `key` that differ from `shown`, drawn
+/// with `shown_key`: `None` when all must be drawn again.
+fn damage(
+	(shown, shown_key): (&Frame, DrawKey),
+	(frame, key): (&Frame, DrawKey),
+	allow_scroll: bool,
+) -> Option<GridDamage> {
+	if shown_key.session != key.session
+		|| shown_key.focused != key.focused
+		|| shown_key.overlay
+		|| key.overlay
+	{
+		return None;
+	}
+	grid_damage(shown, frame, allow_scroll).map(|mut damage| {
+		for (row, damaged) in damage.rows.iter_mut().enumerate() {
+			let old = shown.first_row + row + damage.scroll;
+			let new = frame.first_row + row;
+			*damaged |= coverage(shown_key.selection, old, frame.cols)
+				!= coverage(key.selection, new, frame.cols)
+				|| coverage(shown_key.search_match, old, frame.cols)
+					!= coverage(key.search_match, new, frame.cols);
+		}
+		damage
+	})
 }
 
 /// Inclusive highlighted columns of a visible row, clipped to the grid.
@@ -305,3 +327,7 @@ mod tests {
 #[cfg(test)]
 #[path = "canvas_pixels_tests.rs"]
 mod pixels;
+
+#[path = "canvas_panes.rs"]
+mod panes;
+pub(super) use panes::pane_keys;
