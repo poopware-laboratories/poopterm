@@ -1,7 +1,6 @@
 //! A frame's commands: a command buffer, quads drawn over a target with
-//! glyphs from the atlas, a run at a time with its image bound, textures
-//! synchronized for the CPU to read, and the buffer committed for the GPU,
-//! to wait for. A command buffer holds what its commands use until the GPU
+//! glyphs from the atlas, a run at a time with its image bound, and the
+//! buffer committed for the GPU, to wait for. A command buffer holds what its commands use until the GPU
 //! is done with it.
 use super::{
 	buffer::Buffer,
@@ -24,8 +23,7 @@ const TRIANGLE: usize = 3;
 /// what the target holds.
 const LOAD: usize = 1;
 const STORE: usize = 1;
-/// `MTLCommandBufferStatusCompleted` and `MTLCommandBufferStatusError`.
-const COMPLETED: usize = 4;
+/// `MTLCommandBufferStatusError`.
 const FAILED: usize = 5;
 
 /// A draw of the `runs` of quads in `quads` over `target`, with glyphs
@@ -138,22 +136,6 @@ impl Frame {
 		Ok(())
 	}
 
-	/// Has the GPU make what it drew to `texture` visible to the CPU once
-	/// the frame is done: needed for a managed texture on a GPU with its own
-	/// memory, harmless on Apple's.
-	pub(crate) fn synchronize(&mut self, texture: &Texture) -> Result<(), Error> {
-		let _pool = Pool::new();
-		// SAFETY: `blitCommandEncoder` returns an encoder the caller does not
-		// own, or nil; `synchronizeResource:` takes a managed resource, as
-		// every `Texture` is.
-		unsafe {
-			let blit = retained(self.buffer.send(c"blitCommandEncoder", ()), "blit encoder")?;
-			let _: () = blit.send(c"synchronizeResource:", (texture.texture.raw(),));
-			let _: () = blit.send(c"endEncoding", ());
-		}
-		Ok(())
-	}
-
 	/// Commits the commands for the GPU to run.
 	pub(crate) fn commit(self) -> Submitted {
 		// SAFETY: `commit` takes nothing; every encoder ended.
@@ -178,11 +160,6 @@ impl Submitted {
 		unsafe { self.buffer.send(c"status", ()) }
 	}
 
-	/// Whether the GPU is done with the commands, done well or not.
-	pub(crate) fn done(&self) -> bool {
-		self.status() >= COMPLETED
-	}
-
 	/// Waits for the GPU to be done with the commands: what went wrong if
 	/// it failed them.
 	pub(crate) fn wait(&self) -> Result<(), Error> {
@@ -202,4 +179,4 @@ impl Submitted {
 
 #[cfg(test)]
 #[path = "commands_tests.rs"]
-mod tests;
+pub(crate) mod tests;

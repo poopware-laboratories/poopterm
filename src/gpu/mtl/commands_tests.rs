@@ -5,11 +5,28 @@
 use super::{Draw, Frame, drawable};
 use crate::gpu::mtl::{
 	buffer::Buffer,
-	device::{Device, Error, tests::device},
+	device::{Device, Error, retained, tests::device},
 	pipeline::Pipeline,
 	texture::{Texture, Usage, tests::download},
 };
+use crate::objc::Pool;
 use std::{num::NonZeroUsize, ops::Range};
+
+/// Has the GPU make what it drew to `texture` visible to the CPU once
+/// `frame` is done: needed for a managed texture on a GPU with its own
+/// memory, harmless on Apple's.
+pub(crate) fn synchronize(frame: &mut Frame, texture: &Texture) -> Result<(), Error> {
+	let _pool = Pool::new();
+	// SAFETY: `blitCommandEncoder` returns an encoder the caller does not
+	// own, or nil; `synchronizeResource:` takes a managed resource, as every
+	// `Texture` is.
+	unsafe {
+		let blit = retained(frame.buffer.send(c"blitCommandEncoder", ()), "blit encoder")?;
+		let _: () = blit.send(c"synchronizeResource:", (texture.texture.raw(),));
+		let _: () = blit.send(c"endEncoding", ());
+	}
+	Ok(())
+}
 
 /// The target, and the atlas page the glyphs are on, of two.
 const WIDTH: u32 = 8;
@@ -142,7 +159,7 @@ fn drawn(device: &Device, kit: &Kit, runs: &[(Range<u32>, &Texture)]) -> Result<
 		atlas: &kit.atlas,
 		target: &kit.target,
 	})?;
-	frame.synchronize(&kit.target)?;
+	synchronize(&mut frame, &kit.target)?;
 	frame.commit().wait()?;
 	Ok(download(&kit.target))
 }
@@ -225,5 +242,191 @@ fn a_frame_with_nothing_drawn_is_done_once_waited_for() {
 	let Some(device) = device() else { return };
 	let submitted = Frame::new(&device).unwrap().commit();
 	assert_eq!(submitted.wait(), Ok(()));
-	assert!(submitted.done());
+	// Waiting again, once done, is done at once.
+	assert_eq!(submitted.wait(), Ok(()));
+}
+
+/// What draws on the fake device: its pipeline, five quads' room, an
+/// atlas, two images and a target.
+struct Fake {
+	device: Device,
+	pipeline: Pipeline,
+	quads: Buffer,
+	atlas: Texture,
+	images: [Texture; 2],
+	target: Texture,
+}
+
+/// `None` without a real device, whose functions the fake's pipeline takes.
+fn fake_kit() -> Option<Fake> {
+	device()?;
+	let device = crate::gpu::mtl::fake_tests::fake(0);
+	let texture = |size, array, usage| Texture::new(&device, size, array, usage).unwrap();
+	Some(Fake {
+		pipeline: Pipeline::new(&device).unwrap(),
+		quads: Buffer::new(&device, NonZeroUsize::new(5 * 48).unwrap()).unwrap(),
+		atlas: texture([64, 64, 2], true, Usage::Sampled),
+		images: [
+			texture([4, 4, 1], false, Usage::Sampled),
+			texture([2, 2, 1], false, Usage::Sampled),
+		],
+		target: texture([WIDTH, HEIGHT, 1], false, Usage::Target),
+		device,
+	})
+}
+
+/// `texture`'s address, as the fake records it.
+fn at(texture: &Texture) -> usize {
+	texture.texture.raw() as usize
+}
+
+#[test]
+fn a_draw_encodes_its_pass_buffers_size_atlas_and_a_draw_per_run() {
+	use crate::gpu::mtl::fake_commands_tests::{Call, calls};
+	let Some(fake) = fake_kit() else { return };
+	let mut frame = Frame::new(&fake.device).unwrap();
+	calls();
+	let [one, two] = &fake.images;
+	// An empty run draws nothing and binds nothing.
+	let runs = [(0..2, one), (2..2, two), (2..5, two)];
+	frame
+		.draw(Draw {
+			pipeline: &fake.pipeline,
+			quads: &fake.quads,
+			runs: &runs,
+			atlas: &fake.atlas,
+			target: &fake.target,
+		})
+		.unwrap();
+	let quads = fake.quads.buffer.raw() as usize;
+	let draw = |instances, base| Call::Draw {
+		primitive: 3,
+		start: 0,
+		count: 6,
+		instances,
+		base,
+	};
+	assert_eq!(
+		calls(),
+		[
+			// Drawn over what the target holds, and kept.
+			Call::Pass {
+				texture: at(&fake.target),
+				load: 1,
+				store: 1,
+			},
+			Call::State(fake.pipeline.state.raw() as usize),
+			Call::VertexBuffer {
+				buffer: quads,
+				offset: 0,
+				index: 0,
+			},
+			Call::FragmentBuffer {
+				buffer: quads,
+				offset: 0,
+				index: 0,
+			},
+			Call::VertexBytes {
+				bytes: [WIDTH as f32, HEIGHT as f32],
+				index: 1,
+			},
+			Call::FragmentTexture {
+				texture: at(&fake.atlas),
+				index: 0,
+			},
+			Call::FragmentTexture {
+				texture: at(one),
+				index: 1,
+			},
+			draw(2, 0),
+			Call::FragmentTexture {
+				texture: at(two),
+				index: 1,
+			},
+			// From its own first quad.
+			draw(3, 2),
+			Call::End,
+		]
+	);
+}
+
+#[test]
+fn a_draw_refused_encodes_nothing() {
+	use crate::gpu::mtl::fake_commands_tests::calls;
+	let Some(fake) = fake_kit() else { return };
+	let mut frame = Frame::new(&fake.device).unwrap();
+	calls();
+	let past = [(0..6, &fake.images[0])];
+	let draw = Draw {
+		pipeline: &fake.pipeline,
+		quads: &fake.quads,
+		runs: &past,
+		atlas: &fake.atlas,
+		target: &fake.target,
+	};
+	assert_eq!(frame.draw(draw), Err(Error::Draw));
+	assert_eq!(calls(), []);
+}
+
+#[test]
+fn commands_or_an_encoder_metal_refuses_are_refused_by_kind() {
+	use crate::gpu::mtl::{
+		fake_commands_tests::calls,
+		fake_tests::{COMMANDS, ENCODER, refuse},
+	};
+	let Some(fake) = fake_kit() else { return };
+	refuse(COMMANDS);
+	assert_eq!(
+		Frame::new(&fake.device).err(),
+		Some(Error::Refused("command buffer"))
+	);
+	refuse(ENCODER);
+	let mut frame = Frame::new(&fake.device).unwrap();
+	calls();
+	let runs = [(0..5, &fake.images[0])];
+	let draw = Draw {
+		pipeline: &fake.pipeline,
+		quads: &fake.quads,
+		runs: &runs,
+		atlas: &fake.atlas,
+		target: &fake.target,
+	};
+	assert_eq!(frame.draw(draw), Err(Error::Refused("render encoder")));
+	// Nothing encoded after the refusal.
+	assert_eq!(calls(), []);
+}
+
+#[test]
+fn a_frame_the_gpu_fails_says_what_went_wrong_once_waited_for() {
+	use crate::gpu::mtl::{
+		fake_commands_tests::{Call, calls},
+		fake_tests::{FAILS, fake, refuse},
+	};
+	let device = fake(0);
+	let frame = Frame::new(&device).unwrap();
+	calls();
+	let submitted = frame.commit();
+	refuse(FAILS);
+	assert_eq!(
+		submitted.wait(),
+		Err(Error::Gpu("the fake GPU hung".into()))
+	);
+	refuse(0);
+	assert_eq!(submitted.wait(), Ok(()));
+	assert_eq!(calls(), [Call::Commit, Call::Wait, Call::Wait]);
+}
+
+#[test]
+fn a_frame_lets_go_of_its_command_buffer_once_waited_for_and_dropped() {
+	use crate::{gpu::mtl::fake_tests::fake, objc::probe_tests::Weak};
+	let device = fake(0);
+	let frame = Frame::new(&device).unwrap();
+	let mut buffer = Weak::new(&frame.buffer);
+	// Retained past the pool it was made in.
+	assert!(buffer.alive());
+	let submitted = frame.commit();
+	assert!(buffer.alive());
+	submitted.wait().unwrap();
+	drop(submitted);
+	assert!(!buffer.alive());
 }

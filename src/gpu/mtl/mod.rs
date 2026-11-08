@@ -8,6 +8,8 @@ mod buffer_tests;
 pub(crate) mod commands;
 pub(crate) mod device;
 #[cfg(test)]
+pub(crate) mod fake_commands_tests;
+#[cfg(test)]
 pub(crate) mod fake_tests;
 pub(crate) mod pipeline;
 pub(crate) mod renderer;

@@ -8,6 +8,7 @@ use crate::{
 	gpu::{
 		atlas::Wanted,
 		mtl::{
+			commands::tests::synchronize,
 			device::{Device, Error, tests::device},
 			texture::{Texture, Usage, tests::download},
 		},
@@ -32,9 +33,9 @@ fn target(device: &Device) -> Texture {
 
 /// Draws `pen`'s frame over `target` and reads it back.
 fn drawn(renderer: &mut Renderer, pen: &mut QuadPen, target: &Texture) -> Result<Vec<u32>, Error> {
-	renderer.frame(pen, target, |frame| frame.synchronize(target))?;
+	renderer.frame(pen, target, |frame| synchronize(frame, target))?;
 	renderer.finish()?;
-	Ok(download(&target))
+	Ok(download(target))
 }
 
 /// A glyph `w`×`h` of full coverage.

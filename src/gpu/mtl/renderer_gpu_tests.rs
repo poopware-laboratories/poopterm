@@ -2,6 +2,7 @@
 //! `gpu::reference_tests`, drawn as quads by the renderer and read back
 //! from the real GPU, matches what the software renderer paints.
 use super::{
+	commands::tests::synchronize,
 	device::{Device, Error, tests::device},
 	renderer::Renderer,
 	texture::{Texture, Usage, tests::download},
@@ -19,7 +20,7 @@ fn unlike_software(device: &Rc<Device>) -> Result<Vec<String>, Error> {
 	let size = [SIZE.0 as u32, SIZE.1 as u32, 1];
 	let target = Texture::new(device, size, false, Usage::Target)?;
 	crate::gpu::reference_tests::unlike_software(ATLAS, |pen| {
-		renderer.frame(pen, &target, |frame| frame.synchronize(&target))?;
+		renderer.frame(pen, &target, |frame| synchronize(frame, &target))?;
 		renderer.finish()?;
 		Ok(download(&target))
 	})
