@@ -520,3 +520,19 @@ fn an_unchanged_osc_10_leaves_every_cell_alone() {
 	send(&mut t, "\x1b]10;#D8DEE9\x07\x1b]11;#2E3440\x07");
 	assert_eq!(t.grid[0], before);
 }
+
+#[test]
+fn without_a_theme_selection_the_default_follows_a_program_background() {
+	let mut t = terminal(ThemeKind::GruvboxDark);
+	send(&mut t, "\x1b]17;?\x07");
+	let dark = replies(&mut t);
+	send(&mut t, "\x1b]11;#FFFFFF\x07\x1b]17;?\x07");
+	let light = replies(&mut t);
+	assert_ne!(dark, light);
+	let (_, bg) = crate::ui::contrast::selection_colors(0xFFFFFF);
+	assert_eq!(light, [format!("\x1b]17;{}\x07", encode_color(bg))]);
+	// A theme's own selection does not move with the background.
+	let mut t = terminal(ThemeKind::Nord);
+	send(&mut t, "\x1b]11;#FFFFFF\x07\x1b]17;?\x07");
+	assert_eq!(replies(&mut t), ["\x1b]17;rgb:43/4c/5e\x07"]);
+}
