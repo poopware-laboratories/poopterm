@@ -274,3 +274,84 @@ fn a_texel_at_each_corner_lands_at_that_corner() {
 	}
 	assert_eq!(read.iter().filter(|&&texel| texel != 0).count(), 4);
 }
+
+/// The texels of `layer` of `texture`, row by row.
+fn download_layer(texture: &Texture, layer: usize) -> Vec<u32> {
+	let [width, height, _] = texture.size.map(|n| n as usize);
+	let mut texels = vec![0u32; width * height];
+	let region = Region {
+		origin: [0; 3],
+		size: [width, height, 1],
+	};
+	// SAFETY: `getBytes:bytesPerRow:bytesPerImage:fromRegion:mipmapLevel:
+	// slice:` takes a pointer, two `NSUInteger`s, a region, a level and a
+	// slice the texture has, and writes the region's texels there, which has
+	// room for them all.
+	unsafe {
+		let _: () = texture.texture.send(
+			c"getBytes:bytesPerRow:bytesPerImage:fromRegion:mipmapLevel:slice:",
+			(
+				texels.as_mut_ptr(),
+				width * 4,
+				width * height * 4,
+				region,
+				0usize,
+				layer,
+			),
+		);
+	}
+	texels
+}
+
+#[test]
+fn an_odd_region_inside_a_wider_texture_keeps_each_row_in_its_row() {
+	let Some(device) = device() else { return };
+	let (width, height) = (7u32, 5u32);
+	let texture = Texture::new(&device, [width, height, 1], false, Usage::Target).unwrap();
+	texture
+		.upload(0, [0, 0], [width, height], &vec![0; 35])
+		.unwrap();
+	// Three wide and two tall at (3, 2): rows are three texels apart in
+	// what is given, seven in the texture.
+	let given: Vec<u32> = (1..=6).map(|i| 0xff00_0000 | i).collect();
+	texture.upload(0, [3, 2], [3, 2], &given).unwrap();
+	let read = download(&texture);
+	let mut expected = vec![0; 35];
+	for (i, &texel) in given.iter().enumerate() {
+		expected[(2 + i / 3) * 7 + 3 + i % 3] = texel;
+	}
+	assert_eq!(read, expected);
+}
+
+#[test]
+fn every_layer_of_an_array_keeps_its_own_texels() {
+	let Some(device) = device() else { return };
+	let atlas = Texture::new(&device, [3, 2, 4], true, Usage::Sampled).unwrap();
+	for layer in 0..4u32 {
+		let texels: Vec<u32> = (0..6).map(|i| 0xff00_0000 | layer << 8 | i).collect();
+		atlas.upload(layer, [0, 0], [3, 2], &texels).unwrap();
+	}
+	for layer in 0..4u32 {
+		let expected: Vec<u32> = (0..6).map(|i| 0xff00_0000 | layer << 8 | i).collect();
+		assert_eq!(
+			download_layer(&atlas, layer as usize),
+			expected,
+			"layer {layer}"
+		);
+	}
+}
+
+#[test]
+fn an_upload_refused_writes_not_a_texel() {
+	let Some(device) = device() else { return };
+	let texture = Texture::new(&device, [4, 4, 1], false, Usage::Target).unwrap();
+	let before: Vec<u32> = (0..16).map(|i| 0xff00_0000 | i).collect();
+	texture.upload(0, [0, 0], [4, 4], &before).unwrap();
+	// Its first rows would fit; its last does not.
+	assert_eq!(
+		texture.upload(0, [0, 1], [4, 4], &[0; 16]),
+		Err(Error::Region)
+	);
+	assert_eq!(texture.upload(1, [0, 0], [1, 1], &[0]), Err(Error::Region));
+	assert_eq!(download(&texture), before);
+}
