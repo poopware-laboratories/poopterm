@@ -25,7 +25,14 @@ unsafe extern "C" {
 	fn objc_release(object: Raw);
 	fn objc_autoreleasePoolPush() -> Raw;
 	fn objc_autoreleasePoolPop(pool: Raw);
+	fn objc_allocateClassPair(superclass: Raw, name: *const c_char, extra: usize) -> Raw;
+	fn objc_registerClassPair(class: Raw);
+	fn class_addMethod(class: Raw, name: Sel, imp: *const c_void, types: *const c_char) -> Bool;
 }
+
+/// An action method's implementation: the receiver, the selector, and the
+/// sender, returning nothing, as AppKit sends menu items' actions.
+pub(crate) type Action = extern "C" fn(Raw, Sel, Raw);
 
 /// `NSUTF8StringEncoding`.
 const UTF8: usize = 4;
@@ -44,6 +51,11 @@ impl fmt::Display for Missing {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub(crate) struct Sel(*const c_void);
+
+impl Sel {
+	/// No selector, as an item without an action has.
+	pub(crate) const NULL: Self = Self(ptr::null());
+}
 
 /// The selector named `name`.
 pub(crate) fn sel(name: &CStr) -> Sel {
@@ -90,6 +102,36 @@ impl Class {
 		// caller owns.
 		unsafe { Object::owned(self.send(c"new", ())) }
 	}
+}
+
+/// A new class named `name`, descending from `NSObject`, whose instances
+/// answer `selector` with `action`; the class already named `name` if
+/// there is one, which is taken to be this one made earlier.
+pub(crate) fn action_class(
+	name: &'static CStr,
+	selector: &CStr,
+	action: Action,
+) -> Result<Class, Missing> {
+	let superclass = class(c"NSObject")?;
+	// SAFETY: the superclass is a class and `name` a C string; the runtime
+	// returns a new, unregistered class, or nil if the name is taken.
+	let made = unsafe { objc_allocateClassPair(superclass.raw(), name.as_ptr(), 0) };
+	if made.is_null() {
+		return class(name);
+	}
+	// SAFETY: `made` is unregistered, so methods may be added; `v@:@`
+	// encodes `action`'s type: returning void, taking the receiver, the
+	// selector and an object. Registering it then makes it usable.
+	unsafe {
+		class_addMethod(
+			made,
+			sel(selector),
+			action as *const c_void,
+			c"v@:@".as_ptr(),
+		);
+		objc_registerClassPair(made);
+	}
+	class(name)
 }
 
 /// The arguments of a message, after its receiver and selector.

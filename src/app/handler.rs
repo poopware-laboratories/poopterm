@@ -52,6 +52,15 @@ impl ApplicationHandler<UserEvent> for App {
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		self.start_decorations();
 		// pr-check: end window glue
+		// pr-check: window glue: AppKit has built the app menu once the app launched
+		#[cfg(target_os = "macos")]
+		{
+			let proxy = self.proxy.clone();
+			crate::about_menu::show_about_with(move || {
+				let _ = proxy.send_event(UserEvent::About);
+			});
+		}
+		// pr-check: end window glue
 		let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
 		let size = PhysicalSize::new(width as u32, height as u32);
 		let _ = self.window.as_ref().unwrap().request_inner_size(size);
@@ -170,6 +179,10 @@ impl ApplicationHandler<UserEvent> for App {
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			UserEvent::ButtonLayout(layout) => self.desktop_buttons(layout),
+			// pr-check: window glue: only a real app menu sends this
+			#[cfg(target_os = "macos")]
+			UserEvent::About => self.open_about(event_loop),
+			// pr-check: end window glue
 			UserEvent::Closed(id) => {
 				if let Some(index) = self.sessions.iter().position(|s| s.id == id) {
 					self.close_tab(index, event_loop);
