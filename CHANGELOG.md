@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.41 "Lunar Moth" — 2026-11-08
+
+### Maintenance
+
+- Wait for ^S to take effect before the program writes (#256) (pty).
+
 ## 26.11.40 "Lunar Moth" — 2026-11-08
 
 ### Added
