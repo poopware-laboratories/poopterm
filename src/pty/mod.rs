@@ -1,13 +1,13 @@
 //! PTY sessions: shell spawning plus each session's reader and parser threads.
 #[cfg(any(target_os = "macos", test))]
 mod burst;
-mod pump;
+pub(crate) mod pump;
 mod queue;
+pub(crate) mod reader;
 mod writer;
 
 use std::{
 	error::Error,
-	io::Read,
 	path::PathBuf,
 	sync::{Arc, atomic::Ordering},
 	thread,
@@ -28,8 +28,7 @@ pub(crate) use queue::OutputQueue;
 use writer::PtyWriter;
 
 /// Bytes a session may buffer before its reader waits for the parser thread.
-const OUTPUT_LIMIT: usize = 1 << 20;
-const READ_SIZE: usize = 1 << 16;
+pub(crate) const OUTPUT_LIMIT: usize = 1 << 20;
 
 #[derive(Debug)]
 pub(crate) enum UserEvent {
@@ -159,7 +158,7 @@ pub(crate) fn spawn_session(
 		crate::cgroup::place(pid);
 	}
 
-	let mut reader = pair.master.try_clone_reader()?;
+	let reader = pair.master.try_clone_reader()?;
 	let writer = PtyWriter::spawn(pair.master.take_writer()?);
 	let output = Arc::new(OutputQueue::new(OUTPUT_LIMIT));
 	let mut term = Term::new(cols, rows, theme, cwd);
@@ -170,19 +169,7 @@ pub(crate) fn spawn_session(
 	let queue = output.clone();
 	thread::Builder::new()
 		.name(format!("pty-reader-{id}"))
-		.spawn(move || {
-			let mut buf = vec![0u8; READ_SIZE];
-			loop {
-				match reader.read(&mut buf) {
-					Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-					Ok(0) | Err(_) => break,
-					Ok(n) => {
-						queue.push(&buf[..n]);
-					}
-				}
-			}
-			queue.close();
-		})?;
+		.spawn(move || reader::forward(reader, &queue))?;
 
 	let (queue, shared, flag, replies) =
 		(output.clone(), term.clone(), flags.clone(), writer.clone());

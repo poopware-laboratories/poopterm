@@ -19,8 +19,9 @@ OPTIONS
 	working directory (OSC 7). Poopterm loads them
 	by itself; print them to add them by hand.
       --benchmark [OPTIONS]	Feed real-world output to the parser and the
-	renderer without a window, and print each
-	workload's throughput. Options are below.
+	renderer, through a PTY, or to the terminal
+	this runs in, and print each workload's
+	throughput. Options are below.
       --bench-corpus NAME [OPTIONS]
 	Write one workload's bytes to standard output,
 	to time other terminals on the same input.
@@ -35,6 +36,11 @@ BENCHMARK OPTIONS
 	program (64 KiB by default).
       --frame-every BYTES	Draw a frame after this much output (1 MiB).
       --no-render	Only parse; draw no frames.
+      --stages LIST	Stages to time: parse, render, pty, pty-raw,
+	pipeline, pipeline-raw, terminal, terminal-raw,
+	or all but the terminal ones (parse,render).
+      --terminal	Time the terminal this runs in, cooked and
+	raw, against the PTY ceiling, at its size.
       --repeat N	Time each stage N times after a warm-up; show
 	the median, slowest and fastest (1 to 50; 3).
       --markdown	Print the results as a Markdown table.

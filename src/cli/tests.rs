@@ -380,6 +380,7 @@ fn every_documented_benchmark_option_is_accepted() {
 		"N" | "BYTES" => "4",
 		"COLSxROWS" => "80x24",
 		"NAME,..." => "log",
+		"LIST" => "parse,pty-raw",
 		other => panic!("no sample for {other}"),
 	};
 	let help = include_str!("help.txt");

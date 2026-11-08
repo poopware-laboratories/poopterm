@@ -28,10 +28,18 @@ impl Rng {
 }
 
 /// Grid size the workload targets (full-screen programs draw to it).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Size {
 	pub cols: usize,
 	pub rows: usize,
+}
+
+impl Size {
+	/// `cols`×`rows` kept within what a grid can be: 2 to 1000 each way.
+	pub(crate) fn bounded(cols: usize, rows: usize) -> Self {
+		let (cols, rows) = (cols.clamp(2, 1000), rows.clamp(2, 1000));
+		Self { cols, rows }
+	}
 }
 
 pub(crate) struct Workload {
@@ -481,5 +489,26 @@ mod tests {
 				assert!(data.len() > esc + 1, "{}", workload.name);
 			}
 		}
+	}
+
+	#[test]
+	fn sizes_are_kept_within_what_a_grid_can_be() {
+		assert_eq!(Size::bounded(80, 24), Size { cols: 80, rows: 24 });
+		// Serial consoles and some multiplexers report 0x0.
+		assert_eq!(Size::bounded(0, 0), Size { cols: 2, rows: 2 });
+		assert_eq!(
+			Size::bounded(1001, 5000),
+			Size {
+				cols: 1000,
+				rows: 1000
+			}
+		);
+		assert_eq!(
+			Size::bounded(1000, 2),
+			Size {
+				cols: 1000,
+				rows: 2
+			}
+		);
 	}
 }

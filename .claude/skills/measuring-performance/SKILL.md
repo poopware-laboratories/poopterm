@@ -21,8 +21,8 @@ gain is dropped, however clever. Full details: `docs/performance.md`.
 | Rendering, damage | `highlight_rendering_throughput`; `--benchmark` with frames |
 | Inflate | `inflate_throughput` |
 | Fonts | `font_engine_speed`, `font_engine_stages` |
-| End to end, in a window | `python3 scripts/bench-throughput.py` |
-| PTY ceiling | `python3 scripts/bench-pty.py` |
+| End to end, in a window | `poopterm --benchmark --terminal`, run inside the window |
+| PTY ceiling, reader and parser threads | `poopterm --benchmark --stages pty,pty-raw,pipeline,pipeline-raw` |
 
    `poopterm --benchmark --list` lists the workloads. Report every workload,
    not just the one that improved: a regression elsewhere counts.

@@ -30,40 +30,61 @@ then `--repeat` times (default 3); cells show the median MB/s with the
 slowest and fastest run, and the overall row is total bytes over total
 time at the medians, per stage. `--markdown` prints the same as a table.
 
+`--stages` picks the columns. `parse` and `render` are headless: the
+parser fed from memory, then with frames drawn. `pty` is the kernel's
+ceiling: `cat` writes the workload through a real PTY at `--size` and
+nothing is parsed. `pipeline` sends the same bytes through Poopterm's own
+reader thread, output queue and parser thread, as a window would, without
+drawing. Each comes cooked (the terminal's default settings, so the kernel
+turns `\n` into `\r\n`) and raw (`stty -opost`), so you can tell the
+kernel's cost from ours; rates count the workload's bytes either way. A
+note under the table lists the workloads whose pipeline reaches 90% of the
+PTY ceiling in the same mode: those are kernel-bound, and a faster parser
+will not show there.
+
+```sh
+./target/release/poopterm --benchmark --stages all --markdown
+```
+
 `--read` sets the bytes per parser call (default 64 KiB, one PTY read) and
 `--frame-every` the bytes between frames (default 1 MiB). Small values model
 interactive programs, which write a few bytes at a time and get a frame for
 most writes.
 
-**End to end**, in any terminal (also for comparing emulators):
+**End to end**, in any terminal (also for comparing emulators), run the
+benchmark inside it with `--terminal`:
 
 ```sh
-python3 scripts/bench-throughput.py                        # 16 MiB × 3 runs per workload
-python3 scripts/bench-throughput.py --mib 64 --repeat 5 --only log --only emoji
-python3 scripts/bench-throughput.py --format json --output results.json
+./target/release/poopterm --benchmark --terminal                # 16 MiB × 3 runs per workload
+./target/release/poopterm --benchmark --terminal --mib 64 --repeat 5 --only log,emoji
+./target/release/poopterm --benchmark --terminal --markdown     # for a pull request
 ```
 
-It takes the workloads from `poopterm --bench-corpus`, generated for the
-window's size, so every terminal gets identical bytes. Each timer stops only
-after a DA1 (`CSI c`) round-trip proves the terminal parsed everything. It
-reports the median and min–max of the runs plus the window size; compare
-terminals at the same window size, since grid size affects the cost.
-The script uses `target/release/poopterm` when present, otherwise it finds
-`poopterm` on `PATH`; set `POOPTERM_BIN` to choose a different build.
+It writes each workload to the terminal it runs in, cooked and raw, beside
+the PTY ceiling at the same size, and the same notes mark the workloads
+where the terminal reaches 90% of that ceiling: there the kernel, not the
+terminal, sets the pace. The workloads are built for the terminal's size
+(`stty size`; `--size` overrides it), so every terminal gets identical
+bytes, and each timer stops only after a DA1 (`CSI c`) round-trip proves
+the terminal parsed everything. Compare terminals at the same size, since
+grid size affects the cost. `--stages` mixes `terminal` and
+`terminal-raw` with any other stage; `all` leaves them out, since they need
+a terminal to run in.
 
 The terminal is named by its XTVERSION reply (`CSI > q`), not `TERM_PROGRAM`,
-which a terminal launched from another one inherits. Every write, including
-the warm-up, ends on a whole escape sequence and UTF-8 character: a DA1
-query that lands inside an unfinished `CSI` is answered by Poopterm and
-xterm, but dropped by kitty, which used to abort the run.
+which a terminal launched from another one inherits. Settings go through
+`stty` on the terminal: echo and line editing off while measuring, output
+processing on or off per mode, and everything restored afterwards, also
+after an error or Ctrl-C, which stops the run. The screen is cleared at the
+end, kitty images included. Every write, including the warm-up, ends on a
+whole escape sequence and UTF-8 character: a DA1 query that lands inside an
+unfinished `CSI` is answered by Poopterm and xterm, but dropped by kitty.
 
-It also reports the terminal's resident memory (RSS): before the first
-workload, after each one once it has settled (`--settle`, default 1 s), and
-the peak (`VmHWM`) at the end. The terminal is the first ancestor of the
-script that is not attached to the script's own terminal; under tmux that is
-the tmux server, so pass `--pid` to name the emulator instead. Linux reads
-`/proc`; elsewhere `ps` gives the resident set but no peak. Compare memory
-only between runs with the same workloads, window size and scrollback limit.
+A last note gives the terminal's resident memory (RSS) at the start and the
+end, and its peak (`VmHWM`, Linux only). The terminal is the first ancestor
+not attached to the benchmark's own terminal; under tmux or screen that is
+the multiplexer's server. Compare memory only between runs with the same
+workloads, size and scrollback limit.
 
 **Frames and typing latency**, in Poopterm's own windows:
 `POOPTERM_FRAME_STATS=<file>` makes a run write its samples as JSON on
@@ -82,7 +103,7 @@ python3 scripts/bench-frames.py --runs 5 --binary /tmp/poopterm-before --binary 
 ```
 
 **Parser only**, without rendering: `cargo test --release -- --ignored
---nocapture parser_throughput`. **PTY ceiling**: `scripts/bench-pty.py`.
+--nocapture parser_throughput`. **PTY ceiling**: `--stages pty,pty-raw`.
 **Inflate**: `inflate_throughput`, the same way (our decoder against
 `miniz_oxide`). The other benchmarks are listed in
 [`testing.md`](testing.md#running).

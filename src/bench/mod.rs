@@ -1,16 +1,22 @@
-//! Headless benchmarks over a corpus of real-world workloads.
+//! Benchmarks over a corpus of real-world workloads.
 //!
 //! `poopterm --benchmark` feeds every workload through the parser and
 //! terminal, with and without rendering frames, several times, and prints
 //! the median MB/s with its spread. It needs no window, so it is also the
-//! training run for profile-guided optimization.
-//! `poopterm --bench-corpus NAME` prints a workload's bytes, so other
-//! terminals can be measured on identical input (`scripts/bench-throughput.py`).
+//! training run for profile-guided optimization. Other stages send the same
+//! bytes through a real PTY, Poopterm's own PTY pipeline, or (`--terminal`)
+//! whatever terminal it runs in, so every terminal is measured on identical
+//! input. `poopterm --bench-corpus NAME` prints a workload's bytes.
 pub(crate) mod corpus;
 pub(crate) mod images;
+pub(crate) mod mark;
+pub(crate) mod memory;
+pub(crate) mod pty;
+pub(crate) mod replies;
 pub(crate) mod report;
 pub(crate) mod stats;
 pub(crate) mod table;
+pub(crate) mod terminal;
 
 use crate::{
 	parser::Parser,
@@ -24,7 +30,7 @@ use crate::{
 };
 use corpus::{Size, WORKLOADS, Workload};
 use report::{Stage, report};
-use std::{error::Error, io::Write, time::Instant};
+use std::{error::Error, fs::File, io::Write, time::Instant};
 use table::Style;
 
 /// Bytes per `advance` call, like one PTY read.
@@ -41,8 +47,10 @@ pub(crate) struct Options {
 	/// Bytes per workload.
 	bytes: usize,
 	size: Size,
+	/// Whether `--size` was given; otherwise `--terminal` uses the window's.
+	sized: bool,
 	only: Vec<String>,
-	render: bool,
+	stages: Vec<Stage>,
 	feed: Feed,
 	/// Timed runs of each stage, after one untimed warm-up.
 	repeat: usize,
@@ -74,8 +82,9 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 			cols: 120,
 			rows: 40,
 		},
+		sized: false,
 		only: Vec::new(),
-		render: true,
+		stages: report::HEADLESS.to_vec(),
 		feed: Feed::FLOOD,
 		repeat: REPEAT,
 		style: Style::Text,
@@ -89,15 +98,15 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 			"--size" => {
 				let value = value()?;
 				let (cols, rows) = value.split_once('x').ok_or("--size is COLSxROWS")?;
-				options.size = Size {
-					cols: cols.parse::<usize>()?.clamp(2, 1000),
-					rows: rows.parse::<usize>()?.clamp(2, 1000),
-				};
+				options.size = Size::bounded(cols.parse()?, rows.parse()?);
+				options.sized = true;
 			}
 			"--read" => options.feed.read = value()?.parse::<usize>()?.clamp(1, 1 << 20),
 			"--frame-every" => options.feed.frame_every = value()?.parse::<usize>()?.clamp(1, 1 << 30),
 			"--only" => options.only.extend(value()?.split(',').map(str::to_owned)),
-			"--no-render" => options.render = false,
+			"--no-render" => options.stages.retain(|&stage| stage != Stage::Render),
+			"--stages" => options.stages = report::stages(&value()?)?,
+			"--terminal" => options.stages = report::stages("pty,pty-raw,terminal,terminal-raw")?,
 			"--repeat" => options.repeat = value()?.parse::<usize>()?.clamp(1, 50),
 			"--markdown" => options.style = Style::Markdown,
 			"--list" => {
@@ -115,6 +124,9 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 	for name in &options.only {
 		corpus::find(name).ok_or_else(|| format!("unknown workload: {name}; try --list"))?;
 	}
+	if options.stages.is_empty() {
+		return Err("no stages left to run".into());
+	}
 	Ok(options)
 }
 
@@ -122,6 +134,19 @@ fn fonts() -> FontSet {
 	let font =
 		crate::fonts::Font::from_bytes(crate::fonts::BUNDLED, 0).expect("bundled font is valid");
 	FontSet::new(font, Vec::new())
+}
+
+/// A terminal of `size` whose history is full, as after real use: costs
+/// that grow with history (copying it, say) show up only when there is some.
+pub(crate) fn primed(size: Size) -> Term {
+	let theme = Theme::from_kind(ThemeKind::Poop);
+	let mut term = Term::new(size.cols, size.rows, theme, "/".into());
+	(term.cell_width, term.cell_height) = CELL;
+	let line = format!("{}\r\n", "x".repeat(size.cols / 2));
+	let lines = term.scrollback_limit + size.rows;
+	Parser::new().advance(&mut term, line.repeat(lines).as_bytes());
+	term.responses.clear();
+	term
 }
 
 /// Feeds `data` to a terminal whose history is full, as after real use, in
@@ -134,14 +159,8 @@ pub(crate) fn measure(
 	mut fonts: Option<&mut FontSet>,
 ) -> f64 {
 	let theme = Theme::from_kind(ThemeKind::Poop);
-	let mut term = Term::new(size.cols, size.rows, theme, "/".into());
-	(term.cell_width, term.cell_height) = CELL;
+	let mut term = primed(size);
 	let mut parser = Parser::new();
-	// Costs that grow with history (copying it, say) show up only when there is some.
-	let line = format!("{}\r\n", "x".repeat(size.cols / 2));
-	let lines = term.scrollback_limit + size.rows;
-	parser.advance(&mut term, line.repeat(lines).as_bytes());
-	term.responses.clear();
 	let mut frame = Frame::default();
 	let mut pixels = vec![0u32; size.cols * CELL.0 * size.rows * CELL.1];
 	let start = Instant::now();
@@ -206,19 +225,65 @@ fn selected(options: &Options) -> impl Iterator<Item = &'static Workload> + '_ {
 }
 
 /// `poopterm --benchmark [--mib N] [--size COLSxROWS] [--only a,b] [--read BYTES]
-/// [--frame-every BYTES] [--repeat N] [--no-render] [--markdown] [--list]`
+/// [--frame-every BYTES] [--repeat N] [--stages LIST] [--terminal] [--no-render]
+/// [--markdown] [--list]`
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), Box<dyn Error>> {
 	let options = options(args)?;
-	let mut fonts = fonts();
-	let (size, feed) = (options.size, options.feed);
-	let table = report(&options, |stage, data| match stage {
-		Stage::Parse => measure(data, size, feed, None),
-		Stage::Render => measure(data, size, feed, Some(&mut fonts)),
-	});
-	print!("{}", table.render(options.style));
+	let style = options.style;
+	let in_terminal = |stage: &Stage| matches!(stage, Stage::Terminal(_));
+	let mut tty = None;
+	if options.stages.iter().any(in_terminal) {
+		let file = File::options().read(true).write(true).open("/dev/tty");
+		let file = file.map_err(|error| format!("--terminal needs a terminal to run in: {error}"))?;
+		tty = Some((file, memory::terminal_pid(std::process::id(), memory::stat)));
+	}
+	print!("{}", benchmark(options, tty)?.render(style));
 	Ok(())
 }
 
+/// The report for `options`, measuring terminal stages in `tty`, whose
+/// emulator is process `pid` when known. A terminal sets the size unless
+/// `--size` did, its XTVERSION answer names it in the first note, and its
+/// memory gets a note when its process is known. It is given back before
+/// this returns.
+fn benchmark(
+	mut options: Options,
+	tty: Option<(File, Option<u32>)>,
+) -> Result<table::Table, Box<dyn Error>> {
+	let (tty, pid) = tty.unzip();
+	let pid = pid.flatten();
+	let before = pid.and_then(memory::resident_kib);
+	let mut terminal = tty.map(terminal::Terminal::open).transpose()?;
+	let mut name = None;
+	if let Some(terminal) = &mut terminal {
+		name = replies::xtversion(&terminal.ask(b"\x1b[>q")?);
+		if !options.sized {
+			options.size = terminal.size()?;
+		}
+	}
+	let mut fonts = fonts();
+	let (size, feed) = (options.size, options.feed);
+	let mut table = report(&options, |stage, data| match stage {
+		Stage::Parse => Ok(measure(data, size, feed, None)),
+		Stage::Render => Ok(measure(data, size, feed, Some(&mut fonts))),
+		Stage::Pty(mode) => pty::rate(data, size, mode, false),
+		Stage::Pipeline(mode) => pty::rate(data, size, mode, true),
+		Stage::Terminal(mode) => (terminal.as_mut())
+			.ok_or("terminal stages need a terminal")?
+			.rate(data, mode),
+	})?;
+	if terminal.take().is_some() {
+		let name = name
+			.as_deref()
+			.unwrap_or("a terminal that did not say its name");
+		table.notes.insert(0, format!("measured in {name}"));
+	}
+	if let Some(pid) = pid {
+		let (after, peak) = (memory::resident_kib(pid), memory::peak(pid));
+		table.notes.push(memory::note(pid, before, after, peak));
+	}
+	Ok(table)
+}
 /// `poopterm --bench-corpus NAME [--mib N | --kib N] [--size COLSxROWS]`: the bytes of one workload.
 pub(crate) fn print_corpus(mut args: impl Iterator<Item = String>) -> Result<(), Box<dyn Error>> {
 	let name = args
@@ -315,6 +380,230 @@ mod tests {
 		// Later options still apply after it; it takes no value.
 		let options = parsed(&["--markdown", "--repeat", "2"]).unwrap();
 		assert_eq!((options.style, options.repeat), (Style::Markdown, 2));
+	}
+
+	#[test]
+	fn a_primed_terminal_has_a_full_history_and_nothing_to_answer() {
+		let term = primed(Size { cols: 30, rows: 5 });
+		assert_eq!(term.scrollback.len(), term.scrollback_limit);
+		assert!(term.scrollback_limit > 0);
+		assert_eq!((term.cell_width, term.cell_height), CELL);
+		assert!(term.responses.is_empty());
+		// Half-width lines, and the cursor home on the empty last one.
+		let top: String = term.grid[0].iter().map(|cell| cell.ch).collect();
+		assert_eq!(top.trim_end(), "x".repeat(15));
+		assert_eq!((term.cx, term.cy), (0, 4));
+	}
+
+	#[test]
+	fn both_headless_stages_run_by_default() {
+		assert_eq!(parsed(&[]).unwrap().stages, [Stage::Parse, Stage::Render]);
+		assert_eq!(parsed(&["--no-render"]).unwrap().stages, [Stage::Parse]);
+	}
+
+	#[test]
+	fn stages_are_chosen_by_name() {
+		let options = parsed(&["--stages", "pipeline-raw,pty"]).unwrap();
+		assert_eq!(
+			options.stages,
+			[
+				Stage::Pipeline(pty::Mode::Raw),
+				Stage::Pty(pty::Mode::Cooked)
+			]
+		);
+	}
+
+	#[test]
+	fn the_later_of_no_render_and_stages_wins() {
+		// --no-render takes rendering out of whatever was chosen so far.
+		let dropped = parsed(&["--stages", "render,pty-raw", "--no-render"]).unwrap();
+		assert_eq!(dropped.stages, [Stage::Pty(pty::Mode::Raw)]);
+		let chosen = parsed(&["--no-render", "--stages", "render"]).unwrap();
+		assert_eq!(chosen.stages, [Stage::Render]);
+	}
+
+	#[test]
+	fn no_render_after_all_drops_only_rendering() {
+		let stages = parsed(&["--stages", "all", "--no-render"]).unwrap().stages;
+		assert_eq!(stages.len(), 5, "{stages:?}");
+		assert!(!stages.contains(&Stage::Render));
+		assert_eq!(stages[0], Stage::Parse);
+	}
+
+	#[test]
+	fn dropping_the_only_stage_is_an_error() {
+		let error = parsed(&["--stages", "render", "--no-render"])
+			.err()
+			.unwrap();
+		assert_eq!(error, "no stages left to run");
+		assert!(parsed(&["--stages", "render,pty", "--no-render"]).is_ok());
+	}
+
+	#[test]
+	fn terminal_runs_the_terminal_and_its_ceiling_in_both_modes() {
+		let options = parsed(&["--terminal"]).unwrap();
+		use {Stage::*, pty::Mode::*};
+		let expected = [Pty(Cooked), Pty(Raw), Terminal(Cooked), Terminal(Raw)];
+		assert_eq!(options.stages, expected);
+		assert!(!options.sized);
+		assert!(parsed(&["--size", "80x24", "--terminal"]).unwrap().sized);
+	}
+
+	#[test]
+	fn a_size_given_is_bounded_and_must_be_cols_by_rows() {
+		let size = |value| parsed(&["--size", value]).map(|options| options.size);
+		assert_eq!(size("0x0"), Ok(Size { cols: 2, rows: 2 }));
+		assert_eq!(
+			size("5000x40"),
+			Ok(Size {
+				cols: 1000,
+				rows: 40
+			})
+		);
+		assert_eq!(size("80"), Err("--size is COLSxROWS".into()));
+		assert!(size("80x").is_err());
+		assert!(size("-1x24").is_err());
+	}
+
+	#[test]
+	fn the_later_of_terminal_and_stages_wins() {
+		let options = parsed(&["--terminal", "--stages", "parse"]).unwrap();
+		assert_eq!(options.stages, [Stage::Parse]);
+		let options = parsed(&["--stages", "parse", "--terminal"]).unwrap();
+		assert!(
+			!options.stages.contains(&Stage::Parse),
+			"{:?}",
+			options.stages
+		);
+	}
+
+	/// A quick benchmark of `log` through Poopterm's own terminal on a PTY
+	/// of 93×27, with `more` options.
+	fn in_a_terminal(more: &[&str]) -> (table::Table, terminal::tests::Emulator) {
+		let pid = Some(std::process::id());
+		let (table, emulator) = in_one_answering(terminal::tests::Answers::Whole, pid, more);
+		(table.unwrap(), emulator)
+	}
+
+	/// [`in_a_terminal`], with the terminal answering as `answers` says and
+	/// its process `pid`.
+	fn in_one_answering(
+		answers: terminal::tests::Answers,
+		pid: Option<u32>,
+		more: &[&str],
+	) -> (Result<table::Table, String>, terminal::tests::Emulator) {
+		let (tty, emulator) = terminal::tests::emulator(93, 27, answers);
+		let mut args = vec![
+			"--terminal",
+			"--only",
+			"log",
+			"--kib",
+			"16",
+			"--repeat",
+			"1",
+		];
+		args.extend(more);
+		let table = benchmark(parsed(&args).unwrap(), Some((tty, pid)));
+		(table.map_err(|error| error.to_string()), emulator)
+	}
+
+	#[test]
+	fn a_terminal_that_does_not_say_its_name_is_still_measured() {
+		let (table, _) = in_one_answering(terminal::tests::Answers::Anonymous, None, &[]);
+		let notes = table.unwrap().notes;
+		assert_eq!(notes[0], "measured in a terminal that did not say its name");
+		// Its process is unknown, so its memory goes unnoted.
+		assert!(
+			notes.iter().all(|note| !note.starts_with("memory")),
+			"{notes:?}"
+		);
+	}
+
+	#[test]
+	fn ctrl_c_stops_the_benchmark_and_gives_the_terminal_back() {
+		let (tty, emulator) = terminal::tests::emulator(93, 27, terminal::tests::Answers::Never);
+		let watch = tty.try_clone().unwrap();
+		let before = terminal::tests::settings(&watch);
+		// Pressed once the run has the terminal raw: earlier, the line
+		// discipline would take it as a signal.
+		let user = std::thread::spawn(move || {
+			while emulator.seen().is_empty() {
+				std::thread::sleep(std::time::Duration::from_millis(5));
+			}
+			emulator.type_in(&[0x03]);
+			emulator
+		});
+		let options = parsed(&["--terminal", "--only", "log", "--kib", "4"]).unwrap();
+		let error = benchmark(options, Some((tty, None))).err().unwrap();
+		assert_eq!(error.to_string(), "interrupted");
+		assert_eq!(terminal::tests::settings(&watch), before);
+		assert!(user.join().unwrap().seen().ends_with(terminal::CLEAR));
+	}
+
+	#[test]
+	fn a_terminal_run_is_sized_and_named_by_the_terminal() {
+		let (table, emulator) = in_a_terminal(&[]);
+		assert!(table.title.contains(", 93x27, 16 KiB"), "{}", table.title);
+		let version = env!("CARGO_PKG_VERSION");
+		assert_eq!(table.notes[0], format!("measured in poopterm {version}"));
+		assert_eq!(
+			table.columns,
+			["pty", "pty raw", "terminal", "terminal raw"]
+		);
+		let cells = &table.rows[0].cells;
+		assert!(
+			cells
+				.iter()
+				.all(|cell| cell.is_some_and(|spread| spread.median > 0.0))
+		);
+		// Every workload byte reached the terminal, the warm-up's too, and
+		// the terminal was given back cleared.
+		let seen = emulator.seen();
+		let log = corpus::find("log")
+			.unwrap()
+			.build(16 << 10, Size { cols: 93, rows: 27 });
+		assert!(seen.len() > 2 * log.len(), "{}", seen.len());
+		assert!(seen.ends_with(terminal::CLEAR));
+		// This process stands in for the emulator's, whose memory is noted.
+		let memory = table.notes.last().unwrap();
+		let pid = std::process::id();
+		assert!(
+			memory.starts_with(&format!("memory of pid {pid}: ")),
+			"{memory}"
+		);
+		assert!(!memory.contains("- MiB at the end"), "{memory}");
+		assert!(!memory.contains("- MiB at start"), "{memory}");
+	}
+
+	#[test]
+	fn a_size_given_wins_over_the_terminals() {
+		let (table, _) = in_a_terminal(&["--size", "40x12"]);
+		assert!(table.title.contains(", 40x12, "), "{}", table.title);
+	}
+
+	#[test]
+	fn without_terminal_stages_no_terminal_is_needed_or_named() {
+		let options = parsed(&["--only", "log", "--kib", "4", "--repeat", "1"]).unwrap();
+		let table = benchmark(options, None).unwrap();
+		assert!(
+			table
+				.notes
+				.iter()
+				.all(|note| !note.starts_with("measured in"))
+		);
+		let options = parsed(&["--stages", "terminal", "--only", "log", "--kib", "4"]).unwrap();
+		let error = benchmark(options, None).err().unwrap().to_string();
+		assert_eq!(error, "terminal stages need a terminal");
+	}
+
+	#[test]
+	fn an_unknown_stage_is_an_error() {
+		let error = parsed(&["--stages", "parse,gpu"]).err().unwrap();
+		assert!(error.starts_with("unknown stage: gpu; "), "{error}");
+		assert_eq!(
+			parsed(&["--stages"]).err().unwrap(),
+			"--stages needs a value"
+		);
 	}
 
 	#[test]
