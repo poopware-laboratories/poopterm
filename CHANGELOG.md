@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.42 "Lunar Moth" — 2026-11-08
+
+### Added
+
+- Derive chrome colors from the theme with blend rules (#257) (ui).
+
 ## 26.11.41 "Lunar Moth" — 2026-11-08
 
 ### Maintenance
