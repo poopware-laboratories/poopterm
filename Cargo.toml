@@ -4,7 +4,7 @@ cargo-features = ["trim-paths"]
 
 [package]
 name = "poopterm"
-version = "26.11.39"
+version = "26.11.40"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 

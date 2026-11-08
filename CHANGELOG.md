@@ -1,5 +1,22 @@
 # Changelog
 
+## 26.11.40 "Lunar Moth" — 2026-11-08
+
+### Added
+
+- Recolor the terminal with each theme's palette (#252) (theme).
+- Split a tab into panes (#255) (ui).
+- Draw macos windows with metal by default through our own objective-c bindings (#246) (gpu).
+
+### Fixed
+
+- Open ptys one at a time so FreeBSD's openpty cannot cross them (#250) (pty).
+
+### Maintenance
+
+- Share the quad encoding and software reference between backends (#244) (gpu).
+- Name the chrome's corner radii in one table (#253) (ui).
+
 ## 26.11.39 "Lunar Moth" — 2026-11-08
 
 ### Added
