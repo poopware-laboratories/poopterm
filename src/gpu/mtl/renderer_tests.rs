@@ -20,7 +20,7 @@ use crate::{
 		pen::{Ink, Pen},
 	},
 };
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 /// The atlas: four pages of 64 pixels square; and the target's size.
 const ATLAS: (usize, usize) = (64, 4);
@@ -250,4 +250,204 @@ fn restarting_forgets_every_texture_and_the_pen_s_glyphs() {
 	// Waiting with nothing in flight is done at once.
 	assert_eq!(renderer.finish(), Ok(()));
 	assert_eq!(renderer.finish(), Ok(()));
+}
+
+/// A renderer on the fake device, or `None` without a real device, whose
+/// functions the fake's pipeline takes.
+fn faked() -> Option<(Device, Renderer)> {
+	device()?;
+	let device = Rc::new(crate::gpu::mtl::fake_tests::fake(0));
+	let renderer = Renderer::new(&device, ATLAS).unwrap();
+	crate::gpu::mtl::fake_tests::made();
+	let device = Rc::try_unwrap(device).ok();
+	// The renderer keeps the device; a second fake stands in for targets.
+	Some((
+		device.unwrap_or_else(|| crate::gpu::mtl::fake_tests::fake(0)),
+		renderer,
+	))
+}
+
+#[test]
+fn a_frame_writes_each_new_glyph_to_its_slot_and_each_image_whole() {
+	use crate::gpu::mtl::fake_tests::{Made, made};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	made();
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	pen.begin_frame(SIZE);
+	let whole = (0, 0, SIZE.0 as i32, SIZE.1 as i32);
+	pen.glyph(
+		&glyph(3, 2),
+		Ink::Drawn('a', (3, 2)),
+		(0, 0),
+		whole,
+		false,
+		0xff_ffff,
+	);
+	place(&mut pen, &bitmap(5, 4));
+	let slot = pen.uploads[0].slot;
+	renderer.frame(&mut pen, &target, |_| Ok(())).unwrap();
+	let made = made();
+	let atlas = renderer.atlas.texture.raw() as usize;
+	// The image's texture and its texels, the quad buffer grown to two
+	// quads, then the glyph's coverage, opaque white.
+	assert!(matches!(
+		made[0],
+		Made::Texture {
+			width: 5,
+			height: 4,
+			layers: 1,
+			..
+		}
+	));
+	let image = renderer
+		.textures
+		.get(&pen.images[0].placement.bitmap)
+		.unwrap()
+		.texture
+		.raw() as usize;
+	assert_eq!(
+		made[1..],
+		[
+			Made::Upload {
+				texture: image,
+				origin: [0, 0, 0],
+				size: [5, 4, 1],
+				slice: 0,
+				row: 20,
+				image: 80,
+				first: 0xff00_0000,
+			},
+			Made::Buffer {
+				length: 2 * 48,
+				options: 0,
+			},
+			Made::Upload {
+				texture: atlas,
+				origin: [slot.x, slot.y, 0],
+				size: [3, 2, 1],
+				slice: slot.page,
+				row: 12,
+				image: 24,
+				first: 0xffff_ffff,
+			},
+		]
+	);
+}
+
+#[test]
+fn a_frame_whose_image_texture_metal_refuses_fails_and_starts_over() {
+	use crate::gpu::mtl::fake_tests::{TEXTURE, refuse};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	place(&mut pen, &bitmap(2, 2));
+	refuse(TEXTURE);
+	let drawn = renderer.frame(&mut pen, &target, |_| Ok(()));
+	refuse(0);
+	assert_eq!(drawn, Err(Error::Refused("texture")));
+	assert!(pen.quads.is_empty() && pen.images.is_empty() && pen.complete);
+	assert_eq!(renderer.textures.len(), 0);
+}
+
+#[test]
+fn a_frame_without_commands_fails_and_its_glyphs_are_uploaded_again() {
+	use crate::gpu::mtl::fake_tests::{COMMANDS, refuse};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	let whole = (0, 0, SIZE.0 as i32, SIZE.1 as i32);
+	pen.begin_frame(SIZE);
+	pen.glyph(
+		&glyph(2, 2),
+		Ink::Drawn('b', (2, 2)),
+		(0, 0),
+		whole,
+		false,
+		0xff_ffff,
+	);
+	refuse(COMMANDS);
+	let drawn = renderer.frame(&mut pen, &target, |_| Ok(()));
+	refuse(0);
+	assert_eq!(drawn, Err(Error::Refused("command buffer")));
+	pen.begin_frame(SIZE);
+	pen.glyph(
+		&glyph(2, 2),
+		Ink::Drawn('b', (2, 2)),
+		(0, 0),
+		whole,
+		false,
+		0xff_ffff,
+	);
+	assert_eq!(pen.uploads.len(), 1);
+}
+
+#[test]
+fn what_then_adds_fails_the_frame_and_nothing_is_committed() {
+	use crate::gpu::mtl::fake_commands_tests::{Call, calls};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	calls();
+	let drawn = renderer.frame(&mut pen, &target, |_| Err(Error::Refused("drawable")));
+	assert_eq!(drawn, Err(Error::Refused("drawable")));
+	assert!(!calls().contains(&Call::Commit));
+	// Nothing in flight to wait for.
+	assert_eq!(renderer.finish(), Ok(()));
+}
+
+#[test]
+fn a_frame_the_gpu_fails_is_said_by_the_next_frame_that_waits_for_it() {
+	use crate::gpu::mtl::fake_tests::{FAILS, refuse};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	renderer.frame(&mut pen, &target, |_| Ok(())).unwrap();
+	refuse(FAILS);
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	let drawn = renderer.frame(&mut pen, &target, |_| Ok(()));
+	refuse(0);
+	assert_eq!(drawn, Err(Error::Gpu("the fake GPU hung".into())));
+	// The failed frame was waited for and let go: the next draws.
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	assert_eq!(renderer.frame(&mut pen, &target, |_| Ok(())), Ok(()));
+}
+
+#[test]
+fn an_atlas_metal_refuses_to_grow_keeps_the_one_it_had() {
+	use crate::gpu::mtl::fake_tests::{TEXTURE, refuse};
+	let Some((_device, mut renderer)) = faked() else {
+		return;
+	};
+	let before = renderer.atlas.texture.raw();
+	refuse(TEXTURE);
+	let more = Wanted {
+		side: 0,
+		pages: true,
+	};
+	let grown = renderer.grow(more);
+	refuse(0);
+	assert_eq!(grown, Err(Error::Refused("texture")));
+	assert_eq!(
+		(renderer.atlas.texture.raw(), renderer.atlas.size),
+		(before, [64, 64, 4])
+	);
 }
