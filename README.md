@@ -197,7 +197,10 @@ session restore and terminfo are described in
 | Action | macOS | Linux and FreeBSD |
 |--------|-------|-------------------|
 | New tab | Cmd+T | Ctrl+Shift+N |
-| Close tab | Cmd+W | Ctrl+Shift+W |
+| Close pane, or tab with its last | Cmd+W | Ctrl+Shift+W |
+| Split pane right / down | Cmd+D / Cmd+Shift+D | Ctrl+Shift+D / Ctrl+Shift+E |
+| Focus pane left, right, up, down | Cmd+Option+arrows | Ctrl+Alt+arrows |
+| Next / previous pane | Cmd+] / Cmd+[ | Ctrl+Alt+] / Ctrl+Alt+[ |
 | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Go to tab 1–9 | Cmd+1–9 | Ctrl+1–9 |
 | Copy / paste | Cmd+C / Cmd+V | Ctrl+Shift+C / Ctrl+Shift+V |
@@ -215,6 +218,11 @@ keeps the saved size. Prompt jumps need
 [shell integration](docs/configuration.md#shell-integration). The mouse
 wheel scrolls back unless the running program has enabled mouse reporting;
 hold **Alt** while dragging to select a rectangle.
+
+A tab splits into two panes side by side or stacked, and one of two side
+by side splits again into one big pane beside two stacked ones. Each pane
+runs its own shell; clicking a pane focuses it, and closing one gives its
+room to the panes beside it.
 
 Change bindings in **Settings → Shortcuts** (click a binding and press a new
 chord) or with the `shortcut_*` keys described in
