@@ -13,6 +13,7 @@ mod bands_tests;
 pub(crate) mod curves;
 #[cfg(test)]
 mod curves_tests;
+pub(crate) mod encode;
 #[cfg(target_os = "macos")]
 pub(crate) mod mtl;
 pub(crate) mod quads;
@@ -25,6 +26,8 @@ mod quads_tests;
 pub(crate) mod record;
 #[cfg(test)]
 mod record_tests;
+#[cfg(test)]
+pub(crate) mod reference_tests;
 pub(crate) mod rows;
 #[cfg(test)]
 mod rows_plan_tests;

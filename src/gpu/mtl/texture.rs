@@ -60,6 +60,25 @@ pub(crate) struct Texture {
 }
 
 impl Texture {
+	/// `texture`, a 2D `MTLTexture` Metal made, as one made for `usage`,
+	/// at the size it says it is.
+	///
+	/// # Safety
+	///
+	/// `texture` is a 2D BGRA `MTLTexture` made for at least `usage`.
+	pub(crate) unsafe fn made(texture: Object, usage: Usage) -> Self {
+		// SAFETY: as the caller vouches; `width` and `height` take nothing
+		// and return `NSUInteger`s.
+		let [width, height]: [usize; 2] =
+			unsafe { [texture.send(c"width", ()), texture.send(c"height", ())] };
+		let size = [width, height].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+		Self {
+			texture,
+			size: [size[0], size[1], 1],
+			usage,
+		}
+	}
+
 	/// A texture `size` texels large (width, height and layers), an array
 	/// when `array`, for `usage`.
 	pub(crate) fn new(
@@ -142,4 +161,4 @@ impl Texture {
 
 #[cfg(test)]
 #[path = "texture_tests.rs"]
-mod tests;
+pub(crate) mod tests;
