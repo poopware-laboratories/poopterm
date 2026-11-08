@@ -15,6 +15,7 @@ use crate::{
 		diagnostics::{Diagnostics, statuses},
 		diagnostics_colors::DiagnosticsColors,
 		diagnostics_page::{Section, copy_label, log_intro, log_rows, split_time},
+		metrics::{Corner, concentric, pill_radius},
 	},
 };
 
@@ -161,11 +162,12 @@ fn graphics(diagnostics: &Diagnostics, colors: &DiagnosticsColors, p: &mut Scene
 /// A 12 px ring in `color` around a dot when `full`, its inside `page`.
 fn mark(p: &mut Scene, (x, y): (usize, usize), s: usize, full: bool, color: u32, page: u32) {
 	let (side, stroke) = (12 * s, (3 * s).div_ceil(2));
-	let inner = side - 2 * stroke;
-	p.round_rect(x, y, side, side, side / 2, color);
-	p.round_rect(x + stroke, y + stroke, inner, inner, inner / 2, page);
+	let (inner, dot) = (side - 2 * stroke, 6 * s);
+	p.round_rect(x, y, side, side, pill_radius(side), color);
+	let ring = pill_radius(inner);
+	p.round_rect(x + stroke, y + stroke, inner, inner, ring, page);
 	if full {
-		p.round_rect(x + 3 * s, y + 3 * s, 6 * s, 6 * s, 3 * s, color);
+		p.round_rect(x + 3 * s, y + 3 * s, dot, dot, pill_radius(dot), color);
 	}
 }
 
@@ -180,13 +182,13 @@ fn log(diagnostics: &Diagnostics, colors: &DiagnosticsColors, p: &mut Scene, pen
 		right.saturating_sub(x),
 		(p.height / s).saturating_sub(WELL_TOP + WELL_BOTTOM) * s,
 	);
-	p.round_rect(x, y, w, h, 6 * s, colors.border);
+	p.round_rect(x, y, w, h, Corner::Control.radius(s), colors.border);
 	p.round_rect(
 		x + s,
 		y + s,
 		w.saturating_sub(2 * s),
 		h.saturating_sub(2 * s),
-		5 * s,
+		concentric(Corner::Control.radius(s), s),
 		colors.well,
 	);
 	let (inset_x, inset_y) = WELL_INSET;

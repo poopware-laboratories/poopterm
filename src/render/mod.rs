@@ -32,6 +32,8 @@ mod pen_tests;
 pub(crate) mod popover;
 #[cfg(test)]
 mod popover_tests;
+#[cfg(test)]
+mod radius_scene_tests;
 pub(crate) mod scene;
 #[cfg(test)]
 mod scene_tests;

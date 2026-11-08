@@ -36,6 +36,9 @@ mod header_tests;
 mod header_window_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
+pub(crate) mod metrics;
+#[cfg(test)]
+mod metrics_tests;
 pub(crate) mod overlays;
 #[cfg(test)]
 mod overlays_tests;
