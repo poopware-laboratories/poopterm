@@ -208,10 +208,11 @@ fn dropped_pairs_give_their_descriptors_back() {
 
 #[test]
 fn something_that_is_not_a_terminal_has_no_size() {
-	let null = File::options().write(true).open("/dev/null").unwrap();
-	let error = set_size(&null, cells(80, 24)).unwrap_err();
+	// A regular file: devices such as /dev/null answer ENODEV on macOS.
+	let file = File::open("Cargo.toml").unwrap();
+	let error = set_size(&file, cells(80, 24)).unwrap_err();
 	assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
-	assert_eq!(size(&null).unwrap_err().raw_os_error(), Some(libc::ENOTTY));
+	assert_eq!(size(&file).unwrap_err().raw_os_error(), Some(libc::ENOTTY));
 }
 
 #[test]
@@ -316,11 +317,14 @@ fn typed_input_reaches_the_slave_and_echoes_as_on_portable_ptys() {
 fn the_master_ends_once_the_slave_closes() {
 	let ours = open(cells(80, 24)).unwrap();
 	let mut out = File::from(ours.master.try_clone().unwrap());
-	File::from(ours.slave).write_all(b"last\n").unwrap();
-	// What was written before the close still arrives.
+	let mut slave = File::from(ours.slave);
+	slave.write_all(b"last\n").unwrap();
+	// Read before the close: macOS and FreeBSD drop what the master has not
+	// read once the slave closes, Linux keeps it.
 	let mut buf = [0; 16];
 	let n = out.read(&mut buf).unwrap();
 	assert_eq!(&buf[..n], b"last\r\n");
+	drop(slave);
 	// Then Linux answers EIO and the BSDs end of file (portable-pty's reader
 	// turns both into an end of file); a reader must stop at either.
 	match out.read(&mut buf) {

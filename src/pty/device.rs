@@ -85,36 +85,30 @@ pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
 	})
 }
 
-/// Where the slave of `master` lives. Linux has the reentrant
-/// `ptsname_r`; elsewhere `ptsname` fills a static buffer, so our calls
-/// take turns and copy the name out first.
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+	/// libSystem's reentrant `ptsname` (macOS 10.13.4 and later), which the
+	/// libc crate does not declare.
+	fn ptsname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::size_t) -> libc::c_int;
+}
+#[cfg(not(target_os = "macos"))]
+use libc::ptsname_r;
+
+/// Where the slave of `master` lives, from the reentrant `ptsname_r`:
+/// plain `ptsname` fills one buffer for the whole process, which threads
+/// opening PTYs at once (portable-pty's included) overwrite.
 fn slave_path(master: &OwnedFd) -> io::Result<PathBuf> {
-	#[cfg(target_os = "linux")]
-	{
-		let mut name = [0u8; 128];
-		// SAFETY: writes at most `name.len()` bytes, NUL included, into `name`.
-		let error =
-			unsafe { libc::ptsname_r(master.as_raw_fd(), name.as_mut_ptr().cast(), name.len()) };
-		if error != 0 {
-			return Err(io::Error::from_raw_os_error(error));
-		}
-		let name = std::ffi::CStr::from_bytes_until_nul(&name).map_err(io::Error::other)?;
-		Ok(PathBuf::from(std::ffi::OsStr::from_bytes(name.to_bytes())))
+	let mut name = [0u8; 128];
+	// SAFETY: writes at most `name.len()` bytes, NUL included, into `name`.
+	let error = unsafe { ptsname_r(master.as_raw_fd(), name.as_mut_ptr().cast(), name.len()) };
+	// Linux and FreeBSD return the error, macOS -1 and sets `errno`.
+	match error {
+		0 => {}
+		-1 => return Err(io::Error::last_os_error()),
+		error => return Err(io::Error::from_raw_os_error(error)),
 	}
-	#[cfg(not(target_os = "linux"))]
-	{
-		static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
-		let _turn = TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-		// SAFETY: `master` is an unlocked PTY master. The result is null or a
-		// C string in a static buffer, read before the turn ends.
-		let name = unsafe { libc::ptsname(master.as_raw_fd()) };
-		if name.is_null() {
-			return Err(io::Error::last_os_error());
-		}
-		// SAFETY: not null, so a NUL-terminated string, unchanged meanwhile.
-		let name = unsafe { std::ffi::CStr::from_ptr(name) };
-		Ok(PathBuf::from(std::ffi::OsStr::from_bytes(name.to_bytes())))
-	}
+	let name = std::ffi::CStr::from_bytes_until_nul(&name).map_err(io::Error::other)?;
+	Ok(PathBuf::from(std::ffi::OsStr::from_bytes(name.to_bytes())))
 }
 
 /// `size` as the ioctls take it.
