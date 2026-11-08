@@ -185,13 +185,6 @@ impl Object {
 		let responds: Bool = unsafe { self.send(c"respondsToSelector:", (sel(selector),)) };
 		responds != 0
 	}
-
-	/// How many references the object has: for tests of ownership.
-	#[cfg(test)]
-	pub(crate) fn references(&self) -> usize {
-		// SAFETY: `retainCount` takes nothing and returns an `NSUInteger`.
-		unsafe { self.send(c"retainCount", ()) }
-	}
 }
 
 impl Clone for Object {

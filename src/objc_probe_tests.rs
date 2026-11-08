@@ -105,6 +105,11 @@ extern "C" fn refuse(this: Raw, _: Sel) -> Raw {
 	NIL
 }
 
+/// A method that returns nil, or a null C string.
+extern "C" fn silent(_: Raw, _: Sel) -> Raw {
+	NIL
+}
+
 /// Registers `name`, a subclass of `NSObject` with `methods`, once.
 fn register(name: &'static CStr, methods: &[(&CStr, *const c_void, &CStr)]) -> Class {
 	let object = class(c"NSObject").unwrap();
@@ -162,6 +167,21 @@ fn refusing() -> Class {
 fn probed() -> Object {
 	// SAFETY: a subclass of `NSObject`, whose `init` is `NSObject`'s.
 	unsafe { probe().instance() }.unwrap()
+}
+
+/// An object that says nothing: its `localizedDescription` is nil and its
+/// `UTF8String` null, as an error or string may be.
+fn silent_object() -> Object {
+	static SILENT: OnceLock<usize> = OnceLock::new();
+	let raw = *SILENT.get_or_init(|| {
+		let methods: [(&CStr, *const c_void, &CStr); 2] = [
+			(c"localizedDescription", silent as *const c_void, c"@@:"),
+			(c"UTF8String", silent as *const c_void, c"r*@:"),
+		];
+		register(c"PooptermSilent", &methods).raw() as usize
+	});
+	// SAFETY: a subclass of `NSObject`, whose `init` is `NSObject`'s.
+	unsafe { class_named(raw).instance() }.unwrap()
 }
 
 fn class_named(raw: usize) -> Class {
@@ -355,4 +375,71 @@ fn a_string_of_many_pages_and_every_plane_survives_the_round_trip() {
 	let made = super::string(&long).unwrap();
 	// SAFETY: an `NSString`.
 	assert_eq!(unsafe { super::text(&made) }, long);
+}
+
+#[test]
+fn an_error_without_a_description_is_described_by_the_fallback() {
+	let silent = silent_object();
+	// SAFETY: answers `localizedDescription`, with nil.
+	assert_eq!(
+		unsafe { super::describe(silent.raw(), "said nothing") },
+		"said nothing"
+	);
+	// The error was retained and released once: it still lives.
+	let mut weak = Weak::new(&silent);
+	assert!(weak.alive());
+	drop(silent);
+	assert!(!weak.alive());
+}
+
+#[test]
+fn a_string_without_text_reads_as_empty() {
+	// SAFETY: answers `UTF8String`, with null.
+	assert_eq!(unsafe { super::text(&silent_object()) }, "");
+}
+
+#[test]
+fn class_methods_carry_integers_and_floats_through_foundation_at_their_extremes() {
+	let _pool = Pool::new();
+	let number = class(c"NSNumber").unwrap();
+	for value in [i64::MIN, -1, 0, 1, i64::MAX] {
+		// SAFETY: `numberWithLongLong:` takes an `i64` and returns an
+		// autoreleased number, whose `longLongValue` returns it.
+		let back: i64 = unsafe {
+			let made = Object::retained(number.send(c"numberWithLongLong:", (value,))).unwrap();
+			made.send(c"longLongValue", ())
+		};
+		assert_eq!(back, value);
+	}
+	for value in [f64::MIN, -0.5, f64::MIN_POSITIVE, 1e300, f64::INFINITY] {
+		// SAFETY: as above, with `numberWithDouble:` and `doubleValue`.
+		let back: f64 = unsafe {
+			let made = Object::retained(number.send(c"numberWithDouble:", (value,))).unwrap();
+			made.send(c"doubleValue", ())
+		};
+		assert_eq!(back.to_bits(), value.to_bits());
+	}
+	// SAFETY: `numberWithFloat:` takes an `f32`; `floatValue` returns one.
+	let back: f32 = unsafe {
+		let made = Object::retained(number.send(c"numberWithFloat:", (f32::MAX,))).unwrap();
+		made.send(c"floatValue", ())
+	};
+	assert_eq!(back, f32::MAX);
+}
+
+#[test]
+fn an_object_made_in_a_pool_and_owned_outlives_it() {
+	let (kept, mut weak) = {
+		let _pool = Pool::new();
+		let class = class(c"NSMutableArray").unwrap();
+		// SAFETY: `array` returns an autoreleased array, retained here.
+		let made = unsafe { Object::retained(class.send(c"array", ())) }.unwrap();
+		let weak = Weak::new(&made);
+		(made, weak)
+	};
+	assert!(weak.alive());
+	// SAFETY: `count` takes nothing and returns an `NSUInteger`.
+	assert_eq!(unsafe { kept.send::<usize>(c"count", ()) }, 0);
+	drop(kept);
+	assert!(!weak.alive());
 }

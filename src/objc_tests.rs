@@ -3,6 +3,12 @@
 //! once, so nothing leaks and nothing is released twice.
 use super::{Bool, NIL, Object, Pool, Raw, class, describe, sel, string, text};
 
+/// How many references `object` has.
+fn references(object: &Object) -> usize {
+	// SAFETY: `retainCount` takes nothing and returns an `NSUInteger`.
+	unsafe { object.send(c"retainCount", ()) }
+}
+
 /// A new `NSObject`, owned.
 fn object() -> Object {
 	let class = class(c"NSObject").unwrap();
@@ -41,12 +47,12 @@ fn an_object_answers_whether_it_has_a_method() {
 #[test]
 fn a_new_object_is_owned_once_and_each_clone_owns_another_reference() {
 	let object = object();
-	assert_eq!(object.references(), 1);
+	assert_eq!(references(&object), 1);
 	let clone = object.clone();
 	assert_eq!(clone, object);
-	assert_eq!(object.references(), 2);
+	assert_eq!(references(&object), 2);
 	drop(clone);
-	assert_eq!(object.references(), 1);
+	assert_eq!(references(&object), 1);
 }
 
 #[test]
@@ -54,9 +60,9 @@ fn an_object_retained_from_a_borrowed_pointer_owns_its_own_reference() {
 	let object = object();
 	// SAFETY: a live `NSObject`.
 	let retained = unsafe { Object::retained(object.raw()) }.unwrap();
-	assert_eq!(object.references(), 2);
+	assert_eq!(references(&object), 2);
 	drop(retained);
-	assert_eq!(object.references(), 1);
+	assert_eq!(references(&object), 1);
 }
 
 #[test]
@@ -78,14 +84,14 @@ fn an_object_autoreleased_in_a_pool_loses_that_reference_when_it_drops() {
 			let _: Raw = object.send(c"retain", ());
 			let _: Raw = object.send(c"autorelease", ());
 		}
-		assert_eq!(object.references(), 2);
+		assert_eq!(references(&object), 2);
 		{
 			// An inner pool releases only what was autoreleased in it.
 			let _inner = Pool::new();
 		}
-		assert_eq!(object.references(), 2);
+		assert_eq!(references(&object), 2);
 	}
-	assert_eq!(object.references(), 1);
+	assert_eq!(references(&object), 1);
 }
 
 #[test]
