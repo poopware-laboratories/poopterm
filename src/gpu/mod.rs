@@ -1,7 +1,7 @@
 //! Data for the GPU renderers, kept free of GPU calls so it is tested like
 //! any other code: glyph outlines laid out for coverage shaders and stored
 //! in a curve buffer, the atlas that holds bitmaps, and the grid as quads;
-//! and our own Vulkan bindings.
+//! and our own Vulkan and Metal bindings.
 pub(crate) mod atlas;
 #[cfg(test)]
 mod atlas_growth_tests;
@@ -13,6 +13,8 @@ mod bands_tests;
 pub(crate) mod curves;
 #[cfg(test)]
 mod curves_tests;
+#[cfg(target_os = "macos")]
+pub(crate) mod mtl;
 pub(crate) mod quads;
 #[cfg(test)]
 mod quads_chrome_tests;

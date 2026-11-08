@@ -110,8 +110,9 @@ extern "C" fn silent(_: Raw, _: Sel) -> Raw {
 	NIL
 }
 
-/// Registers `name`, a subclass of `NSObject` with `methods`, once.
-fn register(name: &'static CStr, methods: &[(&CStr, *const c_void, &CStr)]) -> Class {
+/// Registers `name`, a subclass of `NSObject` with `methods`, once: the
+/// caller registers each name once.
+pub(crate) fn register(name: &'static CStr, methods: &[(&CStr, *const c_void, &CStr)]) -> Class {
 	let object = class(c"NSObject").unwrap();
 	// SAFETY: the name is new to the runtime (each is registered once, by
 	// the `OnceLock`s below), the superclass is a class, and each method's
@@ -184,7 +185,7 @@ fn silent_object() -> Object {
 	unsafe { class_named(raw).instance() }.unwrap()
 }
 
-fn class_named(raw: usize) -> Class {
+pub(crate) fn class_named(raw: usize) -> Class {
 	Class(std::ptr::NonNull::new(raw as Raw).unwrap())
 }
 
