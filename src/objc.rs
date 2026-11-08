@@ -294,5 +294,8 @@ pub(crate) unsafe fn describe(error: Raw, otherwise: &str) -> String {
 pub(crate) const NIL: Raw = ptr::null_mut();
 
 #[cfg(test)]
+#[path = "objc_probe_tests.rs"]
+mod probe_tests;
+#[cfg(test)]
 #[path = "objc_tests.rs"]
 mod tests;
