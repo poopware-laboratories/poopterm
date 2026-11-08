@@ -30,22 +30,13 @@ impl Buffer {
 		})
 	}
 
-	/// What the buffer holds, for the CPU to read once the GPU is done
-	/// with it.
-	pub(crate) fn bytes(&self) -> &[u8] {
-		// SAFETY: a shared buffer's `contents` points to its `size` bytes for
-		// as long as it lives, and `&self` keeps out writers in this process;
-		// the GPU writes it only in frames the caller waited for.
-		unsafe {
-			let contents: *const u8 = self.buffer.send(c"contents", ());
-			std::slice::from_raw_parts(contents, self.size)
-		}
-	}
-
 	/// What the buffer holds, for the CPU to write while no frame the GPU
 	/// has yet to finish reads it.
 	pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
-		// SAFETY: as for `bytes`; `&mut self` makes this the only view.
+		// SAFETY: a shared buffer's `contents` points to its `size` bytes for
+		// as long as it lives, and `&mut self` makes this the only view in
+		// this process; the GPU reads it only in frames the caller waited for
+		// before writing.
 		unsafe {
 			let contents: *mut u8 = self.buffer.send(c"contents", ());
 			std::slice::from_raw_parts_mut(contents, self.size)

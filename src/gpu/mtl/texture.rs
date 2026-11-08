@@ -138,27 +138,6 @@ impl Texture {
 		}
 		Ok(())
 	}
-
-	/// The texels of the first layer, row by row, as the GPU last left them
-	/// in a frame the caller waited for, which synchronized the texture.
-	pub(crate) fn download(&self) -> Vec<u32> {
-		let [width, height, _] = self.size;
-		let mut texels = vec![0u32; width as usize * height as usize];
-		let region = Region {
-			origin: [0; 3],
-			size: [width as usize, height as usize, 1],
-		};
-		// SAFETY: `getBytes:bytesPerRow:fromRegion:mipmapLevel:` takes a
-		// pointer, an `NSUInteger`, a region and a level, and writes the
-		// region's texels there, which has room for them all.
-		unsafe {
-			let _: () = self.texture.send(
-				c"getBytes:bytesPerRow:fromRegion:mipmapLevel:",
-				(texels.as_mut_ptr(), width as usize * 4, region, 0usize),
-			);
-		}
-		texels
-	}
 }
 
 #[cfg(test)]

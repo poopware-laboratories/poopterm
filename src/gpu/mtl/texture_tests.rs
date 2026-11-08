@@ -4,6 +4,27 @@
 use super::{Region, Texture, Usage, region};
 use crate::gpu::mtl::device::{Error, tests::device};
 
+/// The texels of `texture`'s first layer, row by row, as the CPU or a
+/// frame the caller waited for, which synchronized it, left them.
+pub(crate) fn download(texture: &Texture) -> Vec<u32> {
+	let [width, height, _] = texture.size;
+	let mut texels = vec![0u32; width as usize * height as usize];
+	let region = Region {
+		origin: [0; 3],
+		size: [width as usize, height as usize, 1],
+	};
+	// SAFETY: `getBytes:bytesPerRow:fromRegion:mipmapLevel:` takes a
+	// pointer, an `NSUInteger`, a region and a level, and writes the
+	// region's texels there, which has room for them all.
+	unsafe {
+		let _: () = texture.texture.send(
+			c"getBytes:bytesPerRow:fromRegion:mipmapLevel:",
+			(texels.as_mut_ptr(), width as usize * 4, region, 0usize),
+		);
+	}
+	texels
+}
+
 #[test]
 fn a_region_inside_the_texture_and_filled_by_its_texels_is_one() {
 	assert_eq!(
@@ -95,7 +116,7 @@ fn texels_the_cpu_writes_it_reads_back_in_place() {
 	expected[7] = 0xff44_5566;
 	expected[10] = 0xff77_8899;
 	expected[11] = 0xffaa_bbcc;
-	assert_eq!(texture.download(), expected);
+	assert_eq!(download(&texture), expected);
 }
 
 #[test]
@@ -176,4 +197,80 @@ fn a_texture_metal_refuses_leaves_no_descriptor_behind() {
 	let mut descriptors = passed();
 	assert_eq!(descriptors.len(), 1);
 	assert!(!descriptors[0].alive());
+}
+
+#[test]
+fn a_region_is_one_exactly_when_every_texel_it_names_lies_inside() {
+	// Against a brute-force oracle: every texel of the region, one by one.
+	// Every region past the edges is tried, empty ones included.
+	let bounds = [3, 2];
+	for at in (0..5).flat_map(|x| (0..4).map(move |y| [x, y])) {
+		for size in (0..5).flat_map(|w| (0..4).map(move |h| [w, h])) {
+			let count = (size[0] * size[1]) as usize;
+			let texels = (0..size[0]).flat_map(|x| (0..size[1]).map(move |y| (at[0] + x, at[1] + y)));
+			let inside = texels.clone().all(|(x, y)| x < bounds[0] && y < bounds[1]);
+			// An empty region names no texel, but its edges must still lie
+			// within the texture's, as Metal checks.
+			let edges = (0..2).all(|i| at[i] + size[i] <= bounds[i]);
+			let expected = if count > 0 { inside } else { edges };
+			for given in [count, count + 1, count.saturating_sub(1)] {
+				let got = region(at, size, bounds, given);
+				assert_eq!(
+					got.is_some(),
+					expected && given == count,
+					"{at:?} {size:?} {given}"
+				);
+				if let Some(got) = got {
+					assert_eq!(got.origin, [at[0] as usize, at[1] as usize, 0]);
+					assert_eq!(got.size, [size[0] as usize, size[1] as usize, 1]);
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn texels_written_to_one_layer_leave_the_others_as_they_were() {
+	let Some(device) = device() else { return };
+	let atlas = Texture::new(&device, [2, 2, 3], true, Usage::Sampled).unwrap();
+	atlas.upload(0, [0, 0], [2, 2], &[0xff00_0001; 4]).unwrap();
+	atlas.upload(1, [0, 0], [2, 2], &[0xff00_0002; 4]).unwrap();
+	atlas.upload(2, [1, 1], [1, 1], &[0xff00_0003]).unwrap();
+	// The first layer, which `download` reads, kept its own.
+	assert_eq!(download(&atlas), [0xff00_0001; 4]);
+}
+
+#[test]
+fn a_texel_at_each_corner_lands_at_that_corner() {
+	let Some(device) = device() else { return };
+	let (width, height) = (64u32, 48u32);
+	let texture = Texture::new(&device, [width, height, 1], false, Usage::Target).unwrap();
+	texture
+		.upload(
+			0,
+			[0, 0],
+			[width, height],
+			&vec![0; (width * height) as usize],
+		)
+		.unwrap();
+	let corners = [
+		(0, 0),
+		(width - 1, 0),
+		(0, height - 1),
+		(width - 1, height - 1),
+	];
+	for (i, &(x, y)) in corners.iter().enumerate() {
+		texture
+			.upload(0, [x, y], [1, 1], &[0xff00_0000 | (i as u32 + 1)])
+			.unwrap();
+	}
+	let read = download(&texture);
+	for (i, &(x, y)) in corners.iter().enumerate() {
+		assert_eq!(
+			read[(y * width + x) as usize],
+			0xff00_0000 | (i as u32 + 1),
+			"{x}, {y}"
+		);
+	}
+	assert_eq!(read.iter().filter(|&&texel| texel != 0).count(), 4);
 }

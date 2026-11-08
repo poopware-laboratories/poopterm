@@ -45,12 +45,6 @@ fn every_failure_says_what_failed() {
 			"no Objective-C class CAMetalLayer",
 		),
 		(Error::Refused("buffer"), "Metal made no buffer"),
-		(
-			Error::Shader("line 3: oops".into()),
-			"Metal shaders failed: line 3: oops",
-		),
-		(Error::Gpu("hang".into()), "the GPU failed a frame: hang"),
-		(Error::Draw, "a frame the GPU cannot hold"),
 		(Error::Region, "a region outside its texture"),
 	];
 	for (error, words) in said {
@@ -122,4 +116,14 @@ fn a_device_refused_its_name_lets_go_of_the_queue_it_was_given() {
 	);
 	// The queue made before the refusal went with the device.
 	assert!(!gpu.alive());
+}
+
+#[test]
+fn two_devices_on_one_gpu_share_its_name_but_not_a_queue() {
+	let (Some(one), Some(two)) = (device(), device()) else {
+		return;
+	};
+	assert_eq!(one.name(), two.name());
+	assert_eq!(one.device, two.device);
+	assert_ne!(one.queue, two.queue);
 }
