@@ -161,6 +161,11 @@ impl Gpu {
 		crate::warnings::warning!("drawing on {}", gpu.gpu.device_name());
 		Ok(gpu)
 	}
+
+	/// Shows frames at the window's scale from now on.
+	pub(super) fn follow_scale(&mut self) {
+		self.rescale(self.window.scale_factor());
+	}
 	// pr-check: end window glue
 }
 

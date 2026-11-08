@@ -249,14 +249,10 @@ impl Renderer {
 			// The GPU makes its swapchain at the size of each frame.
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			Self::Gpu(_) => {}
-			// pr-check: window glue: a real window's scale reaches Metal on resizes
 			// Metal's layer takes the scale with the size, as a move to
 			// another display changes both.
 			#[cfg(target_os = "macos")]
-			Self::Gpu(gpu) => {
-				let scale = gpu.window().scale_factor();
-				gpu.rescale(scale);
-			} // pr-check: end window glue
+			Self::Gpu(gpu) => gpu.follow_scale(),
 		}
 	}
 
