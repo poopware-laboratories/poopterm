@@ -347,10 +347,10 @@ Follow `docs/performance.md`: measure before and after, report medians and
 ranges, and drop changes without a reproducible gain.
 
 - Parser only: `cargo test --release -- --ignored --nocapture parser_throughput`.
-- End to end: `python3 scripts/bench-throughput.py` (DA1 round-trip ends
-  each timer).
-- Producer ceiling: `python3 scripts/bench-pty.py`, to confirm the parser,
-  not the PTY, is the limit.
+- End to end: `poopterm --benchmark --terminal`, run in the window (DA1
+  round-trip ends each timer).
+- Producer ceiling: `poopterm --benchmark --stages pty,pty-raw`, to confirm
+  the parser, not the PTY, is the limit.
 - Profiles with `perf` as described in `docs/performance.md`.
 
 Results table to fill per phase (MB/s, median of 64 MiB x 3, same host and

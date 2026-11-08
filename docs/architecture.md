@@ -421,5 +421,7 @@ All encoders are pure functions with unit tests:
   colors (only on a terminal, and never under `NO_COLOR`); errors suggest
   the option meant. Tests check that every option the help lists is
   accepted, and every one accepted is listed.
-- `bench/`: `poopterm --benchmark` and `--bench-corpus`, the headless
-  benchmark and the workloads that `scripts/bench-throughput.py` also uses.
+- `bench/`: `poopterm --benchmark` and `--bench-corpus`: the workloads,
+  timed headless, through a real PTY (`pty`, `pipeline`) and, with
+  `--terminal`, in the terminal the benchmark runs in (`terminal`,
+  `replies`, `memory`).
