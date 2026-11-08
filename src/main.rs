@@ -10,6 +10,8 @@
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+#[cfg(target_os = "macos")]
+mod about_menu;
 mod allocator;
 mod app;
 mod bench;
@@ -41,6 +43,15 @@ mod input;
 mod library;
 mod mapped;
 mod notifier;
+#[cfg(target_os = "macos")]
+#[cfg_attr(
+	not(test),
+	expect(
+		dead_code,
+		reason = "the Metal renderer draws windows with it next (#26)"
+	)
+)]
+mod objc;
 mod parser;
 mod platform;
 #[cfg(not(target_os = "macos"))]

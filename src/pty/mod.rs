@@ -52,6 +52,9 @@ pub(crate) enum UserEvent {
 	/// The desktop said which window buttons it wants.
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 	ButtonLayout(crate::ui::window_controls::ButtonLayout),
+	/// The app menu's About item was chosen.
+	#[cfg(target_os = "macos")]
+	About,
 }
 
 pub(crate) struct Session {

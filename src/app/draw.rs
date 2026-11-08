@@ -80,7 +80,7 @@ impl App {
 		}
 		// pr-check: end window glue
 		let key = self.draw_key();
-		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+		#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 		if let renderer::Renderer::Gpu(gpu) = renderer {
 			let showing = Instant::now();
 			self.renderer = self.draw_on_gpu(gpu, key, size);

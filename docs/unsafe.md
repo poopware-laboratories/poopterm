@@ -202,6 +202,36 @@ function pointers the loader returns, which is `unsafe` by language rule.
 The layouts and the enumeration logic are unit-tested without a driver;
 `loader_tests.rs` creates real instances, on Mesa's software driver in CI.
 
+### Objective-C
+
+On macOS, `objc.rs` reaches the Objective-C runtime (libobjc, linked from
+the system), through which the Metal renderer will reach Metal and Core
+Animation. Sending a message is `unsafe` by language rule: the runtime
+cannot check the method's types.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `objc.rs` | `objc_getClass`, `sel_registerName`, `objc_retain`, `objc_release`, the autorelease pool push and pop | Names are C strings; a missing class comes back as nil and becomes `Missing`, never a message to nil. `Object` owns exactly one reference: `owned` takes over one a method returned to the caller (`alloc`, `new`, `copy`, `Create`), `retained` adds one for any other, `Clone` retains and `Drop` releases, so each reference is released once (`objc_tests.rs` checks the counts, `objc_probe_tests.rs` that an object is deallocated exactly when its last reference goes). A `Pool` is not `Send`, and pools pop in reverse order of their pushes, as guards on one thread do. |
+| `objc.rs` | `objc_msgSend` cast to each method's type, in `Arguments::send` | The trampoline jumps to the method's implementation with the registers and stack as the caller set them, so calling it as the method's own C function type is calling that method; `transmute` turns one function pointer into another of the same size. Each call site's `SAFETY` comment names the argument and return types it passes, as Apple's documentation gives them, and no method returning a structure is sent (that would need `objc_msgSend_stret` on x86-64). `objc_probe_tests.rs` checks every arity we send with integers of each width, floats, pointers and structures by value. Selectors that may be missing are checked with `respondsToSelector:` first, as a missing one raises an exception that must not unwind into Rust. |
+| `objc.rs` | `string`, `text`, `describe` | `initWithBytes:length:encoding:` copies the UTF-8 bytes before it returns, and consumes the `alloc`ed string it is sent to. `UTF8String` returns a C string, or null (read as empty), that lives as long as the string and the innermost pool, copied at once. |
+| `objc.rs` | `objc_allocateClassPair`, `class_addMethod`, `objc_registerClassPair`, in `action_class` | Methods are added only to the class just allocated, before it is registered; a taken name comes back as nil and the registered class is looked up instead, never modified. The implementation is an `Action`, an `extern "C"` function taking the receiver, selector and sender and returning nothing, which is what the type encoding `v@:@` declares and how AppKit sends menu items' actions (`objc_tests.rs` sends one). |
+| `about_menu.rs` (macOS) | `redirect`, `show_about_with` | `numberOfItems`, `itemAtIndex:` (below the count), `action`, `submenu`, `setTarget:` and `setAction:` are sent only to an `NSMenu` and its `NSMenuItem`s, as Apple documents them; `sharedApplication` and `mainMenu` run on the main thread, once the app has launched. The target an item is pointed at is never released, as items do not retain their targets. Our action is an `extern "C"` function that only runs a Rust callback behind a mutex and does not unwind. `about_menu_tests.rs` builds real menus and chooses the item. |
+
+### Metal
+
+`gpu/mtl` (macOS) reaches Metal through `objc.rs`, linking the Metal and
+Core Graphics frameworks from the system.
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `gpu/mtl/device.rs` | `MTLCreateSystemDefaultDevice`, the command queue and the name | The function returns a device the caller owns, or nil (no Metal device), which becomes `NoDevice`. `newCommandQueue` returns a queue the caller owns; `name` an autoreleased string, retained and copied inside a pool, so it is released before `with` returns (`device_tests.rs` checks both on a fake device, and that a device refused its queue or name is released once). Core Graphics is linked, as Metal needs for the default device. |
+| `gpu/mtl/buffer.rs` | Making a buffer, and `bytes_mut` | `newBufferWithLength:options:` returns a buffer the caller owns, or nil. A shared buffer's `contents` points to its `length` bytes for as long as it lives; `&mut self` makes `bytes_mut` the only view in this process, and the renderer writes it only after waiting for the last frame, the only one that reads it. |
+| `gpu/mtl/texture.rs` | Making a texture, and `replaceRegion:…` | Sizes of no texels, and flat textures of several layers, are refused before Metal sees them. The descriptor is owned and released once the texture is made, or refused. Every upload's region is checked to lie inside the texture, its sums checked for overflow (`texture_tests.rs` checks this against a brute-force oracle), and to be filled by the texels passed, and its slice to be one the texture has; `MTLRegion` is `#[repr(C)]` as the header lays it out. The copy is made before the call returns. |
+| `gpu/mtl/window.rs` | Making the `CAMetalLayer`, handing it to the window's view, `nextDrawable`, and the drawable's size and scale | `MetalWindow::new` is an `unsafe fn`: its caller vouches that the `NSView` outlives the window and that both are used only from the main thread. The view is given the layer before it is told it wants one, so it hosts ours (`window_tests.rs` checks the order on a fake view, and that no reference to the view is kept). `nextDrawable` returns an autoreleased drawable or nil (a frame drawn again), retained inside a pool; its texture is a 2D BGRA texture to draw to, taken at the size it reports (`Texture::made`), and the drawable is presented by the command buffer that drew it, which holds it until shown. `CGSize` is `#[repr(C)]` as two `f64`s. |
+| `app/gpu.rs` (macOS) | `Gpu::open` opening a `MetalWindow` on the window's `NSView` | `Gpu::open` is an `unsafe fn` with `MetalWindow::new`'s contract. `Gpu::new` passes the winit window's own view, from the main thread, which alone draws, with a clone of the window's `Arc`; `Gpu` declares the `MetalWindow` before the window, so the layer goes first. |
+| `gpu/mtl/pipeline.rs` | Compiling the MSL, making the functions and the pipeline | The source is our own `shaders/quad.metal`. Each `new…` returns an object the caller owns, or nil with an autoreleased `NSError` that a pool holds until it is described; both become errors (`pipeline_tests.rs` checks each refusal on the fake device, and that the error is released). The descriptor holds the functions it is given and its color attachment until the state is made from it. |
+| `gpu/mtl/commands.rs` | Command buffers, the render encoder, draws, commit and wait | A draw is encoded only after `drawable` checks that its runs lie within the quads (so every instance the shaders read is in the buffer), that the target was made to be drawn to, has one layer, and is neither the atlas nor an image it samples. The command buffer and encoder are retained only while used, inside a pool, and the encoder always ends. The size passed as bytes is two floats on the stack, copied by the call. Command buffers retain what their commands use until the GPU is done. A failed frame's error is read after waiting. `commands_tests.rs` checks every call a draw encodes, in order, on the fake. |
+
 ### Wayland
 
 `present/wayland` (Linux and FreeBSD) shows software frames through
@@ -255,6 +285,22 @@ in `PutImage` requests.
   `outside_tests.rs`, and `app/gpu_open_tests.rs` (through `Gpu::open`):
   open a `GpuWindow` on the fake driver, which only records the window's
   handles, or on a headless surface, which has none.
+- `objc_probe_tests.rs` (macOS): registers classes of its own with the
+  runtime, once each, whose methods are `extern "C"` functions taking the
+  receiver and selector first, as the runtime calls them; weak references
+  live in boxes, initialized and destroyed once each.
+- `gpu/mtl/window_tests.rs` (macOS): a fake `NSView` class registered
+  the same way records the layer it is given; `CATransaction flush`
+  commits the thread's implicit transaction, as a run loop would.
+- `gpu/mtl/fake_tests.rs`, `fake_commands_tests.rs` (macOS): a fake
+  `MTLDevice`, queue, command buffer, encoder, library, buffer and texture,
+  classes registered as `objc_probe_tests.rs` registers its own, whose
+  methods hand over objects they own, or autorelease what they return
+  unowned, as Metal's do; they read the descriptors, texels and bytes they
+  are passed within the sizes passed with them, and a fake buffer's bytes
+  are an `NSMutableData` it holds as an associated object;
+  `buffer_tests.rs` and `texture_tests.rs` read a buffer's `contents` and
+  a texture's texels (`getBytes:…`) within their sizes.
 - `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
   memory object the test owns, as a kitty client would.
 - `present/wayland/fake_tests.rs`, `fake_rules_tests.rs`: the fake

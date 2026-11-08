@@ -148,6 +148,18 @@ impl App {
 		window.request_redraw();
 	}
 
+	/// Opens the settings window on the About page, for the command palette
+	/// and the macOS app menu alike.
+	pub(super) fn open_about(&mut self, event_loop: &ActiveEventLoop) {
+		// pr-check: window glue: opening the settings window needs the real event loop
+		self.open_settings_window(event_loop);
+		self.settings_editor.page = super::settings_hit::SettingsPage::About;
+		if let Some(window) = &self.settings_window {
+			window.request_redraw();
+		}
+		// pr-check: end window glue
+	}
+
 	pub(super) fn close_settings_window(&mut self) {
 		self.settings_window = None;
 		self.settings_surface = None;

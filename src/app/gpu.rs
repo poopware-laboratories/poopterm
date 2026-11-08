@@ -1,36 +1,62 @@
-//! Windows drawn on the GPU: Vulkan's view of a window from its handles,
-//! the renderer and its pen, frames of the main window and scenes of the
-//! Settings window, and what each frame's outcome means for the next.
+//! Windows drawn on the GPU, by Vulkan on Linux and FreeBSD and by Metal
+//! on macOS: the backend's view of a window from its handles, the renderer
+//! and its pen, frames of the main window and scenes of the Settings
+//! window, and what each frame's outcome means for the next.
 use super::{Arc, Window};
+#[cfg(target_os = "macos")]
+use crate::gpu::mtl::{
+	device::Error,
+	window::{Drawn, MetalWindow as GpuWindow},
+};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use crate::gpu::vk::{
+	call::Error,
+	entry::Entry,
+	surface,
+	window::{Drawn, GpuWindow},
+};
 use crate::{
 	config::RendererPreference,
-	gpu::{
-		quads::QuadPen,
-		vk::{
-			call::Error,
-			entry::Entry,
-			surface,
-			window::{Drawn, GpuWindow},
-		},
-	},
+	gpu::quads::QuadPen,
 	render::{damage::GridDamage, glyphs::FontSet, scene::Scene},
 	ui::diagnostics::{Drawing, Reason},
 };
-use winit::raw_window_handle::{
-	HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
+use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// The glyph atlas: four pages 1024 pixels square, 16 MiB of the GPU's.
 const ATLAS: (usize, usize) = (1024, 4);
 
+/// Whether Metal may draw: unless software is asked for by name.
+#[cfg(target_os = "macos")]
+pub(super) const fn allows_metal(preference: RendererPreference) -> bool {
+	!matches!(preference, RendererPreference::Software)
+}
+
+/// Why Metal does not draw when software was asked for.
+#[cfg(target_os = "macos")]
+pub(super) const TURNED_OFF: &str = "Metal is turned off (renderer = \"software\")";
+
+/// The `NSView` of a window with this handle: AppKit windows only.
+#[cfg(target_os = "macos")]
+pub(super) fn ns_view(window: RawWindowHandle) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+	match window {
+		RawWindowHandle::AppKit(window) => Some(window.ns_view),
+		_ => None,
+	}
+}
+
 /// Whether a Vulkan device drawn by the CPU may be used: only when the GPU
 /// is asked for by name, as our software renderer is faster.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(super) const fn allows_cpu_device(preference: RendererPreference) -> bool {
 	matches!(preference, RendererPreference::Gpu)
 }
 
 /// Vulkan's view of the window with these handles: Wayland and Xlib
 /// windows only.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(super) fn surface_window(
 	window: RawWindowHandle,
 	display: RawDisplayHandle,
@@ -117,8 +143,63 @@ pub(super) struct Gpu<W = Arc<Window>> {
 	gpu: GpuWindow,
 	pen: QuadPen,
 	window: W,
+	/// Pixels a point, which Metal shows its frames at.
+	#[cfg(target_os = "macos")]
+	scale: f64,
 }
 
+#[cfg(target_os = "macos")]
+impl Gpu {
+	// pr-check: window glue: only a real window has a view, and a scale
+	pub(super) fn new(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
+		let handle = window.window_handle().map(|handle| handle.as_raw());
+		let view = handle.ok().and_then(ns_view);
+		// SAFETY: the view is the winit window's, which the clone keeps alive.
+		let mut gpu = unsafe { Self::open(window.clone(), view, preference) }?;
+		gpu.rescale(window.scale_factor());
+		crate::warnings::warning!("drawing on {}", gpu.gpu.device_name());
+		Ok(gpu)
+	}
+
+	/// Shows frames at the window's scale from now on.
+	pub(super) fn follow_scale(&mut self) {
+		self.rescale(self.window.scale_factor());
+	}
+	// pr-check: end window glue
+}
+
+#[cfg(target_os = "macos")]
+impl<W> Gpu<W> {
+	/// Metal drawing in `window`, whose `NSView` is `view`, when the
+	/// `preference` does not ask for software.
+	///
+	/// # Safety
+	///
+	/// `view` is `window`'s, which lives while `window` does.
+	pub(super) unsafe fn open(
+		window: W,
+		view: Option<std::ptr::NonNull<std::ffi::c_void>>,
+		preference: RendererPreference,
+	) -> Result<Self, String> {
+		if !allows_metal(preference) {
+			return Err(TURNED_OFF.into());
+		}
+		let view = view.ok_or("Metal cannot draw in this kind of window")?;
+		// SAFETY: as the caller vouches; the GPU drops before `window`, and
+		// both live on the main thread, which alone draws.
+		let gpu = unsafe { GpuWindow::new(Some(view), ATLAS) };
+		gpu
+			.map(|gpu| Self::with(gpu, window, ATLAS))
+			.map_err(|error| error.to_string())
+	}
+
+	/// Has frames shown at `scale` pixels a point from now on.
+	pub(super) fn rescale(&mut self, scale: f64) {
+		self.scale = scale;
+	}
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 impl Gpu {
 	// pr-check: window glue: only a real window has handles, and Vulkan's loader
 	pub(super) fn new(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
@@ -133,6 +214,7 @@ impl Gpu {
 	// pr-check: end window glue
 }
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 impl<W> Gpu<W> {
 	/// The GPU drawing in `window`, which has these `handles`, through the
 	/// Vulkan that `load` loads: on a device drawn by the CPU only when
@@ -158,13 +240,17 @@ impl<W> Gpu<W> {
 			.map(|gpu| Self::with(gpu, window, ATLAS))
 			.map_err(|error| error.to_string())
 	}
+}
 
+impl<W> Gpu<W> {
 	/// Draws in `window` on `gpu`, whose atlas is `atlas` (side, pages).
 	fn with(gpu: GpuWindow, window: W, atlas: (usize, usize)) -> Self {
 		Self {
 			gpu,
 			pen: QuadPen::new((0, 0), atlas),
 			window,
+			#[cfg(target_os = "macos")]
+			scale: 1.0,
 		}
 	}
 
@@ -195,6 +281,9 @@ impl<W> Gpu<W> {
 		self.pen.begin_frame(size);
 		quads(&mut self.pen);
 		let size = [size.0, size.1].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+		#[cfg(target_os = "macos")]
+		return next(self.gpu.draw(&mut self.pen, size, self.scale));
+		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		next(self.gpu.draw(&mut self.pen, size))
 	}
 
@@ -205,18 +294,24 @@ impl<W> Gpu<W> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_frame_tests.rs"]
 mod frame_tests;
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_headless_tests.rs"]
 mod headless_tests;
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
+#[path = "gpu_metal_tests.rs"]
+mod metal_tests;
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_open_tests.rs"]
 mod open_tests;
 #[cfg(test)]
+#[path = "gpu_outcome_tests.rs"]
+mod outcome_tests;
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_scene_tests.rs"]
 mod scene_tests;
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_tests.rs"]
 mod tests;

@@ -3,14 +3,14 @@ mod canvas;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod decorations;
 mod draw;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 mod draw_gpu;
 mod draw_panes;
 mod draw_tabs;
 mod draw_vertical_tabs;
 mod frame_pacer;
 mod frame_stats;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 mod gpu;
 mod handler;
 mod keyboard;

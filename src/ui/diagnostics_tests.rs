@@ -1,6 +1,8 @@
 //! Tests of the Diagnostics model: feature statuses and their reasons, the
 //! clock, what is kept private, and the plain-text report.
-use super::diagnostics::{Diagnostics, Drawing, Feature, Reason, clock, private, report, statuses};
+use super::diagnostics::{
+	Diagnostics, Drawing, Feature, GPU_API, Reason, clock, private, report, statuses,
+};
 use crate::warnings::{LONGEST, Warning};
 use std::{
 	path::{Path, PathBuf},
@@ -19,8 +21,12 @@ fn reasons() -> [(Reason, &'static str); 4] {
 			"No GPU renderer for this platform or window system yet",
 		),
 		(
-			Reason::Unavailable("no Vulkan loader".into()),
-			"Vulkan unavailable: no Vulkan loader",
+			Reason::Unavailable("no loader".into()),
+			if cfg!(target_os = "macos") {
+				"Metal unavailable: no loader"
+			} else {
+				"Vulkan unavailable: no loader"
+			},
 		),
 		(
 			Reason::Abandoned("device lost".into()),
@@ -82,7 +88,7 @@ fn a_reason_from_an_error_stays_on_one_bounded_line() {
 	let [status, ..] = statuses(&Drawing::Software(Reason::Unavailable(
 		"a\u{1b}[2Jb".into(),
 	)));
-	assert_eq!(status.detail, "Vulkan unavailable: a�[2Jb");
+	assert_eq!(status.detail, format!("{GPU_API} unavailable: a�[2Jb"));
 }
 
 #[test]
