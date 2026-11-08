@@ -1,6 +1,6 @@
 //! Showing the Settings window's frames: its scene drawn on the GPU when the
 //! window has one, painted by software otherwise.
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 use super::gpu::{Gpu, after_drawn};
 use super::{
 	App,
@@ -12,14 +12,14 @@ impl App {
 	/// Shows `scene` with `renderer`: the renderer for the next frame.
 	pub(super) fn show_settings(&mut self, renderer: Renderer, scene: &Scene) -> Option<Renderer> {
 		match renderer {
-			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 			Renderer::Gpu(gpu) => self.settings_on_gpu(gpu, scene),
 			Renderer::Software(surface) => self.settings_in_software(surface, scene),
 		}
 	}
 
 	// pr-check: window glue: draws the real settings window's scene for its GPU to show
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 	fn settings_on_gpu(&mut self, mut gpu: Box<Gpu>, scene: &Scene) -> Option<Renderer> {
 		let next = gpu.scene(scene, &mut self.ui_fonts);
 		let again = || self.redraw_settings();

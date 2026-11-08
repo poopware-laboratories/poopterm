@@ -451,3 +451,35 @@ fn an_atlas_metal_refuses_to_grow_keeps_the_one_it_had() {
 		(before, [64, 64, 4])
 	);
 }
+
+#[test]
+fn what_then_adds_comes_after_the_draw_and_before_the_commit() {
+	use crate::gpu::mtl::fake_commands_tests::{Call, calls};
+	let Some((device, mut renderer)) = faked() else {
+		return;
+	};
+	let target = target(&device);
+	let class = crate::objc::class(c"NSObject").unwrap();
+	// SAFETY: `NSObject` takes `new`.
+	let drawable = unsafe { class.instance() }.unwrap();
+	let mut pen = QuadPen::new(SIZE, ATLAS);
+	pen.begin_frame(SIZE);
+	pen.rect(0, 0, SIZE.0, SIZE.1, 0);
+	calls();
+	renderer
+		.frame(&mut pen, &target, |frame| {
+			frame.present(&drawable);
+			Ok(())
+		})
+		.unwrap();
+	let calls = calls();
+	let at = |wanted: Call| calls.iter().position(|&call| call == wanted).unwrap();
+	let present = at(Call::Present(drawable.raw() as usize));
+	assert!(
+		at(Call::End) < present && present < at(Call::Commit),
+		"{calls:?}"
+	);
+	// Committed, not waited for: the next frame waits.
+	assert!(!calls.contains(&Call::Wait));
+	assert_eq!(renderer.finish(), Ok(()));
+}

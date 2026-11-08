@@ -16,3 +16,4 @@ pub(crate) mod renderer;
 #[cfg(test)]
 mod renderer_gpu_tests;
 pub(crate) mod texture;
+pub(crate) mod window;
