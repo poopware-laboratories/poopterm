@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.37 "Lunar Moth" — 2026-11-08
+
+### Fixed
+
+- Set the window title once a frame, not on every output wake (#242) (app).
+
 ## 26.11.36 "Lunar Moth" — 2026-11-08
 
 ### Maintenance
