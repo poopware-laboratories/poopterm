@@ -205,7 +205,18 @@ fn ctrl_s_stops_output_until_ctrl_q() {
 			}
 		}
 	});
-	keyboard.write_all(b"\x13").unwrap();
+	// Linux handles typed keys later, on a kernel worker: the program must
+	// not write before ^S is handled. Keys are handled in order, so once the
+	// newline typed after it is read, output is stopped. Without echo, the
+	// newline never reaches the screen; without IXANY (on by default on
+	// macOS), it does not restart output either.
+	let mut quiet = get(&program).unwrap();
+	quiet.c_lflag &= !libc::ECHO;
+	quiet.c_iflag &= !libc::IXANY;
+	set(&program, &quiet).unwrap();
+	keyboard.write_all(b"\x13\n").unwrap();
+	let mut typed = [0; 4];
+	assert_eq!(program.read(&mut typed).unwrap(), 1, "the newline after ^S");
 	// While stopped, the program's write waits rather than reaching the screen.
 	let writing = std::thread::spawn(move || program.write_all(b"held").unwrap());
 	let moment = std::time::Duration::from_millis(300);
