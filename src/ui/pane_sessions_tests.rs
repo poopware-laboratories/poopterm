@@ -359,3 +359,54 @@ fn the_other_sessions_can_be_changed_in_place() {
 	);
 	assert_eq!(tab.others().len(), 2);
 }
+
+#[test]
+fn the_place_foreseen_for_a_split_is_where_it_lands_from_every_focus() {
+	let (area, cell, divider) = GEOMETRY;
+	for build in [two as fn() -> (TabPanes<Shell>, Shell), three] {
+		let (tab, focused) = build();
+		for id in tab.layout().ids().to_vec() {
+			for split in [Split::Right, Split::Down] {
+				let (mut tab, mut focused) = build();
+				tab.focus(&mut focused, id);
+				let foreseen = tab.split_place(split, 9, GEOMETRY);
+				let before = tab.layout().clone();
+				match tab.split(&mut focused, split, Shell(9, "new")) {
+					Ok(()) => {
+						let places = tab.layout().places(area, cell, divider);
+						let landed = places.iter().find(|place| place.id == 9).copied();
+						assert_eq!(foreseen, landed, "{id} {split:?}");
+						assert_eq!(
+							foreseen.map(|place| place.grid),
+							landed.map(|place| place.grid)
+						);
+					}
+					Err(_) => {
+						assert_eq!(foreseen, None, "{id} {split:?}");
+						assert_eq!(tab.layout(), &before, "{id} {split:?}");
+					}
+				}
+			}
+		}
+		assert_consistent(&tab, &focused);
+	}
+}
+
+#[test]
+fn a_session_is_found_only_in_its_own_tab() {
+	let (one, focused_one) = two();
+	let (mut other, mut focused_other) = (TabPanes::new(7), Shell(7, "seven"));
+	assert!(
+		other
+			.split(&mut focused_other, Split::Down, Shell(8, "eight"))
+			.is_ok()
+	);
+	for id in [1, 2] {
+		assert!(one.find(&focused_one, id).is_some());
+		assert!(other.find(&focused_other, id).is_none());
+	}
+	for id in [7, 8] {
+		assert!(other.find(&focused_other, id).is_some());
+		assert!(one.find(&focused_one, id).is_none());
+	}
+}
