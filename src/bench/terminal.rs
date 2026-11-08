@@ -86,10 +86,8 @@ impl Terminal {
 	/// The terminal's size, as programs see it, within [`Size::bounded`].
 	pub(crate) fn size(&self) -> Outcome<Size> {
 		let size = stty(&self.tty, &["size"])?;
-		let (rows, cols) = size
-			.trim()
-			.split_once(' ')
-			.ok_or("stty size printed no size")?;
+		// busybox prints nothing for a terminal of no size.
+		let (rows, cols) = size.trim().split_once(' ').unwrap_or(("0", "0"));
 		Ok(Size::bounded(cols.parse()?, rows.parse()?))
 	}
 

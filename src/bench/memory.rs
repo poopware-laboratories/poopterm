@@ -1,20 +1,31 @@
 //! The memory of the terminal `--terminal` measures: which process it is
 //! (the first ancestor on another terminal than ours), what it holds
-//! resident, and its peak where the system keeps one.
+//! resident, and its peak where the system keeps one. Linux has it all in
+//! `/proc` (busybox's `ps` cannot select a process); elsewhere `ps` asks.
 
 use std::process::Command;
 
-/// Parent and controlling terminal of a process, as `ps` shows them.
+/// Parent and controlling terminal of a process: its name from `ps`, its
+/// device number from `/proc`, compared only with others from the same.
 pub(crate) type Stat = (u32, String);
 
 /// How far up the process tree to look for the terminal.
 const DEPTH: usize = 64;
 
-/// `ps -o ppid=,tty=` output as a [`Stat`].
+/// `ps -o ppid= -o tty=` output as a [`Stat`].
 pub(crate) fn parse_stat(text: &str) -> Option<Stat> {
 	let mut fields = text.split_whitespace();
 	let (parent, tty) = (fields.next()?.parse().ok()?, fields.next()?);
 	fields.next().is_none().then(|| (parent, tty.to_owned()))
+}
+
+/// `/proc/<pid>/stat` as a [`Stat`]: the fields after the command name,
+/// which is in parentheses and may hold spaces and parentheses itself, are
+/// the state, the parent, the group, the session and the terminal.
+pub(crate) fn parse_proc_stat(text: &str) -> Option<Stat> {
+	let mut fields = text[text.rfind(')')? + 1..].split_whitespace();
+	let parent = fields.nth(1)?.parse().ok()?;
+	Some((parent, fields.nth(2)?.to_owned()))
 }
 
 /// The first ancestor of `pid` not attached to `pid`'s terminal: the
@@ -31,40 +42,52 @@ pub(crate) fn terminal_pid(mut pid: u32, stat: impl Fn(u32) -> Option<Stat>) -> 
 	None
 }
 
-/// The peak resident KiB in a `/proc/<pid>/status` file (`VmHWM`).
-pub(crate) fn peak_kib(status: &str) -> Option<u64> {
+/// The KiB a `/proc/<pid>/status` file gives for `key`, such as `VmHWM`.
+pub(crate) fn status_kib(status: &str, key: &str) -> Option<u64> {
 	let line = status
 		.lines()
-		.find_map(|line| line.strip_prefix("VmHWM:"))?;
+		.find_map(|line| line.strip_prefix(key)?.strip_prefix(':'))?;
 	line.split_whitespace().next()?.parse().ok()
 }
 
-/// `ps -o FIELD= -p pid`, if the process exists.
-fn ps(pid: u32, field: &str) -> Option<String> {
-	let pid = pid.to_string();
-	let run = Command::new("ps")
-		.args(["-o", field, "-p", &pid])
-		.output()
-		.ok()?;
+/// `/proc/<pid>/<file>`, if the process exists.
+fn proc(pid: u32, file: &str) -> Option<String> {
+	std::fs::read_to_string(format!("/proc/{pid}/{file}")).ok()
+}
+
+/// `ps -o FIELD= … -p pid`, if the process exists. One `-o` per field: a
+/// header after `=` runs to the end of its argument, commas included.
+fn ps(pid: u32, fields: &[&str]) -> Option<String> {
+	let mut command = Command::new("ps");
+	for field in fields {
+		command.args(["-o", field]);
+	}
+	let run = command.args(["-p", &pid.to_string()]).output().ok()?;
 	run
 		.status
 		.success()
 		.then(|| String::from_utf8_lossy(&run.stdout).into_owned())
 }
 
-/// `pid`'s [`Stat`], from `ps`.
+/// `pid`'s [`Stat`].
 pub(crate) fn stat(pid: u32) -> Option<Stat> {
-	parse_stat(&ps(pid, "ppid=,tty=")?)
+	if cfg!(target_os = "linux") {
+		return parse_proc_stat(&proc(pid, "stat")?);
+	}
+	parse_stat(&ps(pid, &["ppid=", "tty="])?)
 }
 
 /// What `pid` holds resident now, in KiB.
 pub(crate) fn resident_kib(pid: u32) -> Option<u64> {
-	ps(pid, "rss=")?.trim().parse().ok()
+	if cfg!(target_os = "linux") {
+		return status_kib(&proc(pid, "status")?, "VmRSS");
+	}
+	ps(pid, &["rss="])?.trim().parse().ok()
 }
 
 /// `pid`'s peak resident KiB, where the system keeps it (Linux).
 pub(crate) fn peak(pid: u32) -> Option<u64> {
-	peak_kib(&std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?)
+	status_kib(&proc(pid, "status")?, "VmHWM")
 }
 
 /// The memory note: `pid`'s resident MiB `before` and `after` the run,
@@ -135,11 +158,43 @@ mod tests {
 	}
 
 	#[test]
-	fn the_peak_comes_from_vm_hwm() {
+	fn status_values_come_from_their_own_line() {
 		let status = "Name:\tpoopterm\nVmPeak:\t  900000 kB\nVmHWM:\t   81234 kB\nVmRSS:\t 70000 kB\n";
-		assert_eq!(peak_kib(status), Some(81234));
-		assert_eq!(peak_kib("Name:\tx\nVmRSS:\t1 kB\n"), None);
-		assert_eq!(peak_kib("VmHWM:\tlots kB\n"), None);
+		assert_eq!(status_kib(status, "VmHWM"), Some(81234));
+		assert_eq!(status_kib(status, "VmRSS"), Some(70000));
+		assert_eq!(status_kib("Name:\tx\nVmRSS:\t1 kB\n", "VmHWM"), None);
+		assert_eq!(status_kib("VmHWM:\tlots kB\n", "VmHWM"), None);
+		// A key is a whole name: VmHWM is not read for Vm.
+		assert_eq!(status_kib(status, "Vm"), None);
+	}
+
+	#[test]
+	fn a_proc_stat_gives_the_parent_and_the_terminal_number() {
+		let line = "4321 (zsh) S 4300 4321 4321 34817 4400 4194304 900 0 0 0\n";
+		assert_eq!(parse_proc_stat(line), Some((4300, "34817".into())));
+		// The name can hold spaces and parentheses; only the last one ends it.
+		let odd = "77 (a) b (c) R 1 77 77 0 77 0";
+		assert_eq!(parse_proc_stat(odd), Some((1, "0".into())));
+	}
+
+	#[test]
+	fn a_cut_short_proc_stat_is_no_stat() {
+		assert_eq!(parse_proc_stat(""), None);
+		assert_eq!(parse_proc_stat("77 (sh"), None);
+		assert_eq!(parse_proc_stat("77 (sh) S 1 77 77"), None);
+		assert_eq!(parse_proc_stat("77 (sh) S x 77 77 0"), None);
+	}
+
+	/// `ps` agrees with `/proc` where both exist; busybox's cannot select a
+	/// process, which is why Linux reads `/proc`.
+	#[cfg(all(target_os = "linux", not(target_env = "musl")))]
+	#[test]
+	fn ps_finds_the_same_parent_as_proc() {
+		let pid = std::process::id();
+		let from_ps = parse_stat(&ps(pid, &["ppid=", "tty="]).unwrap()).unwrap();
+		assert_eq!(Some(from_ps.0), stat(pid).map(|(parent, _)| parent));
+		let kib: u64 = ps(pid, &["rss="]).unwrap().trim().parse().unwrap();
+		assert!(kib > 1024, "{kib}");
 	}
 
 	#[test]
@@ -208,10 +263,11 @@ mod tests {
 
 	#[cfg(target_os = "linux")]
 	#[test]
-	fn this_process_has_a_peak_at_least_what_it_holds() {
+	fn this_process_has_a_peak_near_what_it_holds() {
 		let pid = std::process::id();
-		// Read in this order, the peak so far is at least what was held.
-		let now = resident_kib(pid).unwrap();
-		assert!(peak(pid).unwrap() >= now, "{now}");
+		// Linux updates both lazily from per-thread counts, so the peak can
+		// trail what is held; it is still the same order, in the same unit.
+		let (now, peak) = (resident_kib(pid).unwrap(), peak(pid).unwrap());
+		assert!(peak * 2 >= now && peak > 1024, "{peak} {now}");
 	}
 }
