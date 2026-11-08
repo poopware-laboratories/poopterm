@@ -63,6 +63,10 @@ mod term;
 mod terminfo;
 mod terminfo_caps;
 mod theme;
+mod theme_credits;
+mod theme_more;
+#[cfg(test)]
+mod theme_palette_tests;
 mod ui;
 mod vt;
 mod wallpaper;

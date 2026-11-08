@@ -1,8 +1,5 @@
 //! Two-byte `ESC` sequences: charsets, index, reset and cursor save.
-use crate::{
-	term::{Cell, Term},
-	theme::{Theme, ThemeKind},
-};
+use crate::term::{Cell, Term};
 
 impl Term {
 	pub(super) fn apply_esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
@@ -30,12 +27,7 @@ impl Term {
 		match byte {
 			b'H' => self.tab_stops[self.cx] = true,
 			b'c' => {
-				let theme = Theme {
-					fg: self.default_fg,
-					bg: self.default_bg,
-					palette: self.palette,
-					..Theme::from_kind(ThemeKind::Poop)
-				};
+				let theme = self.theme();
 				let (cw, ch, scale) = (self.cell_width, self.cell_height, self.scale);
 				let limit = self.scrollback_limit;
 				let contexts = std::mem::take(&mut self.contexts);

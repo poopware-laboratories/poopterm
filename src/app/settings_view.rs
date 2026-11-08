@@ -11,6 +11,8 @@ use crate::input::shortcuts::ShortcutAction;
 use crate::render::{painter::ButtonStyle, scene::Scene};
 
 pub(super) const THEME_ROW: usize = 138;
+/// The picked theme's credit, between the picker and the wallpaper label.
+pub(super) const THEME_CREDIT_ROW: usize = 184;
 pub(super) const WALLPAPER_ROW: usize = 228;
 pub(super) const FONT_ROW: usize = 270;
 pub(super) const SCROLLBACK_ROW: usize = 326;
@@ -45,7 +47,7 @@ pub(super) const MIN_SIZE: (usize, usize) = (680, 600);
 pub(super) const ROW_HEIGHT: usize = 40;
 
 /// Themes in the order the Settings picker cycles through them.
-pub(super) const THEMES: [ThemeKind; 14] = [
+pub(super) const THEMES: [ThemeKind; 18] = [
 	ThemeKind::MacOsDark,
 	ThemeKind::MacOsLight,
 	ThemeKind::Nord,
@@ -58,6 +60,10 @@ pub(super) const THEMES: [ThemeKind; 14] = [
 	ThemeKind::CatppuccinMocha,
 	ThemeKind::Bark,
 	ThemeKind::AmoledBlack,
+	ThemeKind::Dracula,
+	ThemeKind::Alucard,
+	ThemeKind::GruvboxDark,
+	ThemeKind::GruvboxLight,
 	ThemeKind::Poop,
 	ThemeKind::Custom,
 ];
@@ -81,6 +87,10 @@ fn theme_label(kind: ThemeKind) -> String {
 		ThemeKind::RosePineDawn => "Rosé Pine Dawn".to_owned(),
 		ThemeKind::Bark => "Bark".to_owned(),
 		ThemeKind::AmoledBlack => "AMOLED Black".to_owned(),
+		ThemeKind::Dracula => "Dracula".to_owned(),
+		ThemeKind::Alucard => "Alucard (Dracula Light)".to_owned(),
+		ThemeKind::GruvboxDark => "Gruvbox Dark".to_owned(),
+		ThemeKind::GruvboxLight => "Gruvbox Light".to_owned(),
 		ThemeKind::Custom => "Custom".to_owned(),
 		_ => kind.name().replace("catppuccin-", "Catppuccin "),
 	}
@@ -316,6 +326,7 @@ pub(super) fn compose_main_settings(
 		&theme_label(editor.theme),
 		0.82,
 	);
+	pen.text(p, x, THEME_CREDIT_ROW, &editor.theme.credit().line(), 0.62);
 
 	pen.text(p, x, 210, "Background wallpaper", 0.76);
 	for (bx, bw, label) in [
@@ -367,8 +378,41 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn the_picker_offers_the_new_themes_by_name() {
+		for (kind, label) in [
+			(ThemeKind::Dracula, "Dracula"),
+			(ThemeKind::Alucard, "Alucard (Dracula Light)"),
+			(ThemeKind::GruvboxDark, "Gruvbox Dark"),
+			(ThemeKind::GruvboxLight, "Gruvbox Light"),
+		] {
+			assert!(THEMES.contains(&kind), "{label}");
+			assert_eq!(theme_label(kind), label);
+		}
+		assert_eq!(step_theme(ThemeKind::AmoledBlack, 1), ThemeKind::Dracula);
+		assert_eq!(step_theme(ThemeKind::GruvboxLight, 1), ThemeKind::Poop);
+		assert_eq!(step_theme(ThemeKind::Dracula, -1), ThemeKind::AmoledBlack);
+	}
+
+	#[test]
+	fn the_credit_sits_between_the_picker_and_the_wallpaper_label() {
+		// The picker ends at THEME_ROW + ROW_HEIGHT; the wallpaper label
+		// starts at 210, and the credit's small text is about 12 high.
+		const { assert!(THEME_CREDIT_ROW >= THEME_ROW + ROW_HEIGHT) };
+		const { assert!(THEME_CREDIT_ROW + 14 <= 210) };
+	}
+
+	#[test]
+	fn every_picked_theme_has_a_credit_line() {
+		for kind in THEMES {
+			let line = kind.credit().line();
+			assert!(line.starts_with("by "), "{line}");
+			assert!(line.contains(kind.credit().license), "{line}");
+		}
+	}
+
+	#[test]
 	fn theme_picker_includes_nord_and_every_rose_pine_variant() {
-		assert_eq!(THEMES.len(), 14);
+		assert_eq!(THEMES.len(), 18);
 		assert_eq!(THEMES[2], ThemeKind::Nord);
 		assert_eq!(THEMES[3], ThemeKind::RosePine);
 		assert_eq!(THEMES[4], ThemeKind::RosePineMoon);
