@@ -141,3 +141,103 @@ fn something_that_is_not_a_terminal_has_no_settings() {
 	let file = File::open("Cargo.toml").unwrap();
 	assert_eq!(get(&file).unwrap_err().raw_os_error(), Some(libc::ENOTTY));
 }
+
+/// Everything the keyboard side gets back within a moment: the echo.
+fn echo_of(keyboard: &mut File) -> Vec<u8> {
+	let mut keyboard = keyboard.try_clone().unwrap();
+	let (send, heard) = std::sync::mpsc::channel();
+	std::thread::spawn(move || {
+		let mut buf = [0; 256];
+		while let Ok(n @ 1..) = keyboard.read(&mut buf) {
+			if send.send(buf[..n].to_vec()).is_err() {
+				return;
+			}
+		}
+	});
+	let mut echo = Vec::new();
+	while let Ok(bytes) = heard.recv_timeout(std::time::Duration::from_millis(200)) {
+		echo.extend_from_slice(&bytes);
+	}
+	echo
+}
+
+#[test]
+fn ctrl_r_reprints_the_line() {
+	let (mut keyboard, _program) = pair();
+	keyboard.write_all(b"ab\x12").unwrap();
+	assert_eq!(echo_of(&mut keyboard), b"ab^R\r\nab");
+}
+
+#[test]
+fn erasing_wipes_the_character_off_the_screen() {
+	let (mut keyboard, _program) = pair();
+	keyboard.write_all(b"ab\x7f").unwrap();
+	assert_eq!(echo_of(&mut keyboard), b"ab\x08 \x08");
+}
+
+#[test]
+fn ctrl_c_echoes_and_drops_the_line_typed_so_far() {
+	let (mut keyboard, mut program) = pair();
+	keyboard.write_all(b"abc\x03").unwrap();
+	assert!(echo_of(&mut keyboard).ends_with(b"^C"));
+	keyboard.write_all(b"def\n").unwrap();
+	let mut line = [0; 16];
+	let n = program.read(&mut line).unwrap();
+	assert_eq!(&line[..n], b"def\n");
+}
+
+#[test]
+fn ctrl_s_stops_output_until_ctrl_q() {
+	let (mut keyboard, mut program) = pair();
+	let mut screen = keyboard.try_clone().unwrap();
+	let (send, shown) = std::sync::mpsc::channel();
+	std::thread::spawn(move || {
+		let mut buf = [0; 64];
+		while let Ok(n @ 1..) = screen.read(&mut buf) {
+			if send.send(buf[..n].to_vec()).is_err() {
+				return;
+			}
+		}
+	});
+	keyboard.write_all(b"\x13").unwrap();
+	// While stopped, the program's write waits rather than reaching the screen.
+	let writing = std::thread::spawn(move || program.write_all(b"held").unwrap());
+	let moment = std::time::Duration::from_millis(300);
+	assert!(shown.recv_timeout(moment).is_err(), "output while stopped");
+	keyboard.write_all(b"\x11").unwrap();
+	assert_eq!(
+		shown
+			.recv_timeout(std::time::Duration::from_secs(5))
+			.unwrap(),
+		b"held"
+	);
+	writing.join().unwrap();
+}
+
+#[test]
+fn lines_are_handed_over_one_at_a_time() {
+	let (mut keyboard, mut program) = pair();
+	keyboard.write_all(b"one\ntwo\n").unwrap();
+	let mut line = [0; 16];
+	let n = program.read(&mut line).unwrap();
+	assert_eq!(&line[..n], b"one\n");
+	let n = program.read(&mut line).unwrap();
+	assert_eq!(&line[..n], b"two\n");
+}
+
+#[test]
+fn eight_bit_input_passes_unchanged() {
+	assert_eq!(line(b"\xe9\xa0\xff\n"), b"\xe9\xa0\xff\n");
+}
+
+#[test]
+fn without_line_editing_a_read_returns_each_key_at_once() {
+	let (mut keyboard, mut program) = pair();
+	let mut settings = get(&program).unwrap();
+	settings.c_lflag &= !libc::ICANON;
+	set(&program, &settings).unwrap();
+	keyboard.write_all(b"x").unwrap();
+	let mut key = [0; 16];
+	assert_eq!(program.read(&mut key).unwrap(), 1);
+	assert_eq!(key[0], b'x');
+}
