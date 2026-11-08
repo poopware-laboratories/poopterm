@@ -163,7 +163,7 @@ fn the_benchmark_prints_medians_with_their_spread_per_workload_and_stage() {
 	let version = env!("CARGO_PKG_VERSION");
 	assert_eq!(
 		lines[0],
-		format!("poopterm {version} headless, 40x12, 4 KiB per workload")
+		format!("poopterm {version}, 40x12, 4 KiB per workload")
 	);
 	assert_eq!(lines[1], "MB/s, median (min–max)");
 	assert_eq!(
@@ -220,6 +220,74 @@ fn without_rendering_the_markdown_has_one_number_column() {
 		"{report}"
 	);
 	assert!(!report.contains("+render"));
+}
+
+#[test]
+fn pty_stages_run_through_a_real_terminal_in_the_order_given() {
+	let stages = [
+		"--stages",
+		"pipeline-raw,pty",
+		"--repeat",
+		"1",
+		"--markdown",
+	];
+	let (_, report) = quick_benchmark(&stages);
+	// Columns keep their fixed order, whatever order --stages names them in.
+	assert!(
+		report.contains("\n| workload | pty | +pipeline raw |\n|---|--:|--:|\n"),
+		"{report}"
+	);
+	for workload in ["log", "tui"] {
+		let line = (report.lines())
+			.find(|line| line.starts_with(&format!("| {workload} |")))
+			.unwrap();
+		let cells: Vec<&str> = line.trim_matches(['|', ' ']).split(" | ").skip(1).collect();
+		assert_eq!(cells.len(), 2, "{line}");
+		assert!(cells.iter().all(|cell| is_spread(cell)), "{line}");
+	}
+}
+
+#[test]
+fn every_pty_stage_has_its_column_and_an_overall_rate() {
+	let stages = [
+		"--stages",
+		"all",
+		"--no-render",
+		"--repeat",
+		"1",
+		"--markdown",
+	];
+	let (_, report) = quick_benchmark(&stages);
+	let heading = "| workload | parse | pty | pty raw | +pipeline | +pipeline raw |";
+	assert!(report.contains(heading), "{report}");
+	let overall = report
+		.lines()
+		.find(|line| line.starts_with("| overall |"))
+		.unwrap();
+	let rates: Vec<&str> = overall
+		.trim_matches(['|', ' '])
+		.split(" | ")
+		.skip(1)
+		.collect();
+	assert_eq!(rates.len(), 5, "{overall}");
+	assert!(
+		rates
+			.iter()
+			.all(|rate| rate.parse::<f64>().is_ok_and(|rate| rate > 0.0)),
+		"{overall}"
+	);
+}
+
+#[test]
+fn an_unknown_stage_fails_before_measuring_anything() {
+	let run = poopterm(&["--benchmark", "--stages", "pty,gpu"]);
+	assert!(!run.status.success());
+	assert!(run.stdout.is_empty(), "{}", text(&run.stdout));
+	let error = text(&run.stderr);
+	assert!(
+		error.contains("unknown stage: gpu; the stages are parse, render"),
+		"{error}"
+	);
 }
 
 #[test]

@@ -15,6 +15,8 @@ pub(crate) struct Table {
 	pub title: String,
 	pub columns: Vec<&'static str>,
 	pub rows: Vec<Row>,
+	/// Lines printed under the table.
+	pub notes: Vec<String>,
 }
 
 /// How a report is printed: aligned for reading in a terminal, or as a
@@ -69,7 +71,15 @@ impl Table {
 		lines
 	}
 
+	/// The table, then its notes: one per line in text, each a paragraph of
+	/// its own in Markdown.
 	pub(crate) fn render(&self, style: Style) -> String {
+		let gap = if style == Style::Markdown { "\n" } else { "" };
+		let notes = self.notes.iter().map(|note| format!("{gap}{note}\n"));
+		self.grid(style) + &notes.collect::<String>()
+	}
+
+	fn grid(&self, style: Style) -> String {
 		let lines = self.lines();
 		if style == Style::Markdown {
 			let row = |cells: &Vec<String>| format!("| {} |\n", cells.join(" | "));
@@ -120,6 +130,7 @@ mod tests {
 					cells: vec![spread(25.0, 24.0, 26.0), None],
 				},
 			],
+			notes: Vec::new(),
 		}
 	}
 
@@ -186,6 +197,22 @@ mod tests {
 	}
 
 	#[test]
+	fn notes_follow_the_table_in_either_style() {
+		let mut table = table();
+		table.notes = vec!["first note".into(), "second".into()];
+		let text = table.render(Style::Text);
+		assert!(
+			text.ends_with("overall   40.0                -\nfirst note\nsecond\n"),
+			"{text}"
+		);
+		let markdown = table.render(Style::Markdown);
+		assert!(
+			markdown.ends_with("| overall | 40.0 | - |\n\nfirst note\n\nsecond\n"),
+			"{markdown}"
+		);
+	}
+
+	#[test]
 	fn a_long_workload_name_widens_its_column() {
 		let mut table = table();
 		table.rows[0].name = "kitty-rgba-long";
@@ -224,6 +251,7 @@ mod tests {
 			title: "t".into(),
 			columns: vec!["parse"],
 			rows: Vec::new(),
+			notes: Vec::new(),
 		};
 		assert_eq!(
 			table.render(Style::Text),

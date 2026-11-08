@@ -30,6 +30,22 @@ then `--repeat` times (default 3); cells show the median MB/s with the
 slowest and fastest run, and the overall row is total bytes over total
 time at the medians, per stage. `--markdown` prints the same as a table.
 
+`--stages` picks the columns. `parse` and `render` are headless: the
+parser fed from memory, then with frames drawn. `pty` is the kernel's
+ceiling: `cat` writes the workload through a real PTY at `--size` and
+nothing is parsed. `pipeline` sends the same bytes through Poopterm's own
+reader thread, output queue and parser thread, as a window would, without
+drawing. Each comes cooked (the terminal's default settings, so the kernel
+turns `\n` into `\r\n`) and raw (`stty -opost`), so you can tell the
+kernel's cost from ours; rates count the workload's bytes either way. A
+note under the table lists the workloads whose pipeline reaches 90% of the
+PTY ceiling in the same mode: those are kernel-bound, and a faster parser
+will not show there.
+
+```sh
+./target/release/poopterm --benchmark --stages all --markdown
+```
+
 `--read` sets the bytes per parser call (default 64 KiB, one PTY read) and
 `--frame-every` the bytes between frames (default 1 MiB). Small values model
 interactive programs, which write a few bytes at a time and get a frame for

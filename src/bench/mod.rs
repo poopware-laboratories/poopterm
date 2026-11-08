@@ -8,6 +8,7 @@
 //! terminals can be measured on identical input (`scripts/bench-throughput.py`).
 pub(crate) mod corpus;
 pub(crate) mod images;
+pub(crate) mod pty;
 pub(crate) mod report;
 pub(crate) mod stats;
 pub(crate) mod table;
@@ -42,7 +43,7 @@ pub(crate) struct Options {
 	bytes: usize,
 	size: Size,
 	only: Vec<String>,
-	render: bool,
+	stages: Vec<Stage>,
 	feed: Feed,
 	/// Timed runs of each stage, after one untimed warm-up.
 	repeat: usize,
@@ -75,7 +76,7 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 			rows: 40,
 		},
 		only: Vec::new(),
-		render: true,
+		stages: report::HEADLESS.to_vec(),
 		feed: Feed::FLOOD,
 		repeat: REPEAT,
 		style: Style::Text,
@@ -97,7 +98,8 @@ pub(crate) fn options(args: impl Iterator<Item = String>) -> Result<Options, Box
 			"--read" => options.feed.read = value()?.parse::<usize>()?.clamp(1, 1 << 20),
 			"--frame-every" => options.feed.frame_every = value()?.parse::<usize>()?.clamp(1, 1 << 30),
 			"--only" => options.only.extend(value()?.split(',').map(str::to_owned)),
-			"--no-render" => options.render = false,
+			"--no-render" => options.stages.retain(|&stage| stage != Stage::Render),
+			"--stages" => options.stages = report::stages(&value()?)?,
 			"--repeat" => options.repeat = value()?.parse::<usize>()?.clamp(1, 50),
 			"--markdown" => options.style = Style::Markdown,
 			"--list" => {
@@ -124,6 +126,19 @@ fn fonts() -> FontSet {
 	FontSet::new(font, Vec::new())
 }
 
+/// A terminal of `size` whose history is full, as after real use: costs
+/// that grow with history (copying it, say) show up only when there is some.
+pub(crate) fn primed(size: Size) -> Term {
+	let theme = Theme::from_kind(ThemeKind::Poop);
+	let mut term = Term::new(size.cols, size.rows, theme, "/".into());
+	(term.cell_width, term.cell_height) = CELL;
+	let line = format!("{}\r\n", "x".repeat(size.cols / 2));
+	let lines = term.scrollback_limit + size.rows;
+	Parser::new().advance(&mut term, line.repeat(lines).as_bytes());
+	term.responses.clear();
+	term
+}
+
 /// Feeds `data` to a terminal whose history is full, as after real use, in
 /// reads of `feed.read`; draws a frame every `feed.frame_every` bytes when
 /// `fonts` is given. Returns MB/s.
@@ -134,14 +149,8 @@ pub(crate) fn measure(
 	mut fonts: Option<&mut FontSet>,
 ) -> f64 {
 	let theme = Theme::from_kind(ThemeKind::Poop);
-	let mut term = Term::new(size.cols, size.rows, theme, "/".into());
-	(term.cell_width, term.cell_height) = CELL;
+	let mut term = primed(size);
 	let mut parser = Parser::new();
-	// Costs that grow with history (copying it, say) show up only when there is some.
-	let line = format!("{}\r\n", "x".repeat(size.cols / 2));
-	let lines = term.scrollback_limit + size.rows;
-	parser.advance(&mut term, line.repeat(lines).as_bytes());
-	term.responses.clear();
 	let mut frame = Frame::default();
 	let mut pixels = vec![0u32; size.cols * CELL.0 * size.rows * CELL.1];
 	let start = Instant::now();
@@ -206,15 +215,17 @@ fn selected(options: &Options) -> impl Iterator<Item = &'static Workload> + '_ {
 }
 
 /// `poopterm --benchmark [--mib N] [--size COLSxROWS] [--only a,b] [--read BYTES]
-/// [--frame-every BYTES] [--repeat N] [--no-render] [--markdown] [--list]`
+/// [--frame-every BYTES] [--repeat N] [--stages LIST] [--no-render] [--markdown] [--list]`
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), Box<dyn Error>> {
 	let options = options(args)?;
 	let mut fonts = fonts();
 	let (size, feed) = (options.size, options.feed);
 	let table = report(&options, |stage, data| match stage {
-		Stage::Parse => measure(data, size, feed, None),
-		Stage::Render => measure(data, size, feed, Some(&mut fonts)),
-	});
+		Stage::Parse => Ok(measure(data, size, feed, None)),
+		Stage::Render => Ok(measure(data, size, feed, Some(&mut fonts))),
+		Stage::Pty(mode) => pty::rate(data, size, mode, false),
+		Stage::Pipeline(mode) => pty::rate(data, size, mode, true),
+	})?;
 	print!("{}", table.render(options.style));
 	Ok(())
 }
@@ -315,6 +326,64 @@ mod tests {
 		// Later options still apply after it; it takes no value.
 		let options = parsed(&["--markdown", "--repeat", "2"]).unwrap();
 		assert_eq!((options.style, options.repeat), (Style::Markdown, 2));
+	}
+
+	#[test]
+	fn a_primed_terminal_has_a_full_history_and_nothing_to_answer() {
+		let term = primed(Size { cols: 30, rows: 5 });
+		assert_eq!(term.scrollback.len(), term.scrollback_limit);
+		assert!(term.scrollback_limit > 0);
+		assert_eq!((term.cell_width, term.cell_height), CELL);
+		assert!(term.responses.is_empty());
+		// Half-width lines, and the cursor home on the empty last one.
+		let top: String = term.grid[0].iter().map(|cell| cell.ch).collect();
+		assert_eq!(top.trim_end(), "x".repeat(15));
+		assert_eq!((term.cx, term.cy), (0, 4));
+	}
+
+	#[test]
+	fn both_headless_stages_run_by_default() {
+		assert_eq!(parsed(&[]).unwrap().stages, [Stage::Parse, Stage::Render]);
+		assert_eq!(parsed(&["--no-render"]).unwrap().stages, [Stage::Parse]);
+	}
+
+	#[test]
+	fn stages_are_chosen_by_name() {
+		let options = parsed(&["--stages", "pipeline-raw,pty"]).unwrap();
+		assert_eq!(
+			options.stages,
+			[
+				Stage::Pipeline(pty::Mode::Raw),
+				Stage::Pty(pty::Mode::Cooked)
+			]
+		);
+	}
+
+	#[test]
+	fn the_later_of_no_render_and_stages_wins() {
+		// --no-render takes rendering out of whatever was chosen so far.
+		let dropped = parsed(&["--stages", "render,pty-raw", "--no-render"]).unwrap();
+		assert_eq!(dropped.stages, [Stage::Pty(pty::Mode::Raw)]);
+		let chosen = parsed(&["--no-render", "--stages", "render"]).unwrap();
+		assert_eq!(chosen.stages, [Stage::Render]);
+	}
+
+	#[test]
+	fn no_render_after_all_drops_only_rendering() {
+		let stages = parsed(&["--stages", "all", "--no-render"]).unwrap().stages;
+		assert_eq!(stages.len(), 5, "{stages:?}");
+		assert!(!stages.contains(&Stage::Render));
+		assert_eq!(stages[0], Stage::Parse);
+	}
+
+	#[test]
+	fn an_unknown_stage_is_an_error() {
+		let error = parsed(&["--stages", "parse,gpu"]).err().unwrap();
+		assert!(error.starts_with("unknown stage: gpu; "), "{error}");
+		assert_eq!(
+			parsed(&["--stages"]).err().unwrap(),
+			"--stages needs a value"
+		);
 	}
 
 	#[test]
