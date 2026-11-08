@@ -110,6 +110,7 @@ impl Panes {
 	}
 
 	/// Whether the focused pane can be split that way.
+	#[cfg(test)]
 	pub(crate) fn can_split(&self, split: Split) -> bool {
 		self.after_split(split, 0).is_some()
 	}
@@ -290,8 +291,8 @@ impl Panes {
 	}
 }
 
-/// How wide the gap between panes is at a whole-number chrome `scale`:
-/// odd, so the line drawn in it sits in its middle.
+/// How wide the gap between panes is at a whole-number chrome `scale`,
+/// leaving as much room each side of its `scale` thick line.
 pub(crate) fn divider_width(scale: usize) -> usize {
 	9 * scale.max(1)
 }
@@ -383,6 +384,23 @@ fn beside(from: Rect, to: Rect, direction: Direction) -> Option<(usize, usize)> 
 		.min(to_across.1)
 		.saturating_sub(from_across.0.max(to_across.0));
 	(shared > 0).then_some((gap, shared))
+}
+
+/// What a partial redraw paints again of a pane at `rect` drawing its
+/// edge backgrounds into `pad`, its grid's rows `ch` pixels high, of which
+/// `damaged` says which changed: the padding above and below the grid,
+/// and the changed rows across the padding's width.
+pub(crate) fn damaged_strips(rect: Rect, pad: Rect, ch: usize, damaged: &[bool]) -> Vec<Rect> {
+	let bottom = pad.y + pad.height;
+	let grid_bottom = (rect.y + damaged.len() * ch).min(bottom);
+	let strip = |y: usize, height: usize| Rect { y, height, ..pad };
+	let mut strips = vec![
+		strip(pad.y, rect.y.saturating_sub(pad.y)),
+		strip(grid_bottom, bottom.saturating_sub(grid_bottom)),
+	];
+	let changed = damaged.iter().enumerate().filter(|(_, damaged)| **damaged);
+	strips.extend(changed.map(|(row, _)| strip(rect.y + row * ch, ch)));
+	strips
 }
 
 /// The padding a pane at `rect` draws its edge cells' backgrounds into:

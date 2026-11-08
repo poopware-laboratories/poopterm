@@ -169,7 +169,7 @@ impl App {
 		}
 		let session = self.sessions.remove(index);
 		self.end_session(session);
-		for other in self.splits.remove(index).others {
+		for other in self.splits.remove(index).into_others() {
 			self.end_session(other);
 		}
 		self.persist_sessions();

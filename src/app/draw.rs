@@ -73,7 +73,7 @@ impl App {
 		};
 		let size = (self.width as usize, self.height as usize);
 		self.sessions[self.active].term().snapshot(&mut self.frame);
-		let places = self.is_split().then(|| self.pane_places());
+		let places = self.is_split().then(|| self.tab_places(self.active));
 		if let Some(places) = &places {
 			self.snapshot_panes(places);
 		}
@@ -155,7 +155,7 @@ impl App {
 	// pr-check: end window glue
 
 	/// The selection in rows of the frame being drawn; it is kept in lines.
-	pub(super) fn selection_rows(&self) -> Option<Selection> {
+	fn selection_rows(&self) -> Option<Selection> {
 		let history_base = self.frame.top_line - self.frame.first_row;
 		self.selection?.in_rows(history_base)
 	}
@@ -209,8 +209,27 @@ impl App {
 			return self.draw_panes(p, scale, None);
 		}
 		let (width, height) = p.size();
-		let view = GridView {
-			frame: &self.frame,
+		let padding = self.padding_area(width, height);
+		let view = self.grid_view(&self.frame, scale, padding);
+		draw_grid(p, &mut self.fonts, &view, rows);
+		if rows.is_some() {
+			// Partial redraws restore the padding above and below the grid
+			// every frame; it takes the first and last rows' backgrounds.
+			crate::render::padding::extend_above(p, &view);
+			crate::render::padding::extend_below(p, &view);
+		}
+	}
+
+	/// How the window draws `frame` as its grid, edge backgrounds reaching
+	/// into `padding`.
+	pub(super) fn grid_view<'a>(
+		&self,
+		frame: &'a Frame,
+		scale: usize,
+		padding: crate::graphics::Rect,
+	) -> GridView<'a> {
+		GridView {
+			frame,
 			origin: (self.grid_left(), self.top),
 			cell: (self.cw, self.ch),
 			px: self.px,
@@ -223,14 +242,7 @@ impl App {
 			selection: self.selection_rows(),
 			search_match: self.search_matches.get(self.search_match_index).copied(),
 			focused: self.focused,
-			padding: Some(self.padding_area(width, height)),
-		};
-		draw_grid(p, &mut self.fonts, &view, rows);
-		if rows.is_some() {
-			// Partial redraws restore the padding above and below the grid
-			// every frame; it takes the first and last rows' backgrounds.
-			crate::render::padding::extend_above(p, &view);
-			crate::render::padding::extend_below(p, &view);
+			padding: Some(padding),
 		}
 	}
 

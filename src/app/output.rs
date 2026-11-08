@@ -10,7 +10,10 @@ impl App {
 	pub(super) fn process_output(&mut self, id: u64) {
 		// Every pane of the active tab is on screen.
 		let is_active = self.tab_of(id) == Some(self.active);
-		let others = self.splits.iter_mut().flat_map(|tab| tab.others.iter_mut());
+		let others = self
+			.splits
+			.iter_mut()
+			.flat_map(|tab| tab.others_mut().iter_mut());
 		let Some(session) = self.sessions.iter_mut().chain(others).find(|s| s.id == id) else {
 			return;
 		};

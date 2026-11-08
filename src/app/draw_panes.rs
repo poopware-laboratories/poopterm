@@ -5,12 +5,12 @@ use crate::{
 	graphics::Rect,
 	render::{
 		background::wallpaper_rect,
-		grid::{GridView, draw_grid},
+		grid::draw_grid,
 		padding::{extend_above, extend_below},
 		painter::Painter,
 		pen::{Pen, Untracked},
 	},
-	ui::panes::{Place, divider_line, pane_padding},
+	ui::panes::{Place, damaged_strips, divider_line, pane_padding},
 };
 
 impl App {
@@ -18,11 +18,9 @@ impl App {
 	pub(super) fn snapshot_panes(&mut self, places: &[Place]) {
 		let mut frames = std::mem::take(&mut self.pane_frames);
 		frames.resize_with(places.len(), Frame::default);
-		let tab = self.active;
-		let sessions = std::iter::once(&self.sessions[tab]).chain(&self.splits[tab].others);
-		let sessions: Vec<&Session> = sessions.collect();
+		let (tab, focused) = (&self.splits[self.active], &self.sessions[self.active]);
 		for (place, frame) in places.iter().zip(&mut frames) {
-			if let Some(session) = sessions.iter().find(|session| session.id == place.id) {
+			if let Some(session) = tab.find(focused, place.id) {
 				session.term().snapshot(frame);
 			}
 		}
@@ -32,32 +30,16 @@ impl App {
 	/// Draws the active tab's panes from their snapshots: all of each, or
 	/// with `rows`, those rows of each pane in slot order.
 	pub(super) fn draw_panes(&mut self, p: &mut impl Pen, scale: usize, rows: Option<&[Vec<bool>]>) {
-		let (area, size) = (self.grid_area(), p.size());
-		let padding = self.padding_area(size.0, size.1);
-		let focused = self.splits[self.active].layout.focused();
-		let (selection, search_match) = (
-			self.selection_rows(),
-			self.search_matches.get(self.search_match_index).copied(),
-		);
+		let ((area, _, _), (width, height)) = (self.pane_geometry(), p.size());
+		let padding = self.padding_area(width, height);
+		let focused = self.sessions[self.active].id;
 		let frames = std::mem::take(&mut self.pane_frames);
-		for (slot, (place, frame)) in self.pane_places().iter().zip(&frames).enumerate() {
-			let is_focused = place.id == focused;
-			let view = GridView {
-				frame,
-				origin: (place.rect.x, place.rect.y),
-				cell: (self.cw, self.ch),
-				px: self.px,
-				ascent: self.ascent,
-				scale,
-				default_bg: self.theme.bg,
-				link_color: self.theme.palette[4],
-				selection_colors: selection_colors(self.theme.bg),
-				match_colors: (self.theme.bg, self.theme.palette[3]),
-				selection: selection.filter(|_| is_focused),
-				search_match: search_match.filter(|_| is_focused),
-				focused: self.focused && is_focused,
-				padding: Some(pane_padding(place.rect, area, padding)),
-			};
+		let places = self.tab_places(self.active);
+		for (slot, (place, frame)) in places.iter().zip(&frames).enumerate() {
+			let pad = pane_padding(place.rect, area, padding);
+			let view =
+				(self.grid_view(frame, scale, pad)).in_pane(frame, place.rect, pad, place.id == focused);
+			// pr-check: window glue: draws the real window's panes as the tested views say
 			match rows.and_then(|rows| rows.get(slot)) {
 				// Kept rows would belong to several grids: the pen keeps none.
 				None => draw_grid(&mut Untracked(&mut *p), &mut self.fonts, &view, None),
@@ -67,15 +49,15 @@ impl App {
 					extend_below(p, &view);
 				}
 			}
+			// pr-check: end window glue
 		}
 		self.pane_frames = frames;
-		if rows.is_none() {
-			let divider = self.divider();
-			let layout = &self.splits[self.active].layout;
-			for gap in layout.dividers(area, (self.cw, self.ch), divider) {
-				let line = divider_line(gap, scale);
-				p.rect(line.x, line.y, line.width, line.height, self.theme.border);
-			}
+		let (area, cell, divider) = self.pane_geometry();
+		let dividers = self.splits[self.active]
+			.layout()
+			.dividers(area, cell, divider);
+		for line in dividers.into_iter().map(|gap| divider_line(gap, scale)) {
+			p.rect(line.x, line.y, line.width, line.height, self.theme.border);
 		}
 	}
 
@@ -89,23 +71,10 @@ impl App {
 	) -> Vec<(usize, usize)> {
 		let scale = self.scale();
 		let mut bands = self.redraw_bars(p, scale);
-		let (area, ch) = (self.grid_area(), self.ch);
-		let padding = self.padding_area(p.width, p.height);
-		let places = self.pane_places();
-		for ((place, damaged), frame_rows) in places.iter().zip(rows).zip(self.grid_rows()) {
+		let ((area, _, _), padding) = (self.pane_geometry(), self.padding_area(p.width, p.height));
+		for (place, damaged) in self.tab_places(self.active).iter().zip(rows) {
 			let pad = pane_padding(place.rect, area, padding);
-			let grid_bottom = (place.rect.y + frame_rows * ch).min(pad.y + pad.height);
-			let band = |y: usize, height: usize| Rect { y, height, ..pad };
-			let mut strips = vec![
-				band(pad.y, place.rect.y.saturating_sub(pad.y)),
-				band(
-					grid_bottom,
-					(pad.y + pad.height).saturating_sub(grid_bottom),
-				),
-			];
-			let changed = damaged.iter().enumerate().filter(|(_, damaged)| **damaged);
-			strips.extend(changed.map(|(row, _)| band(place.rect.y + row * ch, ch)));
-			for strip in strips {
+			for strip in damaged_strips(place.rect, pad, self.ch, damaged) {
 				self.restore_rect(p, strip);
 				bands.push((strip.y, (strip.y + strip.height).min(p.height)));
 			}
@@ -113,11 +82,6 @@ impl App {
 		self.draw_panes(p, scale, Some(rows));
 		merge_bands(&mut bands);
 		bands
-	}
-
-	/// How many rows each pane's snapshot holds, in slot order.
-	fn grid_rows(&self) -> Vec<usize> {
-		self.pane_frames.iter().map(|frame| frame.rows).collect()
 	}
 
 	/// Repaints `rect`, inside the border, with the window's background:

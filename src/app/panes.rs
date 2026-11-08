@@ -1,89 +1,72 @@
 //! Split panes in the main window: each tab's focused pane is its session
 //! in `App::sessions`, so input, titles and the tab strip follow it, and
-//! the tab's other panes wait in its [`TabPanes`]. Where they all go is
-//! `ui::panes`'s to say; these methods route events to it.
+//! the tab's other panes wait in its `ui::pane_sessions::TabPanes`, which
+//! with `ui::panes` decides everything; these methods route events to them.
 use super::*;
 use crate::{
 	graphics::Rect,
 	input::pane_shortcuts::PaneCommand,
 	pty::spawn_session,
-	ui::panes::{Panes, Place, Split, divider_width},
+	ui::{
+		pane_sessions::{Closed, Shown},
+		panes::{Place, Split, divider_width},
+	},
 };
 
-/// A tab's panes, and the sessions of those it does not focus.
-pub(super) struct TabPanes {
-	pub layout: Panes,
-	pub others: Vec<Session>,
-}
+pub(super) type TabPanes = crate::ui::pane_sessions::TabPanes<Session>;
 
-impl TabPanes {
-	/// The panes of a tab showing session `id` alone.
-	pub(super) fn new(id: u64) -> Self {
-		Self {
-			layout: Panes::new(id),
-			others: Vec::new(),
-		}
+impl Shown for Session {
+	fn id(&self) -> u64 {
+		self.id
 	}
 }
 
 impl App {
-	/// The pixels the active tab's panes share.
-	pub(super) fn grid_area(&self) -> Rect {
+	/// The active tab's grid area, cell size and divider width.
+	pub(super) fn pane_geometry(&self) -> (Rect, (usize, usize), usize) {
 		let window = (self.width as usize, self.height as usize);
-		self.layout().grid_area(window)
+		let area = self.layout().grid_area(window);
+		(area, (self.cw, self.ch), divider_width(self.scale()))
 	}
 
-	/// Each of the active tab's panes, in slot order.
-	pub(super) fn pane_places(&self) -> Vec<Place> {
-		self.tab_places(self.active)
-	}
-
-	fn tab_places(&self, tab: usize) -> Vec<Place> {
-		let divider = divider_width(self.scale());
-		let layout = &self.splits[tab].layout;
-		layout.places(self.grid_area(), (self.cw, self.ch), divider)
+	/// Each of tab `tab`'s panes, in slot order.
+	pub(super) fn tab_places(&self, tab: usize) -> Vec<Place> {
+		let (area, cell, divider) = self.pane_geometry();
+		self.splits[tab].layout().places(area, cell, divider)
 	}
 
 	/// Where the active tab's focused pane sits.
 	pub(super) fn focused_rect(&self) -> Rect {
-		let focused = self.splits[self.active].layout.focused();
-		let places = self.pane_places().into_iter();
+		let focused = self.sessions[self.active].id;
+		let places = self.tab_places(self.active).into_iter();
 		(places
 			.filter(|place| place.id == focused)
 			.map(|place| place.rect))
 		.next()
-		.unwrap_or_else(|| self.grid_area())
+		.unwrap_or(self.pane_geometry().0)
 	}
 
 	/// Whether the active tab shows more than one pane.
 	pub(super) fn is_split(&self) -> bool {
-		self.splits[self.active].layout.is_split()
+		self.splits[self.active].layout().is_split()
 	}
 
 	/// Every session, focused or not.
 	pub(super) fn all_sessions(&self) -> impl Iterator<Item = &Session> {
-		let others = self.splits.iter().flat_map(|tab| tab.others.iter());
+		let others = self.splits.iter().flat_map(|tab| tab.others().iter());
 		self.sessions.iter().chain(others)
 	}
 
 	/// The tab showing session `id`.
 	pub(super) fn tab_of(&self, id: u64) -> Option<usize> {
-		(self.splits.iter().enumerate())
-			.find(|(_, tab)| tab.layout.ids().contains(&id))
-			.map(|(index, _)| index)
-	}
-
-	/// Session `id` in tab `tab`.
-	fn session_in(&self, tab: usize, id: u64) -> Option<&Session> {
-		let mut sessions = std::iter::once(&self.sessions[tab]).chain(&self.splits[tab].others);
-		sessions.find(|session| session.id == id)
+		(self.splits.iter()).position(|tab| tab.layout().ids().contains(&id))
 	}
 
 	/// Sizes every pane's terminal and PTY for the window.
 	pub(super) fn fit_panes(&self) {
-		for tab in 0..self.sessions.len() {
+		for (tab, panes) in self.splits.iter().enumerate() {
 			for place in self.tab_places(tab) {
-				if let Some(session) = self.session_in(tab, place.id) {
+				if let Some(session) = panes.find(&self.sessions[tab], place.id) {
 					self.fit_session(session, place.grid);
 				}
 			}
@@ -91,7 +74,7 @@ impl App {
 	}
 
 	/// Sizes `session`'s terminal and PTY to `grid` columns and rows.
-	pub(super) fn fit_session(&self, session: &Session, (cols, rows): (usize, usize)) {
+	fn fit_session(&self, session: &Session, (cols, rows): (usize, usize)) {
 		let mut term = session.term();
 		self.describe_window(&mut term);
 		// pr-check: window glue: a real PTY takes the size the tested layout gave
@@ -110,69 +93,60 @@ impl App {
 
 	/// Runs a pane shortcut in the active tab.
 	pub(super) fn run_pane_command(&mut self, command: PaneCommand) {
-		let tab = self.active;
-		let (area, cell, divider) = (self.grid_area(), (self.cw, self.ch), self.divider());
-		let mut layout = self.splits[tab].layout.clone();
+		let (tab, (area, cell, divider)) = (self.active, self.pane_geometry());
+		let focused = &mut self.sessions[tab];
+		// pr-check: window glue: hands the shortcut to the tested pane model
 		let moved = match command {
 			PaneCommand::Split(split) => return self.split_pane(split),
-			PaneCommand::Focus(direction) => layout.focus_toward(direction, area, cell, divider),
-			PaneCommand::Cycle(offset) => layout.cycle(offset),
+			PaneCommand::Focus(direction) => (self.splits[tab]).focus_by(focused, |panes| {
+				panes.focus_toward(direction, area, cell, divider)
+			}),
+			PaneCommand::Cycle(offset) => self.splits[tab].focus_by(focused, |p| p.cycle(offset)),
 		};
 		if moved {
-			self.focus_pane(layout.focused());
+			self.after_focus_moved();
 		}
-	}
-
-	pub(super) fn divider(&self) -> usize {
-		divider_width(self.scale())
+		// pr-check: end window glue
 	}
 
 	/// Splits the active tab's focused pane, starting a shell in the new
 	/// pane where the focused one is.
-	pub(super) fn split_pane(&mut self, split: Split) {
-		let tab = self.active;
-		if !self.splits[tab].layout.can_split(split) {
-			return;
-		}
-		self.refresh_directories(true);
-		let id = self.next_session_id;
-		let mut layout = self.splits[tab].layout.clone();
-		layout.split(split, id);
-		let (area, cell) = (self.grid_area(), (self.cw, self.ch));
-		let places = layout.places(area, cell, self.divider());
-		let Some(new) = places.iter().find(|place| place.id == id) else {
+	fn split_pane(&mut self, split: Split) {
+		let (tab, id) = (self.active, self.next_session_id);
+		let Some(place) = self.splits[tab].split_place(split, id, self.pane_geometry()) else {
 			return;
 		};
+		self.refresh_directories(true);
 		let cwd = self.active_term().cwd.clone();
-		let (cols, rows) = new.grid;
-		let proxy = self.proxy.clone();
+		let ((cols, rows), proxy) = (place.grid, self.proxy.clone());
+		// pr-check: window glue: a real shell starts in the place the tested model gave
 		match spawn_session(id, cols, rows, self.theme, proxy, cwd, &self.term_env) {
-			Ok(mut session) => {
+			Ok(session) => {
 				self.next_session_id += 1;
 				self.describe_window(&mut session.term());
-				std::mem::swap(&mut self.sessions[tab], &mut session);
-				self.splits[tab].others.push(session);
-				self.splits[tab].layout = layout;
+				let split = self.splits[tab].split(&mut self.sessions[tab], split, session);
+				if let Err(session) = split {
+					self.end_session(session);
+				}
 				self.after_focus_moved();
 			}
 			Err(error) => crate::warnings::warning!("could not split the pane: {error}"),
 		}
+		// pr-check: end window glue
 	}
 
 	/// Focuses pane `id` of the active tab.
 	pub(super) fn focus_pane(&mut self, id: u64) {
-		let tab = &mut self.splits[self.active];
-		let Some(index) = tab.others.iter().position(|session| session.id == id) else {
-			return;
-		};
-		tab.layout.focus(id);
-		std::mem::swap(&mut self.sessions[self.active], &mut tab.others[index]);
-		self.after_focus_moved();
+		let tab = self.active;
+		if self.splits[tab].focus(&mut self.sessions[tab], id) {
+			self.after_focus_moved();
+		}
 	}
 
 	/// Input, the selection and search now go to another pane, which may
 	/// have another size.
 	fn after_focus_moved(&mut self) {
+		// pr-check: window glue: forgets what the old pane showed and redraws
 		self.selection = None;
 		self.drag_anchor = None;
 		self.search_matches.clear();
@@ -183,6 +157,7 @@ impl App {
 		if self.search_active {
 			self.search(1, false);
 		}
+		// pr-check: end window glue
 	}
 
 	/// Closes pane `id`, its room going to the panes beside it; closing a
@@ -191,40 +166,27 @@ impl App {
 		let Some(tab) = self.tab_of(id) else {
 			return;
 		};
-		let panes = &mut self.splits[tab];
-		if !panes.layout.close(id) {
-			return self.close_tab(tab, event_loop);
+		// pr-check: window glue: acts on what the tested pane model decided
+		match self.splits[tab].close(&mut self.sessions[tab], id) {
+			Closed::Missing => {}
+			Closed::Last => self.close_tab(tab, event_loop),
+			Closed::Pane(session) => {
+				self.end_session(session);
+				match tab == self.active {
+					true => self.after_focus_moved(),
+					false => self.fit_panes(),
+				}
+			}
 		}
-		// The pane taking the closed one's room may take its focus too.
-		let focused = panes.layout.focused();
-		if let Some(index) = panes.others.iter().position(|s| s.id == focused) {
-			std::mem::swap(&mut self.sessions[tab], &mut panes.others[index]);
-		}
-		let Some(index) = panes.others.iter().position(|s| s.id == id) else {
-			return;
-		};
-		let session = panes.others.remove(index);
-		self.end_session(session);
-		if tab == self.active {
-			self.after_focus_moved();
-		} else {
-			self.fit_panes();
-		}
+		// pr-check: end window glue
 	}
 
 	/// Focuses the pane under a press at `(x, y)` in the window, if it is
 	/// another than the focused one. Returns whether it did, so the press
 	/// goes no further.
 	pub(super) fn press_pane(&mut self, (x, y): (f64, f64)) -> bool {
-		let layout = &self.splits[self.active].layout;
 		let point = (x.max(0.0) as usize, y.max(0.0) as usize);
-		let hit = layout.hit(self.grid_area(), (self.cw, self.ch), self.divider(), point);
-		match hit {
-			Some(id) if id != layout.focused() => {
-				self.focus_pane(id);
-				true
-			}
-			_ => false,
-		}
+		let hit = self.splits[self.active].other_at(self.pane_geometry(), point);
+		hit.inspect(|&id| self.focus_pane(id)).is_some()
 	}
 }
