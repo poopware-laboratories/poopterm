@@ -85,6 +85,7 @@ pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
 		.write(true)
 		.custom_flags(libc::O_NOCTTY)
 		.open(&path)?;
+	super::termios::set(&slave, &super::termios::sane(super::termios::get(&slave)?))?;
 	set_size(&master, size)?;
 	Ok(Pair {
 		master,

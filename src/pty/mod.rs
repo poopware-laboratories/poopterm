@@ -9,6 +9,11 @@ pub(crate) mod device;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "sessions move here with the child setup (#188)")
+)]
+pub(crate) mod termios;
 mod writer;
 
 use std::{
