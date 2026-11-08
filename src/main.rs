@@ -10,6 +10,8 @@
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+#[cfg(target_os = "macos")]
+mod about_menu;
 mod allocator;
 mod app;
 mod bench;

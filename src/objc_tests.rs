@@ -1,7 +1,9 @@
 //! Tests of the Objective-C runtime bindings on the real runtime: lookups
 //! that fail, messages of every arity we send, and objects owned exactly
 //! once, so nothing leaks and nothing is released twice.
-use super::{Bool, Missing, NIL, Object, Pool, Raw, class, describe, sel, string, text};
+use super::{
+	Bool, Missing, NIL, Object, Pool, Raw, Sel, action_class, class, describe, sel, string, text,
+};
 
 /// How many references `object` has.
 fn references(object: &Object) -> usize {
@@ -156,4 +158,59 @@ fn an_error_is_described_by_its_own_words_and_nil_by_the_fallback() {
 	let said = unsafe { describe(error, "nothing said") };
 	assert!(said.contains("PooptermTests"), "{said}");
 	assert!(said.contains("42"), "{said}");
+}
+
+/// Counts calls of `counted:` on `PooptermCountedTarget`.
+static COUNTED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+extern "C" fn counted(_receiver: Raw, selector: Sel, sender: Raw) {
+	assert_eq!(selector, sel(c"counted:"));
+	assert!(!sender.is_null());
+	COUNTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[test]
+fn an_action_class_answers_its_selector_with_its_action() {
+	let made = action_class(c"PooptermCountedTarget", c"counted:", counted).unwrap();
+	assert_eq!(class(c"PooptermCountedTarget"), Ok(made));
+	// SAFETY: the class descends from `NSObject`.
+	let target = unsafe { made.instance() }.unwrap();
+	assert!(target.responds(c"counted:"));
+	assert!(!target.responds(c"uncounted:"));
+	let sender = object();
+	// SAFETY: `counted:` takes an object and returns nothing.
+	unsafe { target.send::<()>(c"counted:", (sender.raw(),)) };
+	assert_eq!(COUNTED.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
+extern "C" fn ignored(_receiver: Raw, _selector: Sel, _sender: Raw) {}
+
+#[test]
+fn making_an_action_class_again_gives_the_class_made_first() {
+	let first = action_class(c"PooptermTwiceTarget", c"twice:", ignored).unwrap();
+	let second = action_class(c"PooptermTwiceTarget", c"other:", ignored).unwrap();
+	assert_eq!(first, second);
+	// SAFETY: the class descends from `NSObject`.
+	let target = unsafe { second.instance() }.unwrap();
+	// The second call added nothing to the registered class.
+	assert!(target.responds(c"twice:"));
+	assert!(!target.responds(c"other:"));
+}
+
+#[test]
+fn an_action_class_descends_from_nsobject() {
+	let made = action_class(c"PooptermDescendant", c"descend:", ignored).unwrap();
+	// SAFETY: the class descends from `NSObject`.
+	let target = unsafe { made.instance() }.unwrap();
+	assert!(target.responds(c"description"));
+	// SAFETY: `isKindOfClass:` takes a class and returns a `BOOL`.
+	let kind: Bool = unsafe { target.send(c"isKindOfClass:", (class(c"NSObject").unwrap().raw(),)) };
+	assert_ne!(kind, 0);
+}
+
+#[test]
+fn the_null_selector_is_no_registered_name() {
+	assert!(Sel::NULL.0.is_null());
+	assert_ne!(sel(c"description"), Sel::NULL);
+	assert_eq!(Sel::NULL, Sel::NULL);
 }
