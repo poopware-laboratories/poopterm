@@ -22,7 +22,13 @@ cargo build --release
 ./target/release/poopterm --benchmark                      # 16 MiB per workload, 120×40
 ./target/release/poopterm --benchmark --mib 64 --only log,tui --size 200x50
 ./target/release/poopterm --benchmark --kib 64 --read 16 --frame-every 64  # interactive
+./target/release/poopterm --benchmark --repeat 5 --markdown   # for a pull request
 ```
+
+Each stage of each workload runs once untimed on an eighth of its bytes,
+then `--repeat` times (default 3); cells show the median MB/s with the
+slowest and fastest run, and the overall row is total bytes over total
+time at the medians, per stage. `--markdown` prints the same as a table.
 
 `--read` sets the bytes per parser call (default 64 KiB, one PTY read) and
 `--frame-every` the bytes between frames (default 1 MiB). Small values model

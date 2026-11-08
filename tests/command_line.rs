@@ -126,6 +126,198 @@ fn the_benchmark_lists_its_workloads() {
 	}
 }
 
+/// Whether `cell` reads `median (min–max)`, with min ≤ median ≤ max.
+fn is_spread(cell: &str) -> bool {
+	let parsed = || -> Option<(f64, f64, f64)> {
+		let (median, range) = cell.strip_suffix(')')?.split_once(" (")?;
+		let (min, max) = range.split_once('–')?;
+		Some((median.parse().ok()?, min.parse().ok()?, max.parse().ok()?))
+	};
+	matches!(parsed(), Some((median, min, max)) if min <= median && median <= max && min > 0.0)
+}
+
+/// A quick benchmark of `log` and `tui` at a small size, with `more` options.
+fn quick_benchmark(more: &[&str]) -> (Output, String) {
+	let mut args = vec![
+		"--benchmark",
+		"--kib",
+		"4",
+		"--only",
+		"log,tui",
+		"--size",
+		"40x12",
+	];
+	args.extend(more);
+	let run = poopterm(&args);
+	assert!(run.status.success(), "{}", text(&run.stderr));
+	assert!(run.stderr.is_empty());
+	let report = text(&run.stdout);
+	(run, report)
+}
+
+#[test]
+fn the_benchmark_prints_medians_with_their_spread_per_workload_and_stage() {
+	let (_, report) = quick_benchmark(&["--repeat", "2"]);
+	let lines: Vec<&str> = report.lines().collect();
+	assert_eq!(lines.len(), 6, "{report}");
+	let version = env!("CARGO_PKG_VERSION");
+	assert_eq!(
+		lines[0],
+		format!("poopterm {version} headless, 40x12, 4 KiB per workload")
+	);
+	assert_eq!(lines[1], "MB/s, median (min–max)");
+	assert_eq!(
+		lines[2].split_whitespace().collect::<Vec<_>>(),
+		["workload", "parse", "+render"]
+	);
+	for (line, workload) in lines[3..5].iter().zip(["log", "tui"]) {
+		let (name, cells) = line.split_once(' ').unwrap();
+		assert_eq!(name, workload);
+		let cells: Vec<&str> = cells.trim().split("  ").filter(|c| !c.is_empty()).collect();
+		assert_eq!(cells.len(), 2, "{line}");
+		assert!(cells.iter().all(|cell| is_spread(cell.trim())), "{line}");
+	}
+	let overall: Vec<&str> = lines[5].split_whitespace().collect();
+	assert_eq!(overall[0], "overall");
+	assert_eq!(overall.len(), 3, "{report}");
+	assert!(
+		overall[1..]
+			.iter()
+			.all(|rate| rate.parse::<f64>().is_ok_and(|rate| rate > 0.0))
+	);
+}
+
+#[test]
+fn the_benchmark_prints_a_markdown_table_when_asked() {
+	let (_, report) = quick_benchmark(&["--repeat", "1", "--markdown"]);
+	let lines: Vec<&str> = report.lines().collect();
+	assert!(lines[0].starts_with("**poopterm ") && lines[0].ends_with("MB/s, median (min–max)"));
+	assert_eq!(lines[1], "");
+	assert_eq!(lines[2], "| workload | parse | +render |");
+	assert_eq!(lines[3], "|---|--:|--:|");
+	let cells = |line: &str| -> Vec<String> {
+		let inner = line
+			.strip_prefix("| ")
+			.and_then(|l| l.strip_suffix(" |"))
+			.unwrap();
+		inner.split(" | ").map(str::to_owned).collect()
+	};
+	assert_eq!(cells(lines[4])[0], "log");
+	assert_eq!(cells(lines[5])[0], "tui");
+	assert!(
+		cells(lines[4])[1..].iter().all(|cell| is_spread(cell)),
+		"{report}"
+	);
+	assert_eq!(cells(lines[6])[0], "overall");
+	assert_eq!(lines.len(), 7, "{report}");
+}
+
+#[test]
+fn without_rendering_the_markdown_has_one_number_column() {
+	let (_, report) = quick_benchmark(&["--repeat", "1", "--markdown", "--no-render"]);
+	assert!(
+		report.contains("\n| workload | parse |\n|---|--:|\n"),
+		"{report}"
+	);
+	assert!(!report.contains("+render"));
+}
+
+#[test]
+fn one_run_per_stage_is_its_own_median_and_spread() {
+	let (_, report) = quick_benchmark(&["--repeat", "1", "--markdown"]);
+	for line in report
+		.lines()
+		.filter(|line| line.starts_with("| log") || line.starts_with("| tui"))
+	{
+		for cell in line.trim_matches(['|', ' ']).split(" | ").skip(1) {
+			let (median, range) = cell.split_once(" (").unwrap();
+			let (min, max) = range.trim_end_matches(')').split_once('–').unwrap();
+			assert_eq!((min, max), (median, median), "{line}");
+		}
+	}
+}
+
+#[test]
+fn without_rendering_the_text_has_one_number_per_workload() {
+	let (_, report) = quick_benchmark(&["--repeat", "1", "--no-render"]);
+	let lines: Vec<&str> = report.lines().collect();
+	assert_eq!(
+		lines[2].split_whitespace().collect::<Vec<_>>(),
+		["workload", "parse"]
+	);
+	for line in &lines[3..5] {
+		// A name, then one cell: `median (min–max)` is two words.
+		assert_eq!(line.split_whitespace().count(), 3, "{line}");
+	}
+	assert_eq!(lines[5].split_whitespace().count(), 2, "{report}");
+}
+
+#[test]
+fn the_overall_of_one_workload_is_its_median() {
+	let args = [
+		"--benchmark",
+		"--kib",
+		"4",
+		"--only",
+		"tui",
+		"--no-render",
+		"--repeat",
+		"3",
+	];
+	let run = poopterm(&args);
+	assert!(run.status.success());
+	let report = text(&run.stdout);
+	let lines: Vec<&str> = report.lines().collect();
+	let median = lines[3].split_whitespace().nth(1).unwrap();
+	let overall = lines[4].split_whitespace().nth(1).unwrap();
+	// Both are rounded to one decimal from the same median.
+	assert_eq!(overall, median, "{report}");
+}
+
+#[test]
+fn a_mistyped_repeat_suggests_the_option_meant() {
+	let run = poopterm(&["--benchmark", "--repet", "2"]);
+	assert_eq!(run.status.code(), Some(1));
+	assert!(run.stdout.is_empty());
+	assert!(
+		text(&run.stderr).contains("Did you mean --repeat?"),
+		"{}",
+		text(&run.stderr)
+	);
+}
+
+#[test]
+fn repeat_needs_a_count() {
+	let cases = [
+		(
+			&["--benchmark", "--repeat"][..],
+			"error: --repeat needs a value\n",
+		),
+		(
+			&["--benchmark", "--repeat", "many"],
+			"error: invalid digit found in string\n",
+		),
+	];
+	for (args, message) in cases {
+		let run = poopterm(args);
+		assert_eq!(run.status.code(), Some(1), "{args:?}");
+		assert!(run.stdout.is_empty(), "nothing is measured: {args:?}");
+		assert_eq!(text(&run.stderr), message, "{args:?}");
+	}
+}
+
+#[test]
+fn an_unknown_workload_is_refused_before_anything_runs() {
+	let run = poopterm(&["--benchmark", "--only", "log,nope", "--kib", "1"]);
+	assert_eq!(run.status.code(), Some(1));
+	assert!(run.stdout.is_empty());
+	assert!(
+		text(&run.stderr).contains("unknown workload: nope"),
+		"{}",
+		text(&run.stderr)
+	);
+}
+
 #[test]
 fn the_corpus_writes_a_workloads_bytes_and_checks_its_name() {
 	let run = poopterm(&["--bench-corpus", "log", "--kib", "1"]);

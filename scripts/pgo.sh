@@ -77,10 +77,10 @@ need_instrumented() {
 
 # Runs the training corpus on the instrumented binary $1.
 run_training() {
-	"$1" --benchmark --mib "${2:-8}"
+	"$1" --benchmark --repeat 1 --mib "${2:-8}"
 	# Interactive programs write a few bytes at a time (key echo, prompts)
 	# and get a frame for most writes; keep their paths in the profile too.
-	"$1" --benchmark --kib 64 --read 16 --frame-every 64
+	"$1" --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64
 }
 
 train() {

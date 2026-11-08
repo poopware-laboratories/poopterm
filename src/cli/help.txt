@@ -35,6 +35,9 @@ BENCHMARK OPTIONS
 	program (64 KiB by default).
       --frame-every BYTES	Draw a frame after this much output (1 MiB).
       --no-render	Only parse; draw no frames.
+      --repeat N	Time each stage N times after a warm-up; show
+	the median, slowest and fastest (1 to 50; 3).
+      --markdown	Print the results as a Markdown table.
 
 ENVIRONMENT
   POOPTERM_CONFIG	The config file to use instead of
