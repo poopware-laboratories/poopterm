@@ -1,12 +1,34 @@
 //! Tests of pointing the app menu's About item at our own page, on real
 //! `NSMenu`s built here: the item found wherever it sits, other items left
 //! alone, and the item's action reaching the callback the app installed.
-use super::{OURS, STANDARD, redirect, set_wake, target};
+use super::{OURS, STANDARD, WAKE, redirect, set_wake, show_about, target};
 use crate::objc::{NIL, Object, Raw, Sel, class, sel, string};
 use std::sync::{
-	Arc,
+	Arc, Mutex, MutexGuard,
 	atomic::{AtomicUsize, Ordering},
 };
+
+/// Tests that install a callback take turns: there is one per process.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> MutexGuard<'static, ()> {
+	SERIAL
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A callback counting its calls into `counter`.
+fn counting(counter: &Arc<AtomicUsize>) -> super::Wake {
+	let counter = counter.clone();
+	Box::new(move || {
+		counter.fetch_add(1, Ordering::Relaxed);
+	})
+}
+
+/// Sends our action straight to the target, as AppKit does for the item.
+fn choose() {
+	show_about(target().unwrap(), sel(OURS), NIL);
+}
 
 /// A new, empty `NSMenu`, owned.
 fn menu() -> Object {
@@ -166,18 +188,146 @@ fn choosing_the_item_runs_the_installed_callback_each_time() {
 			(action(&about).unwrap(), about.raw()),
 		);
 	};
+	let _serial = serial();
 	// Before the app installs one, choosing the item does nothing.
 	set_wake(None);
 	choose();
 	let chosen = Arc::new(AtomicUsize::new(0));
-	let count = chosen.clone();
-	set_wake(Some(Box::new(move || {
-		count.fetch_add(1, Ordering::Relaxed);
-	})));
+	set_wake(Some(counting(&chosen)));
 	choose();
 	choose();
 	assert_eq!(chosen.load(Ordering::Relaxed), 2);
 	set_wake(None);
 	choose();
 	assert_eq!(chosen.load(Ordering::Relaxed), 2);
+}
+
+#[test]
+fn installing_a_callback_replaces_the_one_before() {
+	let _serial = serial();
+	let (first, second) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+	set_wake(Some(counting(&first)));
+	choose();
+	set_wake(Some(counting(&second)));
+	choose();
+	choose();
+	assert_eq!(first.load(Ordering::Relaxed), 1);
+	assert_eq!(second.load(Ordering::Relaxed), 2);
+	set_wake(None);
+}
+
+#[test]
+fn a_callback_that_panicked_elsewhere_does_not_stop_the_item() {
+	let _serial = serial();
+	// A thread that panics holding the lock poisons it.
+	let poisoner = std::thread::spawn(|| {
+		let _held = WAKE.lock();
+		panic!("poison the callback's lock");
+	});
+	assert!(poisoner.join().is_err());
+	let chosen = Arc::new(AtomicUsize::new(0));
+	set_wake(Some(counting(&chosen)));
+	choose();
+	assert_eq!(chosen.load(Ordering::Relaxed), 1);
+	set_wake(None);
+	choose();
+	assert_eq!(chosen.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn the_callback_runs_on_whichever_thread_chooses_the_item() {
+	let _serial = serial();
+	let chosen = Arc::new(AtomicUsize::new(0));
+	set_wake(Some(counting(&chosen)));
+	let threads: Vec<_> = (0..4).map(|_| std::thread::spawn(choose)).collect();
+	for thread in threads {
+		thread.join().unwrap();
+	}
+	assert_eq!(chosen.load(Ordering::Relaxed), 4);
+	set_wake(None);
+}
+
+#[test]
+fn an_item_titled_about_that_sends_something_else_is_left_alone() {
+	// Items are matched by what they do, not by their title, which is
+	// localized and names the process.
+	let bar = menu();
+	let help = item(&bar, "About poopterm", Some(sel(c"showHelp:")));
+	// SAFETY: an `NSMenu`.
+	assert!(!unsafe { redirect(&bar) });
+	assert_eq!(action(&help), Some(sel(c"showHelp:")));
+	assert_eq!(receiver(&help), NIL);
+}
+
+#[test]
+fn an_about_item_with_a_target_of_its_own_is_taken_over() {
+	let bar = menu();
+	let about = item(&bar, "About", Some(sel(STANDARD)));
+	// SAFETY: `NSObject` takes `new`.
+	let other = unsafe { class(c"NSObject").unwrap().instance() }.unwrap();
+	// SAFETY: `setTarget:` takes an object, which the item does not retain;
+	// `other` outlives the item's use here.
+	unsafe { about.send::<()>(c"setTarget:", (other.raw(),)) };
+	assert_eq!(receiver(&about), other.raw());
+	// SAFETY: an `NSMenu`.
+	assert!(unsafe { redirect(&bar) });
+	assert_eq!(receiver(&about), target().unwrap());
+	assert_eq!(action(&about), Some(sel(OURS)));
+}
+
+#[test]
+fn the_item_keeps_its_title_shortcut_and_tag() {
+	let (bar, about) = menu_bar();
+	// SAFETY: `setTag:` takes an `NSInteger`.
+	unsafe { about.send::<()>(c"setTag:", (7isize,)) };
+	// SAFETY: an `NSMenu`.
+	assert!(unsafe { redirect(&bar) });
+	// SAFETY: `title` returns an `NSString`, `tag` an `NSInteger`, and
+	// `isEnabled` a `BOOL`.
+	unsafe {
+		let title = Object::retained(about.send(c"title", ())).unwrap();
+		assert_eq!(crate::objc::text(&title), "About poopterm");
+		assert_eq!(about.send::<isize>(c"tag", ()), 7);
+		assert_ne!(about.send::<crate::objc::Bool>(c"isEnabled", ()), 0);
+	}
+}
+
+#[test]
+fn items_after_a_submenu_are_still_searched() {
+	let bar = menu();
+	let nested = menu();
+	nest(&item(&bar, "Edit", None), &nested);
+	item(&nested, "Copy", Some(sel(c"copy:")));
+	let about = item(&bar, "About", Some(sel(STANDARD)));
+	// SAFETY: an `NSMenu`.
+	assert!(unsafe { redirect(&bar) });
+	assert_eq!(action(&about), Some(sel(OURS)));
+}
+
+#[test]
+fn the_last_item_of_a_long_menu_is_searched() {
+	let bar = menu();
+	let others: Vec<_> = (0..40)
+		.map(|index| item(&bar, &format!("Item {index}"), Some(sel(c"copy:"))))
+		.collect();
+	let about = item(&bar, "About", Some(sel(STANDARD)));
+	// SAFETY: an `NSMenu`.
+	assert!(unsafe { redirect(&bar) });
+	assert_eq!(action(&about), Some(sel(OURS)));
+	assert!(
+		others
+			.iter()
+			.all(|other| action(other) == Some(sel(c"copy:")))
+	);
+}
+
+#[test]
+fn the_target_is_an_instance_of_our_own_registered_class() {
+	let target = target().unwrap();
+	// SAFETY: the target lives for the whole process.
+	let target = unsafe { Object::retained(target) }.unwrap();
+	let ours = class(c"PooptermAboutTarget").unwrap();
+	// SAFETY: `isMemberOfClass:` takes a class and returns a `BOOL`.
+	let member: crate::objc::Bool = unsafe { target.send(c"isMemberOfClass:", (ours.raw(),)) };
+	assert_ne!(member, 0);
 }
