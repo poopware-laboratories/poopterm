@@ -55,11 +55,9 @@ pub(crate) struct Pair {
 
 /// A C call's result, or the error it left in `errno` when negative.
 fn check(result: libc::c_int) -> io::Result<libc::c_int> {
-	if result < 0 {
-		Err(io::Error::last_os_error())
-	} else {
-		Ok(result)
-	}
+	(result >= 0)
+		.then_some(result)
+		.ok_or_else(io::Error::last_os_error)
 }
 
 /// A new PTY pair of `size`.

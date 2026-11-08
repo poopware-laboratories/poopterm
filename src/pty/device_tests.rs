@@ -246,3 +246,130 @@ fn a_grid_size_saturates_at_what_the_ioctl_carries() {
 	assert_eq!(WindowSize::of(1000, 1, (66, 1)).pixel_width, u16::MAX);
 	assert_eq!(WindowSize::of(1000, 1, (65, 1)).pixel_width, 65_000);
 }
+
+/// Output of writing `data` to the slave of our pair and of the oracle's,
+/// each read from its master until quiet.
+fn both_outputs(data: &[u8]) -> (Vec<u8>, Vec<u8>) {
+	let ours = open(cells(80, 24)).unwrap();
+	let (master, mut theirs) = oracle(cells(80, 24));
+	let ours_reading = {
+		let out = File::from(ours.master.try_clone().unwrap());
+		thread::spawn(move || drain(out))
+	};
+	let theirs_reading = {
+		let out = master.try_clone_reader().unwrap();
+		thread::spawn(move || drain(out))
+	};
+	File::from(ours.slave).write_all(data).unwrap();
+	theirs.write_all(data).unwrap();
+	(ours_reading.join().unwrap(), theirs_reading.join().unwrap())
+}
+
+#[test]
+fn output_larger_than_the_kernels_buffer_arrives_whole_as_from_portable_ptys() {
+	// Far past what a PTY buffers (4 KiB on macOS, 64 KiB or so elsewhere),
+	// so the writer waits for the reader.
+	let data = b"line of output\n".repeat(20_000);
+	let (ours, theirs) = both_outputs(&data);
+	assert_eq!(
+		ours.len(),
+		data.len() + 20_000,
+		"each newline gains a carriage return"
+	);
+	assert_eq!(ours, theirs);
+}
+
+#[test]
+fn typed_input_reaches_the_slave_and_echoes_as_on_portable_ptys() {
+	let typed = b"echo hi\tthere\x7f\x7fre\n";
+	let ours = open(cells(80, 24)).unwrap();
+	let (master, theirs) = oracle(cells(80, 24));
+	let mut lines = Vec::new();
+	let mut echoes = Vec::new();
+	for (input, mut keyboard, echo) in [
+		(
+			File::from(ours.slave.try_clone().unwrap()),
+			Box::new(File::from(ours.master.try_clone().unwrap())) as Box<dyn Write + Send>,
+			Box::new(File::from(ours.master.try_clone().unwrap())) as Box<dyn Read + Send>,
+		),
+		(
+			theirs.try_clone().unwrap(),
+			master.take_writer().unwrap(),
+			master.try_clone_reader().unwrap(),
+		),
+	] {
+		let echoing = thread::spawn(move || drain(echo));
+		keyboard.write_all(typed).unwrap();
+		// Line editing hands the slave one finished line.
+		let mut line = vec![0; 64];
+		let n = (&input).read(&mut line).unwrap();
+		lines.push(line[..n].to_vec());
+		echoes.push(echoing.join().unwrap());
+	}
+	assert_eq!(lines[0], b"echo hi\tthere\n");
+	assert_eq!(lines[0], lines[1]);
+	assert!(!echoes[0].is_empty());
+	assert_eq!(echoes[0], echoes[1]);
+}
+
+#[test]
+fn the_master_ends_once_the_slave_closes() {
+	let ours = open(cells(80, 24)).unwrap();
+	let mut out = File::from(ours.master.try_clone().unwrap());
+	File::from(ours.slave).write_all(b"last\n").unwrap();
+	// What was written before the close still arrives.
+	let mut buf = [0; 16];
+	let n = out.read(&mut buf).unwrap();
+	assert_eq!(&buf[..n], b"last\r\n");
+	// Then Linux answers EIO and the BSDs end of file (portable-pty's reader
+	// turns both into an end of file); a reader must stop at either.
+	match out.read(&mut buf) {
+		Ok(0) => {}
+		Err(error) => assert_eq!(error.raw_os_error(), Some(libc::EIO)),
+		Ok(n) => panic!("{n} more bytes"),
+	}
+}
+
+#[test]
+fn pairs_opened_at_once_from_many_threads_have_their_own_slaves() {
+	let opening: Vec<_> = (0..16)
+		.map(|_| {
+			thread::spawn(|| {
+				(0..8)
+					.map(|_| open(cells(80, 24)).unwrap())
+					.collect::<Vec<_>>()
+			})
+		})
+		.collect();
+	let pairs: Vec<Pair> = opening
+		.into_iter()
+		.flat_map(|thread| thread.join().unwrap())
+		.collect();
+	let mut paths: Vec<_> = pairs.iter().map(|pair| pair.path.clone()).collect();
+	paths.sort();
+	paths.dedup();
+	assert_eq!(paths.len(), pairs.len());
+	// And each path is its own pair's slave: a size set on the master shows
+	// at the path.
+	for (n, pair) in pairs.iter().enumerate() {
+		set_size(&pair.master, cells(n as u16 + 1, 7)).unwrap();
+		let slave = File::open(&pair.path).unwrap();
+		assert_eq!(super::size(&slave).unwrap(), cells(n as u16 + 1, 7));
+	}
+}
+
+#[test]
+fn a_size_set_on_the_slave_shows_on_the_master() {
+	let pair = open(cells(80, 24)).unwrap();
+	set_size(&pair.slave, cells(100, 30)).unwrap();
+	assert_eq!(size(&pair.master).unwrap(), cells(100, 30));
+}
+
+#[test]
+fn slaves_live_where_portable_ptys_put_theirs() {
+	let ours = open(cells(80, 24)).unwrap();
+	let (master, _slave) = oracle(cells(80, 24));
+	let theirs = master.tty_name().unwrap();
+	assert_eq!(ours.path.parent(), theirs.parent());
+	assert_ne!(ours.path, theirs);
+}
