@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.51 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Run every tab's shell on our own pty (#269) (pty).
+
 ## 26.11.50 "Lunar Moth" — 2026-11-09
 
 ### Added
