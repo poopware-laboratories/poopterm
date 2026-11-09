@@ -39,8 +39,9 @@ pub(super) fn account_shell() -> Option<String> {
 	if status != 0 || found.is_null() {
 		return None;
 	}
-	// SAFETY: on success `entry` is filled in and `found` points at it.
-	let shell = unsafe { (*found).pw_shell };
+	// SAFETY: a zero status with a non-null `found` means `getpwuid_r` filled
+	// in `entry`, which we own; we read it, not the pointer it handed back.
+	let shell = unsafe { entry.assume_init_ref() }.pw_shell;
 	if shell.is_null() {
 		return None;
 	}
