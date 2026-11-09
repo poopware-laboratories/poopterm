@@ -286,6 +286,38 @@ mod tests {
 	}
 
 	#[test]
+	fn a_size_beyond_what_the_kernel_holds_saturates_rather_than_wraps() {
+		// 70000 columns would wrap to 4464 in 16 bits.
+		let seen = output(
+			&["stty", "size"],
+			Size {
+				cols: 70_000,
+				rows: 3,
+			},
+			Mode::Raw,
+		);
+		assert_eq!(seen, b"3 65535\n");
+	}
+
+	#[test]
+	fn standard_error_is_part_of_the_output() {
+		let seen = output(
+			&["sh", "-c", "printf out; printf err >&2"],
+			SMALL,
+			Mode::Raw,
+		);
+		assert_eq!(seen, b"outerr");
+	}
+
+	#[test]
+	fn a_job_left_running_does_not_stretch_the_run() {
+		// It holds the terminal past its shell's end; the run ends at the
+		// mark, and closing the PTY hangs the job up.
+		let seconds = collect(&["sh", "-c", "sleep 5 &"], SMALL, Mode::Raw, |_| ()).unwrap();
+		assert!(seconds < 3.0, "the run took {seconds} s");
+	}
+
+	#[test]
 	fn a_programs_own_code_above_128_is_reported_as_it_is() {
 		let error = failure("exit 200");
 		assert!(error.ends_with("exited with 200"), "{error}");
