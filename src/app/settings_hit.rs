@@ -531,12 +531,8 @@ mod tests {
 
 	#[test]
 	fn the_square_window_row_clears_the_footer_in_the_smallest_window() {
-		let footer = DEFAULT_SIZE.1 - 52;
-		assert!(FRAME_ROW + ROW_HEIGHT <= footer);
-		assert!(
-			FRAME_ROW >= PADDING_ROW + ROW_HEIGHT,
-			"no overlap with padding"
-		);
+		const { assert!(FRAME_ROW + ROW_HEIGHT <= DEFAULT_SIZE.1 - 52) };
+		const { assert!(FRAME_ROW >= PADDING_ROW + ROW_HEIGHT) };
 	}
 
 	#[test]
