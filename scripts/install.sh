@@ -32,8 +32,7 @@ PREFIX=${PREFIX:-/usr/local}
 DESTDIR=${DESTDIR:-}
 bindir=$PREFIX/bin
 datadir=$PREFIX/share
-icons="16x16:icon_16x16 32x32:icon_32x32 64x64:icon_32x32@2x 128x128:icon_128x128
-256x256:icon_256x256 512x512:icon_512x512"
+icons="16x16:16 32x32:32 48x48:48 64x64:64 128x128:128 256x256:256 512x512:512"
 
 # Runs a command as root when the target is not writable as we are.
 target=$DESTDIR$PREFIX
@@ -80,6 +79,7 @@ if [ "$action" = uninstall ]; then
 	for icon in $icons; do
 		run rm -f "$DESTDIR$datadir/icons/hicolor/${icon%%:*}/apps/poopterm.png"
 	done
+	run rm -f "$DESTDIR$datadir/icons/hicolor/scalable/apps/poopterm.svg"
 	refresh
 	echo "Removed poopterm from $DESTDIR$PREFIX"
 	exit 0
@@ -108,9 +108,11 @@ run install -m 755 "$binary" "$DESTDIR$bindir/poopterm"
 run install -m 644 "$desktop" "$DESTDIR$datadir/applications/poopterm.desktop"
 for icon in $icons; do
 	run install -d "$DESTDIR$datadir/icons/hicolor/${icon%%:*}/apps"
-	run install -m 644 "$root/assets/icon.iconset/${icon#*:}.png" \
+	run install -m 644 "$root/assets/icon.linux/${icon#*:}.png" \
 		"$DESTDIR$datadir/icons/hicolor/${icon%%:*}/apps/poopterm.png"
 done
+run install -d "$DESTDIR$datadir/icons/hicolor/scalable/apps"
+run install -m 644 "$root/assets/poopterm.svg" "$DESTDIR$datadir/icons/hicolor/scalable/apps/poopterm.svg"
 # Shells get TERM=xterm-poopterm only with this entry; see src/terminfo.rs.
 if command -v tic >/dev/null 2>&1; then
 	run install -d "$DESTDIR$terminfo"
