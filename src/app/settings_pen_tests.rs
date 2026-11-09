@@ -419,3 +419,66 @@ fn mono_fit_measures_at_the_pens_scale() {
 		);
 	});
 }
+
+/// The one text command `centered_row` records for `text` in a window
+/// `width` logical pixels wide at `scale`.
+fn centered(scale: usize, width: usize, text: &str, size: f32) -> (usize, usize, u32, usize) {
+	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
+	let mut pen = Pen {
+		fonts: &mut fonts,
+		px: 18.0 * scale as f32,
+		ascent: 14 * scale as i32,
+		color: 0xeeeeee,
+		scale,
+	};
+	let mut scene = Scene::new(width * scale, 600 * scale);
+	pen.centered_row(&mut scene, (200, size, 0x123456), text);
+	let drawn = pen.width(text, size);
+	match scene.commands.as_slice() {
+		[Command::Text { at, color, .. }] => (at.0, at.1, *color, drawn),
+		other => panic!("{other:?}"),
+	}
+}
+
+#[test]
+fn a_centered_row_leaves_equal_margins_either_side() {
+	for scale in [1, 2] {
+		for text in [
+			"poopterm",
+			"A small, native terminal emulator written in Rust.",
+		] {
+			let (x, _, _, width) = centered(scale, 760, text, 0.82);
+			let (left, right) = (x, 760 * scale - (x + width));
+			assert!(
+				left.abs_diff(right) <= 1,
+				"{text:?} at {scale}x: {left} against {right}"
+			);
+		}
+	}
+}
+
+#[test]
+fn a_centered_row_takes_its_row_and_color_as_given() {
+	let (_, y, color, _) = centered(2, 760, "x", 1.0);
+	assert_eq!((y, color), (400, 0x123456));
+}
+
+#[test]
+fn a_wider_line_starts_further_left() {
+	let (short, ..) = centered(1, 760, "About", 0.82);
+	let (long, ..) = centered(1, 760, "About poopterm and its authors", 0.82);
+	assert!(long < short);
+}
+
+#[test]
+fn a_line_wider_than_the_window_starts_at_the_left_edge() {
+	let (x, ..) = centered(1, 40, "A line far too long for a window this narrow", 0.82);
+	assert_eq!(x, 0);
+}
+
+#[test]
+fn a_larger_size_is_wider_and_so_starts_further_left() {
+	let (small, ..) = centered(1, 760, "poopterm", 0.8);
+	let (large, ..) = centered(1, 760, "poopterm", 1.5);
+	assert!(large < small);
+}
