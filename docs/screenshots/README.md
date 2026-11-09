@@ -17,6 +17,7 @@ links keep working. Each folder belongs to one pull request:
 | `window-buttons/` | Linux window buttons in the header: light and dark, hovered and pressed; `auto` on sway (none) and `client` with the portal's `appmenu:close` |
 | `chrome-colors/` | chrome colors derived from the theme, muted inactive tabs and 8 px padding, before and after in poop, darkmode and light-mode |
 | `settings-nav/` | the Settings window with a sidebar of pages in place of the header buttons and back button, before and after; drawn from the page models, since keystrokes cannot open the window in the capture setup |
+| `settings-switches/` | the Layout page's rows with switches in place of Enabled/Disabled buttons, poop and light-mode; drawn with the page's own pen calls, since keystrokes cannot open the window in the capture setup |
 | `tab-bar/` | the header's new shape: 40 px high, the active tab joined to the terminal with rounded top corners, before and after in poop and light-mode |
 | `palette-hints/` | each palette command's shortcut shown at its row's right end; the palette drawn from its model, since keystrokes cannot reach the window in the capture setup |
 | `settings-rows/` | the Settings main page with its rows laid out from one table of gaps, before and after in poop and light-mode; drawn from the page's model, since keystrokes cannot open the window in the capture setup |
