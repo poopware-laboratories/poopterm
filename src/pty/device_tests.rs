@@ -74,9 +74,9 @@ fn a_new_pair_has_the_size_asked_on_both_sides() {
 
 #[test]
 fn programs_see_the_size_asked() {
-	// Within 1..30000: busybox's stty (Alpine) reports 0 and anything from
+	// Within 2..30000: busybox's stty (Alpine) reports 0, 1 and anything from
 	// 30000 up as its default, 80 by 24.
-	for (cols, rows) in [(1, 1), (80, 24), (7, 29_999), (29_999, 2), (12_345, 678)] {
+	for (cols, rows) in [(2, 2), (80, 24), (7, 29_999), (29_999, 2), (12_345, 678)] {
 		let pair = open(WindowSize {
 			cols,
 			rows,
