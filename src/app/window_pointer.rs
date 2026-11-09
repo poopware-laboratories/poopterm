@@ -2,6 +2,7 @@
 //! routes what `ui::window_pointer` decides to the window.
 use super::*;
 use crate::ui::{
+	frame::drags_bar,
 	window_controls::{WindowButton, resize_edge},
 	window_pointer::{BarPress, Route, Surface, pointer_target},
 };
@@ -69,7 +70,7 @@ impl App {
 	/// A press on the empty header bar: drags the window, or maximizes and
 	/// restores it on a double-click.
 	pub(super) fn press_bar(&mut self) {
-		if !self.client_decorations {
+		if !drags_bar(self.client_decorations, self.window_frame) {
 			return;
 		}
 		let press = self

@@ -10,6 +10,7 @@ use crate::theme::ThemeKind;
 use crate::ui::{
 	decorations::DecorationPreference,
 	font_size::{FontSize, SETTINGS_MAX, SETTINGS_MIN},
+	frame::WindowFrame,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -64,6 +65,8 @@ pub struct Preferences {
 	pub(crate) renderer: RendererPreference,
 	/// Who draws the title bar on Linux and FreeBSD.
 	pub(crate) decorations: DecorationPreference,
+	/// Whether the window keeps its frame or is just a square.
+	pub(crate) window_frame: WindowFrame,
 }
 
 impl Default for Preferences {
@@ -83,6 +86,7 @@ impl Default for Preferences {
 			reduce_motion: false,
 			renderer: RendererPreference::Auto,
 			decorations: DecorationPreference::Auto,
+			window_frame: WindowFrame::Normal,
 		}
 	}
 }
@@ -133,6 +137,7 @@ impl Preferences {
 				.unwrap_or(defaults.reduce_motion),
 			renderer: RendererPreference::parse(value(text, "renderer")),
 			decorations: DecorationPreference::parse(value(text, "decorations")),
+			window_frame: WindowFrame::parse(value(text, "window_frame")),
 		}
 	}
 	pub fn load() -> Self {

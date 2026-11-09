@@ -28,6 +28,7 @@ links keep working. Each folder belongs to one pull request:
 | `settings-rows/` | the Settings main page with its rows laid out from one table of gaps, before and after in poop and light-mode; drawn from the page's model, since keystrokes cannot open the window in the capture setup |
 | `about-page/` | the About page centered with the name, release and tagline above quiet notices, before and after in poop and light-mode; drawn from the page's model, since keystrokes cannot open the window in the capture setup |
 | `search-controls/` | the search box with previous, next, case and close buttons (case on, next hovered), against the old bare field; drawn from the model, since keystrokes cannot open the search box in the capture setup |
+| `window-frame/` | `window_frame = "none"` on macOS: `before-framed.png` is the default window with traffic lights, `after-square.png` the square window with the tab bar flush at the top, `after-square-no-tabs.png` with tabs hidden (just the terminal and status bar); captured from the release build with `screencapture -l`, since keystrokes cannot open Settings in the capture setup |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

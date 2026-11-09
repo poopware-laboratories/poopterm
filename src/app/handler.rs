@@ -25,11 +25,17 @@ impl ApplicationHandler<UserEvent> for App {
 
 		// On macOS, keep the native frame so the traffic lights exist,
 		// but make the title bar transparent and hide the title text.
+		// A square window has none of it: a borderless window, which the
+		// system leaves resizable and without rounded corners.
 		#[cfg(target_os = "macos")]
-		let attrs = attrs
-			.with_titlebar_transparent(true)
-			.with_title_hidden(true)
-			.with_fullsize_content_view(true);
+		let attrs = if self.window_frame.is_frameless() {
+			attrs.with_decorations(false)
+		} else {
+			attrs
+				.with_titlebar_transparent(true)
+				.with_title_hidden(true)
+				.with_fullsize_content_view(true)
+		};
 
 		let window = Arc::new(
 			event_loop

@@ -77,6 +77,7 @@ use crate::{
 	theme::{Theme, ThemeKind},
 	ui::{
 		contrast::selection_colors,
+		frame::{WindowFrame, has_titlebar},
 		layout::{Layout, layout},
 		scale::{chrome, chrome_factor, chrome_scale, font_px},
 		search::find_matches,
@@ -130,6 +131,8 @@ pub(crate) struct App {
 	/// The window buttons the header draws: none until the window draws
 	/// its own title bar.
 	window_buttons: ButtonLayout,
+	/// The frame the window was made with; macOS keeps it until restart.
+	window_frame: WindowFrame,
 	/// The window draws its own title bar and resize edges.
 	client_decorations: bool,
 	/// Whether the compositor offers to draw the title bar; `None` when
@@ -262,7 +265,10 @@ impl App {
 		let factor = self.factor();
 		// pr-check: window glue: copies the sizes ui::scale computed into App
 		self.sized_for = factor;
-		let chrome = chrome(self.chrome_factor(), cfg!(target_os = "macos"));
+		let chrome = chrome(
+			self.chrome_factor(),
+			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
+		);
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -274,7 +280,10 @@ impl App {
 
 	/// The grid's place in the window with the current chrome and settings.
 	pub(super) fn layout(&self) -> Layout {
-		let chrome = chrome(self.chrome_factor(), cfg!(target_os = "macos"));
+		let chrome = chrome(
+			self.chrome_factor(),
+			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
+		);
 		layout(
 			&chrome,
 			self.scale(),
@@ -394,6 +403,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		active: 0,
 		tab_scroll: 0,
 		window_buttons: ButtonLayout::default(),
+		window_frame: preferences.window_frame,
 		client_decorations: false,
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		server_decorations: None,

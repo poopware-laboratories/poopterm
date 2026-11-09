@@ -34,6 +34,7 @@ pub(super) enum SettingsTarget {
 	ToggleNewTabButton,
 	ToggleSettingsButton,
 	ToggleBottomBar,
+	ToggleWindowFrame,
 	SetShortcut(ShortcutAction),
 	/// A visible row of the font list, counted from the top.
 	FontRow(usize),
@@ -53,12 +54,13 @@ pub(super) fn font_list_rows(height: usize, scale: usize) -> usize {
 }
 
 /// Toggles on the Layout page.
-pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 5] = [
+pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 6] = [
 	(SHOW_TABS_ROW, SettingsTarget::ToggleTabs),
 	(COMPACT_TABS_ROW, SettingsTarget::ToggleCompactTabs),
 	(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 	(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
 	(BOTTOM_BAR_ROW, SettingsTarget::ToggleBottomBar),
+	(FRAME_ROW, SettingsTarget::ToggleWindowFrame),
 ];
 
 /// Maps a click at physical `(x, y)` to the control under it.
@@ -414,6 +416,7 @@ mod tests {
 			(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 			(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
 			(BOTTOM_BAR_ROW, SettingsTarget::ToggleBottomBar),
+			(FRAME_ROW, SettingsTarget::ToggleWindowFrame),
 		];
 		for (row, target) in expected {
 			assert_eq!(layout(row), Some(target), "row {row}");
@@ -488,12 +491,55 @@ mod tests {
 	}
 
 	#[test]
-	fn the_layout_page_keeps_five_switches_and_the_segmented_row_between_them() {
-		assert_eq!(LAYOUT_TOGGLES.len(), 5);
+	fn the_layout_page_keeps_six_switches_and_the_segmented_row_between_them() {
+		assert_eq!(LAYOUT_TOGGLES.len(), 6);
 		assert!(
 			LAYOUT_TOGGLES
 				.iter()
 				.all(|&(row, _)| row != VERTICAL_TABS_ROW)
 		);
+	}
+
+	#[test]
+	fn the_square_window_switch_answers_over_its_whole_row_at_both_scales() {
+		for scale in [1, 2] {
+			let size = (SIZE.0 * scale, SIZE.1 * scale);
+			let at = |x: usize, y: usize| {
+				settings_target((x * scale, y * scale), size, scale, SettingsPage::Layout)
+			};
+			let on = Some(SettingsTarget::ToggleWindowFrame);
+			assert_eq!(at(720, FRAME_ROW), on, "top, x{scale}");
+			assert_eq!(at(720, FRAME_ROW + ROW_HEIGHT - 1), on, "bottom, x{scale}");
+			assert_eq!(at(720, FRAME_ROW - 1), None, "above, x{scale}");
+			assert_eq!(at(720, FRAME_ROW + ROW_HEIGHT), None, "below, x{scale}");
+			assert_eq!(at(300, FRAME_ROW + 20), None, "over the label, x{scale}");
+		}
+	}
+
+	#[test]
+	fn the_square_window_switch_is_on_the_layout_page_only() {
+		for page in [
+			SettingsPage::Main,
+			SettingsPage::Shortcuts,
+			SettingsPage::Fonts,
+			SettingsPage::About,
+		] {
+			let target = settings_target((720, FRAME_ROW + 20), SIZE, 1, page);
+			assert_ne!(target, Some(SettingsTarget::ToggleWindowFrame), "{page:?}");
+		}
+	}
+
+	#[test]
+	fn the_square_window_row_clears_the_footer_in_the_smallest_window() {
+		const { assert!(FRAME_ROW + ROW_HEIGHT <= DEFAULT_SIZE.1 - 52) };
+		const { assert!(FRAME_ROW >= PADDING_ROW + ROW_HEIGHT) };
+	}
+
+	#[test]
+	fn no_two_layout_rows_share_a_row() {
+		let mut rows: Vec<usize> = LAYOUT_TOGGLES.iter().map(|&(row, _)| row).collect();
+		rows.extend([VERTICAL_TABS_ROW, PADDING_ROW]);
+		rows.sort_unstable();
+		assert!(rows.windows(2).all(|pair| pair[1] - pair[0] >= ROW_HEIGHT));
 	}
 }

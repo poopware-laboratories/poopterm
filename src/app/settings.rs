@@ -7,6 +7,7 @@ use super::{
 	*,
 };
 use crate::input::shortcuts::{ShortcutAction, Shortcuts};
+use crate::ui::frame::WindowFrame;
 use crate::{
 	render::backend,
 	ui::{
@@ -191,6 +192,10 @@ impl App {
 			("show_tabs", preferences.show_tabs.to_string()),
 			("vertical_tabs", preferences.vertical_tabs.to_string()),
 			("compact_tabs", preferences.compact_tabs.to_string()),
+			(
+				"window_frame",
+				format!("\"{}\"", preferences.window_frame.name()),
+			),
 			(
 				"show_new_tab_button",
 				preferences.show_new_tab_button.to_string(),
@@ -381,6 +386,13 @@ impl App {
 			}
 			Some(SettingsTarget::ToggleSettingsButton) => {
 				editor.preferences.show_settings_button = !editor.preferences.show_settings_button
+			}
+			Some(SettingsTarget::ToggleWindowFrame) => {
+				editor.preferences.window_frame = if editor.preferences.window_frame.is_frameless() {
+					WindowFrame::Normal
+				} else {
+					WindowFrame::Frameless
+				}
 			}
 			Some(SettingsTarget::ToggleBottomBar) => {
 				editor.preferences.show_bottom_bar = !editor.preferences.show_bottom_bar

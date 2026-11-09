@@ -102,6 +102,16 @@ buttons follow the desktop's `button-layout` read from the settings portal, or
 sit on the right as minimize, maximize and close when the portal does not
 answer. The settings window does not change this key; edit the file.
 
+`window_frame` makes the window a plain square. `normal` (the default) keeps
+the platform's frame; `"none"` removes the title bar, the window buttons (the
+macOS traffic lights, or the buttons Poopterm draws on Linux and FreeBSD) and
+the rounded corners, leaving the terminal, with the tab bar along the top when
+tabs are shown. The empty part of the tab bar still drags the window, and the
+edges still resize it. On Linux and FreeBSD it overrides `decorations` and
+applies as soon as Settings saves it; on macOS the window is created without a
+frame, so the change takes effect at the next launch. Settings > Layout has a
+"Square window (no title bar)" switch for it, and unknown values keep the frame.
+
 ### Theme names and custom colors
 
 `theme` accepts `darkmode`, `light-mode`, `nord`, `rose-pine` (or the legacy

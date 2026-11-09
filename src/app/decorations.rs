@@ -1,7 +1,7 @@
 //! Choosing who draws the title bar on Linux and FreeBSD, from what the
 //! compositor offers and the settings, and showing the desktop's buttons.
 use super::*;
-use crate::ui::decorations::{client_side, shown_buttons};
+use crate::ui::decorations::{client_side, window_buttons};
 use std::time::Duration;
 
 /// How long the settings portal may take, starting up included.
@@ -35,7 +35,8 @@ impl App {
 	pub(super) fn apply_decorations(&mut self) {
 		let client = client_side(&self.preferences, self.server_decorations);
 		self.client_decorations = client;
-		self.window_buttons = shown_buttons(client, self.desktop_buttons.as_ref());
+		self.window_frame = self.preferences.window_frame;
+		self.window_buttons = window_buttons(self.window_frame, client, self.desktop_buttons.as_ref());
 		// pr-check: window glue: tells the real window what was chosen
 		if let Some(window) = &self.window {
 			window.set_decorations(!client);

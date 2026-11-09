@@ -48,11 +48,7 @@ impl App {
 	}
 
 	fn sidebar_top(&self) -> usize {
-		if cfg!(target_os = "macos") {
-			self.titlebar_height
-		} else {
-			self.border
-		}
+		self.titlebar_height.max(self.border)
 	}
 
 	fn paint_sidebar(
