@@ -26,7 +26,7 @@ pub(crate) struct Command {
 	program: OsString,
 	arg0: OsString,
 	args: Vec<OsString>,
-	env: Vec<(OsString, OsString)>,
+	pub(super) env: Vec<(OsString, OsString)>,
 	cwd: Option<PathBuf>,
 }
 

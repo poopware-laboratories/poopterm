@@ -96,6 +96,28 @@ fn the_shell_learns_the_terminal_it_runs_in() {
 }
 
 #[test]
+fn the_terminals_variables_are_set_not_inherited() {
+	// The test runs in some terminal whose variables the shell would see
+	// anyway; what counts is that the command sets them itself.
+	let command = shell_command("/bin/sh", &term_env("xterm-poopterm", &[]), &here());
+	let set = |name: &str| {
+		command
+			.env
+			.iter()
+			.rev()
+			.find(|(key, _)| key == name)
+			.map(|(_, value)| value.to_str().unwrap().to_owned())
+	};
+	assert_eq!(set("TERM").as_deref(), Some("xterm-poopterm"));
+	assert_eq!(set("COLORTERM").as_deref(), Some("truecolor"));
+	assert_eq!(set("TERM_PROGRAM").as_deref(), Some("poopterm"));
+	assert_eq!(
+		set("TERM_PROGRAM_VERSION").as_deref(),
+		Some(env!("CARGO_PKG_VERSION"))
+	);
+}
+
+#[test]
 fn the_terms_own_variables_reach_the_shell() {
 	let shell = fake_shell("extra");
 	let env = term_env(
