@@ -16,6 +16,7 @@ links keep working. Each folder belongs to one pull request:
 | `light-brights/` | bright colors (bold prompts) readable on light themes |
 | `window-buttons/` | Linux window buttons in the header: light and dark, hovered and pressed; `auto` on sway (none) and `client` with the portal's `appmenu:close` |
 | `chrome-colors/` | chrome colors derived from the theme, muted inactive tabs and 8 px padding, before and after in poop, darkmode and light-mode |
+| `palette-arrows/` | the command palette with the fourth row selected by the arrow keys, poop and light-mode; drawn from the model, since keystrokes cannot reach the window in the capture setup |
 | `settings-nav/` | the Settings window with a sidebar of pages in place of the header buttons and back button, before and after; drawn from the page models, since keystrokes cannot open the window in the capture setup |
 | `settings-switches/` | the Layout page's rows with switches in place of Enabled/Disabled buttons, poop and light-mode; drawn with the page's own pen calls, since keystrokes cannot open the window in the capture setup |
 | `pane-badge/` | tabs that hold split panes show a panes icon, accent when active and muted otherwise, poop and light-mode; drawn with the header's own drawing code, since the capture setup cannot split a pane |

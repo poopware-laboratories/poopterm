@@ -4,7 +4,7 @@ use crate::input::{
 	keypad::encode_keypad,
 	keys::{KeyModes, encode_key},
 };
-use crate::ui::overlays::{palette_matches, stays_open};
+use crate::ui::overlays::{palette_matches, selected_command, stays_open, step_selection};
 use winit::{event::KeyEvent, keyboard::KeyLocation};
 
 impl App {
@@ -40,6 +40,7 @@ impl App {
 			self.command_palette = true;
 			self.renaming_tab = false;
 			self.command_query.clear();
+			self.command_selected = 0;
 			if let Some(window) = &self.window {
 				window.request_redraw();
 			}
@@ -79,9 +80,17 @@ impl App {
 				Key::Named(NamedKey::Escape) => self.command_palette = false,
 				Key::Named(NamedKey::Backspace) => {
 					self.command_query.pop();
+					self.command_selected = 0;
+				}
+				Key::Named(key @ (NamedKey::ArrowDown | NamedKey::ArrowUp)) => {
+					// pr-check: window glue: steps the tested selection by the arrow's direction
+					let step = if *key == NamedKey::ArrowDown { 1 } else { -1 };
+					let count = palette_matches(&self.command_query).len();
+					self.command_selected = step_selection(self.command_selected, count, step);
+					// pr-check: end window glue
 				}
 				Key::Named(NamedKey::Enter) => {
-					let command = palette_matches(&self.command_query).first().copied();
+					let command = selected_command(&self.command_query, self.command_selected);
 					self.command_palette = command.is_some_and(stays_open);
 					if let Some(command) = command {
 						match command {
@@ -120,6 +129,7 @@ impl App {
 					self
 						.command_query
 						.extend(value.chars().filter(|c| !c.is_control()).take(available));
+					self.command_selected = 0;
 				}
 				_ => {}
 			}

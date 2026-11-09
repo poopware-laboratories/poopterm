@@ -200,6 +200,8 @@ pub(crate) struct App {
 	search_hover: Option<SearchControl>,
 	command_palette: bool,
 	command_query: String,
+	/// The palette's selected row, which Enter runs.
+	command_selected: usize,
 	renaming_tab: bool,
 }
 
@@ -436,6 +438,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		search_hover: None,
 		command_palette: false,
 		command_query: String::new(),
+		command_selected: 0,
 		renaming_tab: false,
 	};
 
