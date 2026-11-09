@@ -123,14 +123,20 @@ fn a_terminal_whose_session_ended_is_reusable_only_on_linux() {
 	}
 	#[cfg(not(target_os = "linux"))]
 	{
-		// The revoked descriptor is no tty on FreeBSD, and no descriptor at
-		// all on macOS.
+		// Making the revoked terminal the child's controlling one fails, with
+		// an error that depends on the kernel. FreeBSD says it is no tty.
+		// macOS 15 (CI's runner) says it is no descriptor at all; macOS 27
+		// keeps the descriptor (it still duplicates) but has no terminal
+		// behind it, so `TIOCSCTTY` reports ENOENT.
 		#[cfg(target_os = "freebsd")]
-		let revoked = libc::ENOTTY;
-		#[cfg(not(target_os = "freebsd"))]
-		let revoked = libc::EBADF;
+		let revoked = [libc::ENOTTY].as_slice();
+		#[cfg(target_os = "macos")]
+		let revoked = [libc::EBADF, libc::ENOENT].as_slice();
+		#[cfg(not(any(target_os = "freebsd", target_os = "macos")))]
+		let revoked = [libc::EBADF].as_slice();
 		let error = spawn(&sh("true"), &pair.slave).err().unwrap();
-		assert_eq!(error.raw_os_error(), Some(revoked));
+		let errno = error.raw_os_error().unwrap();
+		assert!(revoked.contains(&errno), "{error}");
 	}
 }
 
