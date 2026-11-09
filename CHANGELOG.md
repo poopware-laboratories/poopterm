@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.46 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Center the About page and rank its lines (#261) (app).
+
 ## 26.11.45 "Lunar Moth" — 2026-11-09
 
 ### Maintenance
