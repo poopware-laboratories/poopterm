@@ -38,6 +38,21 @@ pub(crate) struct GridView<'a> {
 	pub focused: bool,
 	/// The area around the grid that edge cell backgrounds extend into.
 	pub padding: Option<Rect>,
+	/// An inactive pane's colors keep this share of themselves, out of 255,
+	/// and give the rest to the default background.
+	pub dim: Option<u32>,
+}
+
+impl GridView<'_> {
+	/// `color` as this view shows it: moved toward the default background
+	/// when the view is dimmed.
+	#[inline]
+	pub(crate) fn dimmed(&self, color: u32) -> u32 {
+		match self.dim {
+			Some(weight) => blend(self.default_bg, color, weight),
+			None => color,
+		}
+	}
 }
 
 fn contains(range: Option<Selection>, point: CellPoint) -> bool {
@@ -146,6 +161,11 @@ fn draw_row(p: &mut impl Pen, fonts: &mut FontSet, view: &GridView, row: usize, 
 		} else {
 			(cell.fg, cell.bg)
 		};
+		let (fg, bg) = if view.dim.is_some() {
+			(view.dimmed(fg), view.dimmed(bg))
+		} else {
+			(fg, bg)
+		};
 		let joined = if !may_join {
 			Join::Alone
 		} else {
@@ -224,7 +244,10 @@ fn draw_cell(
 	if cell.attrs & (attr::UNDERLINE | attr::DOUBLE_UNDERLINE) != 0 {
 		let color = match cell.extra {
 			NO_EXTRA => fg,
-			_ => view.frame.underline_color(cell).unwrap_or(fg),
+			_ => view
+				.frame
+				.underline_color(cell)
+				.map_or(fg, |color| view.dimmed(color)),
 		};
 		if cell.attrs & attr::UNDERLINE != 0 {
 			p.rect(x0, y0 + ch.saturating_sub(2 * view.scale), cw, line, color);

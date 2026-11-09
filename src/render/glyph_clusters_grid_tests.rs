@@ -67,6 +67,7 @@ impl Grid {
 			search_match: None,
 			focused: true,
 			padding: None,
+			dim: None,
 		};
 		draw_grid(&mut painter, fonts, &view, None);
 		pixels

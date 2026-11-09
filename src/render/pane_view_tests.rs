@@ -134,7 +134,7 @@ fn the_same_screen_in_two_panes_differs_only_by_focus() {
 		base(&shown).in_pane(&shown, RIGHT, RIGHT, true),
 	];
 	let pixels = paint(&views);
-	// The focused pane shows the selection and a solid cursor.
+	// The focused pane shows the selection and a solid cursor, and is brighter.
 	assert_ne!(cut(&pixels, LEFT), cut(&pixels, RIGHT));
 	let plain = GridView {
 		selection: None,
@@ -142,7 +142,12 @@ fn the_same_screen_in_two_panes_differs_only_by_focus() {
 		focused: false,
 		..base(&shown)
 	};
-	let unfocused_again = paint(&[plain.in_pane(&shown, RIGHT, RIGHT, true)]);
+	// An inactive pane also draws dimmer, which the focused view lacks.
+	let dimmed = GridView {
+		dim: Some(crate::render::pane_view::INACTIVE_PANE),
+		..plain.in_pane(&shown, RIGHT, RIGHT, true)
+	};
+	let unfocused_again = paint(&[dimmed]);
 	assert_eq!(cut(&pixels, LEFT), cut(&unfocused_again, RIGHT));
 }
 
@@ -169,4 +174,38 @@ fn edge_backgrounds_fill_the_pane_padding_and_stop_there() {
 		height: WINDOW.1,
 	};
 	assert!(cut(&pixels, rest).iter().all(|&pixel| pixel == BG));
+}
+
+#[test]
+fn only_the_focused_pane_draws_at_full_strength() {
+	let frame = crate::render::grid_case_tests::frame("");
+	let focused = base(&frame).in_pane(&frame, LEFT, LEFT, true);
+	let other = base(&frame).in_pane(&frame, RIGHT, RIGHT, false);
+	assert_eq!(focused.dim, None);
+	assert_eq!(other.dim, Some(crate::render::pane_view::INACTIVE_PANE));
+}
+
+#[test]
+fn a_window_without_focus_dims_no_pane_by_itself() {
+	let frame = crate::render::grid_case_tests::frame("");
+	let window_blurred = GridView {
+		focused: false,
+		..base(&frame)
+	};
+	assert_eq!(window_blurred.in_pane(&frame, LEFT, LEFT, true).dim, None);
+}
+
+#[test]
+fn an_inactive_pane_paints_dimmer_text_than_the_focused_one_of_the_same_screen() {
+	let frame = crate::render::grid_case_tests::frame("\x1b[38;2;200;0;0m\u{2588}\u{2588}");
+	let views = [
+		base(&frame).in_pane(&frame, LEFT, LEFT, true),
+		base(&frame).in_pane(&frame, RIGHT, RIGHT, false),
+	];
+	let pixels = paint(&views);
+	let (left, right) = (cut(&pixels, LEFT), cut(&pixels, RIGHT));
+	assert_ne!(left, right);
+	let red = |pixel: &u32| pixel >> 16 & 0xff;
+	let (lmax, rmax) = (left.iter().map(red).max(), right.iter().map(red).max());
+	assert!(rmax < lmax, "{rmax:?} against {lmax:?}");
 }

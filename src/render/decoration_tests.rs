@@ -38,6 +38,7 @@ fn render(input: &str) -> Vec<u32> {
 		search_match: None,
 		focused: true,
 		padding: None,
+		dim: None,
 	};
 	let font = crate::fonts::Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap();
 	let mut fonts = FontSet::new(font, Vec::new());
