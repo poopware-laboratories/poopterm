@@ -418,7 +418,7 @@ fn both_ends_of_the_report_pipe_close_on_exec() {
 fn a_report_pipe_closed_unwritten_means_exec_worked() {
 	let (read, write) = report_pipe().unwrap();
 	drop(write);
-	assert_eq!(read_report(&read).unwrap(), None);
+	read_report(&read).unwrap();
 }
 
 #[test]
@@ -427,7 +427,8 @@ fn a_report_carries_the_childs_errno() {
 	File::from(write)
 		.write_all(&libc::EACCES.to_ne_bytes())
 		.unwrap();
-	assert_eq!(read_report(&read).unwrap(), Some(libc::EACCES));
+	let error = read_report(&read).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::EACCES));
 }
 
 #[test]

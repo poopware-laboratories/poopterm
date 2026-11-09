@@ -147,18 +147,12 @@ pub(crate) fn spawn(command: &Command, terminal: &OwnedFd) -> io::Result<Child> 
 		unsafe { prepared.start(terminal.as_raw_fd(), report_write.as_raw_fd()) }
 	}
 	drop(report_write);
-	match read_report(&report_read) {
-		Ok(None) => Ok(Child { pid }),
-		Ok(Some(errno)) => {
-			// The child has exited with 127 after reporting; reap it.
-			let _ = wait_for(pid);
-			Err(io::Error::from_raw_os_error(errno))
-		}
-		Err(error) => {
-			let _ = wait_for(pid);
-			Err(error)
-		}
+	if let Err(error) = read_report(&report_read) {
+		// The child exits with 127 after reporting; reap it.
+		let _ = wait_for(pid);
+		return Err(error);
 	}
+	Ok(Child { pid })
 }
 
 /// Signals numbered up to this one get their default handling back.
@@ -392,15 +386,15 @@ fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 	Ok(ends)
 }
 
-/// The `errno` the child sent, or `None` once `exec` closed the pipe.
-fn read_report(pipe: &OwnedFd) -> io::Result<Option<i32>> {
+/// Nothing once `exec` closed the pipe, else the error the child sent.
+fn read_report(pipe: &OwnedFd) -> io::Result<()> {
 	let mut bytes = [0u8; 4];
 	loop {
 		// SAFETY: reads into the array we own, at most its length.
 		let n = unsafe { libc::read(pipe.as_raw_fd(), bytes.as_mut_ptr().cast(), bytes.len()) };
 		match n {
-			0 => return Ok(None),
-			4 => return Ok(Some(i32::from_ne_bytes(bytes))),
+			0 => return Ok(()),
+			4 => return Err(io::Error::from_raw_os_error(i32::from_ne_bytes(bytes))),
 			n if n < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted => {}
 			n if n < 0 => return Err(io::Error::last_os_error()),
 			_ => return Err(io::Error::from(io::ErrorKind::InvalidData)),

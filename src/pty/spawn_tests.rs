@@ -148,6 +148,50 @@ fn a_stopped_program_has_not_ended() {
 }
 
 #[test]
+fn arguments_past_the_systems_limit_fail_with_e2big() {
+	// 256 arguments just under Linux's 128 KiB each make 32 MiB, past
+	// ARG_MAX on every system we build for.
+	let big = "x".repeat(128_000);
+	let mut command = Command::new("/bin/sh");
+	for _ in 0..256 {
+		command = command.arg(&big);
+	}
+	let pair = device::open(WindowSize::default()).unwrap();
+	let error = spawn(&command, &pair.slave).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::E2BIG));
+}
+
+#[test]
+fn control_d_typed_on_the_master_ends_the_input() {
+	let pair = pty();
+	let mut child = spawn(&Command::new("cat"), &pair.slave).unwrap();
+	let mut master = File::from(pair.master.try_clone().unwrap());
+	master.write_all(b"\x04").unwrap();
+	assert_eq!(child.wait().unwrap(), Exit::Code(0));
+}
+
+#[test]
+fn hanging_up_only_signals_so_a_program_may_ignore_it() {
+	let pair = pty();
+	let script = "trap '' HUP; echo ready; read line; exit 9";
+	let mut child = spawn(&Command::new("sh").arg("-c").arg(script), &pair.slave).unwrap();
+	let shown = watch(pair.master.try_clone().unwrap());
+	until(&shown, "ready");
+	child.hang_up().unwrap();
+	// Still there to read the line, then exits as it chose to.
+	let mut master = File::from(pair.master.try_clone().unwrap());
+	master.write_all(b"done\n").unwrap();
+	assert_eq!(child.wait().unwrap(), Exit::Code(9));
+}
+
+#[test]
+fn the_program_can_change_its_terminals_settings() {
+	let script = "stty -echo && stty | grep -c -- -echo";
+	let (output, exit) = run(sh(script));
+	assert_eq!((output.as_str(), exit), ("1\n", Exit::Code(0)));
+}
+
+#[test]
 fn a_long_value_arrives_whole() {
 	let value = "x".repeat(100_000);
 	let command = sh(r#"echo "${#POOPTERM_LONG}""#).env("POOPTERM_LONG", &value);
