@@ -225,14 +225,14 @@ fn scrolling_the_view_shows_trimmed_rows_at_full_width() {
 fn search_finds_text_in_trimmed_history_rows() {
 	let mut t = terminal(10, 1);
 	feed(&mut t, b"alpha\r\nbeta alpha\r\nnone");
-	let found = find_matches(&t, "alpha");
+	let found = find_matches(&t, "alpha", false);
 	let points: Vec<_> = found
 		.iter()
 		.map(|m| (m.start.row, m.start.col, m.end.col))
 		.collect();
 	assert_eq!(points, [(0, 0, 4), (1, 5, 9)]);
 	// Trimmed padding is not text: a trailing space matches nothing.
-	assert!(find_matches(&t, "alpha ").is_empty());
+	assert!(find_matches(&t, "alpha ", false).is_empty());
 }
 
 #[test]
