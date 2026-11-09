@@ -388,3 +388,208 @@ fn mono_text_spans_the_whole_scene_after_it_is_recorded() {
 		"the size when recorded"
 	);
 }
+
+const STYLE: ButtonStyle = ButtonStyle {
+	scale: 1,
+	background: 0x101010,
+	border: 0x808080,
+	accent: 0x3060ff,
+};
+
+/// A scene of one operation of every kind, 100 by 50.
+fn every_kind() -> Scene {
+	let mut scene = Scene::new(100, 50);
+	scene.fill(0x111111);
+	scene.rect(1, 2, 3, 4, 0x222222);
+	scene.round_rect(5, 6, 7, 8, 2, 0x333333);
+	scene.button((9, 10, 11, 12), STYLE, true);
+	scene.text(&mut fonts(), 13, 14, "hi", 12.0, 9, 0x444444);
+	scene.icon(
+		(15, 16),
+		crate::render::window_icons::WindowIcon::Close,
+		1,
+		0x555555,
+	);
+	scene
+}
+
+#[test]
+fn a_shifted_scene_is_wider_by_the_shift_and_as_tall() {
+	let shifted = every_kind().shifted(30);
+	assert_eq!((shifted.width, shifted.height), (130, 50));
+}
+
+#[test]
+fn a_shifted_scene_moves_every_operation_right_and_keeps_its_row() {
+	let shifted = every_kind().shifted(30);
+	let kinds: Vec<_> = shifted.commands.iter().collect();
+	assert_eq!(kinds[0], &Command::Rect((30, 0, 100, 50), 0x111111));
+	assert_eq!(kinds[1], &Command::Rect((31, 2, 3, 4), 0x222222));
+	assert_eq!(kinds[2], &Command::RoundRect((35, 6, 7, 8), 2, 0x333333));
+	assert_eq!(kinds[3], &Command::Button((39, 10, 11, 12), STYLE, true));
+	let Command::Text { at, clip, .. } = kinds[4] else {
+		panic!("{:?}", kinds[4]);
+	};
+	assert_eq!(*at, (43, 14));
+	assert_eq!(clip.0, 30 + every_kind_clip().0);
+	let Command::Icon { at, .. } = kinds[5] else {
+		panic!("{:?}", kinds[5]);
+	};
+	assert_eq!(*at, (45, 16));
+}
+
+fn every_kind_clip() -> (usize, usize, usize, usize) {
+	match &every_kind().commands[4] {
+		Command::Text { clip, .. } => *clip,
+		other => panic!("{other:?}"),
+	}
+}
+
+#[test]
+fn shifting_by_nothing_keeps_every_operation_but_a_fill_becomes_a_rect() {
+	let plain = every_kind();
+	let shifted = every_kind().shifted(0);
+	assert_eq!(
+		shifted.commands[0],
+		Command::Rect((0, 0, 100, 50), 0x111111)
+	);
+	assert_eq!(shifted.commands[1..], plain.commands[1..]);
+}
+
+#[test]
+fn a_shifted_scene_keeps_the_order_and_count_of_its_operations() {
+	let (plain, shifted) = (every_kind(), every_kind().shifted(7));
+	assert_eq!(plain.commands.len(), shifted.commands.len());
+	for (a, b) in plain.commands.iter().zip(&shifted.commands) {
+		assert_eq!(
+			std::mem::discriminant(a) == std::mem::discriminant(b),
+			!matches!(a, Command::Fill(_))
+		);
+	}
+}
+
+#[test]
+fn an_empty_scene_shifts_to_an_empty_wider_scene() {
+	let shifted = Scene::new(10, 5).shifted(4);
+	assert!(shifted.commands.is_empty());
+	assert_eq!((shifted.width, shifted.height), (14, 5));
+}
+
+#[test]
+fn a_shifted_scene_pastes_into_a_wider_one_where_drawing_directly_would_paint() {
+	let mut wide = Scene::new(130, 50);
+	wide.fill(0x000000);
+	wide.commands.extend(every_kind().shifted(30).commands);
+	let mut direct = Scene::new(130, 50);
+	direct.fill(0x000000);
+	direct.rect(30, 0, 100, 50, 0x111111);
+	direct.rect(31, 2, 3, 4, 0x222222);
+	let (mut a, mut b) = (vec![0u32; 130 * 50], vec![0u32; 130 * 50]);
+	wide.replay(&mut Painter::new(&mut a, 130, 50), &mut fonts());
+	direct.replay(&mut Painter::new(&mut b, 130, 50), &mut fonts());
+	for (y, x) in [(0, 30), (0, 129), (49, 30), (3, 32)] {
+		assert_eq!(a[y * 130 + x], b[y * 130 + x], "({x}, {y})");
+	}
+	assert_eq!(a[0], 0, "the left margin keeps the wide scene's own fill");
+}
+
+/// `scene` replayed on a black canvas `width` wide and 50 tall.
+fn pixels_of(scene: &Scene, width: usize) -> Vec<u32> {
+	let mut pixels = vec![0u32; width * 50];
+	scene.replay(&mut Painter::new(&mut pixels, width, 50), &mut fonts());
+	pixels
+}
+
+#[test]
+fn a_shifted_scene_paints_the_same_pixels_further_right() {
+	// Every kind of operation, antialiased text and rounded corners included.
+	for dx in [0, 1, 7, 30] {
+		let narrow = pixels_of(&every_kind_without_fill(), 100);
+		let mut wide = Scene::new(100 + dx, 50);
+		wide
+			.commands
+			.extend(every_kind_without_fill().shifted(dx).commands);
+		let wide = pixels_of(&wide, 100 + dx);
+		for y in 0..50 {
+			for x in 0..100 {
+				assert_eq!(
+					wide[y * (100 + dx) + x + dx],
+					narrow[y * 100 + x],
+					"({x}, {y}) shifted {dx}"
+				);
+			}
+			for x in 0..dx {
+				assert_eq!(
+					wide[y * (100 + dx) + x],
+					0,
+					"the margin stays untouched, ({x}, {y})"
+				);
+			}
+		}
+	}
+}
+
+fn every_kind_without_fill() -> Scene {
+	let mut scene = every_kind();
+	scene.commands.remove(0);
+	scene
+}
+
+#[test]
+fn shifting_twice_is_shifting_once_by_the_sum() {
+	for (a, b) in [(3, 4), (0, 9), (10, 0), (25, 25)] {
+		let twice = every_kind_without_fill().shifted(a).shifted(b);
+		let once = every_kind_without_fill().shifted(a + b);
+		assert_eq!(twice.commands, once.commands, "{a} then {b}");
+		assert_eq!((twice.width, twice.height), (once.width, once.height));
+	}
+}
+
+#[test]
+fn shifting_keeps_every_size_style_and_color_it_does_not_move() {
+	let plain = every_kind_without_fill();
+	let shifted = every_kind_without_fill().shifted(12);
+	for (a, b) in plain.commands.iter().zip(&shifted.commands) {
+		match (a, b) {
+			(Command::Rect(r, c), Command::Rect(s, d)) => assert_eq!((r.2, r.3, c), (s.2, s.3, d)),
+			(Command::RoundRect(r, k, c), Command::RoundRect(s, l, d)) => {
+				assert_eq!((r.2, r.3, k, c), (s.2, s.3, l, d))
+			}
+			(Command::Button(r, st, lit), Command::Button(s, su, on)) => {
+				assert_eq!((r.2, r.3, st, lit), (s.2, s.3, su, on))
+			}
+			(
+				Command::Text {
+					text,
+					px,
+					ascent,
+					color,
+					mono,
+					..
+				},
+				Command::Text {
+					text: t2,
+					px: p2,
+					ascent: a2,
+					color: c2,
+					mono: m2,
+					..
+				},
+			) => assert_eq!((text, px, ascent, color, mono), (t2, p2, a2, c2, m2)),
+			(
+				Command::Icon {
+					icon, scale, color, ..
+				},
+				Command::Icon {
+					icon: i2,
+					scale: s2,
+					color: c2,
+					..
+				},
+			) => {
+				assert_eq!((icon, scale, color), (i2, s2, c2))
+			}
+			other => panic!("{other:?}"),
+		}
+	}
+}

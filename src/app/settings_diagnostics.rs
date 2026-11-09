@@ -4,7 +4,7 @@
 //! from `ui::diagnostics_page` and its colors from `ui::diagnostics_colors`.
 use super::{
 	settings_hit::SettingsTarget,
-	settings_pen::{Pen, back_rect, footer_rect},
+	settings_pen::{Pen, footer_rect},
 };
 use crate::{
 	render::{
@@ -71,14 +71,9 @@ pub(super) fn diagnostics_target(
 	s: usize,
 ) -> Option<SettingsTarget> {
 	let within = |(rx, ry, rw, rh): Rect| (rx..rx + rw).contains(&x) && (ry..ry + rh).contains(&y);
-	let (back, copy) = (
-		back_rect(width, s),
-		footer_rect((width, height), COPY_WIDTH, s),
-	);
+	let copy = footer_rect((width, height), COPY_WIDTH, s);
 	let section = (0..Section::ALL.len()).find(|&index| within(section_button(index, s)));
-	if within(back) {
-		Some(SettingsTarget::Back)
-	} else if within(copy) {
+	if within(copy) {
 		Some(SettingsTarget::CopyReport)
 	} else {
 		section.map(|index| SettingsTarget::Section(Section::ALL[index]))
@@ -101,8 +96,6 @@ pub(super) fn compose_diagnostics(
 ) {
 	let s = pen.scale;
 	pen.text(p, 24 * s, 24, "Diagnostics", TITLE);
-	// The design lights the way back: this page is one level down.
-	pen.back_button(p, style, &|_, _, _, _| true);
 	for (index, shown) in Section::ALL.into_iter().enumerate() {
 		let rect = section_button(index, s);
 		let lit = shown == section || hovered(rect.0, rect.1, rect.2, rect.3);

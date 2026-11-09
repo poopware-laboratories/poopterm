@@ -36,6 +36,9 @@ mod settings_fonts;
 mod settings_header_tests;
 mod settings_hit;
 mod settings_keys;
+pub(super) mod settings_nav;
+#[cfg(test)]
+mod settings_nav_tests;
 mod settings_pen;
 #[cfg(test)]
 mod settings_pen_tests;

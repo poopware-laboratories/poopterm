@@ -6,11 +6,6 @@ use crate::render::{
 };
 use crate::ui::{settings_layout::FOOTER, ui_font::ellipsize_to_width};
 
-/// The "Settings" back button of a window `width` physical pixels wide.
-pub(super) fn back_rect(width: usize, s: usize) -> Rect {
-	(width.saturating_sub(164 * s), 20 * s, 140 * s, 36 * s)
-}
-
 /// The footer's button, `button_w` logical pixels wide, in a window
 /// `(width, height)` physical pixels large: 20 from the right edge.
 pub(super) fn footer_rect((width, height): (usize, usize), button_w: usize, s: usize) -> Rect {
@@ -122,18 +117,6 @@ impl Pen<'_> {
 	) {
 		let x = p.width.saturating_sub(self.width(text, size)) / 2;
 		self.tinted(p, x, row, text, size, color);
-	}
-
-	/// The "Settings" button that leads back to the main page.
-	pub(super) fn back_button(
-		&mut self,
-		p: &mut Scene,
-		style: ButtonStyle,
-		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
-	) {
-		let (s, back) = (self.scale, back_rect(p.width, self.scale));
-		p.button(back, style, hovered(back.0, back.1, back.2, back.3));
-		self.text(p, back.0 + 22 * s, 27, "Settings", 0.8);
 	}
 
 	/// A wide button at the right of `row` labelled `label`.

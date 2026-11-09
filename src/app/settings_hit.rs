@@ -17,10 +17,8 @@ pub(crate) enum SettingsPage {
 /// A clickable control in the Settings window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SettingsTarget {
-	/// Opens a page from the main page's header.
+	/// Opens a page from the sidebar.
 	Open(SettingsPage),
-	/// The "Settings" button on the other pages.
-	Back,
 	Save,
 	ChooseWallpaper,
 	ClearWallpaper,
@@ -42,16 +40,6 @@ pub(super) enum SettingsTarget {
 	Section(Section),
 	CopyReport,
 }
-
-/// Header buttons of the main page: page, distance of the left edge from
-/// the window's right edge, and width, in logical pixels.
-pub(super) const HEADER_BUTTONS: [(SettingsPage, usize, usize, &str); 5] = [
-	(SettingsPage::Fonts, 536, 96, "Fonts"),
-	(SettingsPage::Layout, 432, 96, "Layout"),
-	(SettingsPage::Shortcuts, 328, 96, "Shortcuts"),
-	(SettingsPage::Diagnostics, 224, 96, "Diagnostics"),
-	(SettingsPage::About, 120, 96, "About"),
-];
 
 /// How many font list rows fit above the footer of a window `height`
 /// physical pixels tall.
@@ -78,7 +66,6 @@ pub(super) fn settings_target(
 ) -> Option<SettingsTarget> {
 	let s = scale;
 	let in_row = |row: usize| (row * s..(row + ROW_HEIGHT) * s).contains(&y);
-	let in_header = (20 * s..56 * s).contains(&y);
 	let right = |offset: usize| width.saturating_sub(offset * s);
 	let (save_x, save_y) = (right(140), height.saturating_sub(52 * s));
 	let on_save = (save_x..save_x + 120 * s).contains(&x) && (save_y..save_y + 36 * s).contains(&y);
@@ -86,9 +73,6 @@ pub(super) fn settings_target(
 		return diagnostics_target((x, y), (width, height), s);
 	}
 	if page != SettingsPage::Main {
-		if in_header && (right(164)..right(24)).contains(&x) {
-			return Some(SettingsTarget::Back);
-		}
 		if page == SettingsPage::Fonts {
 			let top = FONT_LIST_TOP * s;
 			let (row, within) = (
@@ -124,12 +108,6 @@ pub(super) fn settings_target(
 			return Some(target);
 		}
 		return on_save.then_some(SettingsTarget::Save);
-	}
-	if in_header {
-		return HEADER_BUTTONS
-			.iter()
-			.find(|(_, offset, w, _)| (right(*offset)..right(*offset) + w * s).contains(&x))
-			.map(|&(page, ..)| SettingsTarget::Open(page));
 	}
 	if on_save {
 		return Some(SettingsTarget::Save);
@@ -197,19 +175,8 @@ mod tests {
 	#[test]
 	fn clicks_map_to_main_page_controls() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Main);
-		// Five buttons 96 wide and 8 apart, the last 24 from the right edge.
-		for (x, page) in [
-			(640, SettingsPage::About),
-			(735, SettingsPage::About),
-			(536, SettingsPage::Diagnostics),
-			(631, SettingsPage::Diagnostics),
-			(480, SettingsPage::Shortcuts),
-			(380, SettingsPage::Layout),
-			(224, SettingsPage::Fonts),
-		] {
-			assert_eq!(target(x, 30), Some(SettingsTarget::Open(page)), "x {x}");
-		}
-		for x in [223, 320, 327, 632, 639, 736] {
+		// The page buttons now live in the sidebar: nothing at the old places.
+		for x in [224, 380, 480, 536, 640, 735] {
 			assert_eq!(target(x, 30), None, "x {x}");
 		}
 		assert_eq!(target(630, 600), Some(SettingsTarget::Save));
@@ -251,7 +218,11 @@ mod tests {
 	#[test]
 	fn layout_page_toggles_are_clickable() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
-		assert_eq!(target(690, 30), Some(SettingsTarget::Back));
+		assert_eq!(
+			target(690, 30),
+			None,
+			"no back button: the sidebar navigates"
+		);
 		assert_eq!(
 			target(530, SHOW_TABS_ROW + 10),
 			Some(SettingsTarget::ToggleTabs)
@@ -283,7 +254,11 @@ mod tests {
 	#[test]
 	fn shortcut_bindings_are_clickable() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Shortcuts);
-		assert_eq!(target(690, 30), Some(SettingsTarget::Back));
+		assert_eq!(
+			target(690, 30),
+			None,
+			"no back button: the sidebar navigates"
+		);
 		assert_eq!(
 			target(600, 112),
 			Some(SettingsTarget::SetShortcut(ShortcutAction::NewTab))
@@ -321,33 +296,21 @@ mod tests {
 	}
 
 	#[test]
-	fn about_page_only_exposes_the_back_button() {
+	fn about_page_has_nothing_to_click() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::About);
-		assert_eq!(target(630, 600), None);
-		assert_eq!(target(750, 30), None);
-		assert_eq!(target(610, 30), Some(SettingsTarget::Back));
-	}
-
-	#[test]
-	fn header_buttons_clear_the_title_in_a_small_window() {
-		// "Settings" ends near x = 110 at the base size.
-		let leftmost = HEADER_BUTTONS
-			.iter()
-			.map(|(_, offset, ..)| offset)
-			.max()
-			.unwrap();
-		assert!(MIN_SIZE.0 - leftmost >= 136);
-		// The buttons sit 8 apart without overlapping.
-		for pair in HEADER_BUTTONS.windows(2) {
-			let ((_, left, width, _), (_, right, ..)) = (pair[0], pair[1]);
-			assert_eq!(left - width - right, 8, "{pair:?}");
+		for (x, y) in [(630, 600), (750, 30), (610, 30), (400, 300), (30, 30)] {
+			assert_eq!(target(x, y), None, "({x}, {y})");
 		}
 	}
 
 	#[test]
 	fn font_list_rows_are_clickable() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Fonts);
-		assert_eq!(target(690, 30), Some(SettingsTarget::Back));
+		assert_eq!(
+			target(690, 30),
+			None,
+			"no back button: the sidebar navigates"
+		);
 		assert_eq!(
 			target(40, FONT_LIST_TOP + 4),
 			Some(SettingsTarget::FontRow(0))
