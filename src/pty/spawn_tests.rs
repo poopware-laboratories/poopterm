@@ -123,8 +123,14 @@ fn a_terminal_whose_session_ended_is_reusable_only_on_linux() {
 	}
 	#[cfg(not(target_os = "linux"))]
 	{
+		// The revoked descriptor is no tty on FreeBSD, and no descriptor at
+		// all on macOS.
+		#[cfg(target_os = "freebsd")]
+		let revoked = libc::ENOTTY;
+		#[cfg(not(target_os = "freebsd"))]
+		let revoked = libc::EBADF;
 		let error = spawn(&sh("true"), &pair.slave).err().unwrap();
-		assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
+		assert_eq!(error.raw_os_error(), Some(revoked));
 	}
 }
 
@@ -536,7 +542,8 @@ fn none_of_our_descriptors_reach_the_program() {
 	// SAFETY: closes the duplicate made above.
 	unsafe { libc::close(leaky) };
 	let fds: Vec<&str> = output.split_whitespace().collect();
-	// 0, 1, 2, and the directory ls reads.
+	// 0, 1, 2, and the directory ls reads; macOS's ls keeps one more.
+	#[cfg(target_os = "linux")]
 	assert!(fds.len() <= 4, "{fds:?}");
 	assert!(!fds.contains(&leaky.to_string().as_str()), "{fds:?}");
 }
