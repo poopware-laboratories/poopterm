@@ -470,7 +470,7 @@ fn a_color_font_as_large_as_apple_color_emoji_is_a_color_candidate() {
 		APPLE_COLOR_EMOJI,
 		vec![color_face()],
 	)]);
-	assert!(APPLE_COLOR_EMOJI > MAX_FILE);
+	const { assert!(APPLE_COLOR_EMOJI > MAX_FILE) };
 	assert_eq!(paths_of(&fonts, '🦀', true), ["/emoji.ttc"]);
 }
 
@@ -491,10 +491,8 @@ fn color_fonts_have_a_limit_of_their_own() {
 		file("/at.ttc", MAX_COLOR_FILE, vec![color_face()]),
 	]);
 	assert_eq!(paths_of(&fonts, '🦀', true), ["/at.ttc"]);
-	assert!(
-		MAX_COLOR_FILE >= APPLE_COLOR_EMOJI,
-		"room for the real font"
-	);
+	// Room for the real font.
+	const { assert!(MAX_COLOR_FILE >= APPLE_COLOR_EMOJI) };
 }
 
 #[test]
@@ -518,7 +516,7 @@ fn a_smaller_color_font_still_ranks_before_the_large_one() {
 
 #[test]
 fn the_symbol_fonts_loaded_at_startup_keep_the_lower_limit() {
-	assert!(MAX_FILE < APPLE_COLOR_EMOJI);
+	const { assert!(MAX_FILE < APPLE_COLOR_EMOJI) };
 	let fonts = cache(vec![file(
 		"/huge.ttf",
 		MAX_FILE + 1,
