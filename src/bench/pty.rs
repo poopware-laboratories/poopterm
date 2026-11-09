@@ -300,6 +300,19 @@ mod tests {
 	}
 
 	#[test]
+	fn settings_a_program_changed_do_not_carry_into_the_next_run() {
+		// Each run gets a new PTY with the usual settings.
+		output(&["stty", "-echo", "cols", "7"], SMALL, Mode::Raw);
+		let next = String::from_utf8(output(&["stty", "-a"], SMALL, Mode::Raw)).unwrap();
+		let flags: Vec<&str> = next.split_whitespace().collect();
+		assert!(
+			flags.contains(&"echo") && !flags.contains(&"-echo"),
+			"{next}"
+		);
+		assert_eq!(output(&["stty", "size"], SMALL, Mode::Raw), b"12 40\n");
+	}
+
+	#[test]
 	fn standard_error_is_part_of_the_output() {
 		let seen = output(
 			&["sh", "-c", "printf out; printf err >&2"],
