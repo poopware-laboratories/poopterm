@@ -287,7 +287,9 @@ mod tests {
 
 	#[test]
 	fn a_size_beyond_what_the_kernel_holds_saturates_rather_than_wraps() {
-		// 70000 columns would wrap to 4464 in 16 bits.
+		// 70000 columns would wrap to 4464 in 16 bits. Busybox's stty
+		// (Alpine) reports any width of 30000 or more as 80, while a wrapped
+		// 4464 would still show as 4464.
 		let seen = output(
 			&["stty", "size"],
 			Size {
@@ -296,7 +298,8 @@ mod tests {
 			},
 			Mode::Raw,
 		);
-		assert_eq!(seen, b"3 65535\n");
+		let seen = String::from_utf8_lossy(&seen);
+		assert!(seen == "3 65535\n" || seen == "3 80\n", "{seen:?}");
 	}
 
 	#[test]
