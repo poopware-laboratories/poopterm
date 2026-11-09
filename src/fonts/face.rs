@@ -8,6 +8,7 @@ use super::{
 	data::Data,
 	glyf,
 	gsub::{Gsub, MAX_GLYPHS},
+	morx::Morx,
 	otl::Gdef,
 	read::Bytes,
 	sbix::Sbix,
@@ -79,6 +80,7 @@ pub(crate) struct Face {
 	cbdt: Option<Cbdt>,
 	sbix: Option<Sbix>,
 	gsub: Option<Gsub>,
+	morx: Option<Morx>,
 	gdef: Option<Gdef>,
 }
 
@@ -169,6 +171,7 @@ impl Face {
 			cbdt,
 			sbix,
 			gsub: find(b"GSUB").and_then(|table| Gsub::parse(bytes, table)),
+			morx: find(b"morx").and_then(|table| Morx::parse(bytes, table)),
 			gdef: find(b"GDEF").and_then(|table| Gdef::parse(bytes, table)),
 			data: Data::Static(&[]),
 		};
@@ -194,7 +197,8 @@ impl Face {
 	}
 
 	/// The glyphs for a cluster of `chars`, after the substitutions of the
-	/// glyph composition and ligature features; at most [`MAX_GLYPHS`].
+	/// glyph composition and ligature features (`GSUB`, or `morx` as in Apple
+	/// Color Emoji); at most [`MAX_GLYPHS`].
 	pub(crate) fn shape(&self, chars: &[char]) -> Vec<u16> {
 		let mut glyphs: Vec<u16> = chars
 			.iter()
@@ -203,6 +207,9 @@ impl Face {
 			.collect();
 		if let Some(gsub) = &self.gsub {
 			gsub.apply(&self.data, self.gdef.as_ref(), &mut glyphs);
+		}
+		if let Some(morx) = &self.morx {
+			morx.apply(&self.data, &mut glyphs);
 		}
 		glyphs
 	}

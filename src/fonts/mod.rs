@@ -28,6 +28,18 @@ mod gsub;
 #[cfg(test)]
 pub(crate) use gsub::tests as gsub_tests;
 mod gsub_context;
+mod morx;
+#[cfg(test)]
+mod morx_build_tests;
+#[cfg(test)]
+mod morx_font_tests;
+#[cfg(test)]
+mod morx_hostile_tests;
+mod morx_lookup;
+#[cfg(test)]
+mod morx_lookup_tests;
+#[cfg(test)]
+mod morx_tests;
 mod otl;
 #[cfg_attr(
 	not(test),
