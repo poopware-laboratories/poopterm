@@ -112,6 +112,18 @@ impl Pen<'_> {
 		self.text(p, rect.0 + rect.2.saturating_sub(text_w) / 2, y, text, size);
 	}
 
+	/// Draws `text` at logical row `row`, centered across a window `width`
+	/// physical pixels wide, in `color`.
+	pub(super) fn centered_row(
+		&mut self,
+		p: &mut Scene,
+		(row, size, color): (usize, f32, u32),
+		text: &str,
+	) {
+		let x = p.width.saturating_sub(self.width(text, size)) / 2;
+		self.tinted(p, x, row, text, size, color);
+	}
+
 	/// The "Settings" button that leads back to the main page.
 	pub(super) fn back_button(
 		&mut self,

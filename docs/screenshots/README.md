@@ -19,6 +19,7 @@ links keep working. Each folder belongs to one pull request:
 | `tab-bar/` | the header's new shape: 40 px high, the active tab joined to the terminal with rounded top corners, before and after in poop and light-mode |
 | `palette-hints/` | each palette command's shortcut shown at its row's right end; the palette drawn from its model, since keystrokes cannot reach the window in the capture setup |
 | `settings-rows/` | the Settings main page with its rows laid out from one table of gaps, before and after in poop and light-mode; drawn from the page's model, since keystrokes cannot open the window in the capture setup |
+| `about-page/` | the About page centered with the name, release and tagline above quiet notices, before and after in poop and light-mode; drawn from the page's model, since keystrokes cannot open the window in the capture setup |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

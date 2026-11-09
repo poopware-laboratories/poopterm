@@ -23,6 +23,8 @@ mod renderer;
 mod repaint;
 mod search;
 mod settings;
+#[cfg(test)]
+mod settings_about_tests;
 mod settings_diagnostics;
 #[cfg(test)]
 mod settings_diagnostics_property_tests;

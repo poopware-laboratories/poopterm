@@ -9,7 +9,11 @@ use super::{
 };
 use crate::input::shortcuts::ShortcutAction;
 use crate::render::{painter::ButtonStyle, scene::Scene};
-use crate::ui::settings_layout::{MAIN, MIN_HEIGHT};
+use crate::ui::{
+	about::{Tone, about_lines},
+	chrome_colors::chrome_colors,
+	settings_layout::{MAIN, MIN_HEIGHT},
+};
 
 pub(super) const THEME_ROW: usize = MAIN.theme;
 /// The picked theme's credit, between the picker and the wallpaper label.
@@ -97,25 +101,6 @@ fn theme_label(kind: ThemeKind) -> String {
 	}
 }
 
-/// The About page below the release line: (row, text). The AGPL asks an
-/// interactive program to show its copyright, that there is no warranty,
-/// and where the license is.
-const ABOUT_LINES: [(usize, &str); 6] = [
-	(148, "A small, native terminal emulator written in Rust."),
-	(184, "Copyright © 2026 poopware-labs and contributors"),
-	(220, "Licensed under the GNU AGPL, version 3 or later."),
-	(
-		256,
-		"Free software with ABSOLUTELY NO WARRANTY; see LICENSE.",
-	),
-	(292, "Source: github.com/poopware-laboratories/poopterm"),
-	(328, "Built with Rust, winit, and softbuffer."),
-];
-
-fn about_release_line(version: &str, codename: &str) -> String {
-	format!("Version {version} \"{codename}\"")
-}
-
 impl App {
 	pub(super) fn draw_settings(&mut self) {
 		let scale = self
@@ -185,17 +170,8 @@ impl App {
 		let x = 24 * scale;
 		match editor.page {
 			SettingsPage::About => {
-				pen.text(p, x, 28, "About poopterm", 1.3);
-				pen.text(
-					p,
-					x,
-					104,
-					&about_release_line(env!("CARGO_PKG_VERSION"), env!("POOPTERM_CODENAME")),
-					0.82,
-				);
-				for (line, text) in ABOUT_LINES {
-					pen.text(p, x, line, text, 0.82);
-				}
+				let colors = (self.theme.fg, chrome_colors(&self.theme).muted);
+				compose_about(&mut pen, p, colors);
 				pen.back_button(p, style, &hovered);
 				return;
 			}
@@ -283,6 +259,19 @@ impl App {
 			SettingsPage::Diagnostics => return,
 		}
 		pen.footer(p, style, ("Save", 120), &editor.status, &hovered);
+	}
+}
+
+/// The About page: its lines centered, in `(strong, muted)` colors.
+pub(super) fn compose_about(pen: &mut Pen, p: &mut Scene, (strong, muted): (u32, u32)) {
+	let version = (env!("CARGO_PKG_VERSION"), env!("POOPTERM_CODENAME"));
+	for line in about_lines(version.0, version.1) {
+		let color = if line.tone == Tone::Strong {
+			strong
+		} else {
+			muted
+		};
+		pen.centered_row(p, (line.row, line.size, color), &line.text);
 	}
 }
 
@@ -477,61 +466,5 @@ mod tests {
 		assert_eq!(step_theme(ThemeKind::Poop, 1), ThemeKind::Custom);
 		assert_eq!(step_theme(ThemeKind::CatppuccinMocha, 1), ThemeKind::Bark);
 		assert_eq!(step_theme(ThemeKind::Bark, 1), ThemeKind::AmoledBlack);
-	}
-
-	#[test]
-	fn about_release_line_includes_the_version_and_codename() {
-		assert_eq!(
-			about_release_line("26.10.8", "Giga Fly"),
-			"Version 26.10.8 \"Giga Fly\""
-		);
-	}
-
-	fn about_text() -> Vec<&'static str> {
-		ABOUT_LINES.iter().map(|&(_, text)| text).collect()
-	}
-
-	#[test]
-	fn about_names_the_license_cargo_declares() {
-		assert_eq!(env!("CARGO_PKG_LICENSE"), "AGPL-3.0-or-later");
-		let license: Vec<_> = about_text()
-			.into_iter()
-			.filter(|text| text.contains("Licensed"))
-			.collect();
-		assert_eq!(
-			license,
-			["Licensed under the GNU AGPL, version 3 or later."]
-		);
-		assert!(about_text().iter().all(|text| !text.contains("MIT")));
-	}
-
-	#[test]
-	fn about_shows_the_legal_notices_the_agpl_asks_of_interactive_programs() {
-		// Section 0 and 5(d): a copyright notice, that there is no warranty,
-		// and where to find the license.
-		let text = about_text().join("\n");
-		assert!(text.contains("Copyright © 2026"), "{text}");
-		assert!(text.contains("NO WARRANTY"), "{text}");
-		assert!(text.contains("LICENSE"), "{text}");
-		assert!(
-			text.contains("github.com/poopware-laboratories/poopterm"),
-			"{text}"
-		);
-	}
-
-	#[test]
-	fn about_lines_are_evenly_spaced_below_the_release_line() {
-		let rows: Vec<_> = ABOUT_LINES.iter().map(|&(row, _)| row).collect();
-		assert_eq!(rows[0], 148);
-		assert!(
-			rows.windows(2).all(|pair| pair[1] - pair[0] == 36),
-			"{rows:?}"
-		);
-	}
-
-	#[test]
-	fn about_lines_fit_above_the_bottom_of_the_smallest_window() {
-		let &(last, _) = ABOUT_LINES.last().unwrap();
-		assert!(last + 36 <= MIN_SIZE.1 - 52, "{last}");
 	}
 }
