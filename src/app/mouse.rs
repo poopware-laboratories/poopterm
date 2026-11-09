@@ -285,6 +285,7 @@ impl App {
 		let previous = self.cursor_pos;
 		self.cursor_pos = (position.x, position.y);
 		self.update_hovered_link();
+		self.hover_search();
 		if self.drag_anchor.is_some() {
 			self.extend_selection(position.x, position.y);
 		} else {
@@ -314,6 +315,11 @@ impl App {
 			_ => return,
 		};
 		self.held_button = (state == ElementState::Pressed).then_some(code);
+		// pr-check: window glue: a press on the search box goes to its tested buttons
+		if state == ElementState::Pressed && button == MouseButton::Left && self.press_search() {
+			return;
+		}
+		// pr-check: end window glue
 		if self.handle_vertical_tab_mouse(event_loop, state, button, (x, y)) {
 			return;
 		}

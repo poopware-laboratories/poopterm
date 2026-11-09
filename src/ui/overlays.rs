@@ -4,10 +4,13 @@ use crate::{
 	input::shortcuts::{ShortcutAction, Shortcuts},
 	render::{
 		header::{HeaderColors, Style},
-		popover::{Field, Popover, PopoverRow},
+		popover::{Field, Popover, PopoverButton, PopoverRow},
 	},
 	theme::Theme,
-	ui::header::TabPalette,
+	ui::{
+		header::TabPalette,
+		search_controls::{SearchControl, geometry},
+	},
 };
 
 /// Commands offered by the command palette, in display order.
@@ -69,10 +72,10 @@ pub(crate) struct Place {
 }
 
 /// How far popovers keep from the window's edges, before scaling.
-const MARGIN: usize = 12;
+pub(crate) const MARGIN: usize = 12;
 /// The room between a popover's edge and its field and rows.
-const INSET: usize = 8;
-const FIELD_HEIGHT: usize = 34;
+pub(crate) const INSET: usize = 8;
+pub(crate) const FIELD_HEIGHT: usize = 34;
 const ROW_HEIGHT: usize = 32;
 
 /// The header's colors, with dim text kept readable on every shade.
@@ -90,35 +93,52 @@ fn style(place: Place, px: f32, theme: &Theme) -> Style {
 }
 
 /// The search box at the top right: the query, and how many matches it has
-/// and which is current, once there is a query.
+/// and which is current, once there is a query. Its buttons are added by
+/// [`search_buttons`].
 pub(crate) fn search_box<'a>(
 	place: Place,
 	(query, matches, current): (&'a str, usize, usize),
 	px: f32,
 	theme: &Theme,
 ) -> Popover<'a> {
-	let Place { window, top, scale } = place;
-	let width = (380 * scale).min(window.0.saturating_sub(2 * MARGIN * scale));
-	let height = (FIELD_HEIGHT + 2 * INSET) * scale;
-	let x = window.0.saturating_sub(width + MARGIN * scale);
-	let y = top + INSET * scale;
+	let geometry = geometry(place);
 	let trailing = match matches {
 		_ if query.is_empty() => None,
 		0 => Some("No matches".to_owned()),
 		_ => Some(format!("{} of {matches}", current + 1)),
 	};
 	Popover {
-		rect: (x, y, width, height),
+		rect: geometry.panel,
 		style: style(place, px, theme),
 		field: Field {
-			rect: inset((x, y, width), scale),
+			rect: geometry.field,
 			text: query,
 			placeholder: "Find",
 			trailing,
 		},
 		rows: Vec::new(),
 		note: None,
+		buttons: Vec::new(),
 	}
+}
+
+/// The search box's buttons, laid out as [`geometry`] places them: the case
+/// button on when `case_sensitive`, and the one under `hover` lit.
+pub(crate) fn search_buttons(
+	place: Place,
+	case_sensitive: bool,
+	hover: Option<SearchControl>,
+) -> Vec<PopoverButton<'static>> {
+	let rects = geometry(place).buttons;
+	rects
+		.into_iter()
+		.map(|(control, rect)| PopoverButton {
+			rect,
+			glyph: control.glyph(),
+			hovered: hover == Some(control),
+			active: control == SearchControl::Case && case_sensitive,
+		})
+		.collect()
 }
 
 /// The field across the top of a popover at `(x, y)`, `width` wide.
@@ -191,5 +211,6 @@ pub(crate) fn command_palette<'a>(
 		},
 		rows: rows.collect(),
 		note: note.map(|note| (row(0), note)),
+		buttons: Vec::new(),
 	}
 }

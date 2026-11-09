@@ -58,6 +58,9 @@ mod panes_table_tests;
 mod panes_tests;
 pub(crate) mod scale;
 pub(crate) mod search;
+pub(crate) mod search_controls;
+#[cfg(test)]
+mod search_controls_tests;
 pub(crate) mod selection;
 #[cfg(test)]
 mod selection_tests;

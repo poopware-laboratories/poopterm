@@ -1,9 +1,10 @@
 //! Pixel tests of the popover painter: its outlined panel, the text field
 //! with its caret, placeholder and trailing count, and rows below.
 use super::{
+	blend::blend,
 	glyphs::FontSet,
 	header::{HeaderColors, Rect, Style},
-	popover::{Field, Popover, PopoverRow, draw_popover},
+	popover::{Field, Popover, PopoverButton, PopoverRow, draw_popover},
 };
 use crate::{
 	fonts::{BUNDLED, Font},
@@ -50,6 +51,7 @@ fn popover<'a>(text: &'a str, trailing: Option<&str>) -> Popover<'a> {
 		},
 		rows: Vec::new(),
 		note: None,
+		buttons: Vec::new(),
 	}
 }
 
@@ -677,4 +679,132 @@ fn an_empty_hint_draws_nothing_and_takes_no_room() {
 	assert_eq!(drawn.ink(ROW, COLORS.dim), None);
 	let bare = draw(&hinted("New tab", None, false));
 	assert_eq!(drawn.ink(ROW, COLORS.fg), bare.ink(ROW, COLORS.fg));
+}
+
+fn with_button(glyph: &str, hovered: bool, active: bool) -> Popover<'_> {
+	let mut panel = popover("", None);
+	panel.buttons = vec![PopoverButton {
+		rect: (270, 100, 28, 28),
+		glyph,
+		hovered,
+		active,
+	}];
+	panel
+}
+
+const BUTTON: Rect = (270, 100, 28, 28);
+
+#[test]
+fn a_resting_button_draws_its_glyph_dim_on_the_panel() {
+	let drawn = draw(&with_button("×", false, false));
+	assert_eq!(drawn.at(272, 112), COLORS.bar);
+	assert!(drawn.ink(BUTTON, COLORS.dim).is_some());
+	assert_eq!(drawn.ink(BUTTON, COLORS.fg), None);
+}
+
+#[test]
+fn a_hovered_button_is_lit_with_its_glyph_at_full_strength() {
+	let drawn = draw(&with_button("×", true, false));
+	assert_eq!(drawn.at(273, 112), COLORS.hover);
+	assert!(drawn.ink(BUTTON, COLORS.fg).is_some());
+}
+
+#[test]
+fn an_active_button_is_a_step_brighter_than_a_hovered_one() {
+	let hovered = draw(&with_button("Aa", true, false)).at(273, 112);
+	let active = draw(&with_button("Aa", false, true)).at(273, 112);
+	assert_eq!(active, blend(COLORS.hover, COLORS.fg, 32));
+	assert!(active >> 16 & 0xff > hovered >> 16 & 0xff);
+}
+
+#[test]
+fn a_lit_button_rounds_its_corners() {
+	let drawn = draw(&with_button("×", true, false));
+	assert_eq!(drawn.at(270, 100), COLORS.bar);
+	assert_eq!(drawn.at(297, 127), COLORS.bar);
+	assert_eq!(drawn.at(284, 100), COLORS.hover);
+}
+
+#[test]
+fn a_wide_glyph_is_centered_on_its_button() {
+	let drawn = draw(&with_button("Aa", false, false));
+	let (x, _, w, _) = drawn.ink(BUTTON, COLORS.dim).expect("drawn");
+	let (left, right) = (x - 270, 270 + 28 - (x + w));
+	assert!(left.abs_diff(right) <= 2, "{left} against {right}");
+}
+
+#[test]
+fn a_lit_button_rounds_by_the_control_radius_at_twice_the_scale() {
+	let mut panel = with_button("×", true, false);
+	panel.style.scale = 2;
+	panel.buttons[0].rect = (270, 90, 56, 56);
+	let drawn = draw(&panel);
+	// One pixel in from a corner is far outside a 12-pixel arc.
+	assert_eq!(drawn.at(271, 91), COLORS.bar);
+	assert_eq!(drawn.at(298, 90), COLORS.hover);
+}
+
+#[test]
+fn several_buttons_light_independently() {
+	let mut panel = popover("", None);
+	panel.buttons = [(0, false, false), (1, true, false), (2, false, true)]
+		.into_iter()
+		.map(|(index, hovered, active)| PopoverButton {
+			rect: (200 + index * 34, 100, 28, 28),
+			glyph: "x",
+			hovered,
+			active,
+		})
+		.collect();
+	let drawn = draw(&panel);
+	assert_eq!(drawn.at(203, 112), COLORS.bar);
+	assert_eq!(drawn.at(237, 112), COLORS.hover);
+	assert_eq!(drawn.at(271, 112), blend(COLORS.hover, COLORS.fg, 32));
+}
+
+#[test]
+fn a_button_does_not_disturb_the_field_beside_it() {
+	let plain = draw(&popover("hello", Some("1 of 2")));
+	let mut with = popover("hello", Some("1 of 2"));
+	with.buttons = vec![PopoverButton {
+		rect: (270, 100, 28, 28),
+		glyph: "×",
+		hovered: true,
+		active: false,
+	}];
+	let drawn = draw(&with);
+	for y in 28..62 {
+		for x in 28..312 {
+			assert_eq!(drawn.at(x, y), plain.at(x, y), "({x}, {y})");
+		}
+	}
+}
+
+#[test]
+fn a_button_without_a_glyph_is_only_its_light() {
+	let mut panel = with_button("", true, false);
+	panel.buttons[0].glyph = "";
+	let drawn = draw(&panel);
+	assert_eq!(drawn.at(273, 112), COLORS.hover);
+	assert_eq!(drawn.ink(BUTTON, COLORS.fg), None);
+}
+
+#[test]
+fn exactly_the_hovered_button_is_lit_wherever_each_sits() {
+	for lit in 0..4 {
+		let mut panel = popover("", None);
+		panel.buttons = (0..4)
+			.map(|index| PopoverButton {
+				rect: (100 + index * 30, 100, 28, 28),
+				glyph: "x",
+				hovered: index == lit,
+				active: false,
+			})
+			.collect();
+		let drawn = draw(&panel);
+		for index in 0..4 {
+			let light = drawn.at(103 + index * 30, 112) == COLORS.hover;
+			assert_eq!(light, index == lit, "button {index} with {lit} hovered");
+		}
+	}
 }

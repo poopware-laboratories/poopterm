@@ -75,6 +75,7 @@ use crate::{
 		layout::{Layout, layout},
 		scale::{chrome, chrome_factor, chrome_scale, font_px},
 		search::find_matches,
+		search_controls::SearchControl,
 		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
@@ -191,6 +192,10 @@ pub(crate) struct App {
 	search_query: String,
 	search_matches: Vec<Selection>,
 	search_match_index: usize,
+	/// Letters match only in the case typed.
+	search_case_sensitive: bool,
+	/// The search box's button under the pointer.
+	search_hover: Option<SearchControl>,
 	command_palette: bool,
 	command_query: String,
 	renaming_tab: bool,
@@ -425,6 +430,8 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		search_query: String::new(),
 		search_matches: Vec::new(),
 		search_match_index: 0,
+		search_case_sensitive: false,
+		search_hover: None,
 		command_palette: false,
 		command_query: String::new(),
 		renaming_tab: false,

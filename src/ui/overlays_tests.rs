@@ -1,16 +1,18 @@
 //! Tests of the overlay models: the palette's matching, and where the
 //! search box and command palette float and what they show.
 use super::{
+	contrast::{TEXT, ratio},
 	header::{TabPalette, header_colors},
 	overlays::{
 		PALETTE_COMMANDS, Place, command_action, command_palette, palette_matches, search_box,
-		shortcut_hints, stays_open,
+		search_buttons, shortcut_hints, stays_open,
 	},
+	search_controls::{SearchControl, geometry},
 };
 use crate::{
 	input::shortcuts::{ShortcutAction, Shortcuts},
 	render::{
-		header::{HeaderColors, Rect},
+		header::{HeaderColors, Rect, pressed_fill},
 		popover::Popover,
 	},
 	theme::{Theme, ThemeKind},
@@ -72,7 +74,7 @@ fn matching_lowers_the_case_of_letters_beyond_ascii_too() {
 fn the_search_box_floats_at_the_top_right_below_the_tabs() {
 	let popover = search("poop", 8, 0);
 	assert_eq!(popover.rect, (608, 52, 380, 50));
-	assert_eq!(popover.field.rect, (616, 60, 364, 34));
+	assert_eq!(popover.field.rect, (616, 60, 242, 34));
 	assert_eq!(popover.field.text, "poop");
 	assert_eq!(popover.field.placeholder, "Find");
 	assert!(popover.rows.is_empty() && popover.note.is_none());
@@ -103,7 +105,7 @@ fn a_narrow_window_narrows_the_search_box_to_its_margins() {
 fn the_search_box_doubles_at_twice_the_scale() {
 	let popover = search_box(place((2000, 1200), 2), ("x", 1, 0), 28.0, &theme());
 	assert_eq!(popover.rect, (2000 - 760 - 24, 104, 760, 100));
-	assert_eq!(popover.field.rect, (2000 - 760 - 24 + 16, 120, 728, 68));
+	assert_eq!(popover.field.rect, (2000 - 760 - 24 + 16, 120, 484, 68));
 	assert_eq!(popover.style.scale, 2);
 }
 
@@ -524,4 +526,128 @@ fn adding_hints_again_replaces_the_old_ones() {
 		.filter_map(|row| row.hint.as_deref())
 		.collect();
 	assert_eq!(hints, ["new"]);
+}
+
+#[test]
+fn the_search_box_starts_with_no_buttons_until_they_are_added() {
+	assert!(search("x", 1, 0).buttons.is_empty());
+}
+
+#[test]
+fn the_search_boxs_buttons_sit_where_the_geometry_puts_them() {
+	let place = place((1000, 600), 1);
+	let buttons = search_buttons(place, false, None);
+	let rects: Vec<_> = buttons.iter().map(|button| button.rect).collect();
+	let wanted: Vec<_> = geometry(place)
+		.buttons
+		.into_iter()
+		.map(|(_, rect)| rect)
+		.collect();
+	assert_eq!(rects, wanted);
+	let glyphs: Vec<_> = buttons.iter().map(|button| button.glyph).collect();
+	assert_eq!(glyphs, ["↑", "↓", "Aa", "×"]);
+}
+
+#[test]
+fn only_the_case_button_is_on_and_only_the_hovered_one_is_lit() {
+	let place = place((1000, 600), 1);
+	let flags = |case, hover| {
+		search_buttons(place, case, hover)
+			.iter()
+			.map(|button| (button.hovered, button.active))
+			.collect::<Vec<_>>()
+	};
+	assert_eq!(flags(false, None), [(false, false); 4]);
+	assert_eq!(
+		flags(true, Some(SearchControl::Close)),
+		[(false, false), (false, false), (false, true), (true, false)]
+	);
+}
+
+#[test]
+fn a_window_too_narrow_for_buttons_gets_none() {
+	assert!(search_buttons(place((200, 400), 1), true, None).is_empty());
+}
+
+#[test]
+fn the_field_never_runs_under_a_button_at_any_window_width() {
+	for width in [120, 260, 340, 420, 700, 1400] {
+		let place = place((width, 600), 1);
+		let popover = search_box(place, ("query", 12, 3), 14.0, &theme());
+		let field_end = popover.field.rect.0 + popover.field.rect.2;
+		for button in search_buttons(place, false, None) {
+			assert!(button.rect.0 >= field_end, "at {width}");
+		}
+		let panel_end = popover.rect.0 + popover.rect.2;
+		assert!(field_end <= panel_end, "at {width}");
+	}
+}
+
+#[test]
+fn a_lit_buttons_glyph_reads_on_its_fill_in_every_built_in_theme() {
+	let mut kinds = vec![ThemeKind::MacOsDark];
+	while kinds.last().unwrap().next() != ThemeKind::MacOsDark {
+		kinds.push(kinds.last().unwrap().next());
+	}
+	for kind in kinds {
+		let theme = Theme::from_kind(kind);
+		let colors = search_box(place((1000, 600), 1), ("", 0, 0), 14.0, &theme)
+			.style
+			.colors;
+		for fill in [colors.hover, pressed_fill(colors)] {
+			let contrast = ratio(colors.fg, fill);
+			assert!(contrast >= TEXT, "{kind:?} on {fill:06x}: {contrast:.2}");
+		}
+		let resting = ratio(colors.dim, colors.bar);
+		assert!(resting >= TEXT, "{kind:?} at rest: {resting:.2}");
+	}
+}
+
+#[test]
+fn every_state_of_the_search_buttons_lights_the_right_ones() {
+	let place = place((1000, 600), 1);
+	let controls = [
+		SearchControl::Previous,
+		SearchControl::Next,
+		SearchControl::Case,
+		SearchControl::Close,
+	];
+	for case in [false, true] {
+		for hover in controls.iter().map(|&control| Some(control)).chain([None]) {
+			for (index, button) in search_buttons(place, case, hover).iter().enumerate() {
+				assert_eq!(button.hovered, hover == Some(controls[index]), "{index}");
+				assert_eq!(button.active, case && index == 2, "{index}");
+			}
+		}
+	}
+}
+
+#[test]
+fn the_search_buttons_double_at_twice_the_scale() {
+	let one = search_buttons(place((1000, 600), 1), false, None);
+	let two = search_buttons(place((2000, 1200), 2), false, None);
+	assert_eq!(one.len(), two.len());
+	for (a, b) in one.iter().zip(&two) {
+		assert_eq!((b.rect.2, b.rect.3), (a.rect.2 * 2, a.rect.3 * 2));
+	}
+}
+
+#[test]
+fn the_buttons_stay_with_the_search_box_in_a_narrow_window() {
+	let place = place((300, 600), 1);
+	let popover = search_box(place, ("x", 1, 0), 14.0, &theme());
+	let end = popover.rect.0 + popover.rect.2;
+	let buttons = search_buttons(place, false, None);
+	assert_eq!(buttons.len(), 4);
+	for button in &buttons {
+		assert!(button.rect.0 + button.rect.2 <= end);
+	}
+	assert!(popover.field.rect.2 >= 100);
+}
+
+#[test]
+fn the_search_box_still_counts_matches_beside_its_buttons() {
+	let popover = search("word", 20, 4);
+	assert_eq!(popover.field.trailing.as_deref(), Some("5 of 20"));
+	assert_eq!(popover.field.placeholder, "Find");
 }

@@ -2,7 +2,7 @@
 //! below it of which one may be selected.
 use super::{
 	glyphs::FontSet,
-	header::{Rect, Style, line},
+	header::{Rect, Style, centered_text, line, pressed_fill},
 	scene::Scene,
 };
 use crate::ui::{
@@ -27,6 +27,15 @@ pub(crate) struct PopoverRow<'a> {
 	pub selected: bool,
 }
 
+/// A square button in a popover: a glyph, lit when hovered, brighter when
+/// on.
+pub(crate) struct PopoverButton<'a> {
+	pub rect: Rect,
+	pub glyph: &'a str,
+	pub hovered: bool,
+	pub active: bool,
+}
+
 pub(crate) struct Popover<'a> {
 	pub rect: Rect,
 	pub style: Style,
@@ -34,6 +43,8 @@ pub(crate) struct Popover<'a> {
 	pub rows: Vec<PopoverRow<'a>>,
 	/// A dim line under the field, where rows would go.
 	pub note: Option<(Rect, &'a str)>,
+	/// Buttons beside the field.
+	pub buttons: Vec<PopoverButton<'a>>,
 }
 
 /// Inside a field or row, the room left of the text.
@@ -68,6 +79,9 @@ pub(crate) fn draw_popover(p: &mut Scene, fonts: &mut FontSet, popover: &Popover
 		let mut text_rect = row.rect;
 		text_rect.2 = text_rect.2.saturating_sub(taken);
 		row_text(p, fonts, popover.style, text_rect, row.text, colors.fg);
+	}
+	for button in &popover.buttons {
+		draw_button(p, fonts, popover.style, button);
 	}
 	if let Some((rect, note)) = popover.note {
 		row_text(p, fonts, popover.style, rect, note, colors.dim);
@@ -104,6 +118,25 @@ fn row_hint(p: &mut Scene, fonts: &mut FontSet, style: Style, row: &PopoverRow) 
 	let left = (x + width).saturating_sub(PADDING * style.scale + shown_width);
 	text_line(p, fonts, style, (left, row.rect), &shown, style.colors.dim);
 	shown_width + PADDING * style.scale
+}
+
+/// Draws `button`: a rounded light under it when hovered or on, and its
+/// glyph centered, dim until then.
+fn draw_button(p: &mut Scene, fonts: &mut FontSet, style: Style, button: &PopoverButton) {
+	let (scale, colors) = (style.scale, style.colors);
+	let (x, y, width, height) = button.rect;
+	let lit = button.hovered || button.active;
+	if lit {
+		let fill = if button.active {
+			pressed_fill(colors)
+		} else {
+			colors.hover
+		};
+		p.round_rect(x, y, width, height, Corner::Control.radius(scale), fill);
+	}
+	let color = if lit { colors.fg } else { colors.dim };
+	let center = (x + width / 2, y + height / 2);
+	centered_text(p, fonts, button.glyph, center, style.px, color);
 }
 
 /// Draws `text` across a row, cut to fit inside its padding.

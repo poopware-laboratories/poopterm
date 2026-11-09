@@ -17,7 +17,7 @@ use crate::{
 		status_bar::draw_status_bar,
 	},
 	ui::{
-		overlays::{Place, command_palette, search_box, shortcut_hints},
+		overlays::{Place, command_palette, search_box, search_buttons, shortcut_hints},
 		status_bar::{StatusInput, status_bar},
 	},
 };
@@ -266,7 +266,8 @@ impl App {
 		// pr-check: window glue: hands the search state to the tested search box model
 		let found = (self.search_matches.len(), self.search_match_index);
 		let query = (self.search_query.as_str(), found.0, found.1);
-		let popover = search_box(place, query, ui.px * 0.86, &self.theme);
+		let mut popover = search_box(place, query, ui.px * 0.86, &self.theme);
+		popover.buttons = search_buttons(place, self.search_case_sensitive, self.search_hover);
 		paint(p, &mut self.ui_fonts, |s, f| draw_popover(s, f, &popover));
 		// pr-check: end window glue
 	}
