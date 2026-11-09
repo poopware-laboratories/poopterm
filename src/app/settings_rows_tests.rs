@@ -33,7 +33,7 @@ fn editor() -> SettingsEditor {
 fn main_buttons(scale: usize, size: (usize, usize)) -> Vec<((usize, usize, usize, usize), bool)> {
 	let commands = record(scale, |pen, p, style| {
 		(p.width, p.height) = (size.0 * scale, size.1 * scale);
-		compose_main_settings(&editor(), style, p, pen, &|_, _, _, _| false)
+		compose_main_settings(&editor(), style, p, pen)
 	});
 	buttons(&commands)
 }
@@ -116,7 +116,7 @@ fn clicking_the_wallpaper_buttons_where_they_are_drawn_opens_and_clears() {
 fn label_row(scale: usize, label: &str) -> usize {
 	let commands = record(scale, |pen, p, style| {
 		(p.width, p.height) = (MIN_SIZE.0 * scale, MIN_SIZE.1 * scale);
-		compose_main_settings(&editor(), style, p, pen, &|_, _, _, _| false)
+		compose_main_settings(&editor(), style, p, pen)
 	});
 	let found = texts(&commands).into_iter().find(|(text, _)| text == label);
 	found.unwrap_or_else(|| panic!("{label} is not drawn")).1.1

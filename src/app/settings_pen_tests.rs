@@ -130,22 +130,6 @@ fn a_wide_button_lights_when_active_or_hovered() {
 }
 
 #[test]
-fn the_back_button_sits_top_right_and_lights_under_the_pointer() {
-	for scale in [1, 2] {
-		let s = scale;
-		let rect = ((900 - 164) * s, 20 * s, 140 * s, 36 * s);
-		for over in [false, true] {
-			let hovered = |x, y, w, h| over && (x, y, w, h) == rect;
-			let commands = record(scale, |pen, p, style| pen.back_button(p, style, &hovered));
-			assert_eq!(buttons(&commands), [(rect, over)]);
-			let texts = texts(&commands);
-			assert_eq!(texts[0].0, "Settings");
-			assert!(inside(texts[0].1, rect), "x{s}: {texts:?}");
-		}
-	}
-}
-
-#[test]
 fn the_footer_saves_at_the_bottom_right_and_shows_the_status_at_the_left() {
 	for scale in [1, 2] {
 		let s = scale;

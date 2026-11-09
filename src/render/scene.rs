@@ -171,6 +171,53 @@ impl Scene {
 		});
 	}
 
+	/// This scene moved `dx` pixels right, on a target `dx` wider, to paste
+	/// its operations into a wider scene. A fill becomes a rectangle over
+	/// the area it covered.
+	pub(crate) fn shifted(self, dx: usize) -> Scene {
+		let (width, height) = (self.width, self.height);
+		let right = |(x, y, w, h): Rect| (x + dx, y, w, h);
+		let commands = self.commands.into_iter().map(|command| match command {
+			Command::Fill(color) => Command::Rect((dx, 0, width, height), color),
+			Command::Rect(rect, color) => Command::Rect(right(rect), color),
+			Command::RoundRect(rect, radius, color) => Command::RoundRect(right(rect), radius, color),
+			Command::Button(rect, style, lit) => Command::Button(right(rect), style, lit),
+			Command::Text {
+				at,
+				text,
+				px,
+				ascent,
+				color,
+				clip,
+				mono,
+			} => Command::Text {
+				at: (at.0 + dx, at.1),
+				text,
+				px,
+				ascent,
+				color,
+				clip: right(clip),
+				mono,
+			},
+			Command::Icon {
+				at,
+				icon,
+				scale,
+				color,
+			} => Command::Icon {
+				at: (at.0 + dx, at.1),
+				icon,
+				scale,
+				color,
+			},
+		});
+		Scene {
+			width: width + dx,
+			height,
+			commands: commands.collect(),
+		}
+	}
+
 	/// Draws the scene with `p`, pixel for pixel as drawing each operation
 	/// with a [`Painter`] directly would.
 	pub(crate) fn replay(&self, p: &mut impl Pen, fonts: &mut FontSet) {

@@ -4,7 +4,8 @@
 use super::*;
 use super::{
 	settings_diagnostics::compose_diagnostics,
-	settings_hit::{HEADER_BUTTONS, SettingsPage, font_list_rows},
+	settings_hit::{SettingsPage, font_list_rows},
+	settings_nav::{NAV_WIDTH, compose_nav},
 	settings_pen::Pen,
 };
 use crate::input::shortcuts::ShortcutAction;
@@ -129,6 +130,32 @@ impl App {
 			height.saturating_sub(4 * scale),
 			self.theme.bg,
 		);
+		// The page is drawn as if it stood alone, then moved right of the sidebar.
+		let nav = NAV_WIDTH * scale;
+		let mut page = Scene::new(width.saturating_sub(nav), height);
+		self.compose_page(&mut page, scale);
+		self.compose_sidebar(p, scale);
+		p.commands.extend(page.shifted(nav).commands);
+	}
+
+	fn compose_sidebar(&mut self, p: &mut Scene, scale: usize) {
+		let px = 18.0 * scale as f32;
+		let ascent = (self.ui_fonts.primary())
+			.horizontal_line_metrics(px)
+			.map_or(self.ascent, |metrics| metrics.ascent.round() as i32);
+		let colors = chrome_colors(&self.theme);
+		let mut pen = Pen {
+			fonts: &mut self.ui_fonts,
+			px,
+			ascent,
+			color: self.theme.fg,
+			scale,
+		};
+		let (active, cursor) = (self.settings_editor.page, self.settings_cursor_pos);
+		compose_nav(&mut pen, p, (active, cursor), (&colors, self.theme.fg));
+	}
+
+	fn compose_page(&mut self, p: &mut Scene, scale: usize) {
 		let px = 18.0 * scale as f32;
 		let ascent = self
 			.ui_fonts
@@ -136,7 +163,11 @@ impl App {
 			.horizontal_line_metrics(px)
 			.map_or(self.ascent, |metrics| metrics.ascent.round() as i32);
 		let style = self.button_style(scale);
-		let cursor = self.settings_cursor_pos;
+		// The page's own origin is the sidebar's right edge.
+		let cursor = (
+			self.settings_cursor_pos.0 - (NAV_WIDTH * scale) as f64,
+			self.settings_cursor_pos.1,
+		);
 		let hovered = |x: usize, y: usize, w: usize, h: usize| {
 			cursor.0 >= x as f64
 				&& cursor.0 < (x + w) as f64
@@ -172,7 +203,6 @@ impl App {
 			SettingsPage::About => {
 				let colors = (self.theme.fg, chrome_colors(&self.theme).muted);
 				compose_about(&mut pen, p, colors);
-				pen.back_button(p, style, &hovered);
 				return;
 			}
 			SettingsPage::Shortcuts => {
@@ -184,7 +214,6 @@ impl App {
 					"Click a binding, then press the new key chord. Esc cancels.",
 					0.72,
 				);
-				pen.back_button(p, style, &hovered);
 				for (action, row) in SHORTCUT_ROWS {
 					let recording = editor.recording_shortcut == Some(action);
 					let label = if recording {
@@ -202,7 +231,6 @@ impl App {
 			SettingsPage::Layout => {
 				pen.text(p, x, 28, "Layout", 1.0);
 				pen.text(p, x, 68, "Tabs, toolbar buttons, and the bottom bar.", 0.72);
-				pen.back_button(p, style, &hovered);
 				let prefs = editor.preferences;
 				for (row, label, enabled) in [
 					(SHOW_TABS_ROW, "Show tabs", prefs.show_tabs),
@@ -236,7 +264,6 @@ impl App {
 					"Monospace fonts installed on this system."
 				};
 				pen.text(p, x, 68, hint, 0.72);
-				pen.back_button(p, style, &hovered);
 				let selected = fonts.selected();
 				for row in 0..visible {
 					let Some(entry) = fonts.entry_at(row) else {
@@ -254,7 +281,7 @@ impl App {
 					pen.text(p, x + 16 * scale, top + 9, fonts.label(entry), 0.82);
 				}
 			}
-			SettingsPage::Main => compose_main_settings(editor, style, p, &mut pen, &hovered),
+			SettingsPage::Main => compose_main_settings(editor, style, p, &mut pen),
 			// Drawn above, with its own footer.
 			SettingsPage::Diagnostics => return,
 		}
@@ -281,22 +308,11 @@ pub(super) fn compose_main_settings(
 	style: ButtonStyle,
 	p: &mut Scene,
 	pen: &mut Pen,
-	hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 ) {
 	let (width, s) = (p.width, pen.scale);
 	let x = 24 * s;
 	let content_w = width.saturating_sub(48 * s);
 	pen.text(p, x, 24, "Settings", 1.0);
-	for (_, offset, button_w, label) in HEADER_BUTTONS {
-		let rect = (
-			width.saturating_sub(offset * s),
-			20 * s,
-			button_w * s,
-			36 * s,
-		);
-		p.button(rect, style, hovered(rect.0, rect.1, rect.2, rect.3));
-		pen.centered(p, rect, label, 0.76);
-	}
 	pen.text(p, x, MAIN.heading, "Appearance", 0.82);
 	pen.text(p, x, MAIN.theme_label, "Color theme", 0.76);
 

@@ -1,7 +1,8 @@
 //! The Settings window: editable preferences, saving, and input handling.
 use super::{
 	settings_fonts::FontPicker,
-	settings_hit::{SettingsPage, SettingsTarget, font_list_rows, settings_target},
+	settings_hit::{SettingsPage, SettingsTarget, font_list_rows},
+	settings_nav::{NAV_WIDTH, window_target},
 	settings_view::*,
 	*,
 };
@@ -128,10 +129,13 @@ impl App {
 		let attributes = crate::platform::identify(Window::default_attributes())
 			.with_title("Poopterm Settings")
 			.with_inner_size(LogicalSize::new(
-				DEFAULT_SIZE.0 as f64,
+				(DEFAULT_SIZE.0 + NAV_WIDTH) as f64,
 				DEFAULT_SIZE.1 as f64,
 			))
-			.with_min_inner_size(LogicalSize::new(MIN_SIZE.0 as f64, MIN_SIZE.1 as f64));
+			.with_min_inner_size(LogicalSize::new(
+				(MIN_SIZE.0 + NAV_WIDTH) as f64,
+				MIN_SIZE.1 as f64,
+			));
 		let window = Arc::new(
 			event_loop
 				.create_window(attributes)
@@ -326,7 +330,7 @@ impl App {
 			self.settings_cursor_pos.1.max(0.0) as usize,
 		);
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let target = settings_target(point, size, scale, self.settings_editor.page);
+		let target = window_target(point, size, scale, self.settings_editor.page);
 		// pr-check: window glue: puts the report on the real clipboard
 		if target == Some(SettingsTarget::CopyReport) {
 			let written = clipboard_write(&report(&self.diagnostics()));
@@ -342,10 +346,6 @@ impl App {
 					editor.fonts.select(entry);
 					editor.status = "Font selected. Click Save to apply.".into();
 				}
-			}
-			Some(SettingsTarget::Back) => {
-				editor.page = SettingsPage::Main;
-				editor.recording_shortcut = None;
 			}
 			Some(SettingsTarget::SetShortcut(action)) => {
 				editor.recording_shortcut = Some(action);

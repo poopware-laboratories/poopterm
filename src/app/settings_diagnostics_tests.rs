@@ -153,10 +153,14 @@ fn bundled_width(chars: usize, size: f32, scale: usize) -> f32 {
 }
 
 #[test]
-fn clicks_land_on_back_the_sections_and_copy_report() {
+fn clicks_land_on_the_sections_and_copy_report() {
 	for s in [1, 2] {
 		let target = |x: usize, y: usize| diagnostics_target((x * s, y * s), (760 * s, 640 * s), s);
-		assert_eq!(target(690, 30), Some(SettingsTarget::Back));
+		assert_eq!(
+			target(690, 30),
+			None,
+			"no back button: the sidebar navigates"
+		);
 		assert_eq!(
 			target(30, 80),
 			Some(SettingsTarget::Section(Section::Graphics))
@@ -185,7 +189,7 @@ fn clicks_land_on_back_the_sections_and_copy_report() {
 #[test]
 fn the_window_routes_clicks_on_the_diagnostics_page_to_it() {
 	let target = |x, y| settings_target((x, y), (760, 640), 1, SettingsPage::Diagnostics);
-	assert_eq!(target(690, 30), Some(SettingsTarget::Back));
+	assert_eq!(target(690, 30), None);
 	assert_eq!(target(140, 90), Some(SettingsTarget::Section(Section::Log)));
 	assert_eq!(target(700, 600), Some(SettingsTarget::CopyReport));
 	// Nothing of the main page answers here.
@@ -194,7 +198,7 @@ fn the_window_routes_clicks_on_the_diagnostics_page_to_it() {
 }
 
 #[test]
-fn the_page_has_a_large_title_a_lit_back_button_and_lights_the_section_shown() {
+fn the_page_has_a_large_title_and_lights_the_section_shown() {
 	for s in [1, 2] {
 		for (lit, section) in Section::ALL.into_iter().enumerate() {
 			let commands = draw(s, &sample(Drawing::Gpu, 0), section, "");
@@ -202,11 +206,9 @@ fn the_page_has_a_large_title_a_lit_back_button_and_lights_the_section_shown() {
 			assert_eq!((title.text.as_str(), title.px), ("Diagnostics", 22.0));
 			assert_eq!(title.color, FG);
 			let buttons = buttons(&commands);
-			let back = ((900 - 164) * s, 20 * s, 140 * s, 36 * s);
-			assert_eq!(buttons[0], (back, true), "the way back stays lit");
 			let graphics = (24 * s, 76 * s, 104 * s, 32 * s);
 			let log = (136 * s, 76 * s, 104 * s, 32 * s);
-			assert_eq!(buttons[1..3], [(graphics, lit == 0), (log, lit == 1)]);
+			assert_eq!(buttons[..2], [(graphics, lit == 0), (log, lit == 1)]);
 			let labels = texts(&commands);
 			for (rect, label) in [(graphics, "Graphics"), (log, "Log")] {
 				let (_, at) = labels.iter().find(|(text, _)| text == label).unwrap();
@@ -227,7 +229,7 @@ fn a_hovered_section_button_lights_too() {
 		"",
 		&over_log,
 	);
-	let lit: Vec<bool> = buttons(&commands)[1..3]
+	let lit: Vec<bool> = buttons(&commands)[..2]
 		.iter()
 		.map(|(_, lit)| *lit)
 		.collect();
@@ -585,7 +587,6 @@ fn a_failed_copy_offers_to_retry_and_says_why_in_the_text_color() {
 #[test]
 fn every_button_drawn_is_the_one_a_click_there_lands_on() {
 	let expected = [
-		SettingsTarget::Back,
 		SettingsTarget::Section(Section::Graphics),
 		SettingsTarget::Section(Section::Log),
 		SettingsTarget::CopyReport,
@@ -672,7 +673,7 @@ fn hovering_copy_report_lights_it() {
 		&over_copy,
 	);
 	let lights: Vec<bool> = buttons(&commands).iter().map(|(_, on)| *on).collect();
-	assert_eq!(lights, [true, false, true, true]);
+	assert_eq!(lights, [false, true, true]);
 }
 
 /// How far `text` reaches from `x` in the bundled font at `size`, each
