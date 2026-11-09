@@ -152,9 +152,6 @@ class FedoraPackage(unittest.TestCase):
         self.assertRegex(upload, r'path: dist/\*\.rpm\n')
         self.assertRegex(upload, r'if-no-files-found: error\n')
 
-    def test_releases_wait_for_the_fedora_package(self):
-        self.assertRegex(job('release'), r'needs: \[[^]]*fedora-package[^]]*\]')
-
     def test_the_release_job_can_build_rpms_on_ubuntu(self):
         # release.sh packages the RPM from the same PGO binary as the .deb.
         self.assertRegex(step('Install Linux, Debian and RPM packaging libraries'), r' rpm\n')
@@ -180,8 +177,33 @@ class ArchPackage(unittest.TestCase):
         self.assertIn('poopterm --version', install)
         self.assertIn('infocmp xterm-poopterm', install)
 
-    def test_releases_wait_for_the_arch_package(self):
-        self.assertRegex(job('release'), r'needs: \[[^]]*arch-package[^]]*\]')
+
+class CiPassed(unittest.TestCase):
+    """The ruleset requires `CI passed`, which stands for every other job."""
+
+    def needs(self, name):
+        match = re.search(r'(?m)^    needs: \[([^]]*)\]$', job(name))
+        self.assertIsNotNone(match, f'{name} has no needs')
+        return {need.strip() for need in match[1].split(',')}
+
+    def test_it_waits_for_every_other_job(self):
+        # A new job left out here would not be required by the ruleset.
+        jobs = set(re.findall(r'(?m)^  ([a-z-]+):$', WORKFLOW.split('\njobs:\n', 1)[1]))
+        self.assertEqual(self.needs('ci-passed'), jobs - {'ci-passed', 'release'})
+
+    def test_it_is_the_name_the_ruleset_requires(self):
+        self.assertRegex(job('ci-passed'), r'(?m)^    name: CI passed$')
+
+    def test_it_runs_even_when_a_job_fails_and_then_fails_itself(self):
+        # Without always() a failed job would skip it, and a skipped required
+        # check does not block a merge.
+        body = job('ci-passed')
+        self.assertIn('    if: always()\n', body)
+        self.assertIn("${{ join(needs.*.result, ' ') }}", body)
+        self.assertIn('[ "$result" = success ] || exit 1', body)
+
+    def test_releases_wait_for_it_and_so_for_every_package(self):
+        self.assertEqual(self.needs('release'), {'ci-passed'})
 
 
 class FreeBSD(unittest.TestCase):
