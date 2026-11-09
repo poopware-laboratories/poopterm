@@ -10,6 +10,7 @@
 
 use std::{
 	error::Error,
+	fs::File,
 	io::Read,
 	path::PathBuf,
 	process,
@@ -21,14 +22,17 @@ use std::{
 	time::Instant,
 };
 
-use portable_pty::{CommandBuilder, PtySize};
-
 use super::{
 	corpus::Size,
 	mark::{MARK, UntilMark},
 };
 use crate::{
-	pty::{OUTPUT_LIMIT, OutputQueue, open, pump, reader},
+	pty::{
+		OUTPUT_LIMIT, OutputQueue,
+		device::{self, WindowSize},
+		pump, reader,
+		spawn::{self, Command, Exit},
+	},
 	term::SharedTerm,
 };
 
@@ -57,33 +61,36 @@ type Outcome<T> = Result<T, Box<dyn Error>>;
 /// a fast, empty run.
 fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Outcome<f64> {
 	let start = Instant::now();
-	let pair = open::openpty(PtySize {
-		rows: size.rows as u16,
-		cols: size.cols as u16,
-		pixel_width: 0,
-		pixel_height: 0,
-	})?;
+	let pair = device::open(WindowSize::of(size.cols, size.rows, (0, 0)))?;
 	let end = std::str::from_utf8(MARK)?;
 	let script = format!(r#"s=$1; shift; "$@"; echo $? >"$s"; printf %s '{end}'; exec sleep 3600"#);
 	let script = match mode {
 		Mode::Cooked => script,
 		Mode::Raw => format!("stty -opost || exit; {script}"),
 	};
-	let mut command = CommandBuilder::new("sh");
 	let record = Payload::new(b"")?;
-	command.args(["-c", &script, "sh", record.cat()[1]]);
-	command.args(argv);
+	let command = argv.iter().fold(
+		Command::new("sh")
+			.arg("-c")
+			.arg(&script)
+			.arg("sh")
+			.arg(record.cat()[1]),
+		|command, arg| command.arg(arg),
+	);
 	// Cloned first, so a failure leaves no child unwaited.
-	let output = pair.master.try_clone_reader()?;
-	let mut child = pair.slave.spawn_command(command)?;
+	let output = File::from(pair.master.try_clone()?);
+	let mut child = spawn::spawn(&command, &pair.slave)?;
 	drop(pair.slave);
 	read(Box::new(UntilMark::new(output)));
 	let seconds = start.elapsed().as_secs_f64();
 	// `sh` sleeps past the mark; if it ended before, its own status counts.
-	let _ = child.kill();
-	let status = child.wait()?;
+	let _ = child.hang_up();
+	let ended = match child.wait()? {
+		Exit::Code(code) => code,
+		Exit::Signal(signal) => 128 + signal,
+	};
 	let noted = std::fs::read_to_string(&record.0)?.trim().parse();
-	let code = noted.unwrap_or(status.exit_code());
+	let code = noted.unwrap_or(ended);
 	if code != 0 {
 		return Err(format!("{} exited with {code}", argv.join(" ")).into());
 	}
@@ -260,7 +267,91 @@ mod tests {
 	#[test]
 	fn a_program_killed_by_a_signal_is_an_error() {
 		let killed = collect(&["sh", "-c", "kill -KILL $$"], SMALL, Mode::Cooked, |_| ());
-		assert!(killed.is_err());
+		// The wrapping shell notes 128 + 9, as shells report a signal.
+		assert!(killed.unwrap_err().to_string().ends_with("exited with 137"));
+	}
+
+	/// The error a run of `script` under `sh -c` ends with.
+	fn failure(script: &str) -> String {
+		let run = collect(&["sh", "-c", script], SMALL, Mode::Cooked, |_| ());
+		run.expect_err(script).to_string()
+	}
+
+	#[test]
+	fn a_wrapper_killed_before_it_notes_the_status_reports_its_own_signal() {
+		// The program kills the shell around it, which never writes the
+		// status file, so the shell's own end counts: 128 + SIGTERM.
+		let error = failure("kill -TERM $PPID");
+		assert!(error.ends_with("exited with 143"), "{error}");
+	}
+
+	#[test]
+	fn a_size_beyond_what_the_kernel_holds_saturates_rather_than_wraps() {
+		// 70000 columns would wrap to 4464 in 16 bits.
+		let seen = output(
+			&["stty", "size"],
+			Size {
+				cols: 70_000,
+				rows: 3,
+			},
+			Mode::Raw,
+		);
+		assert_eq!(seen, b"3 65535\n");
+	}
+
+	#[test]
+	fn settings_a_program_changed_do_not_carry_into_the_next_run() {
+		// Each run gets a new PTY with the usual settings.
+		output(&["stty", "-echo", "cols", "7"], SMALL, Mode::Raw);
+		let next = String::from_utf8(output(&["stty", "-a"], SMALL, Mode::Raw)).unwrap();
+		let flags: Vec<&str> = next.split_whitespace().collect();
+		assert!(
+			flags.contains(&"echo") && !flags.contains(&"-echo"),
+			"{next}"
+		);
+		assert_eq!(output(&["stty", "size"], SMALL, Mode::Raw), b"12 40\n");
+	}
+
+	#[test]
+	fn standard_error_is_part_of_the_output() {
+		let seen = output(
+			&["sh", "-c", "printf out; printf err >&2"],
+			SMALL,
+			Mode::Raw,
+		);
+		assert_eq!(seen, b"outerr");
+	}
+
+	#[test]
+	fn a_job_left_running_does_not_stretch_the_run() {
+		// It holds the terminal past its shell's end; the run ends at the
+		// mark, and closing the PTY hangs the job up.
+		let seconds = collect(&["sh", "-c", "sleep 5 &"], SMALL, Mode::Raw, |_| ()).unwrap();
+		assert!(seconds < 3.0, "the run took {seconds} s");
+	}
+
+	#[test]
+	fn a_programs_own_code_above_128_is_reported_as_it_is() {
+		let error = failure("exit 200");
+		assert!(error.ends_with("exited with 200"), "{error}");
+	}
+
+	#[test]
+	fn the_program_runs_with_the_pty_as_its_terminal() {
+		let script = ["sh", "-c", "test -t 0 && test -t 1 && test -t 2 && tty"];
+		let seen = String::from_utf8(output(&script, SMALL, Mode::Raw)).unwrap();
+		assert!(seen.starts_with("/dev/"), "{seen:?}");
+	}
+
+	#[test]
+	fn no_wrapping_shell_is_left_behind_once_a_run_ends() {
+		// The program names the shell around it, which sleeps past the mark
+		// until it is hung up and reaped.
+		let seen = output(&["sh", "-c", "echo $PPID"], SMALL, Mode::Raw);
+		let wrapper: libc::pid_t = String::from_utf8(seen).unwrap().trim().parse().unwrap();
+		// SAFETY: signal 0 sends nothing; a reaped pid no longer exists.
+		let alive = unsafe { libc::kill(wrapper, 0) } == 0;
+		assert!(!alive, "the shell {wrapper} outlived its run");
 	}
 
 	#[test]
