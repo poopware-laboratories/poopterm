@@ -50,7 +50,6 @@ mod tabs;
 mod wayland;
 mod window_pointer;
 
-use portable_pty::PtySize;
 use std::{error::Error, num::NonZeroU32, path::PathBuf, sync::Arc};
 
 use winit::{

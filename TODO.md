@@ -241,7 +241,7 @@ least as fast.
   a dev-dependency as the oracle until the replacement matches it, then goes.
   - **Done: pairs and sizes** (`src/pty/device.rs`). Allocation, both sides
     closed on exec and `O_NOCTTY`, and the window size in cells and pixels,
-    tested against portable-pty. Sessions do not use it yet.
+    tested against portable-pty.
   - **Done: spawning, per POSIX** (`src/pty/spawn.rs`). In the child, a new
     session (`setsid`), the slave as controlling terminal (`TIOCSCTTY`) and
     stdio, every other descriptor close-on-exec (`close_range` where the
@@ -249,8 +249,7 @@ least as fast.
     then `execve` with `argv[0]` kept (`-zsh` for login shells) and `PATH`
     resolved before forking. `exec` and setup failures come back as `errno`
     through a close-on-exec pipe. Only async-signal-safe calls between `fork`
-    and `exec`; everything is allocated before forking. Sessions do not use
-    it yet.
+    and `exec`; everything is allocated before forking.
   - **Join the tab's cgroup before `exec` (Linux).** With the delegated
     subtree from the cgroups item, the child writes itself into its tab's
     `cgroup.procs`, or is created there with `clone3(CLONE_INTO_CGROUP)`, so
@@ -274,10 +273,12 @@ least as fast.
     pidfd per shell in an epoll set on Linux, `EVFILT_PROC`/`NOTE_EXIT` in a
     kqueue on macOS and FreeBSD; one `Reaper` thread waits for each child
     as it ends and hands its exit code or signal to the code watching it.
-    Sessions do not use it yet.
+  - **Done: tabs on our own PTY.** Every tab's shell runs on `device`,
+    `spawn` and the reaper, read and written through a `File` of the master;
+    closing a tab hangs its shell up and reaps it. portable-pty is left to
+    the benchmark and the oracle tests.
   - **Exit status in the app.** With the reaper: exit codes and signals for
-    `OSC 133` command status and the "process exited" line, and hang-up
-    (`SIGHUP` to the session) when a tab closes.
+    `OSC 133` command status and the "process exited" line.
   - **Optimization where it matters, measured.** The PTY layer is system
     calls, not computation, so SIMD has nothing to do here (`src/vt` already
     has it). Read straight into the `OutputQueue` instead of copying from a
