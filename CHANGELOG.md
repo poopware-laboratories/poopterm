@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.58 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Choose a palette command with the arrow keys (#275) (ui).
+
 ## 26.11.57 "Lunar Moth" — 2026-11-09
 
 ### Added
