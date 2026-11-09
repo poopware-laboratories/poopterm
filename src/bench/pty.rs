@@ -267,7 +267,46 @@ mod tests {
 	#[test]
 	fn a_program_killed_by_a_signal_is_an_error() {
 		let killed = collect(&["sh", "-c", "kill -KILL $$"], SMALL, Mode::Cooked, |_| ());
-		assert!(killed.is_err());
+		// The wrapping shell notes 128 + 9, as shells report a signal.
+		assert!(killed.unwrap_err().to_string().ends_with("exited with 137"));
+	}
+
+	/// The error a run of `script` under `sh -c` ends with.
+	fn failure(script: &str) -> String {
+		let run = collect(&["sh", "-c", script], SMALL, Mode::Cooked, |_| ());
+		run.expect_err(script).to_string()
+	}
+
+	#[test]
+	fn a_wrapper_killed_before_it_notes_the_status_reports_its_own_signal() {
+		// The program kills the shell around it, which never writes the
+		// status file, so the shell's own end counts: 128 + SIGTERM.
+		let error = failure("kill -TERM $PPID");
+		assert!(error.ends_with("exited with 143"), "{error}");
+	}
+
+	#[test]
+	fn a_programs_own_code_above_128_is_reported_as_it_is() {
+		let error = failure("exit 200");
+		assert!(error.ends_with("exited with 200"), "{error}");
+	}
+
+	#[test]
+	fn the_program_runs_with_the_pty_as_its_terminal() {
+		let script = ["sh", "-c", "test -t 0 && test -t 1 && test -t 2 && tty"];
+		let seen = String::from_utf8(output(&script, SMALL, Mode::Raw)).unwrap();
+		assert!(seen.starts_with("/dev/"), "{seen:?}");
+	}
+
+	#[test]
+	fn no_wrapping_shell_is_left_behind_once_a_run_ends() {
+		// The program names the shell around it, which sleeps past the mark
+		// until it is hung up and reaped.
+		let seen = output(&["sh", "-c", "echo $PPID"], SMALL, Mode::Raw);
+		let wrapper: libc::pid_t = String::from_utf8(seen).unwrap().trim().parse().unwrap();
+		// SAFETY: signal 0 sends nothing; a reaped pid no longer exists.
+		let alive = unsafe { libc::kill(wrapper, 0) } == 0;
+		assert!(!alive, "the shell {wrapper} outlived its run");
 	}
 
 	#[test]
