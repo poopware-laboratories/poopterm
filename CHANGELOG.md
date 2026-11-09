@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.54 "Lunar Moth" — 2026-11-09
+
+### Maintenance
+
+- Require every job through one check, group dependabot updates (#273).
+
 ## 26.11.53 "Lunar Moth" — 2026-11-09
 
 ### Maintenance
