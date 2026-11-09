@@ -27,7 +27,10 @@ FILES = {
 # A tiny database where each code point tests one rule, or two rules' order.
 UCD = {
     'UnicodeData.txt': '0007;<control>;Cc;0;BN;;;;;N;BELL;;;;\n'
-                       '0041;LATIN CAPITAL LETTER A;Lu;0;L;;;;;N;;;;0061;\n',
+                       '0041;LATIN CAPITAL LETTER A;Lu;0;L;;;;;N;;;;0061;\n'
+                       '0301;COMBINING ACUTE ACCENT;Mn;230;NSM;;;;;N;;;;;\n'
+                       '3164;HANGUL FILLER;Lo;0;L;<compat> 1160;;;;N;;;;;\n'
+                       'FF9E;HALFWIDTH KATAKANA VOICED SOUND MARK;Lm;0;L;<narrow> 3099;;;;N;;;;;\n',
     'EastAsianWidth.txt': '# @missing: 3400..4DBF; W\n'
                           '1100..115F;W  # Hangul leading consonants\n'
                           '1F1E6..1F1FF;N\n'
@@ -36,13 +39,17 @@ UCD = {
                           '3000;F\n'
                           'A8FA;W\n'
                           '0600;N\n'
+                          'FF9E;H\n'
+                          '3164;W\n'
                           '3402..3404;W\n'
                           '3403;N # overrides the line before\n',
     'DerivedCoreProperties.txt': '0300..036F    ; Grapheme_Extend # Mn\n'
+                                 'FF9E          ; Grapheme_Extend # Lm\n'
                                  '0300..036F    ; XID_Continue\n'
                                  '00AD          ; Default_Ignorable_Code_Point\n'
                                  '115F          ; Default_Ignorable_Code_Point\n'
-                                 '3000          ; Default_Ignorable_Code_Point\n',
+                                 '3000          ; Default_Ignorable_Code_Point\n'
+                                 '3164          ; Default_Ignorable_Code_Point\n',
     'HangulSyllableType.txt': '1100..115F ; L\n1160..11A7 ; V\n11A8..11FF ; T\n',
     'auxiliary/GraphemeBreakProperty.txt': '0600..0605 ; Prepend\n0D4E ; Prepend\n',
 }
@@ -92,8 +99,8 @@ class Parsing(unittest.TestCase):
             path = Path(directory) / 'DerivedCoreProperties.txt'
             extend = table.having(path, 'Grapheme_Extend')
             either = table.having(path, 'Grapheme_Extend', 'Default_Ignorable_Code_Point')
-        self.assertEqual(extend, set(range(0x300, 0x370)))
-        self.assertEqual(either, extend | {0xAD, 0x115F, 0x3000})
+        self.assertEqual(extend, set(range(0x300, 0x370)) | {0xFF9E})
+        self.assertEqual(either, extend | {0xAD, 0x115F, 0x3000, 0x3164})
 
 
 class Rules(unittest.TestCase):
@@ -115,6 +122,11 @@ class Rules(unittest.TestCase):
     def test_controls_and_joining_marks_take_no_cells(self):
         self.assertWidths({0x7: 0, 0x300: 0, 0x36F: 0, 0xAD: 0, 0x0D4E: 0})
 
+    def test_letters_that_extend_a_grapheme_still_take_their_own_cell(self):
+        # Unicode 18 made the halfwidth katakana sound marks Grapheme_Extend;
+        # they are spacing letters (Lm), unlike the combining marks beside them.
+        self.assertWidths({0xFF9E: 1, 0x301: 0})
+
     def test_hangul_vowels_and_trailing_consonants_join_the_leading_one(self):
         self.assertWidths({0x1160: 0, 0x11A7: 0, 0x11A8: 0, 0x11FF: 0})
 
@@ -122,7 +134,8 @@ class Rules(unittest.TestCase):
         self.assertWidths({0x1100: 2, 0x115F: 2})
 
     def test_default_ignorable_beats_east_asian_width(self):
-        self.assertWidths({0x3000: 0})
+        # Letters too: U+3164 HANGUL FILLER is a wide Lo.
+        self.assertWidths({0x3000: 0, 0x3164: 0})
 
     def test_wide_and_fullwidth_points_take_two_cells(self):
         self.assertWidths({0xFF01: 2, 0x1F600: 2, 0x3402: 2, 0x3404: 2, 0x3403: 1})

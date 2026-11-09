@@ -61,7 +61,8 @@ def widths(ucd):
     ucd = Path(ucd)
     east_asian = values(ucd / 'EastAsianWidth.txt')
     hangul = values(ucd / 'HangulSyllableType.txt')
-    invisible = having(ucd / 'DerivedCoreProperties.txt', 'Grapheme_Extend', 'Default_Ignorable_Code_Point')
+    extend = having(ucd / 'DerivedCoreProperties.txt', 'Grapheme_Extend')
+    ignorable = having(ucd / 'DerivedCoreProperties.txt', 'Default_Ignorable_Code_Point')
     grapheme = values(ucd / 'auxiliary/GraphemeBreakProperty.txt')
     # UnicodeData.txt: the name is the first field, the category the second.
     category = [None] * CODE_POINTS
@@ -74,8 +75,12 @@ def widths(ucd):
             return EXCEPTIONS[c]
         if category[c] == 'Cc' or hangul[c] in ('V', 'T') or grapheme[c] == 'Prepend':
             return 0
-        # Hangul leading consonants, even the default-ignorable filler, are wide.
-        if c in invisible and hangul[c] != 'L':
+        # Hangul leading consonants, even the default-ignorable filler, are wide;
+        # letters that extend a grapheme (the halfwidth katakana sound marks)
+        # are spacing and keep their cell.
+        letter = (category[c] or '').startswith('L')
+        invisible = c in ignorable or (c in extend and not letter)
+        if invisible and hangul[c] != 'L':
             return 0
         return 2 if east_asian[c] in ('W', 'F') else 1
 

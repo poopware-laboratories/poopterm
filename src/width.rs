@@ -49,6 +49,9 @@ mod tests {
 			('\u{9b}', 0),
 			('\u{ad}', 0),     // soft hyphen, default ignorable
 			('\u{301}', 0),    // combining acute accent
+			('\u{5c8}', 0),    // Hebrew point, new in Unicode 18
+			('\u{ff9e}', 1),   // halfwidth voiced mark, a spacing letter that extends
+			('\u{3164}', 0),   // Hangul filler, an ignorable letter
 			('\u{200d}', 0),   // zero width joiner
 			('\u{1160}', 0),   // Hangul vowel filler
 			('\u{1100}', 2),   // Hangul leading consonant
