@@ -109,7 +109,7 @@ use libc::ptsname_r;
 
 /// Where the slave of `master` lives, from the reentrant `ptsname_r`:
 /// plain `ptsname` fills one buffer for the whole process, which threads
-/// opening PTYs at once (portable-pty's included) overwrite.
+/// opening PTYs at once overwrite.
 fn slave_path(master: &OwnedFd) -> io::Result<PathBuf> {
 	let mut name = [0u8; 128];
 	// SAFETY: writes at most `name.len()` bytes, NUL included, into `name`.

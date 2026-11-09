@@ -215,8 +215,8 @@ issue before starting a piece.
   leaf can take gets a systemd scope of its own. Still to do: with our own
   PTY layer, the shell joins its leaf before `exec`. Moving the shell
   happens after it starts, so anything it forks in its first milliseconds
-  stays behind; `clone3(CLONE_INTO_CGROUP)` would close that gap once we
-  spawn shells ourselves instead of through portable-pty.
+  stays behind; `clone3(CLONE_INTO_CGROUP)` can close that gap now that we
+  spawn shells ourselves (`src/pty/spawn.rs`).
 - **Transparent huge pages for large buffers.** Large, long-lived
   allocations (scrollback rows, image bitmaps, the frame buffer, PTY
   queues) could cause fewer TLB misses on huge pages. Check once at
@@ -241,11 +241,13 @@ least as fast.
   `unlockpt`, `ptsname`, `setsid`, `tcsetpgrp`, termios) and each system's
   manual pages (Linux `pty(7)`, `ioctl_tty(2)`; macOS and FreeBSD `pty(4)`,
   `tty(4)`), never from portable-pty's or any terminal's source. One module
-  per platform where they differ; everything else shared. portable-pty stays
-  a dev-dependency as the oracle until the replacement matches it, then goes.
+  per platform where they differ; everything else shared. **Done (#188):**
+  portable-pty was the oracle until the replacement matched it, and is no
+  longer a dependency at all.
   - **Done: pairs and sizes** (`src/pty/device.rs`). Allocation, both sides
     closed on exec and `O_NOCTTY`, and the window size in cells and pixels,
-    tested against portable-pty.
+    tested against portable-pty until it matched, and now against fixed
+    expectations.
   - **Done: spawning, per POSIX** (`src/pty/spawn.rs`). In the child, a new
     session (`setsid`), the slave as controlling terminal (`TIOCSCTTY`) and
     stdio, every other descriptor close-on-exec (`close_range` where the
@@ -279,19 +281,19 @@ least as fast.
     as it ends and hands its exit code or signal to the code watching it.
   - **Done: tabs on our own PTY.** Every tab's shell runs on `device`,
     `spawn` and the reaper, read and written through a `File` of the master;
-    closing a tab hangs its shell up and reaps it. portable-pty is left to
-    the benchmark and the oracle tests.
+    closing a tab hangs its shell up and reaps it. The benchmark's PTY
+    stages followed (#270).
   - **Exit status in the app.** With the reaper: exit codes and signals for
     `OSC 133` command status and the "process exited" line.
   - **Optimization where it matters, measured.** The PTY layer is system
     calls, not computation, so SIMD has nothing to do here (`src/vt` already
     has it). Read straight into the `OutputQueue` instead of copying from a
     64 KiB buffer; tune read sizes; non-blocking descriptors with
-    `poll`/`epoll`/`kqueue` to cut wake-ups during floods; drop portable-pty's
-    boxed traits and Windows-oriented layers. Each change is benchmarked
+    `poll`/`epoll`/`kqueue` to cut wake-ups during floods. Each change is benchmarked
     before and after (`docs/performance.md`) and kept only for a
     reproducible gain.
-  - **Tests.** Side by side with portable-pty: the environment, `argv[0]`,
+  - **Tests.** Side by side with portable-pty while it was here, now
+    against fixed expectations: the environment, `argv[0]`,
     controlling terminal and session, window size seen by the child
     (`stty size`, `TIOCGWINSZ`), termios flags, exit codes and signals, and
     byte-identical output for the benchmark corpus. Failure paths: missing

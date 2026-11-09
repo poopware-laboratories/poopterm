@@ -24,7 +24,7 @@ These have no `unsafe`: the escape-sequence state machine's logic, the
 terminal model apart from the cell layout below, the font engine
 (`src/fonts`), our inflate (`src/inflate`), the kitty and Sixel decoders,
 input encoding and the UI. Dependencies have their own `unsafe` (winit,
-softbuffer, portable-pty, mimalloc, `image`); replacing them (see
+softbuffer, mimalloc, `image`); replacing them (see
 [`TODO.md`](../TODO.md)) moves that code here, under these rules.
 
 ## Why there is any at all
