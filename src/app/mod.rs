@@ -358,7 +358,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		});
 	let mut term_env = crate::terminfo::resolve(read_config_value("term").as_deref());
 	term_env.extra = crate::shell_integration::inject::prepare(
-		&std::env::var("SHELL").unwrap_or_default(),
+		&crate::pty::login_shell::login_shell(),
 		read_config_value("shell_integration").as_deref(),
 	);
 	let mut sessions = Vec::new();

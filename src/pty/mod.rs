@@ -3,6 +3,7 @@
 mod burst;
 pub(crate) mod device;
 mod exits;
+pub(crate) mod login_shell;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
@@ -160,7 +161,7 @@ pub(crate) fn spawn_session(
 ) -> Result<Session, Box<dyn Error>> {
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
 	let pair = device::open(WindowSize::of(cols, rows, (0, 0)))?;
-	let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+	let shell = login_shell::login_shell();
 	let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
 	// The shell holds the slave now; ours would keep the PTY open after it
 	// exits, and the reader would never see the end.
