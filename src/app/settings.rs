@@ -324,13 +324,22 @@ impl App {
 	}
 
 	fn settings_click(&mut self) {
-		let scale = self.settings_scale();
 		let point = (
 			self.settings_cursor_pos.0.max(0.0) as usize,
 			self.settings_cursor_pos.1.max(0.0) as usize,
 		);
+		self.settings_focus = None;
+		self.settings_press(point);
+	}
+
+	/// Does what a click at physical `point` does in the Settings window.
+	pub(super) fn settings_press(&mut self, point: (usize, usize)) {
+		let scale = self.settings_scale();
 		let size = (self.settings_width as usize, self.settings_height as usize);
 		let target = window_target(point, size, scale, self.settings_editor.page);
+		if matches!(target, Some(SettingsTarget::Open(_))) {
+			self.settings_focus = None;
+		}
 		// pr-check: window glue: puts the report on the real clipboard
 		if target == Some(SettingsTarget::CopyReport) {
 			let written = clipboard_write(&report(&self.diagnostics()));

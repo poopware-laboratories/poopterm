@@ -4,12 +4,16 @@
 use super::*;
 use super::{
 	settings_diagnostics::compose_diagnostics,
+	settings_focus::{draw_ring, focus_order},
 	settings_hit::{SettingsPage, font_list_rows},
-	settings_nav::{NAV_WIDTH, compose_nav},
+	settings_nav::{NAV_WIDTH, compose_nav, window_target},
 	settings_pen::Pen,
 };
 use crate::input::shortcuts::ShortcutAction;
-use crate::render::{painter::ButtonStyle, scene::Scene};
+use crate::render::{
+	painter::ButtonStyle,
+	scene::{Rect, Scene},
+};
 use crate::ui::{
 	about::{Tone, about_lines},
 	chrome_colors::chrome_colors,
@@ -136,6 +140,35 @@ impl App {
 		self.compose_page(&mut page, scale);
 		self.compose_sidebar(p, scale);
 		p.commands.extend(page.shifted(nav).commands);
+		// The focused control gets a ring in the accent, last so nothing covers it.
+		let focused = self
+			.settings_focus
+			.and_then(|at| self.settings_focus_order(p, scale).get(at).copied());
+		if let Some(rect) = focused {
+			let (_, accent) = crate::ui::contrast::tab_text_colors(&self.theme);
+			draw_ring(p, rect, scale, accent);
+		}
+	}
+
+	/// The focusable rectangles of `scene`, drawn at `scale`, in Tab order.
+	fn settings_focus_order(&self, scene: &Scene, scale: usize) -> Vec<Rect> {
+		let size = (self.settings_width as usize, self.settings_height as usize);
+		let page = self.settings_editor.page;
+		focus_order(scene, NAV_WIDTH * scale, |point| {
+			window_target(point, size, scale, page).is_some()
+		})
+	}
+
+	/// What the keyboard can focus right now, from a fresh drawing of the
+	/// window.
+	pub(super) fn settings_focus_rects(&mut self) -> Vec<Rect> {
+		let scale = self.settings_scale();
+		let (width, height) = (self.settings_width as usize, self.settings_height as usize);
+		let saved = self.settings_focus.take();
+		let mut scene = Scene::new(width, height);
+		self.compose_settings(&mut scene, scale);
+		self.settings_focus = saved;
+		self.settings_focus_order(&scene, scale)
 	}
 
 	fn compose_sidebar(&mut self, p: &mut Scene, scale: usize) {

@@ -20,6 +20,8 @@ pub(crate) enum Command {
 	Rect(Rect, u32),
 	RoundRect(Rect, usize, u32),
 	Button(Rect, ButtonStyle, bool),
+	/// A rectangle the keyboard can focus, which paints nothing.
+	Focusable(Rect),
 	/// A line of text whose top edge is `at.1` and baseline `ascent` below
 	/// it, clipped to `clip`.
 	Text {
@@ -96,6 +98,21 @@ impl Scene {
 
 	pub(crate) fn button(&mut self, rect: Rect, style: ButtonStyle, hovered: bool) {
 		self.commands.push(Command::Button(rect, style, hovered));
+	}
+
+	/// Marks `rect` as something the keyboard can focus. It paints nothing.
+	pub(crate) fn focusable(&mut self, rect: Rect) {
+		self.commands.push(Command::Focusable(rect));
+	}
+
+	/// The rectangles the keyboard can focus, in drawing order: every button
+	/// and every rectangle marked with [`Self::focusable`].
+	pub(crate) fn focus_rects(&self) -> Vec<Rect> {
+		let rect = |command: &Command| match *command {
+			Command::Button(rect, ..) | Command::Focusable(rect) => Some(rect),
+			_ => None,
+		};
+		self.commands.iter().filter_map(rect).collect()
 	}
 
 	/// A line of text whose top edge is `y`; `ascent` is the baseline offset.
@@ -182,6 +199,7 @@ impl Scene {
 			Command::Rect(rect, color) => Command::Rect(right(rect), color),
 			Command::RoundRect(rect, radius, color) => Command::RoundRect(right(rect), radius, color),
 			Command::Button(rect, style, lit) => Command::Button(right(rect), style, lit),
+			Command::Focusable(rect) => Command::Focusable(right(rect)),
 			Command::Text {
 				at,
 				text,
@@ -228,6 +246,7 @@ impl Scene {
 					p.rect(0, 0, width, height, color);
 				}
 				Command::Button(rect, style, hovered) => chrome::button(p, rect, style, hovered),
+				Command::Focusable(_) => {}
 				Command::Rect((x, y, w, h), color) => p.rect(x, y, w, h, color),
 				Command::RoundRect(rect, r, color) => p.round_rect(rect, r, color),
 				Command::Text {

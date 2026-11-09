@@ -208,6 +208,7 @@ impl Pen<'_> {
 			blend(style.background, style.border, 120)
 		};
 		p.round_rect(x, y, w, h, h / 2, track);
+		p.focusable(switch_hit(p.width, row, s));
 		let knob = 16 * s;
 		let left = if on { x + w - 2 * s - knob } else { x + 2 * s };
 		p.round_rect(left, y + 2 * s, knob, knob, knob / 2, 0xffffff);
@@ -230,6 +231,7 @@ impl Pen<'_> {
 		let (fg, muted) = (self.color, blend(self.color, style.background, 70));
 		for (index, label) in labels.iter().enumerate() {
 			let rect = segment_rect(p.width, row, s, index, labels.len());
+			p.focusable(rect);
 			let color = if index == selected {
 				let lit = blend(track, fg, 40);
 				p.round_rect(rect.0, rect.1, rect.2, rect.3, Corner::Chip.radius(s), lit);

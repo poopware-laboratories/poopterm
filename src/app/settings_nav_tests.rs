@@ -365,3 +365,34 @@ fn the_pages_keep_their_smallest_width_beside_the_sidebar() {
 		"the sidebar is a quarter of the window at most"
 	);
 }
+
+#[test]
+fn every_sidebar_item_can_be_focused_over_its_whole_rectangle() {
+	for scale in [1, 2] {
+		let commands = drawn(scale, SettingsPage::Main, AWAY);
+		let focusable: Vec<_> = commands
+			.iter()
+			.filter_map(|command| match command {
+				Command::Focusable(rect) => Some(*rect),
+				_ => None,
+			})
+			.collect();
+		let wanted: Vec<_> = (0..ITEMS.len())
+			.map(|index| item_rect(index, scale))
+			.collect();
+		assert_eq!(focusable, wanted, "x{scale}");
+	}
+}
+
+#[test]
+fn the_center_of_a_focused_item_opens_its_page() {
+	use super::settings_focus::center;
+	for scale in [1, 2] {
+		for (index, &page) in PAGES.iter().enumerate() {
+			assert_eq!(
+				nav_target(center(item_rect(index, scale)), scale),
+				Some(page)
+			);
+		}
+	}
+}
