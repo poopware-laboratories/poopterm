@@ -23,7 +23,14 @@ impl App {
 				.sessions
 				.len()
 				.min(layout.first_visible + layout.visible_count);
-		let tabs: Vec<_> = self.sessions[shown].iter().map(tab_info).collect();
+		let tabs: Vec<_> = shown
+			.map(|index| {
+				tab_info(
+					&self.sessions[index],
+					self.splits[index].layout().ids().len(),
+				)
+			})
+			.collect();
 		// pr-check: window glue: hands the window's tab state to the tested header model
 		let mut header = header(&HeaderInput {
 			layout: &layout,
@@ -50,8 +57,20 @@ impl App {
 	}
 }
 
+impl App {
+	/// What the header shows of each tab in `shown`.
+	pub(super) fn tab_infos(&self, shown: std::ops::Range<usize>) -> Vec<TabInfo> {
+		// pr-check: window glue: pairs each live session with its tab's pane count
+		let panes = |index: usize| self.splits[index].layout().ids().len();
+		shown
+			.map(|index| tab_info(&self.sessions[index], panes(index)))
+			.collect()
+		// pr-check: end window glue
+	}
+}
+
 /// What the header shows of `session`.
-pub(super) fn tab_info(session: &Session) -> TabInfo {
+pub(super) fn tab_info(session: &Session, panes: usize) -> TabInfo {
 	// pr-check: window glue: copies a live session's state, which needs a running shell
 	// The title locks the terminal itself, so it comes first.
 	let title = session.title();
@@ -61,6 +80,7 @@ pub(super) fn tab_info(session: &Session) -> TabInfo {
 		style: term.tab_style.clone(),
 		marker: tab_marker(term.bell, term.status.summary(), session.activity),
 		progress: term.status.shown_progress(),
+		panes,
 	}
 	// pr-check: end window glue
 }

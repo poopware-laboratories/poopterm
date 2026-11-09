@@ -4,7 +4,7 @@ use super::{
 	glyphs::FontSet,
 	header::{
 		Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, TabShape, body, close_rect,
-		draw_header, inset, pill,
+		draw_header, inset, panes_rect, pill,
 	},
 	label::Label,
 };
@@ -36,6 +36,7 @@ fn tab(x: usize, width: usize, title: &str) -> HeaderTab<'_> {
 		fill: None,
 		badge: None,
 		shape: TabShape::Floating,
+		panes: None,
 		progress: None,
 		close: None,
 	}
@@ -799,4 +800,85 @@ fn the_close_buttons_light_is_a_chip_not_a_circle() {
 	assert_eq!(drawn.at(x, y), COLORS.raised);
 	assert_ne!(drawn.at(x + 2, y), COLORS.raised);
 	assert_ne!(drawn.at(x + size - 3, y), COLORS.raised);
+}
+
+fn with_panes(width: usize, close: Option<bool>) -> HeaderTab<'static> {
+	let mut split = tab(10, width, "Hg");
+	split.panes = Some(0x00ff00);
+	split.close = close;
+	split
+}
+
+#[test]
+fn the_panes_icon_sits_left_of_the_close_button_and_right_of_the_title() {
+	for scale in [1, 2] {
+		let (width, bounds) = (200 * scale, (4, 44 * scale));
+		let icon = panes_rect(10, width, bounds, scale, true);
+		let close = close_rect(10, width, bounds, scale);
+		assert_eq!((icon.2, icon.3), (14 * scale, 12 * scale), "{scale}x");
+		assert_eq!(icon.0 + icon.2 + 6 * scale, close.0, "{scale}x");
+		let body = body(10, width, bounds, scale);
+		assert_eq!(
+			icon.1 + icon.3 / 2,
+			body.1 + body.3 / 2,
+			"{scale}x centered"
+		);
+	}
+}
+
+#[test]
+fn without_a_close_button_the_icon_moves_to_the_padding() {
+	let with = panes_rect(10, 200, (4, 44), 1, true);
+	let without = panes_rect(10, 200, (4, 44), 1, false);
+	assert!(without.0 > with.0);
+	assert_eq!(without.0 + without.2 + 12, 10 + 200);
+}
+
+#[test]
+fn a_split_tab_draws_its_icon_in_the_given_color_and_a_plain_one_does_not() {
+	let drawn = draw(&header(1, vec![with_panes(200, None)], Vec::new()));
+	let icon = panes_rect(10, 200, (4, 44), 1, false);
+	assert!(drawn.any(icon, 0x00ff00));
+	let plain = draw(&header(1, vec![tab(10, 200, "Hg")], Vec::new()));
+	assert!(!plain.any(icon, 0x00ff00));
+}
+
+#[test]
+fn the_icon_is_an_outlined_box_with_a_divider_and_a_half_line() {
+	let drawn = draw(&header(1, vec![with_panes(200, None)], Vec::new()));
+	let (x, y, w, h) = panes_rect(10, 200, (4, 44), 1, false);
+	let lit = |dx: usize, dy: usize| drawn.at(x + dx, y + dy) == 0x00ff00;
+	assert!(lit(3, 0) && lit(3, h - 1), "top and bottom edges");
+	assert!(lit(0, 5) && lit(w - 1, 5), "left and right edges");
+	assert!(lit(6, 5), "the vertical divider");
+	assert!(lit(10, h / 2), "the line across the right half");
+	assert!(!lit(10, 2), "the right half is otherwise empty");
+	assert!(!lit(2, h / 2), "the left half is empty");
+	assert!(!lit(0, 0), "rounded corner");
+}
+
+#[test]
+fn the_title_gives_way_to_the_icon() {
+	let long = "cargo build --release --all-targets and more";
+	let mut split = tab(10, 200, long);
+	split.panes = Some(0x00ff00);
+	let with_icon = draw(&header(1, vec![split], Vec::new()));
+	let without = draw(&header(1, vec![tab(10, 200, long)], Vec::new()));
+	let icon = panes_rect(10, 200, (4, 44), 1, false);
+	let (x, ..) = icon;
+	assert!(!with_icon.inked((x - 4, 16, 4, 32)), "ink up to the icon");
+	assert!(
+		without.inked((x - 4, 16, 4, 32)),
+		"the plain tab runs further"
+	);
+}
+
+#[test]
+fn the_icon_doubles_at_twice_the_scale() {
+	let mut split = tab(20, 400, "");
+	split.panes = Some(0x00ff00);
+	let drawn = draw(&header(2, vec![split], Vec::new()));
+	let (x, y, w, h) = panes_rect(20, 400, (4, 88), 2, false);
+	assert_eq!((w, h), (28, 24));
+	assert!(drawn.at(x + 6, y) == 0x00ff00 && drawn.at(x + 12, y + 4) == 0x00ff00);
 }

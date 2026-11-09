@@ -1,5 +1,5 @@
 //! Drawing for the optional vertical tab sidebar.
-use super::{draw::UiFont, draw_tabs::tab_info, *};
+use super::{draw::UiFont, *};
 use crate::{
 	render::{painter::Painter, pen::Pen, scene::paint, sidebar::draw_sidebar},
 	ui::{
@@ -14,7 +14,7 @@ impl App {
 		let shown = layout.first_visible..count.min(layout.first_visible + layout.visible_count);
 		// pr-check: window glue: copies the live sessions into the tested sidebar model
 		SidebarState {
-			tabs: self.sessions[shown].iter().map(tab_info).collect(),
+			tabs: self.tab_infos(shown),
 			first_visible: layout.first_visible,
 			count,
 			active: self.active,

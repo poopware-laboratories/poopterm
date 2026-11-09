@@ -74,6 +74,7 @@ fn info(title: &str) -> TabInfo {
 		style: TabStyle::default(),
 		marker: None,
 		progress: None,
+		panes: 1,
 	}
 }
 
@@ -621,6 +622,64 @@ fn buttons_stay_inside_the_header_and_clear_of_tabs_at_any_width_and_scale() {
 					assert!(rects.iter().all(clear), "{at}: tab at {}", tab.x);
 				}
 			}
+		}
+	}
+}
+
+#[test]
+fn a_tab_with_one_pane_shows_no_panes_icon() {
+	let (layout, theme) = (layout(2, 0, true), theme());
+	let tabs = [info("one"), info("two")];
+	let header = build(&layout, &tabs, 0, AWAY, &theme);
+	assert!(header.tabs.iter().all(|tab| tab.panes.is_none()));
+}
+
+#[test]
+fn a_split_tab_shows_the_icon_in_the_accent_when_active_and_dim_otherwise() {
+	let (layout, theme) = (layout(3, 1, true), theme());
+	let (dim, accent) = tab_text_colors(&theme);
+	let mut tabs = [info("one"), info("two"), info("three")];
+	for tab in &mut tabs {
+		tab.panes = 3;
+	}
+	let header = build(&layout, &tabs, 1, AWAY, &theme);
+	let icons: Vec<_> = header.tabs.iter().map(|tab| tab.panes).collect();
+	assert_eq!(icons, [Some(dim), Some(accent), Some(dim)]);
+}
+
+#[test]
+fn only_the_split_tabs_among_several_get_the_icon() {
+	let (layout, theme) = (layout(3, 0, true), theme());
+	let mut tabs = [info("one"), info("two"), info("three")];
+	tabs[1].panes = 2;
+	let header = build(&layout, &tabs, 0, AWAY, &theme);
+	let has: Vec<_> = header.tabs.iter().map(|tab| tab.panes.is_some()).collect();
+	assert_eq!(has, [false, true, false]);
+}
+
+#[test]
+fn the_panes_icon_is_readable_on_the_tab_it_sits_on_in_every_theme() {
+	let layout = layout(2, 0, true);
+	let mut tabs = [info("one"), info("two")];
+	for tab in &mut tabs {
+		tab.panes = 2;
+	}
+	let mut kind = ThemeKind::MacOsDark;
+	loop {
+		let theme = Theme::from_kind(kind);
+		let header = build(&layout, &tabs, 0, AWAY, &theme);
+		let colors = header_colors(&theme);
+		for (tab, ground) in header.tabs.iter().zip([colors.raised, colors.bar]) {
+			let icon = tab.panes.unwrap();
+			assert!(
+				ratio(icon, ground) >= TEXT,
+				"{kind:?}: {:.2}",
+				ratio(icon, ground)
+			);
+		}
+		kind = kind.next();
+		if kind == ThemeKind::MacOsDark {
+			break;
 		}
 	}
 }

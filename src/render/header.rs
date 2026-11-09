@@ -72,6 +72,8 @@ pub(crate) struct HeaderTab<'a> {
 	pub fill: Option<u32>,
 	pub badge: Option<Badge>,
 	pub shape: TabShape,
+	/// The color of the panes icon, `Some` while the tab holds split panes.
+	pub panes: Option<u32>,
 	/// The share done, `None` when unknown, and the bar's color.
 	pub progress: Option<(Option<u8>, u32)>,
 	/// `Some(hovered)` when the close button shows.
@@ -141,6 +143,44 @@ pub(crate) fn close_rect(x: usize, width: usize, bounds: (usize, usize), scale: 
 	let size = 18 * scale;
 	let left = (x + width).saturating_sub(size + 6 * scale);
 	(left, y + height.saturating_sub(size) / 2, size, size)
+}
+
+/// The panes icon of a tab `width` wide at `x`, inside a header at `y`.
+#[cfg(test)]
+pub(crate) fn panes_rect(
+	x: usize,
+	width: usize,
+	bounds: (usize, usize),
+	scale: usize,
+	close: bool,
+) -> Rect {
+	panes_in(body(x, width, bounds, scale), scale, close)
+}
+
+/// The panes icon in a tab body `rect`: 14 by 12 pixels, centered on the
+/// body, 6 pixels left of the close button when it shows and at the right
+/// padding when not.
+fn panes_in((x, y, width, height): Rect, scale: usize, close: bool) -> Rect {
+	let right = if close { 30 } else { 12 } * scale;
+	let (w, h) = (14 * scale, 12 * scale);
+	(
+		(x + width).saturating_sub(right + w),
+		y + height.saturating_sub(h) / 2,
+		w,
+		h,
+	)
+}
+
+/// Draws the panes icon in `rect`: a rounded box in `color` cut by a
+/// vertical line, with a line across its right half, over `ground`.
+fn draw_panes(p: &mut Scene, (x, y, w, h): Rect, scale: usize, (color, ground): (u32, u32)) {
+	p.round_rect(x, y, w, h, 3 * scale, color);
+	let (ix, iy) = (x + scale, y + scale);
+	let (iw, ih) = (w.saturating_sub(2 * scale), h.saturating_sub(2 * scale));
+	p.round_rect(ix, iy, iw, ih, 2 * scale, ground);
+	let middle = x + 6 * scale;
+	p.rect(middle, iy, scale, ih, color);
+	p.rect(middle, y + h / 2, w - 7 * scale, scale, color);
 }
 
 /// Draws the active tab's surface `rect` in `fill`: rounded on top and
@@ -225,9 +265,18 @@ pub(crate) fn draw_tab(
 		None => {}
 	}
 	let right = if tab.close.is_some() { 28 } else { 12 } * scale;
-	let room = (x + width).saturating_sub(right).saturating_sub(left);
+	let icon = panes_in(rect, scale, tab.close.is_some());
+	// The title ends 8 pixels before the icon, when there is one.
+	let end = match tab.panes {
+		Some(_) => icon.0.saturating_sub(8 * scale),
+		None => (x + width).saturating_sub(right),
+	};
+	let room = end.saturating_sub(left);
 	let font = (px, ascent);
 	draw_label(p, fonts, &tab.label, top, font, (left, y, room, height));
+	if let Some(color) = tab.panes {
+		draw_panes(p, icon, scale, (color, surface));
+	}
 	if let Some(hovered) = tab.close {
 		let (cx, cy, size, _) = close_rect(x, width, (y, height), scale);
 		if hovered {

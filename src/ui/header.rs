@@ -29,6 +29,8 @@ pub(crate) struct TabInfo {
 	pub style: TabStyle,
 	pub marker: Option<Marker>,
 	pub progress: Option<Progress>,
+	/// How many panes the tab holds.
+	pub panes: usize,
 }
 
 pub(crate) struct HeaderInput<'a> {
@@ -258,6 +260,7 @@ pub(crate) fn header_tab<'a>(
 		},
 		fill,
 		badge,
+		panes: (tab.panes > 1).then_some(if active { accent } else { dim }),
 		shape: if active {
 			TabShape::Joined
 		} else {
