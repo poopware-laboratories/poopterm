@@ -58,3 +58,11 @@ pub(crate) fn tab_bar_top(titlebar_height: usize, tab_height: usize) -> usize {
 pub(crate) fn drags_bar(client_side: bool, frame: WindowFrame) -> bool {
 	client_side || frame.is_frameless()
 }
+
+/// Whether the window may be asked if it is maximized. On macOS winit
+/// answers for a borderless window by briefly giving it a title bar, which
+/// moves its frame, so a square window is never asked: a tiling window
+/// manager would fight the shaking, and clicks would lose their release.
+pub(crate) fn may_ask_if_maximized(frame: WindowFrame, macos: bool) -> bool {
+	!(macos && frame.is_frameless())
+}

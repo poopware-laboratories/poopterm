@@ -44,7 +44,7 @@ impl App {
 		});
 		// pr-check: end window glue
 		// pr-check: window glue: reads the live window's focus and maximized state
-		let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
+		let maximized = self.window_maximized();
 		let window = WindowState {
 			maximized,
 			focused: self.focused,

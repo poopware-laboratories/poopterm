@@ -2,7 +2,7 @@
 //! routes what `ui::window_pointer` decides to the window.
 use super::*;
 use crate::ui::{
-	frame::drags_bar,
+	frame::{drags_bar, may_ask_if_maximized},
 	window_controls::{WindowButton, resize_edge},
 	window_pointer::{BarPress, Route, Surface, pointer_target},
 };
@@ -10,8 +10,14 @@ use std::time::Instant;
 use winit::{event::ElementState, window::ResizeDirection};
 
 impl App {
+	/// Whether the window is maximized, without asking a square macOS window.
+	pub(super) fn window_maximized(&self) -> bool {
+		may_ask_if_maximized(self.window_frame, cfg!(target_os = "macos"))
+			&& self.window.as_ref().is_some_and(|w| w.is_maximized())
+	}
+
 	fn pointer_surface(&self) -> Surface {
-		let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
+		let maximized = self.window_maximized();
 		Surface {
 			size: (self.width as usize, self.height as usize),
 			bar: (self.tab_y(), self.tab_height),

@@ -1,7 +1,7 @@
 //! Tests of the `window_frame` key and what the frame changes in the layout.
 use super::{
 	decorations::{client_side, window_buttons},
-	frame::{WindowFrame, drags_bar, has_titlebar, traffic_lights_reserve},
+	frame::{WindowFrame, drags_bar, has_titlebar, may_ask_if_maximized, traffic_lights_reserve},
 	layout::layout,
 	scale::chrome,
 	window_controls::ButtonLayout,
@@ -358,4 +358,45 @@ fn describe(prefs: &Preferences) -> String {
 		"{:?} tabs {} vertical {} padding {}",
 		prefs.window_frame, prefs.show_tabs, prefs.vertical_tabs, prefs.padding
 	)
+}
+
+#[test]
+fn a_square_window_on_macos_is_never_asked_if_it_is_maximized() {
+	// winit answers by briefly giving a borderless window a title bar, which
+	// moves its frame; asked on every draw and pointer move, that shakes the
+	// window and a tiling window manager fights it.
+	assert!(!may_ask_if_maximized(Frameless, true));
+}
+
+#[test]
+fn a_framed_window_on_macos_is_asked() {
+	// It has the title bar already, so asking changes nothing.
+	assert!(may_ask_if_maximized(Normal, true));
+}
+
+#[test]
+fn other_systems_ask_whatever_the_frame() {
+	assert!(may_ask_if_maximized(Frameless, false));
+	assert!(may_ask_if_maximized(Normal, false));
+}
+
+#[test]
+fn only_the_square_macos_window_is_left_unasked() {
+	let unasked: Vec<_> = [Normal, Frameless]
+		.into_iter()
+		.flat_map(|frame| [true, false].map(|macos| (frame, macos)))
+		.filter(|&(frame, macos)| !may_ask_if_maximized(frame, macos))
+		.collect();
+	assert_eq!(unasked, [(Frameless, true)]);
+}
+
+#[test]
+fn the_square_window_is_the_one_that_has_no_title_bar_to_borrow() {
+	// The window that must not be asked is the one without a title bar.
+	for macos in [true, false] {
+		for frame in [Normal, Frameless] {
+			let borrows_a_title_bar = macos && !has_titlebar(frame, macos);
+			assert_eq!(!may_ask_if_maximized(frame, macos), borrows_a_title_bar);
+		}
+	}
 }
