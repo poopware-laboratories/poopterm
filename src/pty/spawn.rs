@@ -104,6 +104,14 @@ impl Child {
 		wait_for(self.pid)
 	}
 
+	/// How the program ended, or `None` while it runs; never blocks.
+	pub(crate) fn try_wait(&mut self) -> io::Result<Option<Exit>> {
+		let mut status = 0;
+		// SAFETY: writes the status into the integer we own; never blocks.
+		let reaped = check(unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) })?;
+		Ok(if reaped == 0 { None } else { exit_of(status) })
+	}
+
 	/// Sends `SIGHUP`, as a terminal does when it closes.
 	pub(crate) fn hang_up(&self) -> io::Result<()> {
 		// SAFETY: sends a signal to the process we started; takes no memory.
@@ -369,7 +377,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 /// A pipe whose ends both close on exec.
-fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+pub(super) fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 	let mut fds = [0; 2];
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 	// SAFETY: writes two descriptors into the array we own.
@@ -415,12 +423,20 @@ fn wait_for(pid: libc::pid_t) -> io::Result<Exit> {
 			}
 			return Err(error);
 		}
-		if libc::WIFEXITED(status) {
-			return Ok(Exit::Code(libc::WEXITSTATUS(status)));
+		if let Some(exit) = exit_of(status) {
+			return Ok(exit);
 		}
-		if libc::WIFSIGNALED(status) {
-			return Ok(Exit::Signal(libc::WTERMSIG(status)));
-		}
+	}
+}
+
+/// How a `waitpid` status says the program ended, if it did.
+fn exit_of(status: libc::c_int) -> Option<Exit> {
+	if libc::WIFEXITED(status) {
+		Some(Exit::Code(libc::WEXITSTATUS(status)))
+	} else if libc::WIFSIGNALED(status) {
+		Some(Exit::Signal(libc::WTERMSIG(status)))
+	} else {
+		None
 	}
 }
 

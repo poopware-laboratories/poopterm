@@ -6,10 +6,20 @@ mod burst;
 	expect(dead_code, reason = "sessions move here with the child setup (#188)")
 )]
 pub(crate) mod device;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "sessions are reaped here after the switch (#188)")
+)]
+mod exits;
 pub(crate) mod open;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "sessions are reaped here after the switch (#188)")
+)]
+pub(crate) mod reap;
 #[cfg_attr(
 	not(test),
 	expect(

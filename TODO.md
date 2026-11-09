@@ -270,9 +270,14 @@ least as fast.
   - **Flow control.** Packet mode (`TIOCPKT`) to notice `^S`/`^Q` (`IXON`)
     stops and starts, so the UI can show that output is paused instead of
     looking frozen.
-  - **Exit status.** `waitpid` without a reaper thread per tab: exit codes
-    and signals for `OSC 133` command status and the "process exited" line,
-    and hang-up (`SIGHUP` to the session) when a tab closes.
+  - **Done: reaping from one thread** (`src/pty/exits.rs`, `reap.rs`). A
+    pidfd per shell in an epoll set on Linux, `EVFILT_PROC`/`NOTE_EXIT` in a
+    kqueue on macOS and FreeBSD; one `Reaper` thread waits for each child
+    as it ends and hands its exit code or signal to the code watching it.
+    Sessions do not use it yet.
+  - **Exit status in the app.** With the reaper: exit codes and signals for
+    `OSC 133` command status and the "process exited" line, and hang-up
+    (`SIGHUP` to the session) when a tab closes.
   - **Optimization where it matters, measured.** The PTY layer is system
     calls, not computation, so SIMD has nothing to do here (`src/vt` already
     has it). Read straight into the `OutputQueue` instead of copying from a
