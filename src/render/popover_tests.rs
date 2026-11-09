@@ -29,6 +29,7 @@ fn row(index: usize, text: &str, selected: bool) -> PopoverRow<'_> {
 	PopoverRow {
 		rect: (28, 66 + 32 * index, 284, 32),
 		text,
+		hint: None,
 		selected,
 	}
 }
@@ -298,6 +299,7 @@ fn a_panel_too_small_for_its_outline_draws_without_panicking() {
 	popover.rows = vec![PopoverRow {
 		rect: (20, 20, 0, 0),
 		text: "x",
+		hint: None,
 		selected: true,
 	}];
 	let drawn = draw(&popover);
@@ -389,6 +391,7 @@ fn a_selected_row_at_twice_the_scale_has_rounder_corners_and_wider_padding() {
 	popover.rows = vec![PopoverRow {
 		rect: (28, 70, 284, 64),
 		text: "New tab",
+		hint: None,
 		selected: true,
 	}];
 	let drawn = draw(&popover);
@@ -563,6 +566,7 @@ fn rows_draw_their_text_from_their_own_left_edge() {
 	popover.rows = vec![PopoverRow {
 		rect: (100, 66, 200, 32),
 		text: "New tab",
+		hint: None,
 		selected: false,
 	}];
 	let drawn = draw(&popover);
@@ -584,4 +588,93 @@ fn the_count_at_twice_the_scale_ends_twice_the_padding_in() {
 		"{count:?}"
 	);
 	assert!(count.3 > 14, "the count doubles too: {count:?}");
+}
+
+const ROW: Rect = (28, 66, 284, 32);
+
+fn hinted<'a>(text: &'a str, hint: Option<&str>, selected: bool) -> Popover<'a> {
+	let mut panel = popover("", None);
+	let mut line = row(0, text, selected);
+	line.hint = hint.map(str::to_owned);
+	panel.rows = vec![line];
+	panel
+}
+
+#[test]
+fn a_hint_is_drawn_dim_against_the_right_end_of_its_row() {
+	let drawn = draw(&hinted("New tab", Some("Ctrl+N"), false));
+	let (x, _, w, _) = drawn.ink(ROW, COLORS.dim).expect("the hint is drawn");
+	assert!(x > 28 + 142, "the hint sits in the right half, from {x}");
+	let end = x + w;
+	assert!(end <= 28 + 284 - 12, "inside the padding, ends at {end}");
+	assert!(end > 28 + 284 - 12 - 4, "and runs up to it, ends at {end}");
+	let (left, ..) = drawn.ink(ROW, COLORS.fg).expect("the command is drawn");
+	assert!(left < 28 + 40, "the command stays at the left, from {left}");
+}
+
+#[test]
+fn a_row_without_a_hint_draws_none() {
+	let drawn = draw(&hinted("Settings", None, false));
+	assert_eq!(drawn.ink(ROW, COLORS.dim), None);
+}
+
+#[test]
+fn a_long_command_gives_way_to_its_hint() {
+	let long = "Copy last command output to the clipboard now please";
+	let drawn = draw(&hinted(long, Some("Ctrl+Shift+C"), false));
+	let (x, _, w, _) = drawn.ink(ROW, COLORS.fg).expect("the command is drawn");
+	let (hint, ..) = drawn.ink(ROW, COLORS.dim).expect("the hint is drawn");
+	assert!(
+		x + w < hint,
+		"the command ends at {}, the hint starts at {hint}",
+		x + w
+	);
+}
+
+#[test]
+fn a_selected_rows_hint_is_drawn_over_its_fill() {
+	let drawn = draw(&hinted("New tab", Some("Ctrl+N"), true));
+	assert_eq!(drawn.at(40, 67), COLORS.raised);
+	assert!(drawn.ink(ROW, COLORS.dim).is_some());
+}
+
+#[test]
+fn a_hint_wider_than_the_row_is_cut_inside_its_padding() {
+	let drawn = draw(&hinted(
+		"A",
+		Some("Ctrl+Shift+Alt+Super+PageDown+More+Keys+Here+Too"),
+		false,
+	));
+	let (x, _, w, _) = drawn.ink(ROW, COLORS.dim).expect("some of the hint shows");
+	assert!(
+		x >= 28 + 12 && x + w <= 28 + 284 - 12,
+		"from {x} to {}",
+		x + w
+	);
+}
+
+#[test]
+fn a_hint_sits_twice_as_far_in_at_twice_the_scale() {
+	let at = |scale: usize| {
+		let mut panel = popover("", None);
+		panel.style.scale = scale;
+		let mut line = row(0, "New tab", false);
+		line.rect = (28, 66, 284, 32);
+		line.hint = Some("Ctrl+N".to_owned());
+		panel.rows = vec![line];
+		let drawn = draw(&panel);
+		let (x, _, w, _) = drawn.ink(ROW, COLORS.dim).expect("the hint is drawn");
+		28 + 284 - (x + w)
+	};
+	let (one, two) = (at(1), at(2));
+	assert!((10..=14).contains(&one), "{one} pixels from the edge at 1x");
+	assert!((22..=26).contains(&two), "{two} pixels from the edge at 2x");
+}
+
+#[test]
+fn an_empty_hint_draws_nothing_and_takes_no_room() {
+	let drawn = draw(&hinted("New tab", Some(""), false));
+	assert_eq!(drawn.ink(ROW, COLORS.dim), None);
+	let bare = draw(&hinted("New tab", None, false));
+	assert_eq!(drawn.ink(ROW, COLORS.fg), bare.ink(ROW, COLORS.fg));
 }
