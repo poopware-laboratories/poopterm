@@ -270,3 +270,61 @@ fn the_other_platforms_defaults_written_as_config_read_back_the_same() {
 		assert_ne!(written, PaneShortcuts::from_config("", !on_mac));
 	}
 }
+
+#[test]
+fn every_command_reads_back_its_default_chord_on_both_platforms() {
+	use super::{pane_shortcuts::COMMANDS, shortcuts::Shortcut};
+	let defaults = [
+		("super+d", "ctrl+shift+d"),
+		("super+shift+d", "ctrl+shift+e"),
+		("super+alt+left", "ctrl+alt+left"),
+		("super+alt+right", "ctrl+alt+right"),
+		("super+alt+up", "ctrl+alt+up"),
+		("super+alt+down", "ctrl+alt+down"),
+		("super+]", "ctrl+alt+]"),
+		("super+[", "ctrl+alt+["),
+	];
+	for mac in [false, true] {
+		let panes = PaneShortcuts::from_config("", mac);
+		for (command, (on_mac, elsewhere)) in COMMANDS.into_iter().zip(defaults) {
+			let expected = Shortcut::parse(if mac { on_mac } else { elsewhere }).unwrap();
+			assert_eq!(panes.get(command), &expected, "{command:?}");
+		}
+	}
+}
+
+#[test]
+fn setting_a_command_rebinds_it_alone() {
+	use super::{pane_shortcuts::COMMANDS, shortcuts::Shortcut};
+	for command in COMMANDS {
+		let mut panes = PaneShortcuts::from_config("", false);
+		let before = PaneShortcuts::from_config("", false);
+		panes.set(command, Shortcut::parse("alt+shift+z").unwrap());
+		assert_eq!(panes.get(command), &Shortcut::parse("alt+shift+z").unwrap());
+		assert_eq!(
+			panes.command(&chr("Z"), mods(false, true, true, false)),
+			Some(command)
+		);
+		for other in COMMANDS.into_iter().filter(|other| *other != command) {
+			assert_eq!(
+				panes.get(other),
+				before.get(other),
+				"{other:?} moved with {command:?}"
+			);
+		}
+	}
+}
+
+#[test]
+fn a_chord_bound_twice_runs_the_command_listed_first() {
+	use super::shortcuts::Shortcut;
+	let mut panes = PaneShortcuts::from_config("", false);
+	let chord = Shortcut::parse("alt+shift+z").unwrap();
+	panes.set(PaneCommand::Cycle(-1), chord.clone());
+	panes.set(PaneCommand::Split(Split::Down), chord);
+	// Settings refuses such a pair; a hand-written config may still hold one.
+	assert_eq!(
+		panes.command(&chr("z"), mods(false, true, true, false)),
+		Some(PaneCommand::Split(Split::Down))
+	);
+}

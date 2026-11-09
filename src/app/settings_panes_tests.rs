@@ -209,3 +209,19 @@ fn a_changed_binding_shows_on_its_row() {
 	assert_eq!(shown[2 + 2 * 6], "Next pane");
 	assert_eq!(shown[3 + 2 * 6], expected);
 }
+
+#[test]
+fn every_pane_row_is_reached_through_the_sidebar_at_every_scale() {
+	use super::settings_nav::{NAV_WIDTH, window_target};
+	for scale in [1, 2, 3] {
+		let window = ((MIN_SIZE.0 + NAV_WIDTH) * scale, MIN_SIZE.1 * scale);
+		for &(action, top) in &PANE_ROWS {
+			let at = ((NAV_WIDTH + 500) * scale, (top + 20) * scale);
+			assert_eq!(
+				window_target(at, window, scale, SettingsPage::Panes),
+				Some(SettingsTarget::SetShortcut(action)),
+				"{action:?} at {scale}x"
+			);
+		}
+	}
+}
