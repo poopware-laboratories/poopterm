@@ -298,15 +298,16 @@ fn a_signal_that_interrupts_the_wait_does_not_end_it() {
 	let waiter = exits.clone();
 	let (thread_send, thread_got) = mpsc::channel();
 	thread::spawn(move || {
+		// As a number: musl's `pthread_t` is a pointer, which is not `Send`.
 		// SAFETY: names the calling thread; takes nothing.
-		let _ = thread_send.send(unsafe { libc::pthread_self() });
+		let _ = thread_send.send(unsafe { libc::pthread_self() } as usize);
 		let _ = send.send(waiter.wait());
 	});
 	let waiting = thread_got.recv().unwrap();
 	for _ in 0..5 {
 		thread::sleep(Duration::from_millis(20));
 		// SAFETY: signals a thread that is alive: it is blocked in `wait`.
-		unsafe { libc::pthread_kill(waiting, libc::SIGURG) };
+		unsafe { libc::pthread_kill(waiting as libc::pthread_t, libc::SIGURG) };
 	}
 	assert!(
 		got.recv_timeout(Duration::from_millis(100)).is_err(),
