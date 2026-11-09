@@ -139,10 +139,57 @@ fn the_code_runs_on_the_reapers_thread_not_the_watchers() {
 	let (child, _pair) = start("sleep 0.1");
 	let (send, ran_on) = mpsc::channel();
 	reaper.watch(child, move |_| {
-		let _ = send.send(thread::current().id());
+		let current = thread::current();
+		let _ = send.send((current.id(), current.name().map(str::to_owned)));
 	});
-	let id = ran_on.recv_timeout(Duration::from_secs(5)).unwrap();
+	let (id, name) = ran_on.recv_timeout(Duration::from_secs(5)).unwrap();
 	assert_ne!(id, thread::current().id());
+	// Named, so a profile or a debugger shows what it is.
+	assert_eq!(name.as_deref(), Some("pty-reaper"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn no_descriptor_is_kept_for_children_that_ended() {
+	let reaper = Reaper::new().unwrap();
+	let mut pairs = Vec::new();
+	let (send, ended) = mpsc::channel();
+	for _ in 0..10 {
+		let (child, pair) = start("exit 0");
+		pairs.push(pair);
+		let send = send.clone();
+		reaper.watch(child, move |exit| {
+			let _ = send.send(exit.unwrap());
+		});
+	}
+	for _ in 0..10 {
+		within_ok(&ended);
+	}
+	assert!(reaper.shared.exits.pidfds.lock().unwrap().is_empty());
+	assert!(reaper.shared.lock().is_empty(), "every child left the map");
+}
+
+#[test]
+fn dropping_the_reaper_frees_the_code_it_still_held() {
+	let held = std::sync::Arc::new(());
+	let reaper = Reaper::new().unwrap();
+	let (child, pair) = start("read line");
+	let pid = child.id() as libc::pid_t;
+	let inside = held.clone();
+	reaper.watch(child, move |_| drop(inside));
+	assert_eq!(std::sync::Arc::strong_count(&held), 2);
+	drop(reaper);
+	assert_eq!(
+		std::sync::Arc::strong_count(&held),
+		1,
+		"the code outlived its reaper"
+	);
+	// SAFETY: kills and reaps the child we started, which nothing reaps now.
+	unsafe {
+		libc::kill(pid, libc::SIGKILL);
+		libc::waitpid(pid, std::ptr::null_mut(), 0);
+	}
+	drop(pair);
 }
 
 #[test]

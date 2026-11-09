@@ -520,6 +520,31 @@ fn trying_to_wait_reports_signals_too() {
 }
 
 #[test]
+fn a_stopped_program_is_still_running_to_try_wait() {
+	let pair = pty();
+	let mut child = waiting(&pair);
+	let pid = child.id() as libc::pid_t;
+	// SAFETY: signals only the child we started.
+	unsafe { libc::kill(pid, libc::SIGSTOP) };
+	thread::sleep(Duration::from_millis(50));
+	assert_eq!(child.try_wait().unwrap(), None);
+	// SAFETY: as above.
+	unsafe { libc::kill(pid, libc::SIGKILL) };
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGKILL));
+}
+
+#[test]
+fn trying_to_wait_for_a_program_reaped_elsewhere_is_an_error() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let mut child = spawn(&Command::new("sh").arg("-c").arg("exit 0"), &pair.slave).unwrap();
+	let pid = child.id() as libc::pid_t;
+	// SAFETY: reaps our own child behind `child`'s back.
+	assert_eq!(unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) }, pid);
+	let error = child.try_wait().err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::ECHILD));
+}
+
+#[test]
 fn a_program_that_cannot_start_is_an_error_not_a_child() {
 	let pair = device::open(WindowSize::default()).unwrap();
 	let missing = Command::new("/nonexistent/poopterm-no-such-shell");

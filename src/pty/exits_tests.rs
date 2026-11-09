@@ -305,6 +305,103 @@ fn none_of_its_descriptors_reach_programs_we_start() {
 	}
 }
 
+#[test]
+fn two_threads_waiting_at_once_share_the_ends_without_repeats() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let children: Vec<_> = (0..10).map(|_| start("read line")).collect();
+	let pids: Vec<_> = children.iter().map(|(child, _)| pid(child)).collect();
+	for &pid in &pids {
+		assert!(exits.add(pid).unwrap());
+	}
+	let (send, got) = mpsc::channel();
+	for _ in 0..2 {
+		let (exits, send) = (exits.clone(), send.clone());
+		thread::spawn(move || {
+			while let Ok(Some(ended)) = exits.wait() {
+				if send.send(ended).is_err() {
+					return;
+				}
+			}
+		});
+	}
+	for (child, _) in &children {
+		child.hang_up().unwrap();
+	}
+	let mut seen = Vec::new();
+	while seen.len() < pids.len() {
+		let ended = got
+			.recv_timeout(Duration::from_secs(5))
+			.expect("an end is missing");
+		assert!(!ended.is_empty(), "an empty report");
+		seen.extend(ended);
+	}
+	assert!(
+		got.recv_timeout(Duration::from_millis(100)).is_err(),
+		"an end came twice"
+	);
+	seen.sort_unstable();
+	let mut expected = pids;
+	expected.sort_unstable();
+	assert_eq!(seen, expected);
+	exits.stop().unwrap();
+	for (mut child, _pair) in children {
+		child.wait().unwrap();
+	}
+}
+
+#[test]
+fn a_stopped_child_has_not_ended() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let (mut child, _pair) = start("read line");
+	assert!(exits.add(pid(&child)).unwrap());
+	// SAFETY: signals only the child we started.
+	unsafe { libc::kill(pid(&child), libc::SIGSTOP) };
+	assert_eq!(
+		wait_within(&exits, Duration::from_millis(200)),
+		None,
+		"a stop is no end"
+	);
+	// SAFETY: as above.
+	unsafe { libc::kill(pid(&child), libc::SIGKILL) };
+	assert_eq!(collect(&exits, &[pid(&child)]), [pid(&child)]);
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGKILL));
+}
+
+#[test]
+fn a_child_that_becomes_another_program_is_still_watched() {
+	let exits = Exits::new().unwrap();
+	let (mut child, _pair) = start("exec sh -c 'sleep 0.1; exit 5'");
+	assert!(exits.add(pid(&child)).unwrap());
+	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
+	assert_eq!(child.wait().unwrap(), Exit::Code(5));
+}
+
+#[test]
+fn a_grandchild_ending_is_not_its_parents_end() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let (mut child, _pair) = start("sleep 0.05 & read line");
+	assert!(exits.add(pid(&child)).unwrap());
+	assert_eq!(
+		wait_within(&exits, Duration::from_millis(300)),
+		None,
+		"the sleep's end counted"
+	);
+	child.hang_up().unwrap();
+	assert_eq!(collect(&exits, &[pid(&child)]), [pid(&child)]);
+	child.wait().unwrap();
+}
+
+#[test]
+fn stopping_twice_or_adding_after_a_stop_keeps_it_stopped() {
+	let exits = Exits::new().unwrap();
+	exits.stop().unwrap();
+	exits.stop().unwrap();
+	let (mut child, _pair) = start("exit 0");
+	let _ = exits.add(pid(&child)).unwrap();
+	child.wait().unwrap();
+	assert_eq!(exits.wait().unwrap(), None);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn no_pidfd_is_kept_once_its_program_is_reported() {

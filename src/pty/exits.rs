@@ -18,7 +18,7 @@ pub(crate) struct Exits {
 	stop: (OwnedFd, OwnedFd),
 	/// Each watched program's pidfd, closed once it is reported.
 	#[cfg(target_os = "linux")]
-	pidfds: std::sync::Mutex<std::collections::HashMap<libc::pid_t, OwnedFd>>,
+	pub(super) pidfds: std::sync::Mutex<std::collections::HashMap<libc::pid_t, OwnedFd>>,
 }
 
 /// How many ends one wait takes in at most; more come with the next.
