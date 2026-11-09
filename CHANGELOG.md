@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.59 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Choose the tab position with a segmented control (#276) (app).
+
 ## 26.11.58 "Lunar Moth" — 2026-11-09
 
 ### Added
