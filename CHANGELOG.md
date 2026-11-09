@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.45 "Lunar Moth" — 2026-11-09
+
+### Maintenance
+
+- Lay out the Settings main page from one table of gaps (#260) (app).
+
 ## 26.11.44 "Lunar Moth" — 2026-11-09
 
 ### Added
