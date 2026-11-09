@@ -14,6 +14,9 @@ const TRIES_PER_CHAR: usize = 4;
 const MAX_LOADED: usize = 32;
 /// Larger files are skipped, like the symbol fonts loaded at startup.
 pub(crate) const MAX_FILE: u64 = 64 << 20;
+/// Color fonts may be larger: Apple Color Emoji is 183 MiB of PNGs. Files are
+/// mapped, not read, so only the pages of the glyphs in use become resident.
+pub(crate) const MAX_COLOR_FILE: u64 = 1 << 30;
 /// Characters remembered as found nowhere before the list is reset.
 const MAX_MISSING: usize = 4096;
 /// Characters whose ranked candidates are remembered before the list is
@@ -28,7 +31,7 @@ pub(crate) fn candidates(cache: &Cache, ch: char, color: bool) -> Vec<(&Path, u3
 	let mut found: Vec<_> = cache
 		.files
 		.iter()
-		.filter(|file| file.stamp.size <= MAX_FILE)
+		.filter(|file| file.stamp.size <= if color { MAX_COLOR_FILE } else { MAX_FILE })
 		.flat_map(|file| file.faces.iter().map(move |face| (file, face)))
 		.filter(|(_, face)| if color { face.color } else { face.drawable })
 		.filter(|(_, face)| covers(&face.coverage, ch))

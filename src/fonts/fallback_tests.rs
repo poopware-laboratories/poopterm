@@ -451,6 +451,82 @@ fn color_lookups_consider_only_color_faces() {
 	);
 }
 
+/// Apple Color Emoji on macOS, in bytes: far past the limit of other fonts.
+const APPLE_COLOR_EMOJI: u64 = 192_120_460;
+
+fn paths_of(fonts: &Cache, ch: char, color: bool) -> Vec<&str> {
+	candidates(fonts, ch, color)
+		.into_iter()
+		.map(|(path, _)| path.to_str().unwrap())
+		.collect()
+}
+
+#[test]
+fn a_color_font_as_large_as_apple_color_emoji_is_a_color_candidate() {
+	// Mapped, not read: only the pages in use are resident, so the size of
+	// the one font that has the emoji is no reason to draw boxes.
+	let fonts = cache(vec![file(
+		"/emoji.ttc",
+		APPLE_COLOR_EMOJI,
+		vec![color_face()],
+	)]);
+	assert!(APPLE_COLOR_EMOJI > MAX_FILE);
+	assert_eq!(paths_of(&fonts, '🦀', true), ["/emoji.ttc"]);
+}
+
+#[test]
+fn the_same_large_font_is_still_skipped_when_a_plain_outline_is_wanted() {
+	let fonts = cache(vec![file(
+		"/emoji.ttc",
+		APPLE_COLOR_EMOJI,
+		vec![color_face()],
+	)]);
+	assert!(paths_of(&fonts, '🦀', false).is_empty());
+}
+
+#[test]
+fn color_fonts_have_a_limit_of_their_own() {
+	let fonts = cache(vec![
+		file("/over.ttc", MAX_COLOR_FILE + 1, vec![color_face()]),
+		file("/at.ttc", MAX_COLOR_FILE, vec![color_face()]),
+	]);
+	assert_eq!(paths_of(&fonts, '🦀', true), ["/at.ttc"]);
+	assert!(
+		MAX_COLOR_FILE >= APPLE_COLOR_EMOJI,
+		"room for the real font"
+	);
+}
+
+#[test]
+fn a_large_font_without_color_is_never_a_color_candidate() {
+	let fonts = cache(vec![file(
+		"/cjk.ttc",
+		APPLE_COLOR_EMOJI,
+		vec![face(0, &[EMOJI], 400, false)],
+	)]);
+	assert!(paths_of(&fonts, '🦀', true).is_empty());
+}
+
+#[test]
+fn a_smaller_color_font_still_ranks_before_the_large_one() {
+	let fonts = cache(vec![
+		file("/apple.ttc", APPLE_COLOR_EMOJI, vec![color_face()]),
+		file("/small.ttf", 10 << 20, vec![color_face()]),
+	]);
+	assert_eq!(paths_of(&fonts, '🦀', true), ["/small.ttf", "/apple.ttc"]);
+}
+
+#[test]
+fn the_symbol_fonts_loaded_at_startup_keep_the_lower_limit() {
+	assert!(MAX_FILE < APPLE_COLOR_EMOJI);
+	let fonts = cache(vec![file(
+		"/huge.ttf",
+		MAX_FILE + 1,
+		vec![face(0, &[HAN], 400, false)],
+	)]);
+	assert!(paths_of(&fonts, '字', false).is_empty());
+}
+
 #[test]
 fn a_color_lookup_skips_fonts_with_only_an_outline() {
 	let (dir, mut fonts) = installed(

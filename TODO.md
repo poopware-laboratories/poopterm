@@ -328,8 +328,12 @@ least as fast.
   across both (`render::cell_joins`). Installed fallback fonts are chosen
   by rank, never by what loaded first (#127). sbix strikes are drawn
   ([#129](https://github.com/poopware-laboratories/poopterm/issues/129)): PNG and
-  `dupe` records, the largest strike holding a PNG; Apple's compressed
-  `emjc` type is skipped. Next: COLR v0 with CPAL, then COLR v1.
+  `dupe` records, the largest strike holding a PNG (the `flip` type is
+  skipped). Apple Color Emoji, 183 MiB, was skipped by the 64 MiB fallback
+  limit until color fonts got a limit of their own, so on macOS single emoji
+  drew as boxes. It has no GSUB: it joins skin tones, ZWJ sequences and
+  flags with the AAT `morx` table, which is next. Then COLR v0 with CPAL,
+  then COLR v1.
 - **`softbuffer` → our own present path** (X11 MIT-SHM, Wayland `wl_shm`,
   macOS CALayer) for the software renderer, which becomes the fallback
   beside Vulkan/Metal. Do it together with the GPU work so presentation and
