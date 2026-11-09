@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.56 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Show Settings toggles as switches (#264) (app).
+
 ## 26.11.55 "Lunar Moth" — 2026-11-09
 
 ### Maintenance
