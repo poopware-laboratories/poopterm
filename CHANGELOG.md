@@ -1,5 +1,25 @@
 # Changelog
 
+## 26.11.60 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Dim inactive split panes (#277) (render).
+- Move between Settings controls with Tab and show a focus ring (#278) (app).
+- Add a square window option with no title bar or window buttons (#279) (ui).
+- Set the pane shortcuts in settings (#280) (app).
+
+### Fixed
+
+- Accept the revoked terminal error newer macos reports (#282) (pty).
+- Count the Panes page in the Settings focus test (#283) (app).
+- Run the login shell when $SHELL is not set (#284) (pty).
+- Restore the 26.11.59 release files that a stale merge rolled back (#285) (release).
+
+### Maintenance
+
+- New swirl icon with dark mode and Linux sizes (#281) (assets).
+
 ## 26.11.59 "Lunar Moth" — 2026-11-09
 
 ### Added
