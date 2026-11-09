@@ -51,6 +51,7 @@ fn info(title: &str) -> TabInfo {
 		style: Default::default(),
 		marker: None,
 		progress: None,
+		panes: 1,
 	}
 }
 
@@ -809,4 +810,50 @@ fn the_rail_draws_each_tab_number_inside_its_row() {
 			.count();
 		assert!(ink > 4, "tab {} shows its number", index + 1);
 	}
+}
+
+#[test]
+fn a_split_tab_row_carries_the_panes_icon_and_a_plain_row_does_not() {
+	let (layout, theme) = (layout(3, 0, false, true), theme());
+	let mut state = state(&layout, 3, 0, None);
+	state.tabs[1].panes = 2;
+	let sidebar = sidebar(&input(&layout, &state, &theme));
+	let icons: Vec<_> = sidebar
+		.rows
+		.iter()
+		.map(|row| row.tab.panes.is_some())
+		.collect();
+	assert_eq!(icons, [false, true, false]);
+}
+
+#[test]
+fn a_split_row_shows_the_accent_icon_only_while_active() {
+	let (layout, theme) = (layout(2, 0, false, true), theme());
+	let mut state = state(&layout, 2, 1, None);
+	for tab in &mut state.tabs {
+		tab.panes = 4;
+	}
+	let sidebar = sidebar(&input(&layout, &state, &theme));
+	let (dim, accent) = crate::ui::contrast::tab_text_colors(&theme);
+	assert_eq!(sidebar.rows[0].tab.panes, Some(dim));
+	assert_eq!(sidebar.rows[1].tab.panes, Some(accent));
+}
+
+#[test]
+fn two_panes_are_enough_and_one_is_not() {
+	let (layout, theme) = (layout(2, 0, false, true), theme());
+	let mut state = state(&layout, 2, 0, None);
+	state.tabs[0].panes = 1;
+	state.tabs[1].panes = 2;
+	let sidebar = sidebar(&input(&layout, &state, &theme));
+	assert!(sidebar.rows[0].tab.panes.is_none() && sidebar.rows[1].tab.panes.is_some());
+}
+
+#[test]
+fn a_tab_holding_no_panes_at_all_is_treated_as_plain() {
+	let (layout, theme) = (layout(1, 0, false, true), theme());
+	let mut state = state(&layout, 1, 0, None);
+	state.tabs[0].panes = 0;
+	let sidebar = sidebar(&input(&layout, &state, &theme));
+	assert!(sidebar.rows[0].tab.panes.is_none());
 }

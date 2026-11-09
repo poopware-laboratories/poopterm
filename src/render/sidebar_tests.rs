@@ -50,6 +50,7 @@ fn row(number: usize, rect: Rect) -> SidebarRow<'static> {
 			fill: None,
 			badge: None,
 			shape: TabShape::Row,
+			panes: None,
 			progress: None,
 			close: None,
 		},

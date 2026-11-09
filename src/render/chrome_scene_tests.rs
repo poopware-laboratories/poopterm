@@ -43,6 +43,7 @@ fn info(title: &str) -> TabInfo {
 		style: Default::default(),
 		marker: None,
 		progress: None,
+		panes: 1,
 	}
 }
 

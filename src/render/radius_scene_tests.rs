@@ -67,6 +67,7 @@ fn tab(width: usize, close: Option<bool>) -> HeaderTab<'static> {
 		fill: Some(COLORS.raised),
 		badge: Some(Badge::Dot(0xff8800)),
 		shape: TabShape::Row,
+		panes: None,
 		progress: None,
 		close,
 	}
