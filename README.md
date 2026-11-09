@@ -225,10 +225,11 @@ by side splits again into one big pane beside two stacked ones. Each pane
 runs its own shell; clicking a pane focuses it, and closing one gives its
 room to the panes beside it.
 
-Change bindings in **Settings → Shortcuts** (click a binding and press a new
-chord) or with the `shortcut_*` keys described in
-[configuration](docs/configuration.md#shortcuts). On Linux, the clipboard
-needs `wl-clipboard` on Wayland or `xclip`/`xsel` on X11.
+Change bindings in **Settings → Shortcuts**, and the pane ones in
+**Settings → Panes** (click a binding and press a new chord), or with the
+`shortcut_*` keys described in [configuration](docs/configuration.md#shortcuts).
+On Linux, the clipboard needs `wl-clipboard` on Wayland or `xclip`/`xsel` on
+X11.
 
 ## Protocols
 

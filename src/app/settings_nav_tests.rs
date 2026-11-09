@@ -12,11 +12,12 @@ use crate::{
 	ui::chrome_colors::chrome_colors,
 };
 
-const PAGES: [SettingsPage; 6] = [
+const PAGES: [SettingsPage; 7] = [
 	SettingsPage::Main,
 	SettingsPage::Layout,
 	SettingsPage::Fonts,
 	SettingsPage::Shortcuts,
+	SettingsPage::Panes,
 	SettingsPage::Diagnostics,
 	SettingsPage::About,
 ];
@@ -33,6 +34,7 @@ fn the_sidebar_lists_every_page_once_in_reading_order() {
 			"Layout",
 			"Fonts",
 			"Shortcuts",
+			"Panes",
 			"Diagnostics",
 			"About"
 		]
@@ -196,6 +198,7 @@ fn every_page_is_listed_by_name_top_to_bottom() {
 				"Layout",
 				"Fonts",
 				"Shortcuts",
+				"Panes",
 				"Diagnostics",
 				"About"
 			]
@@ -241,7 +244,7 @@ fn the_open_items_label_is_full_strength_and_the_rest_are_muted() {
 			_ => None,
 		})
 		.collect();
-	assert_eq!(colors, [muted, theme.fg, muted, muted, muted, muted]);
+	assert_eq!(colors, [muted, theme.fg, muted, muted, muted, muted, muted]);
 }
 
 #[test]

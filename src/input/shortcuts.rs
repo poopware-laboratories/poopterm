@@ -1,7 +1,10 @@
 //! Configurable application shortcuts such as `ctrl+shift+p`.
 use winit::keyboard::{Key, NamedKey};
 
-use super::keys::Modifiers;
+use super::{
+	keys::Modifiers,
+	pane_shortcuts::{COMMANDS, PaneCommand},
+};
 use crate::config;
 
 /// One key chord: exact modifier set plus a character key.
@@ -159,10 +162,13 @@ pub(crate) enum ShortcutAction {
 	ZoomIn,
 	ZoomOut,
 	ZoomReset,
+	/// Splitting a tab into panes and moving between them.
+	Pane(PaneCommand),
 }
 
 impl ShortcutAction {
-	pub(crate) const ALL: [Self; 10] = [
+	/// The tab and window shortcuts, on the Shortcuts page.
+	pub(crate) const TABS: [Self; 10] = [
 		Self::NewTab,
 		Self::CommandPalette,
 		Self::CycleTheme,
@@ -174,6 +180,31 @@ impl ShortcutAction {
 		Self::ZoomOut,
 		Self::ZoomReset,
 	];
+
+	/// The pane shortcuts, on the Panes page.
+	pub(crate) const PANES: [Self; 8] = {
+		let mut panes = [Self::NewTab; 8];
+		let mut i = 0;
+		while i < panes.len() {
+			panes[i] = Self::Pane(COMMANDS[i]);
+			i += 1;
+		}
+		panes
+	};
+
+	/// Every shortcut: the tab and window ones, then the pane ones.
+	pub(crate) const ALL: [Self; 18] = {
+		let mut all = [Self::NewTab; 18];
+		let mut i = 0;
+		while i < all.len() {
+			all[i] = match i < Self::TABS.len() {
+				true => Self::TABS[i],
+				false => Self::PANES[i - Self::TABS.len()],
+			};
+			i += 1;
+		}
+		all
+	};
 
 	pub(crate) fn label(self) -> &'static str {
 		match self {
@@ -187,6 +218,7 @@ impl ShortcutAction {
 			Self::ZoomIn => "Zoom in",
 			Self::ZoomOut => "Zoom out",
 			Self::ZoomReset => "Reset zoom",
+			Self::Pane(command) => command.label(),
 		}
 	}
 
@@ -202,6 +234,7 @@ impl ShortcutAction {
 			Self::ZoomIn => "shortcut_zoom_in",
 			Self::ZoomOut => "shortcut_zoom_out",
 			Self::ZoomReset => "shortcut_zoom_reset",
+			Self::Pane(command) => command.config_key(),
 		}
 	}
 }
@@ -279,6 +312,7 @@ impl Shortcuts {
 			ShortcutAction::ZoomIn => &self.zoom_in,
 			ShortcutAction::ZoomOut => &self.zoom_out,
 			ShortcutAction::ZoomReset => &self.zoom_reset,
+			ShortcutAction::Pane(command) => self.panes.get(command),
 		}
 	}
 
@@ -294,6 +328,7 @@ impl Shortcuts {
 			ShortcutAction::ZoomIn => self.zoom_in = shortcut,
 			ShortcutAction::ZoomOut => self.zoom_out = shortcut,
 			ShortcutAction::ZoomReset => self.zoom_reset = shortcut,
+			ShortcutAction::Pane(command) => self.panes.set(command, shortcut),
 		}
 	}
 

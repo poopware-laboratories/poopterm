@@ -13,6 +13,8 @@ pub(crate) enum SettingsPage {
 	Main,
 	Layout,
 	Shortcuts,
+	/// The split pane shortcuts, apart so each page fits the smallest window.
+	Panes,
 	About,
 	Fonts,
 	Diagnostics,
@@ -96,6 +98,7 @@ pub(super) fn settings_target(
 		let rows: &[(usize, SettingsTarget)] = match page {
 			SettingsPage::Layout => &LAYOUT_TOGGLES,
 			SettingsPage::Shortcuts => &SHORTCUT_TARGETS,
+			SettingsPage::Panes => &PANE_TARGETS,
 			SettingsPage::Fonts => &[],
 			_ => return None,
 		};
@@ -175,18 +178,22 @@ pub(super) fn settings_target(
 }
 
 /// [`SHORTCUT_ROWS`] as click targets.
-const SHORTCUT_TARGETS: [(usize, SettingsTarget); 10] = {
-	let mut targets = [(0, SettingsTarget::Save); 10];
+const SHORTCUT_TARGETS: [(usize, SettingsTarget); 10] = targets(SHORTCUT_ROWS);
+/// [`PANE_ROWS`] as click targets.
+const PANE_TARGETS: [(usize, SettingsTarget); 8] = targets(PANE_ROWS);
+
+/// Shortcut `rows` as click targets that record a new binding.
+const fn targets<const N: usize>(
+	rows: [(ShortcutAction, usize); N],
+) -> [(usize, SettingsTarget); N] {
+	let mut targets = [(0, SettingsTarget::Save); N];
 	let mut i = 0;
-	while i < SHORTCUT_ROWS.len() {
-		targets[i] = (
-			SHORTCUT_ROWS[i].1,
-			SettingsTarget::SetShortcut(SHORTCUT_ROWS[i].0),
-		);
+	while i < N {
+		targets[i] = (rows[i].1, SettingsTarget::SetShortcut(rows[i].0));
 		i += 1;
 	}
 	targets
-};
+}
 
 #[cfg(test)]
 mod tests {
@@ -294,7 +301,7 @@ mod tests {
 	#[test]
 	fn all_ten_shortcuts_are_clickable_above_the_footer() {
 		let target = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Shortcuts);
-		for (i, action) in ShortcutAction::ALL.into_iter().enumerate() {
+		for (i, action) in ShortcutAction::TABS.into_iter().enumerate() {
 			let top = 104 + 44 * i;
 			assert_eq!(
 				target(600, top + 1),
