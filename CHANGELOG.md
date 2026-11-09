@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.11.52 "Lunar Moth" — 2026-11-09
+
+### Maintenance
+
+- Run workloads on our own pty (#270) (bench).
+- Update benchmark figures for 26.11.51 (#271) (bench).
+- Accept busybox's fallback width for a saturated size (#272) (bench).
+
 ## 26.11.51 "Lunar Moth" — 2026-11-09
 
 ### Added
