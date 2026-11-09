@@ -27,6 +27,9 @@ mod diagnostics_page_tests;
 mod diagnostics_property_tests;
 #[cfg(test)]
 mod diagnostics_tests;
+pub(crate) mod drag;
+#[cfg(test)]
+mod drag_tests;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;

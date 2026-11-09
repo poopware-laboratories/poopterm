@@ -52,3 +52,18 @@ pub(crate) fn set_window_opacity(window: &Window, opacity: usize) {
 		}
 	}
 }
+
+/// The mouse buttons the system says are held right now (bit 0 is the left
+/// button), or `None` where the window system always delivers releases.
+#[cfg(target_os = "macos")]
+pub(crate) fn held_mouse_buttons() -> Option<usize> {
+	// SAFETY: `pressedMouseButtons` is a class method of `NSEvent` that takes
+	// no arguments and returns an `NSUInteger`; it reads state and is safe to
+	// call from the main thread, where the pointer events are handled.
+	Some(unsafe { objc2::msg_send![objc2::class!(NSEvent), pressedMouseButtons] })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn held_mouse_buttons() -> Option<usize> {
+	None
+}
