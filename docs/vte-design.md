@@ -372,7 +372,7 @@ by this plan had no "before" measurement (—).
 | OSC-heavy, titles and hyperlinks [shell] | — | 153 | — | 123 |
 
 New payloads go into the benchmark corpus (`src/bench/`), which both
-`parser_throughput` and `bench-throughput.py` run. Image payloads measure decoded pixels
+`parser_throughput` and `poopterm --benchmark` run. Image payloads measure decoded pixels
 per second as well as input bytes, and must not trip the existing size
 limits. Interactive latency (small reads) is checked too, so the SIMD setup
 cost does not regress echo.
