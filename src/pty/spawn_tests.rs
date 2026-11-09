@@ -159,6 +159,15 @@ fn hanging_up_ends_a_shell_waiting_for_input() {
 	drop(pair);
 }
 
+#[test]
+fn the_childs_id_is_the_programs_pid() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let script = Command::new("sh").arg("-c").arg("exit $(($$ % 200))");
+	let mut child = spawn(&script, &pair.slave).unwrap();
+	let expected = Exit::Code((child.id() % 200) as i32);
+	assert_eq!(child.wait().unwrap(), expected);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn signals_are_neither_ignored_nor_blocked() {
