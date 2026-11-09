@@ -108,14 +108,24 @@ fn the_program_leads_a_session_of_its_own() {
 }
 
 #[test]
-fn a_terminal_whose_session_ended_can_be_given_again() {
+fn a_terminal_whose_session_ended_is_reusable_only_on_linux() {
 	let pair = pty();
 	let mut first = waiting(&pair);
 	first.hang_up().unwrap();
 	first.wait().unwrap();
-	// Its leader gone, the terminal controls no session and takes a new one.
-	let (output, exit) = run_on(pair, sh("echo again >/dev/tty"));
-	assert_eq!((output.as_str(), exit), ("again\n", Exit::Code(0)));
+	// Linux leaves the terminal free for a new session. FreeBSD and macOS
+	// revoke it when its session leader exits, so the slave we hold is dead
+	// and every new program needs a new pair.
+	#[cfg(target_os = "linux")]
+	{
+		let (output, exit) = run_on(pair, sh("echo again >/dev/tty"));
+		assert_eq!((output.as_str(), exit), ("again\n", Exit::Code(0)));
+	}
+	#[cfg(not(target_os = "linux"))]
+	{
+		let error = spawn(&sh("true"), &pair.slave).err().unwrap();
+		assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
+	}
 }
 
 #[test]
@@ -664,8 +674,10 @@ fn spawns_on_many_threads_at_once_each_get_their_own_result() {
 					let command = Command::new("sh").arg("-c").arg(format!("exit {code}"));
 					let mut child = spawn(&command, &pair.slave).unwrap();
 					assert_eq!(child.wait().unwrap(), Exit::Code(code));
+					// A fresh terminal: the BSDs revoke one whose session ended.
+					let other = device::open(WindowSize::default()).unwrap();
 					let missing = Command::new("/nonexistent/poopterm-thread");
-					let error = spawn(&missing, &pair.slave).err().unwrap();
+					let error = spawn(&missing, &other.slave).err().unwrap();
 					assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
 				}
 			})
