@@ -428,6 +428,67 @@ fn a_grandchild_ending_is_not_its_parents_end() {
 }
 
 #[test]
+fn children_added_from_many_threads_while_another_waits_all_arrive() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let (send, got) = mpsc::channel();
+	let waiter = exits.clone();
+	thread::spawn(move || {
+		while let Ok(Some(ended)) = waiter.wait() {
+			if send.send(ended).is_err() {
+				return;
+			}
+		}
+	});
+	let adders: Vec<_> = (0..8)
+		.map(|_| {
+			let exits = exits.clone();
+			thread::spawn(move || {
+				let (child, pair) = start("sleep 0.05");
+				let watched = exits.add(pid(&child)).unwrap();
+				(pid(&child), watched, child, pair)
+			})
+		})
+		.collect();
+	let started: Vec<_> = adders
+		.into_iter()
+		.map(|adder| adder.join().unwrap())
+		.collect();
+	let mut expected: Vec<_> = started.iter().filter(|s| s.1).map(|s| s.0).collect();
+	let mut seen = Vec::new();
+	while seen.len() < expected.len() {
+		seen.extend(
+			got
+				.recv_timeout(Duration::from_secs(5))
+				.expect("an end is missing"),
+		);
+	}
+	seen.sort_unstable();
+	expected.sort_unstable();
+	assert_eq!(seen, expected);
+	exits.stop().unwrap();
+	for (_, _, mut child, _pair) in started {
+		child.wait().unwrap();
+	}
+}
+
+#[test]
+fn one_stop_wakes_every_waiter() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let (send, got) = mpsc::channel();
+	for _ in 0..3 {
+		let (exits, send) = (exits.clone(), send.clone());
+		thread::spawn(move || {
+			let _ = send.send(exits.wait().unwrap());
+		});
+	}
+	thread::sleep(Duration::from_millis(50));
+	exits.stop().unwrap();
+	for _ in 0..3 {
+		assert_eq!(got.recv_timeout(Duration::from_secs(5)).unwrap(), None);
+	}
+}
+
+#[test]
 fn stopping_twice_or_adding_after_a_stop_keeps_it_stopped() {
 	let exits = Exits::new().unwrap();
 	exits.stop().unwrap();
