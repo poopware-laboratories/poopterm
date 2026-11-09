@@ -57,6 +57,7 @@ fn render(input: &str, side: u8) -> Vec<u32> {
 		search_match: None,
 		focused: true,
 		padding: None,
+		dim: None,
 	};
 	let bundled = Font::from_bytes(crate::fonts::BUNDLED, 0).unwrap();
 	let mut fonts = FontSet::new(bundled, vec![emoji_font(side)]);

@@ -197,6 +197,7 @@ fn render(input: &str) -> Vec<u32> {
 		search_match: None,
 		focused: true,
 		padding: None,
+		dim: None,
 	};
 	crate::render::grid::draw_grid(&mut painter, &mut fonts, &view, None);
 	pixels

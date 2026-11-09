@@ -63,6 +63,7 @@ pub(crate) fn view(frame: &Frame) -> GridView<'_> {
 		search_match: None,
 		focused: true,
 		padding: None,
+		dim: None,
 	}
 }
 

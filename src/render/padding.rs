@@ -101,7 +101,7 @@ fn fill(
 	color: u32,
 ) {
 	if color != view.default_bg && x1 > x0 && y1 > y0 {
-		p.rect(x0, y0, x1 - x0, y1 - y0, color);
+		p.rect(x0, y0, x1 - x0, y1 - y0, view.dimmed(color));
 	}
 }
 
@@ -148,6 +148,7 @@ mod tests {
 			selection: None,
 			search_match: None,
 			focused: true,
+			dim: None,
 			padding: Some(Rect {
 				x: 1,
 				y: 2,

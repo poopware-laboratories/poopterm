@@ -8,6 +8,8 @@ pub(crate) mod chrome;
 #[cfg(test)]
 mod chrome_scene_tests;
 pub(crate) mod damage;
+#[cfg(test)]
+mod dim_tests;
 pub(crate) mod fit;
 pub(crate) mod fxhash;
 pub(crate) mod glyphs;

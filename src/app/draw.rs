@@ -232,6 +232,7 @@ impl App {
 			search_match: self.search_matches.get(self.search_match_index).copied(),
 			focused: self.focused,
 			padding: Some(padding),
+			dim: None,
 		}
 	}
 

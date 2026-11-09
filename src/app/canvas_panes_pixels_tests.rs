@@ -116,6 +116,7 @@ fn views<'a>(places: &[Place], frames: &'a [Frame], key: DrawKey) -> Vec<GridVie
 				search_match: key.search_match,
 				focused: key.focused,
 				padding: None,
+				dim: None,
 			};
 			window.in_pane(frame, place.rect, pad, place.id == key.session)
 		})

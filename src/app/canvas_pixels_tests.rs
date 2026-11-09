@@ -58,6 +58,7 @@ fn draw(
 		search_match: key.search_match,
 		focused: key.focused,
 		padding: None,
+		dim: None,
 	};
 	draw_grid(&mut painter, fonts, &view, rows);
 }
