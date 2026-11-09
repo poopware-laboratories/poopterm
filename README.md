@@ -17,8 +17,9 @@
 
 ![Poopterm showing a cargo build, a benchmark table, styled text, emoji and a truecolor gradient in the Poop theme](assets/screenshot.png)
 
-Poopterm handles real-world output at 75–375 MB/s end to end (137 MB/s
-overall, images included) on a low-power laptop CPU; see
+Poopterm handles real-world output at 67–280 MB/s end to end (126 MB/s
+overall, images included) on a low-power laptop CPU, within 10% of what
+the kernel's PTY itself delivers on 13 of 17 workloads; see
 [performance](docs/performance.md). It runs on Linux, macOS and FreeBSD.
 Terminal compatibility is growing and is not yet a complete xterm
 implementation; see [protocols and compatibility](docs/protocols.md).

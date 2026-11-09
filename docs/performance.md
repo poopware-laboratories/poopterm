@@ -196,7 +196,84 @@ noise.
 
 ## Results
 
-Intel i3-N305 (8 E-cores, AVX2), Linux, plain release build (no PGO).
+Intel i3-N305 (8 E-cores, AVX2), Linux 7.3 (CachyOS), sway, `performance`
+governor, plain release build (no PGO) of 26.11.51 (`0bd2aad`), the first
+with every PTY on our own layer. 16 MiB per workload, five runs each,
+median MB/s with the slowest and fastest run; the overall row is total
+bytes over total time.
+
+**Headless and through a PTY**, `poopterm --benchmark --stages all
+--repeat 5` at 120×40. `parse` feeds the parser from memory, `+render` adds
+a frame every MiB, `pty` is `cat` through a real PTY (the kernel's
+ceiling), and `+pipeline` is our reader and parser threads behind that PTY,
+cooked (`\n` becomes `\r\n` in the kernel) and raw:
+
+| Workload | parse | +render | pty | pty raw | +pipeline | +pipeline raw |
+|---|--:|--:|--:|--:|--:|--:|
+| log | 421 (387–436) | 320 (310–335) | 95 (93–107) | 346 (335–357) | 97 (95–101) | 313 (277–318) |
+| compiler | 260 (254–262) | 233 (230–238) | 84 (82–88) | 351 (326–362) | 84 (83–84) | 198 (194–202) |
+| ls | 318 (302–330) | 275 (266–283) | 85 (84–95) | 360 (347–364) | 80 (80–84) | 242 (237–243) |
+| source | 223 (218–224) | 199 (165–203) | 121 (114–124) | 356 (349–369) | 112 (111–114) | 176 (173–178) |
+| unicode | 193 (184–198) | 175 (174–177) | 78 (74–80) | 353 (338–359) | 77 (76–82) | 156 (149–161) |
+| cjk | 226 (220–228) | 208 (203–211) | 76 (75–82) | 354 (339–373) | 72 (71–75) | 180 (171–180) |
+| emoji | 178 (169–179) | 165 (163–168) | 64 (63–66) | 346 (342–358) | 63 (62–68) | 143 (141–144) |
+| tui | 327 (292–333) | 272 (233–281) | 278 (275–300) | 352 (346–366) | 245 (244–253) | 245 (241–249) |
+| editor | 338 (324–345) | 279 (231–291) | 198 (192–205) | 345 (329–349) | 185 (183–193) | 255 (254–255) |
+| progress | 464 (434–465) | 373 (348–382) | 275 (245–297) | 354 (347–374) | 263 (247–276) | 323 (318–335) |
+| truecolor | 309 (300–314) | 248 (240–255) | 264 (259–268) | 350 (347–357) | 221 (208–239) | 240 (227–243) |
+| cursor | 226 (222–227) | 209 (208–214) | 264 (252–273) | 353 (343–364) | 181 (171–183) | 177 (175–179) |
+| shell | 202 (199–205) | 183 (170–187) | 99 (96–113) | 346 (345–353) | 98 (97–106) | 162 (161–167) |
+| sixel | 193 (189–195) | 152 (149–152) | 294 (287–313) | 347 (343–358) | 158 (154–159) | 152 (151–153) |
+| kitty-rgba | 1187 (1040–1291) | 602 (567–620) | 273 (259–291) | 343 (312–348) | 264 (262–267) | 299 (297–303) |
+| kitty-png | 144 (140–144) | 119 (96–126) | 292 (277–304) | 340 (325–364) | 122 (117–123) | 116 (115–121) |
+| kitty-zlib | 304 (294–307) | 237 (226–241) | 290 (278–302) | 345 (341–347) | 240 (236–243) | 226 (218–234) |
+| **overall** | **257** | **219** | **133** | **349** | **119** | **195** |
+
+Kernel-bound (`+pipeline` at 90% or more of `pty`): cooked, log, compiler,
+ls, source, unicode, cjk, emoji, editor, progress, shell and kitty-rgba;
+raw, log and progress.
+
+**End to end in a window**, `poopterm --benchmark --terminal --repeat 5`
+as the shell of a Poopterm window (GPU renderer) of 86×42 cells, beside
+the PTY ceiling measured in the same run:
+
+| Workload | pty | pty raw | terminal | terminal raw |
+|---|--:|--:|--:|--:|
+| log | 101 (94–103) | 364 (361–371) | 99 (95–110) | 322 (314–323) |
+| compiler | 86 (82–89) | 345 (333–354) | 88 (86–89) | 206 (204–209) |
+| ls | 96 (85–109) | 357 (345–366) | 96 (94–100) | 255 (249–258) |
+| source | 118 (109–131) | 345 (344–353) | 117 (116–119) | 176 (175–178) |
+| unicode | 80 (78–82) | 344 (328–361) | 76 (75–77) | 157 (147–158) |
+| cjk | 77 (74–78) | 348 (338–372) | 77 (71–82) | 178 (170–184) |
+| emoji | 67 (65–79) | 355 (329–365) | 67 (67–70) | 144 (143–145) |
+| tui | 277 (273–285) | 348 (345–356) | 270 (263–272) | 324 (319–325) |
+| editor | 206 (195–215) | 357 (343–359) | 196 (194–198) | 256 (254–257) |
+| progress | 275 (245–282) | 355 (346–366) | 266 (261–268) | 359 (350–359) |
+| truecolor | 254 (249–281) | 351 (336–357) | 259 (253–261) | 263 (251–268) |
+| cursor | 277 (268–291) | 348 (342–356) | 193 (192–194) | 187 (183–192) |
+| shell | 105 (98–119) | 347 (312–357) | 99 (92–101) | 168 (164–171) |
+| sixel | 293 (279–299) | 351 (342–359) | 157 (150–159) | 152 (149–153) |
+| kitty-rgba | 305 (294–308) | 345 (323–371) | 280 (258–290) | 478 (477–494) |
+| kitty-png | 297 (284–308) | 344 (332–354) | 123 (104–124) | 119 (112–122) |
+| kitty-zlib | 298 (286–300) | 346 (339–356) | 252 (248–259) | 249 (246–257) |
+| **overall** | **138** | **350** | **126** | **206** |
+
+Kernel-bound (terminal at 90% or more of the PTY): cooked, every workload
+but cursor, sixel, kitty-png and kitty-zlib; raw, tui, progress and
+kitty-rgba. Resident memory went from 67 to 143 MiB over the run.
+
+Cooked, as programs normally write, the kernel's newline translation sets
+the pace: text workloads arrive at 63–120 MB/s whatever the terminal does,
+and Poopterm reaches 90% of that ceiling on 13 of 17 workloads. Raw, the
+parser is the limit again, and the window runs within a few percent of the
+headless pipeline (206 against 195 MB/s overall). Below 200 MB/s even
+headless are emoji, kitty-png, unicode and sixel; through the raw pipeline
+also compiler, source, cjk, cursor and shell. Kitty RGBA raw measured above
+`cat`'s raw ceiling in this run; that has not been looked into yet.
+
+### 26.10 results
+
+The same machine, plain release builds.
 **Headless** is `poopterm --benchmark --mib 16 --no-render` at 120×40,
 starting from a full scrollback, median of 3 runs: first at 26.10.3 plus
 the synchronized-output and combining-mark changes below (`d48ebd6`), then
