@@ -173,11 +173,7 @@ fn arguments_past_the_systems_limit_fail_with_e2big() {
 
 #[test]
 fn control_d_typed_on_the_master_ends_the_input() {
-	let pair = pty();
-	let mut child = spawn(&Command::new("cat"), &pair.slave).unwrap();
-	let mut master = File::from(pair.master.try_clone().unwrap());
-	master.write_all(b"\x04").unwrap();
-	assert_eq!(child.wait().unwrap(), Exit::Code(0));
+	assert_eq!(typed_once_ready(&pty(), "exec cat", b"\x04"), Exit::Code(0));
 }
 
 #[test]
@@ -589,12 +585,33 @@ fn an_empty_path_entry_is_the_current_directory() {
 fn control_c_typed_on_the_master_interrupts_the_program() {
 	// Only the terminal's foreground group gets it, so this needs both the
 	// controlling terminal and default SIGINT handling.
-	let pair = pty();
-	let mut child = waiting(&pair);
+	let exit = typed_once_ready(&pty(), "read line", b"\x03");
+	assert_eq!(exit, Exit::Signal(libc::SIGINT));
+}
+
+/// Runs `script` on `pair`, types `keys` on the master once it is running
+/// (macOS loses control characters typed while it starts), and says how it
+/// ended. A program still running after 10 s is killed, so a test fails
+/// instead of hanging.
+fn typed_once_ready(pair: &device::Pair, script: &str, keys: &[u8]) -> Exit {
+	let script = format!("echo ready; {script}");
+	let mut child = spawn(&Command::new("sh").arg("-c").arg(script), &pair.slave).unwrap();
+	let shown = watch(pair.master.try_clone().unwrap());
+	until(&shown, "ready");
 	File::from(pair.master.try_clone().unwrap())
-		.write_all(b"\x03")
+		.write_all(keys)
 		.unwrap();
-	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGINT));
+	let pid = child.id() as libc::pid_t;
+	let (ended, watchdog) = mpsc::channel::<()>();
+	thread::spawn(move || {
+		if watchdog.recv_timeout(Duration::from_secs(10)).is_err() {
+			// SAFETY: signals only the child we started, not yet reaped.
+			unsafe { libc::kill(pid, libc::SIGKILL) };
+		}
+	});
+	let exit = child.wait().unwrap();
+	let _ = ended.send(());
+	exit
 }
 
 #[test]
