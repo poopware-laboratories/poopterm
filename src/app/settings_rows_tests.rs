@@ -14,7 +14,7 @@ use crate::{
 	config::Preferences, input::shortcuts::Shortcuts, theme::ThemeKind, ui::diagnostics_page::Section,
 };
 
-fn editor() -> SettingsEditor {
+pub(super) fn editor() -> SettingsEditor {
 	SettingsEditor {
 		theme: ThemeKind::MacOsDark,
 		preferences: Preferences::default(),

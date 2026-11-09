@@ -18,11 +18,19 @@ pub(crate) enum PaneCommand {
 	Cycle(isize),
 }
 
+type Binding = (
+	&'static str,
+	&'static str,
+	PaneCommand,
+	&'static str,
+	&'static str,
+);
+
 /// Each binding's config key, Settings label, what it does, and its macOS
 /// and other default. Elsewhere brackets go with ctrl+alt: shift makes them
 /// braces.
 #[rustfmt::skip]
-const BINDINGS: [(&str, &str, PaneCommand, &str, &str); 8] = [
+const BINDINGS: [Binding; 8] = [
 	("shortcut_split_right", "Split right", PaneCommand::Split(Split::Right), "super+d", "ctrl+shift+d"),
 	("shortcut_split_down", "Split down", PaneCommand::Split(Split::Down), "super+shift+d", "ctrl+shift+e"),
 	("shortcut_focus_pane_left", "Focus pane left", PaneCommand::Focus(Direction::Left), "super+alt+left", "ctrl+alt+left"),
@@ -45,15 +53,7 @@ pub(crate) const COMMANDS: [PaneCommand; 8] = {
 };
 
 /// `command`'s binding row.
-fn binding(
-	command: PaneCommand,
-) -> &'static (
-	&'static str,
-	&'static str,
-	PaneCommand,
-	&'static str,
-	&'static str,
-) {
+fn binding(command: PaneCommand) -> &'static Binding {
 	(BINDINGS.iter())
 		.find(|binding| binding.2 == command)
 		.expect("every command has a binding")

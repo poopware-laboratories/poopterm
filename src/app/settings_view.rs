@@ -317,7 +317,7 @@ pub(super) fn compose_layout_settings(
 /// The main page: theme, wallpaper, steppers and session restore.
 /// A page of shortcut `rows` under its title and hint, each row's action
 /// with its binding on a button, or a prompt while it is being recorded.
-fn compose_shortcuts(
+pub(super) fn compose_shortcuts(
 	editor: &SettingsEditor,
 	(title, hint, rows): (&str, &str, &[(ShortcutAction, usize)]),
 	style: ButtonStyle,

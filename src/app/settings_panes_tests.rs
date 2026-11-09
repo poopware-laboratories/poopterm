@@ -2,11 +2,20 @@
 //! row that records a new binding, all of them clear the footer at the
 //! smallest window size, and the Shortcuts page keeps only its own.
 use super::{
+	SettingsEditor,
 	settings_hit::{SettingsPage, SettingsTarget, settings_target},
-	settings_view::{MIN_SIZE, PANE_ROWS, ROW_HEIGHT, SHORTCUT_ROWS},
+	settings_pen_tests::{buttons, record, texts},
+	settings_rows_tests::editor,
+	settings_view::{MIN_SIZE, PANE_ROWS, ROW_HEIGHT, SHORTCUT_ROWS, compose_shortcuts},
 };
-use crate::input::{pane_shortcuts::PaneCommand, shortcuts::ShortcutAction};
-use crate::ui::panes::{Direction, Split};
+use crate::{
+	input::{
+		pane_shortcuts::PaneCommand,
+		shortcuts::{Shortcut, ShortcutAction},
+	},
+	render::scene::Command,
+	ui::panes::{Direction, Split},
+};
 
 const SIZE: (usize, usize) = (760, 640);
 
@@ -115,4 +124,88 @@ fn clicks_left_of_the_buttons_record_nothing() {
 	for &(_, top) in &PANE_ROWS {
 		assert_eq!(target(SettingsPage::Panes, (40, top + 5), SIZE, 1), None);
 	}
+}
+
+/// The Panes page drawn for `editor` at `scale`, the pointer at `cursor`
+/// in physical pixels.
+fn drawn(editor: &SettingsEditor, scale: usize, cursor: (usize, usize)) -> Vec<Command> {
+	let hovered = |x: usize, y: usize, w: usize, h: usize| {
+		(x..x + w).contains(&cursor.0) && (y..y + h).contains(&cursor.1)
+	};
+	record(scale, |pen, p, style| {
+		let page = ("Pane shortcuts", "Split a tab into panes.", &PANE_ROWS[..]);
+		compose_shortcuts(editor, page, style, p, pen, &hovered)
+	})
+}
+
+const AWAY: (usize, usize) = (0, 0);
+
+#[test]
+fn the_page_shows_each_pane_action_with_its_binding() {
+	let editor = editor();
+	let mac = cfg!(target_os = "macos");
+	for scale in [1, 2] {
+		let shown: Vec<String> = texts(&drawn(&editor, scale, AWAY))
+			.into_iter()
+			.map(|(text, _)| text)
+			.collect();
+		assert_eq!(shown[..2], ["Pane shortcuts", "Split a tab into panes."]);
+		for (i, &(action, _)) in PANE_ROWS.iter().enumerate() {
+			// Each row draws its label, then its binding on the button.
+			assert_eq!(shown[2 + 2 * i], action.label(), "{action:?}");
+			let binding = editor.shortcuts.get(action).display(mac);
+			assert_eq!(shown[3 + 2 * i], binding, "{action:?}");
+		}
+		assert_eq!(shown.len(), 2 + 2 * PANE_ROWS.len());
+	}
+}
+
+#[test]
+fn each_row_has_one_button_on_its_line_lit_only_under_the_pointer() {
+	let editor = editor();
+	let quiet = buttons(&drawn(&editor, 1, AWAY));
+	assert_eq!(quiet.len(), PANE_ROWS.len());
+	for ((rect, lit), &(_, top)) in quiet.iter().zip(&PANE_ROWS) {
+		assert_eq!(rect.1, top, "on its row");
+		assert_eq!(rect.3, ROW_HEIGHT);
+		assert!(!lit);
+	}
+	let (rect, _) = quiet[3];
+	let over = buttons(&drawn(&editor, 1, (rect.0 + 4, rect.1 + 4)));
+	let lit: Vec<_> = over.iter().map(|(_, lit)| *lit).collect();
+	assert_eq!(lit, [false, false, false, true, false, false, false, false]);
+}
+
+#[test]
+fn a_row_being_recorded_asks_for_keys_and_stays_lit() {
+	let mut editor = editor();
+	let down = ShortcutAction::Pane(PaneCommand::Split(Split::Down));
+	editor.recording_shortcut = Some(down);
+	let commands = drawn(&editor, 1, AWAY);
+	let shown: Vec<String> = texts(&commands).into_iter().map(|(text, _)| text).collect();
+	assert_eq!(shown[5], "Press keys…");
+	assert_eq!(
+		shown.iter().filter(|text| *text == "Press keys…").count(),
+		1
+	);
+	let lit: Vec<_> = buttons(&commands).iter().map(|(_, lit)| *lit).collect();
+	assert_eq!(lit, [false, true, false, false, false, false, false, false]);
+}
+
+#[test]
+fn a_changed_binding_shows_on_its_row() {
+	let mut editor = editor();
+	let next = ShortcutAction::Pane(PaneCommand::Cycle(1));
+	editor
+		.shortcuts
+		.set(next, Shortcut::parse("ctrl+alt+n").unwrap());
+	let shown: Vec<String> = texts(&drawn(&editor, 1, AWAY))
+		.into_iter()
+		.map(|(text, _)| text)
+		.collect();
+	let mac = cfg!(target_os = "macos");
+	let expected = Shortcut::parse("ctrl+alt+n").unwrap().display(mac);
+	// Next pane is the seventh row.
+	assert_eq!(shown[2 + 2 * 6], "Next pane");
+	assert_eq!(shown[3 + 2 * 6], expected);
 }
