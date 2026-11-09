@@ -172,6 +172,42 @@ fn a_process_that_does_not_exist_cannot_be_added() {
 }
 
 #[test]
+fn only_a_positive_pid_names_a_program() {
+	// `kill` takes 0 and below as process groups, ours among them; none of
+	// them is a program that could end.
+	let exits = Exits::new().unwrap();
+	for pid in [0, -1, -2, libc::pid_t::MIN] {
+		assert!(exits.add(pid).is_err(), "{pid} was taken");
+	}
+}
+
+#[test]
+fn an_end_is_reported_at_once_not_at_the_next_poll() {
+	let exits = Exits::new().unwrap();
+	let (mut child, _pair) = start("read line");
+	assert!(exits.add(pid(&child)).unwrap());
+	thread::sleep(Duration::from_millis(50));
+	let asked = std::time::Instant::now();
+	child.hang_up().unwrap();
+	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
+	let took = asked.elapsed();
+	assert!(took < Duration::from_millis(500), "reported after {took:?}");
+	child.wait().unwrap();
+}
+
+#[test]
+fn a_set_keeps_watching_as_programs_come_and_go() {
+	let exits = Exits::new().unwrap();
+	for n in 0..30 {
+		let (mut child, _pair) = start(&format!("exit {}", n % 3));
+		if exits.add(pid(&child)).unwrap() {
+			assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]), "round {n}");
+		}
+		assert_eq!(child.wait().unwrap(), Exit::Code(n % 3));
+	}
+}
+
+#[test]
 fn separate_sets_report_only_their_own_children() {
 	let (one, two) = (
 		Arc::new(Exits::new().unwrap()),

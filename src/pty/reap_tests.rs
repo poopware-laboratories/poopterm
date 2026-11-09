@@ -331,3 +331,30 @@ fn more_children_ending_at_once_than_one_wait_takes_all_arrive() {
 	let all: Vec<_> = (0..40).map(|_| within_ok(&ended)).collect();
 	assert_eq!(all, vec![Exit::Code(0); 40]);
 }
+
+#[test]
+fn a_shell_that_leaves_a_job_running_is_reaped_when_it_exits() {
+	// Its background job still holds the terminal; the shell's end is
+	// its own, not the job's.
+	let reaper = Reaper::new().unwrap();
+	let (child, _pair) = start("sleep 3 & exit 3");
+	let started = std::time::Instant::now();
+	assert_eq!(within(&watched(&reaper, child), 5), Exit::Code(3));
+	assert!(
+		started.elapsed() < Duration::from_secs(2),
+		"waited for the job"
+	);
+}
+
+#[test]
+fn one_reaper_lasts_for_many_shells_over_time() {
+	let reaper = Reaper::new().unwrap();
+	for n in 0..30 {
+		let (child, _pair) = start(&format!("exit {}", n % 4));
+		assert_eq!(
+			within(&watched(&reaper, child), 5),
+			Exit::Code(n % 4),
+			"shell {n}"
+		);
+	}
+}

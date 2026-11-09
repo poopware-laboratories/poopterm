@@ -165,11 +165,12 @@ fn kevent(ident: usize, filter: i16, flags: u16, fflags: u32) -> libc::kevent {
 	event
 }
 
-/// Whether a process `pid` exists, a zombie included.
+/// Whether a process `pid` exists, a zombie included. Not 0 or less, which
+/// `kill` takes as process groups.
 #[cfg(not(target_os = "linux"))]
 fn exists(pid: libc::pid_t) -> bool {
 	// SAFETY: signal 0 sends nothing; it only checks the pid.
-	unsafe { libc::kill(pid, 0) == 0 }
+	pid > 0 && unsafe { libc::kill(pid, 0) == 0 }
 }
 
 #[cfg(not(target_os = "linux"))]
