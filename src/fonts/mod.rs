@@ -32,6 +32,8 @@ mod morx;
 #[cfg(test)]
 mod morx_build_tests;
 #[cfg(test)]
+mod morx_face_tests;
+#[cfg(test)]
 mod morx_font_tests;
 #[cfg(test)]
 mod morx_hostile_tests;
