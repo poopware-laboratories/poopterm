@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.53 "Lunar Moth" — 2026-11-09
+
+### Maintenance
+
+- Bump unicode-width from 0.2.2 to 0.2.3 (#237) (deps).
+
 ## 26.11.52 "Lunar Moth" — 2026-11-09
 
 ### Maintenance
