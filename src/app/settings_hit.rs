@@ -34,6 +34,7 @@ pub(super) enum SettingsTarget {
 	ToggleNewTabButton,
 	ToggleSettingsButton,
 	ToggleBottomBar,
+	ToggleWindowFrame,
 	SetShortcut(ShortcutAction),
 	/// A visible row of the font list, counted from the top.
 	FontRow(usize),
@@ -53,12 +54,13 @@ pub(super) fn font_list_rows(height: usize, scale: usize) -> usize {
 }
 
 /// Toggles on the Layout page.
-pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 5] = [
+pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 6] = [
 	(SHOW_TABS_ROW, SettingsTarget::ToggleTabs),
 	(COMPACT_TABS_ROW, SettingsTarget::ToggleCompactTabs),
 	(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 	(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
 	(BOTTOM_BAR_ROW, SettingsTarget::ToggleBottomBar),
+	(FRAME_ROW, SettingsTarget::ToggleWindowFrame),
 ];
 
 /// Maps a click at physical `(x, y)` to the control under it.
@@ -414,6 +416,7 @@ mod tests {
 			(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 			(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
 			(BOTTOM_BAR_ROW, SettingsTarget::ToggleBottomBar),
+			(FRAME_ROW, SettingsTarget::ToggleWindowFrame),
 		];
 		for (row, target) in expected {
 			assert_eq!(layout(row), Some(target), "row {row}");
@@ -488,8 +491,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_layout_page_keeps_five_switches_and_the_segmented_row_between_them() {
-		assert_eq!(LAYOUT_TOGGLES.len(), 5);
+	fn the_layout_page_keeps_six_switches_and_the_segmented_row_between_them() {
+		assert_eq!(LAYOUT_TOGGLES.len(), 6);
 		assert!(
 			LAYOUT_TOGGLES
 				.iter()

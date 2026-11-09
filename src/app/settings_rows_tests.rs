@@ -225,13 +225,13 @@ fn the_tab_position_row_sits_between_the_switch_rows_in_the_order_it_was_listed(
 }
 
 #[test]
-fn the_layout_page_draws_five_switches_and_one_control_with_a_stepper_at_every_scale() {
+fn the_layout_page_draws_six_switches_and_one_control_with_a_stepper_at_every_scale() {
 	for scale in [1, 2] {
 		let commands = layout_page(true, scale);
 		let pills = round_rects(&commands);
-		// Five switches draw a track and a knob each, the segmented control a
+		// Six switches draw a track and a knob each, the segmented control a
 		// track and a filled segment.
-		assert_eq!(pills.len(), 5 * 2 + 2, "x{scale}");
+		assert_eq!(pills.len(), 6 * 2 + 2, "x{scale}");
 		assert_eq!(
 			buttons(&commands).len(),
 			2,
@@ -251,4 +251,38 @@ fn nothing_on_the_layout_page_reaches_the_footer_in_the_smallest_window() {
 			assert!(rect.1 + rect.3 <= footer, "x{scale}: {rect:?}");
 		}
 	}
+}
+
+fn frame_switch_knob(frameless: bool) -> (usize, usize, usize, usize) {
+	let mut editor = editor();
+	editor.preferences.window_frame = if frameless {
+		crate::ui::frame::WindowFrame::Frameless
+	} else {
+		crate::ui::frame::WindowFrame::Normal
+	};
+	let commands = record(1, |pen, p, style| {
+		(p.width, p.height) = MIN_SIZE;
+		compose_layout_settings(&editor, style, p, pen)
+	});
+	// The knob is the last pill drawn inside the frame switch's row.
+	let row = super::settings_view::FRAME_ROW..super::settings_view::FRAME_ROW + 36;
+	let pills = round_rects(&commands);
+	*pills
+		.iter()
+		.rfind(|rect| row.contains(&rect.1))
+		.expect("a knob")
+}
+
+#[test]
+fn the_layout_page_has_a_square_window_switch_below_the_padding_stepper() {
+	let rows = texts(&layout_page(false, 1));
+	let row = |label: &str| rows.iter().find(|(text, _)| text == label).unwrap().1.1;
+	assert!(row("Padding") < row("Square window (no title bar)"));
+}
+
+#[test]
+fn the_square_window_knob_sits_right_when_on_and_left_when_off() {
+	let (off, on) = (frame_switch_knob(false), frame_switch_knob(true));
+	assert!(on.0 > off.0, "{on:?} against {off:?}");
+	assert_eq!((on.1, on.2, on.3), (off.1, off.2, off.3));
 }

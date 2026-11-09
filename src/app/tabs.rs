@@ -6,21 +6,18 @@ use std::fs;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
+use crate::ui::frame::{tab_bar_top, traffic_lights_reserve};
 impl App {
 	/// Room left of the tabs: for the window buttons on macOS.
 	pub(super) fn tab_left_reserve(&self) -> usize {
-		(if cfg!(target_os = "macos") { 80 } else { 0 }) * self.scale()
+		traffic_lights_reserve(self.window_frame, cfg!(target_os = "macos")) * self.scale()
 	}
 
 	pub(super) fn tab_y(&self) -> usize {
 		if self.preferences.show_tabs && self.preferences.vertical_tabs {
 			return self.vertical_tab_layout().tab_start_y;
 		}
-		if cfg!(target_os = "macos") {
-			self.titlebar_height.saturating_sub(self.tab_height) / 2
-		} else {
-			self.top.saturating_sub(self.tab_height)
-		}
+		tab_bar_top(self.titlebar_height, self.tab_height)
 	}
 
 	/// Where the window buttons sit in the header.

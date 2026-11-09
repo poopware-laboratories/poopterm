@@ -30,6 +30,9 @@ mod diagnostics_tests;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;
+pub(crate) mod frame;
+#[cfg(test)]
+mod frame_tests;
 pub(crate) mod header;
 pub(crate) mod header_target;
 #[cfg(test)]

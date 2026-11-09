@@ -32,6 +32,7 @@ pub(super) const SETTINGS_BUTTON_ROW: usize = 248;
 pub(super) const BOTTOM_BAR_ROW: usize = 296;
 pub(super) const COMPACT_TABS_ROW: usize = 344;
 pub(super) const PADDING_ROW: usize = 392;
+pub(super) const FRAME_ROW: usize = 440;
 /// Shortcut rows sit closer than other pages' rows so all ten clear the
 /// footer at the smallest window size.
 pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 10] = {
@@ -287,7 +288,13 @@ pub(super) fn compose_layout_settings(
 ) {
 	let x = 24 * pen.scale;
 	pen.text(p, x, 28, "Layout", 1.0);
-	pen.text(p, x, 68, "Tabs, toolbar buttons, and the bottom bar.", 0.72);
+	pen.text(
+		p,
+		x,
+		68,
+		"Tabs, toolbar buttons, the bottom bar, and the window frame.",
+		0.72,
+	);
 	let prefs = editor.preferences;
 	for (row, label, enabled) in [
 		(SHOW_TABS_ROW, "Show tabs", prefs.show_tabs),
@@ -303,6 +310,11 @@ pub(super) fn compose_layout_settings(
 		),
 		(BOTTOM_BAR_ROW, "Show bottom bar", prefs.show_bottom_bar),
 		(COMPACT_TABS_ROW, "Compact tabs", prefs.compact_tabs),
+		(
+			FRAME_ROW,
+			"Square window (no title bar)",
+			prefs.window_frame.is_frameless(),
+		),
 	] {
 		pen.text(p, x, row + 8, label, 0.82);
 		pen.switch(p, style, row, enabled);
