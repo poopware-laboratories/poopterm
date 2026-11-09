@@ -1,10 +1,24 @@
 //! Text and widgets shared by the Settings window's pages.
 use super::settings_view::ROW_HEIGHT;
 use crate::render::{
+	blend::blend,
 	painter::ButtonStyle,
 	scene::{Rect, Scene},
 };
 use crate::ui::{settings_layout::FOOTER, ui_font::ellipsize_to_width};
+
+/// The switch of `row` in a window `width` physical pixels wide: 34 by 20,
+/// 24 from the right edge, centered on the row's 40 pixels.
+pub(super) fn switch_rect(width: usize, row: usize, s: usize) -> Rect {
+	(width.saturating_sub(58 * s), (row + 10) * s, 34 * s, 20 * s)
+}
+
+/// Where a click flips the switch of `row`: the switch with eight pixels
+/// either side, across the whole row.
+pub(super) fn switch_hit(width: usize, row: usize, s: usize) -> Rect {
+	let (x, _, w, _) = switch_rect(width, row, s);
+	(x.saturating_sub(8 * s), row * s, w + 16 * s, ROW_HEIGHT * s)
+}
 
 /// The footer's button, `button_w` logical pixels wide, in a window
 /// `(width, height)` physical pixels large: 20 from the right edge.
@@ -147,13 +161,20 @@ impl Pen<'_> {
 		self.text(p, p.width.saturating_sub(180 * s), row + 8, value, 0.82);
 	}
 
-	/// An Enabled/Disabled toggle at the right of `row`.
-	pub(super) fn toggle(&mut self, p: &mut Scene, style: ButtonStyle, row: usize, enabled: bool) {
+	/// A switch at the right of `row`: a pill track and a round knob that
+	/// sits at the track's right end when `on`.
+	pub(super) fn switch(&mut self, p: &mut Scene, style: ButtonStyle, row: usize, on: bool) {
 		let s = self.scale;
-		let x = p.width.saturating_sub(240 * s);
-		p.button((x, row * s, 216 * s, ROW_HEIGHT * s), style, enabled);
-		let state = if enabled { "Enabled" } else { "Disabled" };
-		self.text(p, x + 16 * s, row + 8, state, 0.82);
+		let (x, y, w, h) = switch_rect(p.width, row, s);
+		let track = if on {
+			style.accent
+		} else {
+			blend(style.background, style.border, 120)
+		};
+		p.round_rect(x, y, w, h, h / 2, track);
+		let knob = 16 * s;
+		let left = if on { x + w - 2 * s - knob } else { x + 2 * s };
+		p.round_rect(left, y + 2 * s, knob, knob, knob / 2, 0xffffff);
 	}
 
 	/// `text` cut with an ellipsis to fit `width` physical pixels at `size`

@@ -1,6 +1,9 @@
 //! Tests of the Settings window's widgets, read from the scene they record:
 //! which buttons, where, lit or not, and the text inside them.
-use super::{settings_pen::Pen, settings_view::ROW_HEIGHT};
+use super::{
+	settings_pen::{Pen, switch_hit, switch_rect},
+	settings_view::ROW_HEIGHT,
+};
 use crate::{
 	fonts::{BUNDLED, Font},
 	render::{
@@ -70,15 +73,89 @@ fn pen_text_scales_its_row_and_size_but_not_its_column() {
 	}
 }
 
+/// The round rectangles a switch records, as `(rect, radius, color)`.
+fn pills(commands: &[Command]) -> Vec<(Rect, usize, u32)> {
+	commands
+		.iter()
+		.filter_map(|command| match *command {
+			Command::RoundRect(rect, radius, color) => Some((rect, radius, color)),
+			_ => None,
+		})
+		.collect()
+}
+
 #[test]
-fn a_toggle_lights_its_button_only_when_enabled_and_says_so() {
-	for (enabled, word) in [(true, "Enabled"), (false, "Disabled")] {
-		let commands = record(1, |pen, p, style| pen.toggle(p, style, 200, enabled));
-		assert_eq!(buttons(&commands), [((660, 200, 216, ROW_HEIGHT), enabled)]);
-		let texts = texts(&commands);
-		assert_eq!(texts.len(), 1);
-		assert_eq!(texts[0].0, word);
-		assert!(inside(texts[0].1, (660, 200, 216, ROW_HEIGHT)), "{texts:?}");
+fn a_switch_is_a_pill_track_with_a_round_knob_at_the_row_right() {
+	for scale in [1, 2] {
+		let s = scale;
+		let commands = record(scale, |pen, p, style| pen.switch(p, style, 200, false));
+		let drawn = pills(&commands);
+		assert_eq!(drawn.len(), 2, "x{s}");
+		let track = ((900 - 58) * s, 210 * s, 34 * s, 20 * s);
+		assert_eq!((drawn[0].0, drawn[0].1), (track, 10 * s), "x{s} track");
+		let knob = (track.0 + 2 * s, track.1 + 2 * s, 16 * s, 16 * s);
+		assert_eq!((drawn[1].0, drawn[1].1), (knob, 8 * s), "x{s} knob");
+	}
+}
+
+#[test]
+fn the_knob_slides_to_the_right_end_when_on() {
+	let at = |on| {
+		let commands = record(1, |pen, p, style| pen.switch(p, style, 200, on));
+		pills(&commands)[1].0
+	};
+	assert_eq!(at(true).0 - at(false).0, 14);
+	assert_eq!((at(true).1, at(true).2), (at(false).1, at(false).2));
+	let track = pills(&record(1, |pen, p, style| pen.switch(p, style, 200, true)))[0].0;
+	assert_eq!(
+		at(true).0 + at(true).2 + 2,
+		track.0 + track.2,
+		"two pixels from the track's end"
+	);
+}
+
+#[test]
+fn the_track_takes_the_accent_when_on_and_a_quiet_shade_when_off() {
+	let color = |on| {
+		let commands = record(1, |pen, p, style| pen.switch(p, style, 200, on));
+		pills(&commands)[0].2
+	};
+	assert_eq!(color(true), STYLE.accent);
+	assert_ne!(color(false), STYLE.accent);
+	assert_ne!(color(false), STYLE.background);
+	let knobs: Vec<_> = [true, false]
+		.into_iter()
+		.map(|on| pills(&record(1, |pen, p, style| pen.switch(p, style, 200, on)))[1].2)
+		.collect();
+	assert_eq!(knobs, [0xffffff, 0xffffff]);
+}
+
+#[test]
+fn a_switch_says_nothing_and_draws_no_button() {
+	let commands = record(1, |pen, p, style| pen.switch(p, style, 200, true));
+	assert!(buttons(&commands).is_empty());
+	assert!(texts(&commands).is_empty());
+}
+
+#[test]
+fn the_switch_is_centered_on_its_row() {
+	for row in [100, 250, 468] {
+		let commands = record(1, |pen, p, style| pen.switch(p, style, row, true));
+		let (_, y, _, h) = pills(&commands)[0].0;
+		assert_eq!(y - row, ROW_HEIGHT - (y - row) - h, "row {row}");
+	}
+}
+
+#[test]
+fn the_click_area_is_the_switch_with_eight_pixels_either_side_and_the_whole_row() {
+	for scale in [1, 2] {
+		let s = scale;
+		let (track_x, _, track_w, _) = switch_rect(900 * s, 200, s);
+		let hit = switch_hit(900 * s, 200, s);
+		assert_eq!(
+			hit,
+			(track_x - 8 * s, 200 * s, track_w + 16 * s, ROW_HEIGHT * s)
+		);
 	}
 }
 

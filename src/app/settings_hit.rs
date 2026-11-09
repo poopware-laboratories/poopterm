@@ -1,5 +1,5 @@
 //! Hit-testing for the Settings window: which control a click lands on.
-use super::{settings_diagnostics::diagnostics_target, settings_view::*};
+use super::{settings_diagnostics::diagnostics_target, settings_pen::switch_hit, settings_view::*};
 use crate::{input::shortcuts::ShortcutAction, ui::diagnostics_page::Section};
 
 /// The page the Settings window shows.
@@ -101,10 +101,20 @@ pub(super) fn settings_target(
 				return Some(SettingsTarget::Step(PADDING_ROW, 1));
 			}
 		}
-		if let Some(&(_, target)) = rows
-			.iter()
-			.find(|(row, _)| in_row(*row) && (right(240)..right(24)).contains(&x))
-		{
+		let on_switch = |row: usize| {
+			let (sx, sy, sw, sh) = switch_hit(width, row, s);
+			(sx..sx + sw).contains(&x) && (sy..sy + sh).contains(&y)
+		};
+		let wide = |row: usize| in_row(row) && (right(240)..right(24)).contains(&x);
+		// The Layout page's rows are switches; the Shortcuts page's are wide buttons.
+		let hit = rows.iter().find(|&&(row, _)| {
+			if page == SettingsPage::Layout {
+				on_switch(row)
+			} else {
+				wide(row)
+			}
+		});
+		if let Some(&(_, target)) = hit {
 			return Some(target);
 		}
 		return on_save.then_some(SettingsTarget::Save);
@@ -120,7 +130,8 @@ pub(super) fn settings_target(
 			return Some(SettingsTarget::ClearWallpaper);
 		}
 	}
-	if in_row(RESTORE_ROW) && (right(240)..right(24)).contains(&x) {
+	let (rx, _, rw, _) = switch_hit(width, RESTORE_ROW, s);
+	if in_row(RESTORE_ROW) && (rx..rx + rw).contains(&x) {
 		return Some(SettingsTarget::ToggleRestore);
 	}
 	let step = if (right(240)..right(192)).contains(&x) {
@@ -189,7 +200,7 @@ mod tests {
 			Some(SettingsTarget::ClearWallpaper)
 		);
 		assert_eq!(
-			target(530, RESTORE_ROW + 10),
+			target(720, RESTORE_ROW + 10),
 			Some(SettingsTarget::ToggleRestore)
 		);
 		assert_eq!(
@@ -224,15 +235,15 @@ mod tests {
 			"no back button: the sidebar navigates"
 		);
 		assert_eq!(
-			target(530, SHOW_TABS_ROW + 10),
+			target(720, SHOW_TABS_ROW + 10),
 			Some(SettingsTarget::ToggleTabs)
 		);
 		assert_eq!(
-			target(530, VERTICAL_TABS_ROW + 10),
+			target(720, VERTICAL_TABS_ROW + 10),
 			Some(SettingsTarget::ToggleVerticalTabs)
 		);
 		assert_eq!(
-			target(530, BOTTOM_BAR_ROW + 10),
+			target(720, BOTTOM_BAR_ROW + 10),
 			Some(SettingsTarget::ToggleBottomBar)
 		);
 		assert_eq!(
@@ -342,5 +353,85 @@ mod tests {
 			),
 			Some(SettingsTarget::Step(FONT_ROW, -1))
 		);
+	}
+
+	#[test]
+	fn a_switch_answers_only_on_and_just_beside_itself() {
+		// A 34 pixel switch 24 from the right edge of a 760 wide window.
+		let layout = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
+		let main = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Main);
+		for (x, hit) in [
+			(693, false),
+			(694, true),
+			(720, true),
+			(743, true),
+			(744, false),
+		] {
+			let want = hit.then_some(SettingsTarget::ToggleTabs);
+			assert_eq!(layout(x, SHOW_TABS_ROW + 20), want, "layout x {x}");
+			let want = hit.then_some(SettingsTarget::ToggleRestore);
+			assert_eq!(main(x, RESTORE_ROW + 20), want, "main x {x}");
+		}
+	}
+
+	#[test]
+	fn the_old_wide_button_area_no_longer_flips_anything() {
+		let layout = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
+		for x in [530, 600, 640, 690] {
+			for row in [
+				SHOW_TABS_ROW,
+				VERTICAL_TABS_ROW,
+				COMPACT_TABS_ROW,
+				BOTTOM_BAR_ROW,
+			] {
+				assert_eq!(layout(x, row + 20), None, "x {x} row {row}");
+			}
+		}
+	}
+
+	#[test]
+	fn a_switch_answers_across_the_whole_height_of_its_row_and_no_further() {
+		let layout = |y| settings_target((720, y), SIZE, 1, SettingsPage::Layout);
+		assert_eq!(layout(SHOW_TABS_ROW), Some(SettingsTarget::ToggleTabs));
+		assert_eq!(
+			layout(SHOW_TABS_ROW + ROW_HEIGHT - 1),
+			Some(SettingsTarget::ToggleTabs)
+		);
+		assert_eq!(layout(SHOW_TABS_ROW - 1), None);
+		assert_eq!(layout(SHOW_TABS_ROW + ROW_HEIGHT), None);
+	}
+
+	#[test]
+	fn every_layout_switch_flips_its_own_setting_and_no_other() {
+		let layout = |row| settings_target((720, row + 20), SIZE, 1, SettingsPage::Layout);
+		let expected = [
+			(SHOW_TABS_ROW, SettingsTarget::ToggleTabs),
+			(VERTICAL_TABS_ROW, SettingsTarget::ToggleVerticalTabs),
+			(COMPACT_TABS_ROW, SettingsTarget::ToggleCompactTabs),
+			(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
+			(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
+			(BOTTOM_BAR_ROW, SettingsTarget::ToggleBottomBar),
+		];
+		for (row, target) in expected {
+			assert_eq!(layout(row), Some(target), "row {row}");
+		}
+	}
+
+	#[test]
+	fn switches_answer_at_twice_the_scale_too() {
+		let layout = |x, y| settings_target((x, y), (SIZE.0 * 2, SIZE.1 * 2), 2, SettingsPage::Layout);
+		assert_eq!(
+			layout(1440, (SHOW_TABS_ROW + 20) * 2),
+			Some(SettingsTarget::ToggleTabs)
+		);
+		assert_eq!(layout(1060, (SHOW_TABS_ROW + 20) * 2), None);
+	}
+
+	#[test]
+	fn the_shortcut_buttons_keep_their_wide_area() {
+		let shortcuts = |x, row| settings_target((x, row + 10), SIZE, 1, SettingsPage::Shortcuts);
+		let (_, row) = SHORTCUT_ROWS[0];
+		assert!(shortcuts(530, row).is_some());
+		assert!(shortcuts(720, row).is_some());
 	}
 }

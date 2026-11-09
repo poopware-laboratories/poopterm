@@ -249,7 +249,7 @@ impl App {
 					(COMPACT_TABS_ROW, "Compact tabs", prefs.compact_tabs),
 				] {
 					pen.text(p, x, row + 8, label, 0.82);
-					pen.toggle(p, style, row, enabled);
+					pen.switch(p, style, row, enabled);
 				}
 				pen.text(p, x, PADDING_ROW + 8, "Padding", 0.82);
 				pen.stepper(p, style, PADDING_ROW, &format!("{} px", prefs.padding));
@@ -376,7 +376,7 @@ pub(super) fn compose_main_settings(
 	}
 
 	pen.text(p, x, RESTORE_ROW + 8, "Restore tabs on launch", 0.82);
-	pen.toggle(p, style, RESTORE_ROW, prefs.restore_sessions);
+	pen.switch(p, style, RESTORE_ROW, prefs.restore_sessions);
 }
 
 #[cfg(test)]
