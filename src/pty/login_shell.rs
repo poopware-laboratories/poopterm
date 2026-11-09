@@ -54,9 +54,12 @@ pub(super) fn account_shell() -> Option<String> {
 pub(crate) fn login_shell() -> String {
 	let env = std::env::var("SHELL").ok();
 	let account = account_shell();
-	choose(env.as_deref(), account.as_deref(), |path| {
-		std::path::Path::new(path).is_file()
-	})
+	choose(env.as_deref(), account.as_deref(), is_program)
+}
+
+/// Whether `path` is an existing file (a directory cannot be run as a shell).
+pub(super) fn is_program(path: &str) -> bool {
+	std::path::Path::new(path).is_file()
 }
 
 #[cfg(test)]
