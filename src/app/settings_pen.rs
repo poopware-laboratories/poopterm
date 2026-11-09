@@ -4,7 +4,7 @@ use crate::render::{
 	painter::ButtonStyle,
 	scene::{Rect, Scene},
 };
-use crate::ui::ui_font::ellipsize_to_width;
+use crate::ui::{settings_layout::FOOTER, ui_font::ellipsize_to_width};
 
 /// The "Settings" back button of a window `width` physical pixels wide.
 pub(super) fn back_rect(width: usize, s: usize) -> Rect {
@@ -17,7 +17,7 @@ pub(super) fn footer_rect((width, height): (usize, usize), button_w: usize, s: u
 	let w = button_w * s;
 	(
 		width.saturating_sub(w + 20 * s),
-		height.saturating_sub(52 * s),
+		height.saturating_sub(FOOTER * s),
 		w,
 		36 * s,
 	)

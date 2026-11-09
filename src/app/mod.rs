@@ -37,6 +37,8 @@ mod settings_keys;
 mod settings_pen;
 #[cfg(test)]
 mod settings_pen_tests;
+#[cfg(test)]
+mod settings_rows_tests;
 mod settings_view;
 mod tabs;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
