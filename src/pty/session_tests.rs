@@ -23,6 +23,8 @@ fn fake_shell(name: &str) -> PathBuf {
 		"echo \"TERM_PROGRAM=$TERM_PROGRAM\"\n",
 		"echo \"TERM_PROGRAM_VERSION=$TERM_PROGRAM_VERSION\"\n",
 		"echo \"EXTRA=$POOPTERM_TEST_EXTRA\"\n",
+		"echo \"ZDOTDIR=$ZDOTDIR\"\n",
+		"printf 'BYTES=%s\\n' \"$(printf %s \"$POOPTERM_TEST_BYTES\" | od -An -tx1 | tr -d ' ')\"\n",
 		"sleep 0.2\n",
 	);
 	std::fs::write(&shell, script).unwrap();
@@ -181,4 +183,80 @@ fn many_shells_handed_to_the_reaper_all_go() {
 	for pid in pids {
 		assert!(gone_soon(pid), "{pid} is still a zombie");
 	}
+}
+
+#[test]
+fn integration_variables_win_over_the_users_own() {
+	// zsh's integration points ZDOTDIR at its loader, whatever the user set.
+	let shell = fake_shell("zdotdir");
+	let env = term_env("xterm", &[("ZDOTDIR", "/poopterm/integration")]);
+	let lines = run(&shell, &env, &here());
+	assert_eq!(value(&lines, "ZDOTDIR"), "/poopterm/integration");
+}
+
+#[test]
+fn integration_values_that_are_not_utf8_arrive_unchanged() {
+	use std::os::unix::ffi::OsStringExt;
+	let shell = fake_shell("bytes");
+	let mut env = term_env("xterm", &[]);
+	let bytes = OsString::from_vec(b"\xff/\xfe".to_vec());
+	env.extra.push(("POOPTERM_TEST_BYTES".into(), bytes));
+	let lines = run(&shell, &env, &here());
+	assert_eq!(value(&lines, "BYTES"), "ff2ffe");
+}
+
+#[test]
+fn a_directory_with_spaces_is_the_shells_too() {
+	let shell = fake_shell("spaces");
+	let dir = here().join(format!("poopterm tab dir {}", std::process::id()));
+	std::fs::create_dir_all(&dir).unwrap();
+	let lines = run(&shell, &term_env("xterm", &[]), &dir);
+	std::fs::remove_dir(&dir).unwrap();
+	assert_eq!(value(&lines, "cwd"), dir.to_str().unwrap());
+}
+
+#[test]
+fn a_shell_that_does_not_exist_starts_no_tab() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let command = shell_command(
+		"/nonexistent/poopterm-shell",
+		&term_env("xterm", &[]),
+		&here(),
+	);
+	let error = spawn::spawn(&command, &pair.slave).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
+}
+
+#[test]
+fn a_shell_named_without_a_path_is_found_in_the_tabs_path() {
+	let shell = fake_shell("poopterm-test-shell");
+	let dir = shell.parent().unwrap().to_owned();
+	let search = std::env::join_paths([dir.as_path(), Path::new("/bin"), Path::new("/usr/bin")]);
+	let mut env = term_env("xterm", &[]);
+	env.extra.push(("PATH".into(), search.unwrap()));
+	let lines = run(Path::new("poopterm-test-shell"), &env, &here());
+	// A script's $0 is the path the kernel ran it from: the one in PATH.
+	assert_eq!(value(&lines, "0"), shell.to_str().unwrap());
+}
+
+#[test]
+fn a_hung_up_shell_handed_to_the_reaper_ends_and_is_reaped() {
+	// What a session does as its tab closes.
+	let pair = device::open(WindowSize::default()).unwrap();
+	let command = spawn::Command::new("sh").arg("-c").arg("read line");
+	let child = spawn::spawn(&command, &pair.slave).unwrap();
+	let pid = child.id() as libc::pid_t;
+	child.hang_up().unwrap();
+	reap::reap_later(child);
+	assert!(gone_soon(pid), "{pid} outlived its tab");
+}
+
+#[test]
+fn a_shell_that_ended_before_it_was_handed_over_is_still_reaped() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let child = spawn::spawn(&spawn::Command::new("true"), &pair.slave).unwrap();
+	let pid = child.id() as libc::pid_t;
+	thread::sleep(Duration::from_millis(200));
+	reap::reap_later(child);
+	assert!(gone_soon(pid), "{pid} is still a zombie");
 }
