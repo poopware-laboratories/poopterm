@@ -201,8 +201,8 @@ opens the command palette, **Ctrl+Shift+T** cycles themes, **Cmd+F** /
 above are for macOS. Tab cycling, direct tab selection, and clipboard shortcuts
 are fixed bindings.
 
-Split panes have their own keys, set here only (Settings lists the tab and
-window shortcuts): `shortcut_split_right` (**Cmd+D** / **Ctrl+Shift+D**),
+Split panes have their own keys, also on the **Settings → Panes** page:
+`shortcut_split_right` (**Cmd+D** / **Ctrl+Shift+D**),
 `shortcut_split_down` (**Cmd+Shift+D** / **Ctrl+Shift+E**),
 `shortcut_focus_pane_left`, `shortcut_focus_pane_right`,
 `shortcut_focus_pane_up` and `shortcut_focus_pane_down` (**Cmd+Option** /
