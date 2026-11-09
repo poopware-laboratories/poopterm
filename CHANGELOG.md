@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.57 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Mark tabs that hold split panes with a panes icon (#265) (ui).
+
 ## 26.11.56 "Lunar Moth" — 2026-11-09
 
 ### Added
