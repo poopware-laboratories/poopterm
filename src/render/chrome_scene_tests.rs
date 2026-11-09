@@ -61,7 +61,10 @@ fn assert_inside(scene: &Scene, bounds: Rect, what: &str) {
 	for command in &scene.commands {
 		let reach = match *command {
 			Command::Fill(_) => whole,
-			Command::Rect(rect, _) | Command::RoundRect(rect, ..) | Command::Button(rect, ..) => rect,
+			Command::Rect(rect, _)
+			| Command::RoundRect(rect, ..)
+			| Command::Button(rect, ..)
+			| Command::Focusable(rect) => rect,
 			Command::Text { clip, .. } if clip != whole => clip,
 			Command::Text {
 				at, ref text, px, ..

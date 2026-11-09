@@ -93,6 +93,7 @@ pub(super) fn compose_nav(
 			&& cursor.0 < (x + w) as f64
 			&& cursor.1 >= y as f64
 			&& cursor.1 < (y + h) as f64;
+		p.focusable((x, y, w, h));
 		let open = item == page;
 		if open {
 			p.round_rect(x, y, w, h, radius, blend(colors.chrome, fg, 36));

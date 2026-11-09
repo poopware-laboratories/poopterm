@@ -31,6 +31,9 @@ mod settings_diagnostics_property_tests;
 #[cfg(test)]
 mod settings_diagnostics_tests;
 mod settings_draw;
+mod settings_focus;
+#[cfg(test)]
+mod settings_focus_tests;
 mod settings_fonts;
 #[cfg(test)]
 mod settings_header_tests;
@@ -202,6 +205,8 @@ pub(crate) struct App {
 	command_query: String,
 	/// The palette's selected row, which Enter runs.
 	command_selected: usize,
+	/// The Settings control the keyboard has focused, in Tab order.
+	settings_focus: Option<usize>,
 	renaming_tab: bool,
 }
 
@@ -439,6 +444,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		command_palette: false,
 		command_query: String::new(),
 		command_selected: 0,
+		settings_focus: None,
 		renaming_tab: false,
 	};
 

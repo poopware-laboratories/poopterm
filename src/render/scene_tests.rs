@@ -593,3 +593,56 @@ fn shifting_keeps_every_size_style_and_color_it_does_not_move() {
 		}
 	}
 }
+
+#[test]
+fn a_focusable_rectangle_is_recorded_in_order_and_paints_nothing() {
+	let mut with = Scene::new(100, 50);
+	with.rect(1, 2, 3, 4, 0x222222);
+	with.focusable((10, 10, 20, 20));
+	with.rect(40, 30, 5, 5, 0x333333);
+	let mut without = Scene::new(100, 50);
+	without.rect(1, 2, 3, 4, 0x222222);
+	without.rect(40, 30, 5, 5, 0x333333);
+	assert_eq!(with.commands.len(), 3);
+	assert_eq!(with.commands[1], Command::Focusable((10, 10, 20, 20)));
+	assert_eq!(pixels_of(&with, 100), pixels_of(&without, 100));
+}
+
+#[test]
+fn the_focus_rectangles_are_the_buttons_and_the_focusables_in_drawing_order() {
+	let mut scene = Scene::new(100, 50);
+	scene.rect(0, 0, 9, 9, 0x111111);
+	scene.button((1, 2, 3, 4), STYLE, false);
+	scene.focusable((5, 6, 7, 8));
+	scene.round_rect(20, 20, 8, 8, 2, 0x333333);
+	scene.button((9, 10, 11, 12), STYLE, true);
+	assert_eq!(
+		scene.focus_rects(),
+		[(1, 2, 3, 4), (5, 6, 7, 8), (9, 10, 11, 12)]
+	);
+}
+
+#[test]
+fn a_scene_with_nothing_to_focus_lists_nothing() {
+	assert!(Scene::new(10, 10).focus_rects().is_empty());
+	assert!(every_kind_without_fill().focus_rects() == [(9, 10, 11, 12)]);
+}
+
+#[test]
+fn shifting_moves_the_focusable_rectangles_with_the_rest() {
+	let mut scene = Scene::new(100, 50);
+	scene.focusable((5, 6, 7, 8));
+	scene.button((1, 2, 3, 4), STYLE, false);
+	let shifted = scene.shifted(30);
+	assert_eq!(shifted.focus_rects(), [(35, 6, 7, 8), (31, 2, 3, 4)]);
+}
+
+#[test]
+fn shifting_keeps_each_focusables_size_and_row() {
+	let mut scene = Scene::new(100, 50);
+	scene.focusable((5, 6, 7, 8));
+	let Command::Focusable((x, y, w, h)) = scene.shifted(12).commands[0].clone() else {
+		panic!("a focusable");
+	};
+	assert_eq!((x - 12, y, w, h), (5, 6, 7, 8));
+}

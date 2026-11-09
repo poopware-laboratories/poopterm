@@ -785,3 +785,64 @@ fn labels_read_on_the_track_and_the_filled_segment_in_every_built_in_theme() {
 		}
 	}
 }
+
+fn focusables(commands: &[Command]) -> Vec<Rect> {
+	commands
+		.iter()
+		.filter_map(|command| match *command {
+			Command::Focusable(rect) => Some(rect),
+			_ => None,
+		})
+		.collect()
+}
+
+#[test]
+fn a_switch_can_be_focused_over_the_area_a_click_flips_it_in() {
+	for scale in [1, 2] {
+		let commands = record(scale, |pen, p, style| pen.switch(p, style, 200, true));
+		assert_eq!(
+			focusables(&commands),
+			[switch_hit(900 * scale, 200, scale)],
+			"x{scale}"
+		);
+	}
+}
+
+#[test]
+fn each_segment_can_be_focused_in_order() {
+	for scale in [1, 2] {
+		let commands = record(scale, |pen, p, style| {
+			pen.segmented(p, style, 200, &LABELS, 0)
+		});
+		let wanted: Vec<_> = (0..2)
+			.map(|i| segment_rect(900 * scale, 200, scale, i, 2))
+			.collect();
+		assert_eq!(focusables(&commands), wanted, "x{scale}");
+	}
+}
+
+#[test]
+fn a_switch_and_a_segmented_control_focus_where_a_click_on_them_lands() {
+	use super::settings_focus::center;
+	let on_switch = center(switch_hit(900, 200, 1));
+	let (sx, sy, sw, sh) = switch_hit(900, 200, 1);
+	assert!((sx..sx + sw).contains(&on_switch.0) && (sy..sy + sh).contains(&on_switch.1));
+	for index in 0..2 {
+		let middle = center(segment_rect(900, 200, 1, index, 2));
+		assert_eq!(segment_at(900, 200, 1, middle, 2), Some(index));
+	}
+}
+
+#[test]
+fn a_stepper_and_a_footer_button_are_focusable_as_the_buttons_they_are() {
+	let stepper = record(1, |pen, p, style| pen.stepper(p, style, 300, "12 px"));
+	let rects: Vec<_> = buttons(&stepper)
+		.into_iter()
+		.map(|(rect, _)| rect)
+		.collect();
+	assert_eq!(rects.len(), 2);
+	let footer = record(1, |pen, p, style| {
+		pen.footer(p, style, ("Save", 120), "", &|_, _, _, _| false)
+	});
+	assert_eq!(buttons(&footer).len(), 1);
+}

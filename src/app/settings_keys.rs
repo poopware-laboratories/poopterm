@@ -1,6 +1,7 @@
 //! Keyboard input in the Settings window: shortcut recording, saving,
 //! closing, the theme arrows and the font list.
 use super::{
+	settings_focus::{center, step_focus},
 	settings_hit::{SettingsPage, font_list_rows},
 	settings_view::step_theme,
 	*,
@@ -34,6 +35,23 @@ impl App {
 			&& matches!(key, Key::Character(s) if s.eq_ignore_ascii_case("s"));
 		match key {
 			_ if is_save => return self.save_settings_config(),
+			Key::Named(NamedKey::Tab) => {
+				// pr-check: window glue: steps the tested focus order by Tab's direction
+				let step = if self.settings_mods.shift { -1 } else { 1 };
+				let count = self.settings_focus_rects().len();
+				self.settings_focus = step_focus(self.settings_focus, count, step);
+				// pr-check: end window glue
+			}
+			Key::Named(NamedKey::Enter | NamedKey::Space) if self.settings_focus.is_some() => {
+				// pr-check: window glue: Enter or Space clicks the center of the focused control
+				let focused = self
+					.settings_focus
+					.and_then(|at| self.settings_focus_rects().get(at).copied());
+				if let Some(rect) = focused {
+					self.settings_press(center(rect));
+				}
+				// pr-check: end window glue
+			}
 			Key::Named(NamedKey::Enter) => return self.save_settings_config(),
 			Key::Named(NamedKey::Escape) if self.settings_editor.page != SettingsPage::Main => {
 				self.settings_editor.page = SettingsPage::Main
