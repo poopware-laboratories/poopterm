@@ -127,3 +127,53 @@ fn the_system_shell_is_a_program() {
 fn a_nul_in_the_environment_is_not_a_program() {
 	assert!(!is_program("/bin/sh\0x"));
 }
+
+/// The shell `/etc/passwd` lists for the current user, read without libc.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn passwd_file_shell() -> Option<String> {
+	// SAFETY: `getuid` takes no arguments and cannot fail.
+	let uid = unsafe { libc::getuid() }.to_string();
+	let file = std::fs::read_to_string("/etc/passwd").ok()?;
+	file.lines().find_map(|line| {
+		// name:password:uid:gid:gecos:home:shell
+		let fields: Vec<_> = line.split(':').collect();
+		(fields.len() == 7 && fields[2] == uid).then(|| fields[6].to_string())
+	})
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[test]
+fn the_account_shell_matches_what_etc_passwd_says() {
+	match passwd_file_shell() {
+		Some(listed) if !listed.is_empty() => assert_eq!(account_shell(), Some(listed)),
+		// A user missing from the file (a container) may still be known to NSS.
+		_ => {}
+	}
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn the_account_shell_matches_what_the_directory_service_says() {
+	let user = std::env::var("USER").unwrap_or_default();
+	let output = std::process::Command::new("dscl")
+		.args([".", "-read", &format!("/Users/{user}"), "UserShell"])
+		.output();
+	let Ok(output) = output.filter(|o| o.status.success()) else {
+		return;
+	};
+	let text = String::from_utf8_lossy(&output.stdout);
+	let listed = text.trim().strip_prefix("UserShell:").map(str::trim);
+	assert_eq!(account_shell().as_deref(), listed);
+}
+
+#[test]
+fn the_shell_chosen_here_can_be_started() {
+	let shell = login_shell();
+	assert!(is_program(&shell), "{shell}");
+}
+
+#[test]
+fn the_login_shell_is_stable_between_calls() {
+	assert_eq!(login_shell(), login_shell());
+	assert_eq!(account_shell(), account_shell());
+}
