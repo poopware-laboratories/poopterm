@@ -5,7 +5,7 @@ use crate::render::{
 	painter::ButtonStyle,
 	scene::{Rect, Scene},
 };
-use crate::ui::{settings_layout::FOOTER, ui_font::ellipsize_to_width};
+use crate::ui::{metrics::Corner, settings_layout::FOOTER, ui_font::ellipsize_to_width};
 
 /// The switch of `row` in a window `width` physical pixels wide: 34 by 20,
 /// 24 from the right edge, centered on the row's 40 pixels.
@@ -18,6 +18,42 @@ pub(super) fn switch_rect(width: usize, row: usize, s: usize) -> Rect {
 pub(super) fn switch_hit(width: usize, row: usize, s: usize) -> Rect {
 	let (x, _, w, _) = switch_rect(width, row, s);
 	(x.saturating_sub(8 * s), row * s, w + 16 * s, ROW_HEIGHT * s)
+}
+
+/// The segmented control of `row` in a window `width` physical pixels
+/// wide: 156 by 28, 24 from the right edge, centered on the row's 40.
+pub(super) fn segmented_rect(width: usize, row: usize, s: usize) -> Rect {
+	(
+		width.saturating_sub(180 * s),
+		(row + 6) * s,
+		156 * s,
+		28 * s,
+	)
+}
+
+/// Segment `index` of `count` in the control of `row`: the track inside a
+/// two pixel inset, split evenly.
+pub(super) fn segment_rect(width: usize, row: usize, s: usize, index: usize, count: usize) -> Rect {
+	let (x, y, w, h) = segmented_rect(width, row, s);
+	let each = (w - 4 * s) / count.max(1);
+	(x + 2 * s + index * each, y + 2 * s, each, h - 4 * s)
+}
+
+/// The segment of `count` holding physical `(px, py)`, if the point is on
+/// the control at all.
+pub(super) fn segment_at(
+	width: usize,
+	row: usize,
+	s: usize,
+	(px, py): (usize, usize),
+	count: usize,
+) -> Option<usize> {
+	let (x, y, w, h) = segmented_rect(width, row, s);
+	if !((x..x + w).contains(&px) && (y..y + h).contains(&py)) {
+		return None;
+	}
+	let each = (w - 4 * s) / count.max(1);
+	Some((px.saturating_sub(x + 2 * s) / each.max(1)).min(count.saturating_sub(1)))
 }
 
 /// The footer's button, `button_w` logical pixels wide, in a window
@@ -175,6 +211,36 @@ impl Pen<'_> {
 		let knob = 16 * s;
 		let left = if on { x + w - 2 * s - knob } else { x + 2 * s };
 		p.round_rect(left, y + 2 * s, knob, knob, knob / 2, 0xffffff);
+	}
+
+	/// A segmented control at the right of `row`: a track of `labels`, the
+	/// `selected` one filled and in full strength, the others muted.
+	pub(super) fn segmented(
+		&mut self,
+		p: &mut Scene,
+		style: ButtonStyle,
+		row: usize,
+		labels: &[&str],
+		selected: usize,
+	) {
+		let s = self.scale;
+		let track = blend(style.background, style.border, 70);
+		let (x, y, w, h) = segmented_rect(p.width, row, s);
+		p.round_rect(x, y, w, h, Corner::Control.radius(s), track);
+		let (fg, muted) = (self.color, blend(self.color, style.background, 70));
+		for (index, label) in labels.iter().enumerate() {
+			let rect = segment_rect(p.width, row, s, index, labels.len());
+			let color = if index == selected {
+				let lit = blend(track, fg, 40);
+				p.round_rect(rect.0, rect.1, rect.2, rect.3, Corner::Chip.radius(s), lit);
+				fg
+			} else {
+				muted
+			};
+			let size = 0.76;
+			let text_x = rect.0 + rect.2.saturating_sub(self.width(label, size)) / 2;
+			self.tinted(p, text_x, rect.1 / s + 4, label, size, color);
+		}
 	}
 
 	/// `text` cut with an ellipsis to fit `width` physical pixels at `size`

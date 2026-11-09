@@ -1,5 +1,9 @@
 //! Hit-testing for the Settings window: which control a click lands on.
-use super::{settings_diagnostics::diagnostics_target, settings_pen::switch_hit, settings_view::*};
+use super::{
+	settings_diagnostics::diagnostics_target,
+	settings_pen::{segment_at, switch_hit},
+	settings_view::*,
+};
 use crate::{input::shortcuts::ShortcutAction, ui::diagnostics_page::Section};
 
 /// The page the Settings window shows.
@@ -24,7 +28,8 @@ pub(super) enum SettingsTarget {
 	ClearWallpaper,
 	ToggleRestore,
 	ToggleTabs,
-	ToggleVerticalTabs,
+	/// The Layout page's tab position: `true` for the side.
+	SetVerticalTabs(bool),
 	ToggleCompactTabs,
 	ToggleNewTabButton,
 	ToggleSettingsButton,
@@ -48,9 +53,8 @@ pub(super) fn font_list_rows(height: usize, scale: usize) -> usize {
 }
 
 /// Toggles on the Layout page.
-pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 6] = [
+pub(super) const LAYOUT_TOGGLES: [(usize, SettingsTarget); 5] = [
 	(SHOW_TABS_ROW, SettingsTarget::ToggleTabs),
-	(VERTICAL_TABS_ROW, SettingsTarget::ToggleVerticalTabs),
 	(COMPACT_TABS_ROW, SettingsTarget::ToggleCompactTabs),
 	(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 	(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
@@ -100,6 +104,11 @@ pub(super) fn settings_target(
 			if (right(72)..right(24)).contains(&x) {
 				return Some(SettingsTarget::Step(PADDING_ROW, 1));
 			}
+		}
+		if page == SettingsPage::Layout
+			&& let Some(side) = segment_at(width, VERTICAL_TABS_ROW, s, (x, y), 2)
+		{
+			return Some(SettingsTarget::SetVerticalTabs(side == 1));
 		}
 		let on_switch = |row: usize| {
 			let (sx, sy, sw, sh) = switch_hit(width, row, s);
@@ -239,8 +248,8 @@ mod tests {
 			Some(SettingsTarget::ToggleTabs)
 		);
 		assert_eq!(
-			target(720, VERTICAL_TABS_ROW + 10),
-			Some(SettingsTarget::ToggleVerticalTabs)
+			target(700, VERTICAL_TABS_ROW + 10),
+			Some(SettingsTarget::SetVerticalTabs(true))
 		);
 		assert_eq!(
 			target(720, BOTTOM_BAR_ROW + 10),
@@ -378,12 +387,7 @@ mod tests {
 	fn the_old_wide_button_area_no_longer_flips_anything() {
 		let layout = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
 		for x in [530, 600, 640, 690] {
-			for row in [
-				SHOW_TABS_ROW,
-				VERTICAL_TABS_ROW,
-				COMPACT_TABS_ROW,
-				BOTTOM_BAR_ROW,
-			] {
+			for row in [SHOW_TABS_ROW, COMPACT_TABS_ROW, BOTTOM_BAR_ROW] {
 				assert_eq!(layout(x, row + 20), None, "x {x} row {row}");
 			}
 		}
@@ -406,7 +410,6 @@ mod tests {
 		let layout = |row| settings_target((720, row + 20), SIZE, 1, SettingsPage::Layout);
 		let expected = [
 			(SHOW_TABS_ROW, SettingsTarget::ToggleTabs),
-			(VERTICAL_TABS_ROW, SettingsTarget::ToggleVerticalTabs),
 			(COMPACT_TABS_ROW, SettingsTarget::ToggleCompactTabs),
 			(NEW_TAB_BUTTON_ROW, SettingsTarget::ToggleNewTabButton),
 			(SETTINGS_BUTTON_ROW, SettingsTarget::ToggleSettingsButton),
@@ -433,5 +436,64 @@ mod tests {
 		let (_, row) = SHORTCUT_ROWS[0];
 		assert!(shortcuts(530, row).is_some());
 		assert!(shortcuts(720, row).is_some());
+	}
+
+	#[test]
+	fn the_tab_position_control_names_top_on_its_left_half_and_side_on_its_right() {
+		let layout = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
+		let y = VERTICAL_TABS_ROW + 20;
+		// A 156 wide control 24 from the right of a 760 wide window.
+		assert_eq!(layout(580, y), Some(SettingsTarget::SetVerticalTabs(false)));
+		assert_eq!(layout(657, y), Some(SettingsTarget::SetVerticalTabs(false)));
+		assert_eq!(layout(658, y), Some(SettingsTarget::SetVerticalTabs(true)));
+		assert_eq!(layout(735, y), Some(SettingsTarget::SetVerticalTabs(true)));
+	}
+
+	#[test]
+	fn the_tab_position_control_answers_nowhere_off_its_track() {
+		let layout = |x, y| settings_target((x, y), SIZE, 1, SettingsPage::Layout);
+		let (top, bottom) = (VERTICAL_TABS_ROW + 6, VERTICAL_TABS_ROW + 6 + 28);
+		assert_eq!(layout(579, VERTICAL_TABS_ROW + 20), None);
+		assert_eq!(layout(736, VERTICAL_TABS_ROW + 20), None);
+		assert_eq!(layout(650, top - 1), None);
+		assert_eq!(layout(650, bottom), None);
+		assert_eq!(layout(300, VERTICAL_TABS_ROW + 20), None, "over the label");
+	}
+
+	#[test]
+	fn the_tab_position_control_is_a_layout_page_control_only() {
+		for page in [
+			SettingsPage::Main,
+			SettingsPage::Shortcuts,
+			SettingsPage::Fonts,
+			SettingsPage::About,
+		] {
+			let target = settings_target((650, VERTICAL_TABS_ROW + 20), SIZE, 1, page);
+			assert!(
+				!matches!(target, Some(SettingsTarget::SetVerticalTabs(_))),
+				"{page:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn the_tab_position_control_works_at_twice_the_scale() {
+		let layout = |x, y| settings_target((x, y), (SIZE.0 * 2, SIZE.1 * 2), 2, SettingsPage::Layout);
+		let y = (VERTICAL_TABS_ROW + 20) * 2;
+		assert_eq!(
+			layout(1170, y),
+			Some(SettingsTarget::SetVerticalTabs(false))
+		);
+		assert_eq!(layout(1400, y), Some(SettingsTarget::SetVerticalTabs(true)));
+	}
+
+	#[test]
+	fn the_layout_page_keeps_five_switches_and_the_segmented_row_between_them() {
+		assert_eq!(LAYOUT_TOGGLES.len(), 5);
+		assert!(
+			LAYOUT_TOGGLES
+				.iter()
+				.all(|&(row, _)| row != VERTICAL_TABS_ROW)
+		);
 	}
 }
