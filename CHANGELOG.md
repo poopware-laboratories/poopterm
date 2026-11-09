@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.62 "Lunar Moth" — 2026-11-09
+
+### Fixed
+
+- Stop shaking the square window by asking if it is maximized (#288) (ui).
+
 ## 26.11.61 "Lunar Moth" — 2026-11-09
 
 ### Fixed
