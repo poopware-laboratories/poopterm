@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.47 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Give the search box previous, next, case and close buttons (#262) (ui).
+
 ## 26.11.46 "Lunar Moth" — 2026-11-09
 
 ### Added
