@@ -313,29 +313,30 @@ impl Prepared {
 	///
 	/// As [`Self::start`].
 	unsafe fn close_ours_on_exec(&self) {
-		// SAFETY: see `start`; these take only numbers.
-		unsafe {
-			#[cfg(target_os = "linux")]
-			if libc::syscall(
+		#[cfg(target_os = "linux")]
+		// SAFETY: see `start`; takes only numbers.
+		let all_at_once = unsafe {
+			libc::syscall(
 				libc::SYS_close_range,
 				3,
 				libc::c_uint::MAX,
 				libc::CLOSE_RANGE_CLOEXEC,
-			) == 0
-			{
-				return;
-			}
-			#[cfg(target_os = "freebsd")]
-			if libc::close_range(
+			)
+		} == 0;
+		#[cfg(target_os = "freebsd")]
+		// SAFETY: as above.
+		let all_at_once = unsafe {
+			libc::close_range(
 				3,
 				libc::c_uint::MAX,
 				libc::CLOSE_RANGE_CLOEXEC as libc::c_int,
-			) == 0
-			{
-				return;
-			}
+			)
+		} == 0;
+		#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+		let all_at_once = false;
+		if !all_at_once {
+			mark_close_on_exec(3..self.descriptors);
 		}
-		mark_close_on_exec(3..self.descriptors);
 	}
 }
 
