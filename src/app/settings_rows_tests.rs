@@ -132,6 +132,10 @@ fn each_label_sits_beside_its_control_at_every_scale() {
 			("Scrollback lines", SCROLLBACK_ROW),
 			("Restore tabs on launch", RESTORE_ROW),
 		] {
+			// Only macOS draws the opacity stepper.
+			if label == "Window opacity" && !cfg!(target_os = "macos") {
+				continue;
+			}
 			assert_eq!(
 				label_row(scale, label),
 				(row + 8) * scale,
@@ -152,7 +156,11 @@ fn the_labels_run_down_the_page_in_the_order_the_settings_are_grouped() {
 		"Scrollback lines",
 		"Restore tabs on launch",
 	];
-	let rows: Vec<_> = order.iter().map(|label| label_row(1, label)).collect();
+	// Only macOS draws the opacity stepper.
+	let shown = order
+		.iter()
+		.filter(|&&label| label != "Window opacity" || cfg!(target_os = "macos"));
+	let rows: Vec<_> = shown.map(|label| label_row(1, label)).collect();
 	assert!(rows.windows(2).all(|pair| pair[0] < pair[1]), "{rows:?}");
 	assert_eq!(
 		label_row(1, "Color theme"),
