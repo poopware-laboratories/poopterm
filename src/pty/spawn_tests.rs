@@ -100,8 +100,68 @@ fn the_program_leads_a_session_of_its_own() {
 	assert_eq!(session, pid, "the session's id is its leader's pid");
 	// SAFETY: as above.
 	assert_ne!(unsafe { libc::getsid(0) }, pid, "and it is not ours");
+	// SAFETY: takes only a process id.
+	let group = unsafe { libc::getpgid(pid) };
+	assert_eq!(group, pid, "it leads its process group too");
 	child.hang_up().unwrap();
 	child.wait().unwrap();
+}
+
+#[test]
+fn a_terminal_whose_session_ended_can_be_given_again() {
+	let pair = pty();
+	let mut first = waiting(&pair);
+	first.hang_up().unwrap();
+	first.wait().unwrap();
+	// Its leader gone, the terminal controls no session and takes a new one.
+	let (output, exit) = run_on(pair, sh("echo again >/dev/tty"));
+	assert_eq!((output.as_str(), exit), ("again\n", Exit::Code(0)));
+}
+
+#[test]
+fn one_command_starts_as_many_programs_as_asked() {
+	let command = Command::new("sh").arg("-c").arg("exit 5");
+	let (one, two) = (pty(), pty());
+	let mut first = spawn(&command, &one.slave).unwrap();
+	let mut second = spawn(&command, &two.slave).unwrap();
+	assert_ne!(first.id(), second.id());
+	assert_eq!(first.wait().unwrap(), Exit::Code(5));
+	assert_eq!(second.wait().unwrap(), Exit::Code(5));
+}
+
+#[test]
+fn a_stopped_program_has_not_ended() {
+	let pair = pty();
+	let mut child = waiting(&pair);
+	let pid = child.id() as libc::pid_t;
+	// SAFETY: signals only the child we started.
+	assert_eq!(unsafe { libc::kill(pid, libc::SIGSTOP) }, 0);
+	let resume = thread::spawn(move || {
+		thread::sleep(Duration::from_millis(100));
+		// SAFETY: as above; the child is not reaped until `wait` returns.
+		unsafe { libc::kill(pid, libc::SIGCONT) };
+		// SAFETY: as above.
+		unsafe { libc::kill(pid, libc::SIGTERM) };
+	});
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGTERM));
+	resume.join().unwrap();
+}
+
+#[test]
+fn a_long_value_arrives_whole() {
+	let value = "x".repeat(100_000);
+	let command = sh(r#"echo "${#POOPTERM_LONG}""#).env("POOPTERM_LONG", &value);
+	assert_eq!(run(command).0, "100000\n");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn all_three_streams_are_the_slave_we_gave() {
+	let pair = pty();
+	let path = pair.path.to_str().unwrap().to_owned();
+	let script = "for fd in 0 1 2; do readlink /proc/$$/fd/$fd; done";
+	let (output, _) = run_on(pair, sh(script));
+	assert_eq!(output, format!("{path}\n{path}\n{path}\n"));
 }
 
 #[test]

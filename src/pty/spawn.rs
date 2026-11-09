@@ -19,6 +19,8 @@ use std::{
 	ptr,
 };
 
+use super::device::check;
+
 /// What to start: a program, its arguments, environment and directory.
 pub(crate) struct Command {
 	program: OsString,
@@ -338,10 +340,18 @@ impl Prepared {
 			{
 				return;
 			}
-			for fd in 3..self.descriptors {
-				libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
-			}
 		}
+		mark_close_on_exec(3..self.descriptors);
+	}
+}
+
+/// Marks each descriptor in `fds` close-on-exec, one by one; numbers that
+/// are not open are skipped. Async-signal-safe.
+fn mark_close_on_exec(fds: std::ops::Range<RawFd>) {
+	for fd in fds {
+		// SAFETY: sets a descriptor flag and takes no memory; a number that
+		// is not open fails with `EBADF`, which is fine.
+		unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
 	}
 }
 
@@ -416,14 +426,6 @@ fn wait_for(pid: libc::pid_t) -> io::Result<Exit> {
 		if libc::WIFSIGNALED(status) {
 			return Ok(Exit::Signal(libc::WTERMSIG(status)));
 		}
-	}
-}
-
-fn check(result: libc::c_int) -> io::Result<libc::c_int> {
-	if result < 0 {
-		Err(io::Error::last_os_error())
-	} else {
-		Ok(result)
 	}
 }
 

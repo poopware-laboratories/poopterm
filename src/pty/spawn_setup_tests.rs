@@ -2,7 +2,7 @@
 //! building a command, finding its program, what is prepared before the
 //! fork, the pipe that reports `exec` failures, and waiting.
 use super::*;
-use std::{ffi::CStr, fs::File, io::Write, os::unix::ffi::OsStringExt};
+use std::{ffi::CStr, fs::File, io::Write, os::fd::FromRawFd, os::unix::ffi::OsStringExt};
 
 /// The strings a null-terminated pointer array prepared for `execve`
 /// holds.
@@ -358,6 +358,53 @@ fn close_on_exec(fd: &OwnedFd) -> bool {
 	let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
 	assert!(flags >= 0);
 	flags & libc::FD_CLOEXEC != 0
+}
+
+/// A copy of a descriptor of ours that does not close on exec.
+fn inheritable() -> OwnedFd {
+	let file = File::open("Cargo.toml").unwrap();
+	// SAFETY: duplicates a descriptor we own and checks the result.
+	let fd = check(unsafe { libc::dup(file.as_raw_fd()) }).unwrap();
+	// SAFETY: `fd` was just made and nothing else owns it.
+	unsafe { OwnedFd::from_raw_fd(fd) }
+}
+
+#[test]
+fn descriptors_in_the_range_are_marked_close_on_exec() {
+	let fd = inheritable();
+	assert!(!close_on_exec(&fd), "dup leaves the flag off");
+	mark_close_on_exec(fd.as_raw_fd()..fd.as_raw_fd() + 1);
+	assert!(close_on_exec(&fd));
+}
+
+#[test]
+fn descriptors_outside_the_range_are_left_alone() {
+	let (marked, kept) = (inheritable(), inheritable());
+	mark_close_on_exec(marked.as_raw_fd()..marked.as_raw_fd() + 1);
+	assert!(close_on_exec(&marked));
+	assert!(
+		!close_on_exec(&kept),
+		"the range ends before {}",
+		kept.as_raw_fd()
+	);
+}
+
+#[test]
+fn the_range_is_marked_whole_with_its_gaps_skipped() {
+	let fds = [inheritable(), inheritable(), inheritable()];
+	let low = fds.iter().map(AsRawFd::as_raw_fd).min().unwrap();
+	let high = fds.iter().map(AsRawFd::as_raw_fd).max().unwrap();
+	// Numbers between them may be closed, or another test's; neither stops it.
+	mark_close_on_exec(low..high + 1);
+	assert!(fds.iter().all(close_on_exec));
+}
+
+#[test]
+fn an_empty_or_negative_range_marks_nothing() {
+	let fd = inheritable();
+	mark_close_on_exec(fd.as_raw_fd()..fd.as_raw_fd());
+	mark_close_on_exec(-3..0);
+	assert!(!close_on_exec(&fd));
 }
 
 #[test]
