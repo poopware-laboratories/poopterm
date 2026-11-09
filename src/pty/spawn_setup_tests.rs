@@ -441,8 +441,12 @@ fn a_short_report_is_invalid_data() {
 
 #[test]
 fn a_report_that_cannot_be_read_is_an_error() {
-	let (_read, write) = report_pipe().unwrap();
-	let error = read_report(&write).err().unwrap();
+	// Not a pipe's write end: FreeBSD's pipes read both ways, and block.
+	let write_only = fs::OpenOptions::new()
+		.write(true)
+		.open("/dev/null")
+		.unwrap();
+	let error = read_report(&OwnedFd::from(write_only)).err().unwrap();
 	assert_eq!(error.raw_os_error(), Some(libc::EBADF));
 }
 
