@@ -12,6 +12,14 @@ mod queue;
 pub(crate) mod reader;
 #[cfg_attr(
 	not(test),
+	expect(
+		dead_code,
+		reason = "sessions move here with the switch from portable-pty (#188)"
+	)
+)]
+pub(crate) mod spawn;
+#[cfg_attr(
+	not(test),
 	expect(dead_code, reason = "sessions move here with the child setup (#188)")
 )]
 pub(crate) mod termios;

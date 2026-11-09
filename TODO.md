@@ -242,13 +242,15 @@ least as fast.
   - **Done: pairs and sizes** (`src/pty/device.rs`). Allocation, both sides
     closed on exec and `O_NOCTTY`, and the window size in cells and pixels,
     tested against portable-pty. Sessions do not use it yet.
-  - **Spawning, per POSIX.** Open the master `O_RDWR | O_NOCTTY | O_CLOEXEC`;
-    in the child, a new session (`setsid`), the slave as controlling terminal
-    (`TIOCSCTTY`), stdio on it, every other descriptor closed, signal mask and
-    dispositions reset to default, then `exec` with `argv[0]` kept (`-zsh`
-    for login shells). Report `exec` failures to the parent through a
-    close-on-exec pipe instead of a silent exit. Only async-signal-safe calls
-    between `fork` and `exec`; everything is allocated before forking.
+  - **Done: spawning, per POSIX** (`src/pty/spawn.rs`). In the child, a new
+    session (`setsid`), the slave as controlling terminal (`TIOCSCTTY`) and
+    stdio, every other descriptor close-on-exec (`close_range` where the
+    kernel has it), signal mask and dispositions back to default, `chdir`,
+    then `execve` with `argv[0]` kept (`-zsh` for login shells) and `PATH`
+    resolved before forking. `exec` and setup failures come back as `errno`
+    through a close-on-exec pipe. Only async-signal-safe calls between `fork`
+    and `exec`; everything is allocated before forking. Sessions do not use
+    it yet.
   - **Join the tab's cgroup before `exec` (Linux).** With the delegated
     subtree from the cgroups item, the child writes itself into its tab's
     `cgroup.procs`, or is created there with `clone3(CLONE_INTO_CGROUP)`, so
