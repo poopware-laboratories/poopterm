@@ -191,6 +191,44 @@ fn the_program_can_change_its_terminals_settings() {
 	assert_eq!((output.as_str(), exit), ("1\n", Exit::Code(0)));
 }
 
+/// A new directory holding `script`, an executable named `name`.
+fn script_dir(name: &str, script: &str) -> PathBuf {
+	use std::os::unix::fs::PermissionsExt;
+	let dir = std::env::temp_dir().join(format!("poopterm-run-{}-{name}", std::process::id()));
+	std::fs::create_dir_all(&dir).unwrap();
+	std::fs::write(dir.join(name), script).unwrap();
+	let mode = std::fs::Permissions::from_mode(0o755);
+	std::fs::set_permissions(dir.join(name), mode).unwrap();
+	dir
+}
+
+#[test]
+fn a_script_in_the_commands_path_runs_with_its_arguments() {
+	let dir = script_dir("poopterm-greet", "#!/bin/sh\necho \"hi $1\"; sleep 0.2\n");
+	let search = format!("{}:/bin:/usr/bin", dir.display());
+	let command = Command::new("poopterm-greet")
+		.arg("there")
+		.env("PATH", search);
+	let (output, exit) = run(command);
+	std::fs::remove_dir_all(dir).unwrap();
+	assert_eq!((output.as_str(), exit), ("hi there\n", Exit::Code(0)));
+}
+
+#[test]
+fn a_relative_program_is_ours_even_in_another_directory() {
+	let dir = script_dir("poopterm-ours", "#!/bin/sh\necho ours; sleep 0.2\n");
+	// The script named from our directory; from `src`, one level deeper,
+	// the same `..`s would end somewhere else.
+	let ours = std::env::current_dir().unwrap();
+	let up: PathBuf = ours.components().skip(1).map(|_| "..").collect();
+	let program = up
+		.join(dir.strip_prefix("/").unwrap())
+		.join("poopterm-ours");
+	let (output, exit) = run(Command::new(program).cwd("src"));
+	std::fs::remove_dir_all(dir).unwrap();
+	assert_eq!((output.as_str(), exit), ("ours\n", Exit::Code(0)));
+}
+
 #[test]
 fn a_long_value_arrives_whole() {
 	let value = "x".repeat(100_000);
