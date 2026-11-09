@@ -76,6 +76,11 @@ impl ApplicationHandler<UserEvent> for App {
 	}
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+		// pr-check: window glue: winit still delivers queued events after the last tab closed and asked to exit
+		if self.sessions.is_empty() {
+			return;
+		}
+		// pr-check: end window glue
 		if self
 			.settings_window
 			.as_ref()
