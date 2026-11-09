@@ -214,3 +214,33 @@ pub(crate) fn command_palette<'a>(
 		buttons: Vec::new(),
 	}
 }
+
+/// The row after stepping `delta` from `current` among `count` rows,
+/// wrapping at both ends. A `current` past the rows counts as the first.
+pub(crate) fn step_selection(current: usize, count: usize, delta: isize) -> usize {
+	if count == 0 {
+		return 0;
+	}
+	let at = if current < count { current } else { 0 };
+	(at as isize + delta).rem_euclid(count as isize) as usize
+}
+
+/// The command Enter runs with row `index` selected among the matches of
+/// `query`; an `index` past them takes the last.
+pub(crate) fn selected_command(query: &str, index: usize) -> Option<&'static str> {
+	let matches = palette_matches(query);
+	matches
+		.get(index.min(matches.len().saturating_sub(1)))
+		.copied()
+}
+
+impl Popover<'_> {
+	/// Marks row `index`, or the last row when it is past them, as the
+	/// selected one and no other.
+	pub(crate) fn select(&mut self, index: usize) {
+		let last = self.rows.len().saturating_sub(1);
+		for (at, row) in self.rows.iter_mut().enumerate() {
+			row.selected = at == index.min(last);
+		}
+	}
+}

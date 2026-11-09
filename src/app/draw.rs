@@ -278,6 +278,7 @@ impl App {
 		let query = (self.command_query.as_str(), self.renaming_tab);
 		let mut popover = command_palette(place, query, ui.px * 0.86, &self.theme);
 		popover.add_hints(shortcut_hints(&self.shortcuts, cfg!(target_os = "macos")));
+		popover.select(self.command_selected);
 		paint(p, &mut self.ui_fonts, |s, f| draw_popover(s, f, &popover));
 		// pr-check: end window glue
 	}

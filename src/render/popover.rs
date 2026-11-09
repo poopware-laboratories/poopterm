@@ -73,7 +73,7 @@ pub(crate) fn draw_popover(p: &mut Scene, fonts: &mut FontSet, popover: &Popover
 	for row in &popover.rows {
 		let (x, y, width, height) = row.rect;
 		if row.selected {
-			p.round_rect(x, y, width, height, control, colors.raised);
+			p.round_rect(x, y, width, height, control, pressed_fill(colors));
 		}
 		let taken = row_hint(p, fonts, popover.style, row);
 		let mut text_rect = row.rect;

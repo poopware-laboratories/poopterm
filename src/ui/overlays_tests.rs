@@ -5,7 +5,7 @@ use super::{
 	header::{TabPalette, header_colors},
 	overlays::{
 		PALETTE_COMMANDS, Place, command_action, command_palette, palette_matches, search_box,
-		search_buttons, shortcut_hints, stays_open,
+		search_buttons, selected_command, shortcut_hints, stays_open, step_selection,
 	},
 	search_controls::{SearchControl, geometry},
 };
@@ -650,4 +650,130 @@ fn the_search_box_still_counts_matches_beside_its_buttons() {
 	let popover = search("word", 20, 4);
 	assert_eq!(popover.field.trailing.as_deref(), Some("5 of 20"));
 	assert_eq!(popover.field.placeholder, "Find");
+}
+
+#[test]
+fn stepping_moves_one_row_and_wraps_at_both_ends() {
+	assert_eq!(step_selection(0, 7, 1), 1);
+	assert_eq!(step_selection(6, 7, 1), 0, "past the last row to the first");
+	assert_eq!(
+		step_selection(0, 7, -1),
+		6,
+		"before the first row to the last"
+	);
+	assert_eq!(step_selection(3, 7, -1), 2);
+}
+
+#[test]
+fn stepping_with_no_rows_stays_at_the_top() {
+	for delta in [-3, -1, 0, 1, 3] {
+		assert_eq!(step_selection(0, 0, delta), 0);
+		assert_eq!(step_selection(5, 0, delta), 0);
+	}
+}
+
+#[test]
+fn a_selection_past_the_rows_a_query_left_counts_as_the_first_before_stepping() {
+	// Seven rows were shown and the sixth selected; the query now leaves two.
+	assert_eq!(step_selection(5, 2, 1), 1, "down from the first");
+	assert_eq!(
+		step_selection(5, 2, -1),
+		1,
+		"up from the first wraps to the last"
+	);
+	assert_eq!(step_selection(1, 1, 1), 0);
+}
+
+#[test]
+fn stepping_a_whole_lap_comes_back_to_where_it_started() {
+	for count in 1..=7 {
+		for start in 0..count {
+			let mut at = start;
+			for _ in 0..count {
+				at = step_selection(at, count, 1);
+			}
+			assert_eq!(at, start, "{count} rows from {start}");
+		}
+	}
+}
+
+#[test]
+fn the_selected_command_is_the_row_at_that_index_among_the_matches() {
+	for (index, command) in PALETTE_COMMANDS.iter().enumerate() {
+		assert_eq!(selected_command("", index), Some(*command));
+	}
+	let tabs = palette_matches("tab");
+	assert_eq!(selected_command("tab", 1), Some(tabs[1]));
+}
+
+#[test]
+fn a_selection_past_the_matches_runs_the_last_one_and_none_runs_nothing() {
+	let tabs = palette_matches("tab");
+	assert_eq!(selected_command("tab", 99), tabs.last().copied());
+	assert_eq!(selected_command("zzz", 0), None);
+	assert_eq!(selected_command("zzz", 4), None);
+}
+
+#[test]
+fn enter_with_the_selection_at_the_top_runs_what_it_always_did() {
+	for query in ["", "tab", "SETT", "t p"] {
+		assert_eq!(
+			selected_command(query, 0),
+			palette_matches(query).first().copied(),
+			"{query:?}"
+		);
+	}
+}
+
+#[test]
+fn selecting_a_row_marks_exactly_that_row() {
+	for index in 0..PALETTE_COMMANDS.len() {
+		let mut popover = palette("", false);
+		popover.select(index);
+		let marked: Vec<_> = popover
+			.rows
+			.iter()
+			.enumerate()
+			.filter(|(_, row)| row.selected)
+			.map(|(at, _)| at)
+			.collect();
+		assert_eq!(marked, [index]);
+	}
+}
+
+#[test]
+fn selecting_past_the_last_row_marks_the_last_one() {
+	let mut popover = palette("tab", false);
+	let last = popover.rows.len() - 1;
+	popover.select(99);
+	assert!(popover.rows[last].selected);
+	assert_eq!(popover.rows.iter().filter(|row| row.selected).count(), 1);
+}
+
+#[test]
+fn selecting_with_no_rows_changes_nothing() {
+	let mut none = palette("zzz", false);
+	none.select(3);
+	assert!(none.rows.is_empty() && none.note.is_some());
+	let mut renaming = palette("name", true);
+	renaming.select(0);
+	assert!(renaming.rows.is_empty());
+}
+
+#[test]
+fn selecting_keeps_the_text_and_hints_of_every_row() {
+	let mut popover = palette("", false);
+	popover.add_hints(|command| (command == "New tab").then(|| "⌘T".to_owned()));
+	let before: Vec<_> = popover
+		.rows
+		.iter()
+		.map(|row| (row.text, row.hint.clone()))
+		.collect();
+	popover.select(2);
+	let after: Vec<_> = popover
+		.rows
+		.iter()
+		.map(|row| (row.text, row.hint.clone()))
+		.collect();
+	assert_eq!(before, after);
 }

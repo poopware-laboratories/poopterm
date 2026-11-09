@@ -3,13 +3,18 @@
 use super::{
 	blend::blend,
 	glyphs::FontSet,
-	header::{HeaderColors, Rect, Style},
+	header::{HeaderColors, Rect, Style, pressed_fill},
 	popover::{Field, Popover, PopoverButton, PopoverRow, draw_popover},
 };
 use crate::{
 	fonts::{BUNDLED, Font},
 	render::{painter::Painter, scene::paint},
 };
+
+/// What a selected row is filled with: the step past hover.
+fn selected() -> u32 {
+	pressed_fill(COLORS)
+}
 
 const WIDTH: usize = 400;
 const HEIGHT: usize = 200;
@@ -223,8 +228,8 @@ fn rows_show_their_text_and_the_selected_one_is_raised() {
 	let mut popover = popover("", None);
 	popover.rows = vec![row(0, "New tab", true), row(1, "Close tab", false)];
 	let drawn = draw(&popover);
-	assert_eq!(drawn.at(30, 66 + 16), COLORS.raised, "selected");
-	assert_eq!(drawn.at(310, 66 + 16), COLORS.raised, "selected, right end");
+	assert_eq!(drawn.at(30, 66 + 16), selected(), "selected");
+	assert_eq!(drawn.at(310, 66 + 16), selected(), "selected, right end");
 	assert_eq!(drawn.at(28, 66), COLORS.bar, "a rounded corner");
 	assert_eq!(drawn.at(30, 98 + 16), COLORS.bar, "not selected");
 	for index in 0..2 {
@@ -397,7 +402,7 @@ fn a_selected_row_at_twice_the_scale_has_rounder_corners_and_wider_padding() {
 		selected: true,
 	}];
 	let drawn = draw(&popover);
-	assert_eq!(drawn.at(30, 102), COLORS.raised);
+	assert_eq!(drawn.at(30, 102), selected());
 	// A 12-pixel radius leaves the pixel two in from the corner unfilled.
 	assert_eq!(drawn.at(30, 72), COLORS.bar);
 	let ink = drawn.ink((28, 70, 284, 64), COLORS.fg).unwrap();
@@ -440,8 +445,8 @@ fn the_selected_row_fill_stays_inside_its_row() {
 	let drawn = draw(&popover);
 	for x in [40, 170, 300] {
 		assert_eq!(drawn.at(x, 97), COLORS.bar, "above, column {x}");
-		assert_eq!(drawn.at(x, 98), COLORS.raised, "top row, column {x}");
-		assert_eq!(drawn.at(x, 129), COLORS.raised, "bottom row, column {x}");
+		assert_eq!(drawn.at(x, 98), selected(), "top row, column {x}");
+		assert_eq!(drawn.at(x, 129), selected(), "bottom row, column {x}");
 		assert_eq!(drawn.at(x, 130), COLORS.bar, "below, column {x}");
 	}
 	assert_eq!(drawn.at(27, 114), COLORS.bar, "left of the row");
@@ -539,7 +544,7 @@ fn every_theme_draws_the_popover_text_in_its_foreground() {
 		for row in &popover.rows {
 			let (x, y, width, height) = row.rect;
 			let background = if row.selected {
-				colors.raised
+				pressed_fill(colors)
 			} else {
 				colors.bar
 			};
@@ -636,7 +641,7 @@ fn a_long_command_gives_way_to_its_hint() {
 #[test]
 fn a_selected_rows_hint_is_drawn_over_its_fill() {
 	let drawn = draw(&hinted("New tab", Some("Ctrl+N"), true));
-	assert_eq!(drawn.at(40, 67), COLORS.raised);
+	assert_eq!(drawn.at(40, 67), selected());
 	assert!(drawn.ink(ROW, COLORS.dim).is_some());
 }
 
