@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.44 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Show each palette command's shortcut beside it (#259) (ui).
+
 ## 26.11.43 "Lunar Moth" — 2026-11-09
 
 ### Added
