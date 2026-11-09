@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.48 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Spawn programs on our own ptys (#266) (pty).
+
 ## 26.11.47 "Lunar Moth" — 2026-11-09
 
 ### Added
