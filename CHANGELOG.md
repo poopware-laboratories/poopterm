@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.43 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Join the active tab to the terminal in a 40 px header (#258) (ui).
+
 ## 26.11.42 "Lunar Moth" — 2026-11-08
 
 ### Added
