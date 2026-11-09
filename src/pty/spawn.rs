@@ -244,7 +244,7 @@ impl Prepared {
 			_strings: argv.into_iter().chain(envp).collect(),
 			no_signals,
 			default_action,
-			descriptors: open_max.clamp(3, MOST_DESCRIPTORS as libc::c_long) as libc::c_int,
+			descriptors: descriptor_limit(open_max),
 		})
 	}
 
@@ -345,6 +345,16 @@ impl Prepared {
 	}
 }
 
+/// How many descriptors to mark one by one, from `sysconf(_SC_OPEN_MAX)`,
+/// which is -1 when there is no limit.
+fn descriptor_limit(open_max: libc::c_long) -> libc::c_int {
+	if open_max < 0 {
+		MOST_DESCRIPTORS
+	} else {
+		open_max.clamp(3, MOST_DESCRIPTORS.into()) as libc::c_int
+	}
+}
+
 fn c_string(bytes: &[u8]) -> io::Result<CString> {
 	CString::new(bytes).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))
 }
@@ -417,6 +427,9 @@ fn check(result: libc::c_int) -> io::Result<libc::c_int> {
 	}
 }
 
+#[cfg(test)]
+#[path = "spawn_setup_tests.rs"]
+mod setup_tests;
 #[cfg(test)]
 #[path = "spawn_tests.rs"]
 mod tests;

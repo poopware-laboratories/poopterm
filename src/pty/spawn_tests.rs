@@ -2,17 +2,39 @@
 //! about its terminal, session, name, environment and signals.
 use super::*;
 use crate::pty::device::{self, WindowSize};
-use std::{fs::File, io::Read, sync::mpsc, thread, time::Duration};
+use std::{
+	fs::File,
+	io::{Read, Write},
+	os::fd::AsRawFd,
+	sync::mpsc,
+	thread,
+	time::Duration,
+};
 
-/// Runs `sh -c script` on a new 80×24 PTY and returns what it printed,
-/// read until it exits, and how it ended.
-fn run(command: Command) -> (String, Exit) {
-	let pair = device::open(WindowSize {
+/// A new 80×24 PTY.
+fn pty() -> device::Pair {
+	device::open(WindowSize {
 		cols: 80,
 		rows: 24,
 		..WindowSize::default()
 	})
-	.unwrap();
+	.unwrap()
+}
+
+/// Runs `command` on a new 80×24 PTY and returns what it printed, read
+/// until it exits, and how it ended.
+fn run(command: Command) -> (String, Exit) {
+	run_on(pty(), command)
+}
+
+/// Starts a shell that waits for a line on `pair`, for tests that look at
+/// it from outside while it runs.
+fn waiting(pair: &device::Pair) -> Child {
+	spawn(&Command::new("sh").arg("-c").arg("read line"), &pair.slave).unwrap()
+}
+
+/// Runs `command` on `pair`, as [`run`] does.
+fn run_on(pair: device::Pair, command: Command) -> (String, Exit) {
 	let mut child = spawn(&command, &pair.slave).unwrap();
 	drop(pair.slave);
 	let mut screen = File::from(pair.master);
@@ -52,10 +74,50 @@ fn the_pty_is_the_programs_controlling_terminal() {
 
 #[test]
 fn the_program_leads_a_session_of_its_own() {
-	let (output, _) = run(sh("ps -o sess= -o pid= -p $$"));
-	let ids: Vec<&str> = output.split_whitespace().collect();
-	assert_eq!(ids.len(), 2, "{output:?}");
-	assert_eq!(ids[0], ids[1], "the session's id is its leader's pid");
+	let pair = pty();
+	let mut child = waiting(&pair);
+	let pid = child.id() as libc::pid_t;
+	// SAFETY: takes only a process id.
+	assert_eq!(
+		unsafe { libc::getsid(pid) },
+		pid,
+		"the session's id is its leader's pid"
+	);
+	// SAFETY: as above.
+	assert_ne!(unsafe { libc::getsid(0) }, pid, "and it is not ours");
+	child.hang_up().unwrap();
+	child.wait().unwrap();
+}
+
+#[test]
+fn the_program_is_the_terminals_foreground_process_group() {
+	let pair = pty();
+	let mut child = waiting(&pair);
+	// SAFETY: asks the master we own; takes no memory.
+	let foreground = unsafe { libc::tcgetpgrp(pair.master.as_raw_fd()) };
+	assert_eq!(foreground, child.id() as libc::pid_t);
+	child.hang_up().unwrap();
+	child.wait().unwrap();
+}
+
+#[test]
+fn the_controlling_terminal_is_the_slave_we_gave() {
+	let pair = pty();
+	let path = pair.path.clone();
+	let (output, _) = run_on(pair, sh("tty"));
+	assert_eq!(output.trim_end(), path.to_str().unwrap());
+}
+
+#[test]
+fn a_line_typed_on_the_master_reaches_the_program() {
+	let pair = pty();
+	// The line waits in the terminal's input queue until the shell reads it.
+	File::from(pair.master.try_clone().unwrap())
+		.write_all(b"typed\n")
+		.unwrap();
+	let (output, exit) = run_on(pair, sh(r#"read line; echo "got:$line""#));
+	assert_eq!(exit, Exit::Code(0));
+	assert!(output.ends_with("got:typed\n"), "{output:?}");
 }
 
 #[test]
@@ -86,12 +148,38 @@ fn arguments_arrive_as_given() {
 
 #[test]
 fn argv0_can_name_a_login_shell() {
-	let command = Command::new("/bin/sh")
-		.arg0("-sh")
-		.arg("-c")
-		.arg("ps -o args= -p $$; sleep 0.2");
+	// busybox ps (Alpine) has no -p, so Linux asks /proc.
+	#[cfg(target_os = "linux")]
+	let script = r"tr '\0' ' ' </proc/$$/cmdline; echo; sleep 0.2";
+	#[cfg(not(target_os = "linux"))]
+	let script = "ps -o args= -p $$; sleep 0.2";
+	let command = Command::new("/bin/sh").arg0("-sh").arg("-c").arg(script);
 	let (output, _) = run(command);
 	assert!(output.starts_with("-sh -c"), "{output:?}");
+}
+
+#[test]
+fn bytes_that_are_not_utf8_arrive_unchanged() {
+	use std::os::unix::ffi::OsStringExt;
+	let command = Command::new("sh")
+		.arg("-c")
+		.arg(r#"printf %s "$1" | od -An -tx1; sleep 0.2"#)
+		.arg("zero")
+		.arg(OsString::from_vec(b"\xff\xfe".to_vec()));
+	let (output, _) = run(command);
+	assert_eq!(output.split_whitespace().collect::<Vec<_>>(), ["ff", "fe"]);
+}
+
+#[test]
+fn many_arguments_all_arrive() {
+	let mut command = Command::new("sh")
+		.arg("-c")
+		.arg(r#"echo "$#"; sleep 0.2"#)
+		.arg("zero");
+	for n in 0..2000 {
+		command = command.arg(n.to_string());
+	}
+	assert_eq!(run(command).0, "2000\n");
 }
 
 #[test]
@@ -120,14 +208,103 @@ fn the_program_starts_in_the_directory_asked() {
 
 #[test]
 fn exit_codes_and_signals_come_back() {
+	for (script, exit) in [
+		("exit 0", Exit::Code(0)),
+		("exit 7", Exit::Code(7)),
+		("exit 255", Exit::Code(255)),
+		("kill -9 $$", Exit::Signal(libc::SIGKILL)),
+		("kill -TERM $$", Exit::Signal(libc::SIGTERM)),
+	] {
+		let (_, ended) = run(Command::new("sh").arg("-c").arg(script));
+		assert_eq!(ended, exit, "{script}");
+	}
+}
+
+/// Why `spawn` refused `program`, given by path.
+fn exec_error(program: &Path) -> Option<i32> {
+	let pair = device::open(WindowSize::default()).unwrap();
+	spawn(&Command::new(program), &pair.slave)
+		.err()?
+		.raw_os_error()
+}
+
+#[test]
+fn exec_errors_are_the_ones_execve_gave() {
+	use std::os::unix::fs::PermissionsExt;
+	let dir = std::env::temp_dir().join(format!("poopterm-exec-{}", std::process::id()));
+	std::fs::create_dir_all(&dir).unwrap();
+	let plain = dir.join("plain");
+	let garbage = dir.join("garbage");
+	std::fs::write(&plain, "#!/bin/sh\n").unwrap();
+	std::fs::write(&garbage, [0x7f, b'E', b'L', b'F', 0, 1, 2, 3]).unwrap();
+	std::fs::set_permissions(&garbage, std::fs::Permissions::from_mode(0o755)).unwrap();
+	assert_eq!(exec_error(&dir), Some(libc::EACCES), "a directory");
+	assert_eq!(exec_error(&plain), Some(libc::EACCES), "no x bit");
+	assert_eq!(exec_error(&garbage), Some(libc::ENOEXEC), "not a program");
+	std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_directory_that_is_a_file_is_an_error() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let command = Command::new("sh").cwd("Cargo.toml");
+	let error = spawn(&command, &pair.slave).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::ENOTDIR));
+}
+
+#[test]
+fn a_terminal_that_is_not_a_tty_is_an_error() {
+	let file = OwnedFd::from(File::open("Cargo.toml").unwrap());
+	let error = spawn(&Command::new("sh"), &file).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
+}
+
+#[test]
+fn a_terminal_already_controlling_a_session_is_refused() {
+	let pair = pty();
+	let mut first = waiting(&pair);
+	let second = spawn(&Command::new("sh").arg("-c").arg("true"), &pair.slave);
 	assert_eq!(
-		run(Command::new("sh").arg("-c").arg("exit 7")).1,
-		Exit::Code(7)
+		second.err().and_then(|error| error.raw_os_error()),
+		Some(libc::EPERM)
 	);
-	assert_eq!(
-		run(Command::new("sh").arg("-c").arg("kill -9 $$")).1,
-		Exit::Signal(9)
-	);
+	first.hang_up().unwrap();
+	first.wait().unwrap();
+}
+
+#[test]
+fn signals_we_ignore_are_not_ignored_in_the_program() {
+	// Rust ignores SIGPIPE in us. A shell keeps signals ignored at entry
+	// ignored, so this exits 0 if the program inherited that.
+	let (_, exit) = run(Command::new("sh").arg("-c").arg("kill -PIPE $$; exit 0"));
+	assert_eq!(exit, Exit::Signal(libc::SIGPIPE));
+}
+
+#[test]
+fn signals_we_block_are_not_blocked_in_the_program() {
+	// fork copies the calling thread's mask, so block one here.
+	// SAFETY: plain sets on our stack, changing only this thread's mask.
+	let old = unsafe {
+		let mut block = std::mem::zeroed::<libc::sigset_t>();
+		let mut old = std::mem::zeroed::<libc::sigset_t>();
+		libc::sigemptyset(&mut block);
+		libc::sigaddset(&mut block, libc::SIGUSR1);
+		libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old);
+		old
+	};
+	let (_, exit) = run(Command::new("sh").arg("-c").arg("kill -USR1 $$; exit 0"));
+	// SAFETY: restores this thread's mask from the copy above.
+	unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut()) };
+	assert_eq!(exit, Exit::Signal(libc::SIGUSR1));
+}
+
+#[test]
+fn waiting_twice_is_an_error_not_a_hang() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let mut child = spawn(&Command::new("sh").arg("-c").arg("exit 3"), &pair.slave).unwrap();
+	assert_eq!(child.wait().unwrap(), Exit::Code(3));
+	let again = child.wait().err().unwrap();
+	assert_eq!(again.raw_os_error(), Some(libc::ECHILD));
 }
 
 #[test]
