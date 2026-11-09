@@ -158,7 +158,7 @@ fn the_account_shell_matches_what_the_directory_service_says() {
 	let output = std::process::Command::new("dscl")
 		.args([".", "-read", &format!("/Users/{user}"), "UserShell"])
 		.output();
-	let Ok(output) = output.filter(|o| o.status.success()) else {
+	let Some(output) = output.ok().filter(|o| o.status.success()) else {
 		return;
 	};
 	let text = String::from_utf8_lossy(&output.stdout);
@@ -176,4 +176,18 @@ fn the_shell_chosen_here_can_be_started() {
 fn the_login_shell_is_stable_between_calls() {
 	assert_eq!(login_shell(), login_shell());
 	assert_eq!(account_shell(), account_shell());
+}
+
+#[test]
+fn the_account_shell_has_no_trailing_newline_or_spaces() {
+	if let Some(shell) = account_shell() {
+		assert_eq!(shell, shell.trim());
+	}
+}
+
+#[test]
+fn the_chosen_shell_is_an_absolute_path_without_nul() {
+	let shell = login_shell();
+	assert!(shell.starts_with('/'));
+	assert!(!shell.contains('\0'));
 }
