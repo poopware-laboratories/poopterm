@@ -1,13 +1,12 @@
-//! PTY pairs of our own against portable-pty's: the same sizes seen from
-//! both sides, the same bytes out of the same writes, and descriptors that
-//! stay ours.
+//! PTY pairs: sizes seen from both sides and by programs, the bytes the
+//! kernel passes each way, and descriptors that stay ours.
 use super::*;
 use crate::bench::corpus::Rng;
-use portable_pty::PtySize;
 use std::{
 	fs::File,
 	io::{Read, Write},
 	os::fd::AsRawFd,
+	path::Path,
 	process::{Command, Stdio},
 	sync::mpsc,
 	thread,
@@ -36,20 +35,6 @@ fn stty_size(tty: &impl std::os::fd::AsFd) -> String {
 		String::from_utf8_lossy(&run.stderr)
 	);
 	String::from_utf8(run.stdout).unwrap().trim().to_owned()
-}
-
-/// portable-pty's pair of `size`: its master, and its slave opened by path.
-fn oracle(size: WindowSize) -> (Box<dyn portable_pty::MasterPty + Send>, File) {
-	let pair = crate::pty::open::openpty(PtySize {
-		rows: size.rows,
-		cols: size.cols,
-		pixel_width: size.pixel_width,
-		pixel_height: size.pixel_height,
-	})
-	.unwrap();
-	let path = pair.master.tty_name().unwrap();
-	let slave = File::options().read(true).write(true).open(path).unwrap();
-	(pair.master, slave)
 }
 
 /// Sizes to try: the edges, then seeded random ones.
@@ -88,36 +73,30 @@ fn a_new_pair_has_the_size_asked_on_both_sides() {
 }
 
 #[test]
-fn programs_see_the_same_size_as_on_portable_ptys() {
-	for size in sizes().into_iter().take(12) {
-		let ours = open(size).unwrap();
-		let (_master, theirs) = oracle(size);
-		assert_eq!(stty_size(&ours.slave), stty_size(&theirs), "{size:?}");
-		assert_eq!(
-			super::size(&ours.slave).unwrap(),
-			super::size(&theirs).unwrap()
-		);
+fn programs_see_the_size_asked() {
+	// Within 2..30000: busybox's stty (Alpine) reports 0, 1 and anything from
+	// 30000 up as its default, 80 by 24.
+	for (cols, rows) in [(2, 2), (80, 24), (7, 29_999), (29_999, 2), (12_345, 678)] {
+		let pair = open(WindowSize {
+			cols,
+			rows,
+			pixel_width: 1,
+			pixel_height: 2,
+		})
+		.unwrap();
+		assert_eq!(stty_size(&pair.slave), format!("{rows} {cols}"));
 	}
 }
 
 #[test]
-fn a_resize_reaches_the_slave_as_portable_ptys_do() {
+fn a_resize_reaches_the_slave() {
 	let pair = open(cells(80, 24)).unwrap();
-	let (master, theirs) = oracle(cells(80, 24));
 	for size in sizes() {
 		set_size(&pair.master, size).unwrap();
-		master
-			.resize(PtySize {
-				rows: size.rows,
-				cols: size.cols,
-				pixel_width: size.pixel_width,
-				pixel_height: size.pixel_height,
-			})
-			.unwrap();
 		assert_eq!(super::size(&pair.slave).unwrap(), size);
-		assert_eq!(super::size(&theirs).unwrap(), size);
-		assert_eq!(master.get_size().unwrap().cols, size.cols);
 	}
+	set_size(&pair.master, cells(132, 43)).unwrap();
+	assert_eq!(stty_size(&pair.slave), "43 132");
 }
 
 #[test]
@@ -151,26 +130,50 @@ fn drain(master: impl Read + Send + 'static) -> Vec<u8> {
 	all
 }
 
+/// What a new pair's master gives for `data` written to its slave, read
+/// until quiet.
+fn output(data: &[u8]) -> Vec<u8> {
+	let pair = open(cells(80, 24)).unwrap();
+	let reading = {
+		let out = File::from(pair.master.try_clone().unwrap());
+		thread::spawn(move || drain(out))
+	};
+	File::from(pair.slave).write_all(data).unwrap();
+	reading.join().unwrap()
+}
+
+/// `data` as the kernel's default output processing passes it on: each
+/// newline gains a carriage return, everything else is left alone.
+fn cooked(data: &[u8]) -> Vec<u8> {
+	data
+		.iter()
+		.flat_map(|byte| {
+			if *byte == b'\n' {
+				&b"\r\n"[..]
+			} else {
+				std::slice::from_ref(byte)
+			}
+		})
+		.copied()
+		.collect()
+}
+
 #[test]
-fn output_comes_out_of_the_master_as_from_portable_ptys() {
+fn output_comes_out_of_the_master_with_only_newlines_changed() {
 	let mut rng = Rng::new(7);
 	for seed in 0..8 {
 		let len = 1 + rng.below(3000);
 		let data: Vec<u8> = (0..len).map(|_| rng.next() as u8).collect();
-		let ours = open(cells(80, 24)).unwrap();
-		let (master, mut theirs) = oracle(cells(80, 24));
-		let (ours_out, theirs_out) = (
-			File::from(ours.master.try_clone().unwrap()),
-			master.try_clone_reader().unwrap(),
-		);
-		let reading = thread::spawn(move || drain(ours_out));
-		File::from(ours.slave).write_all(&data).unwrap();
-		let theirs_reading = thread::spawn(move || drain(theirs_out));
-		theirs.write_all(&data).unwrap();
-		let (ours_got, theirs_got) = (reading.join().unwrap(), theirs_reading.join().unwrap());
-		assert!(!ours_got.is_empty(), "seed {seed}");
-		assert_eq!(ours_got, theirs_got, "seed {seed}, {len} bytes");
+		assert_eq!(output(&data), cooked(&data), "seed {seed}, {len} bytes");
 	}
+}
+
+#[test]
+fn every_byte_value_passes_through_and_newlines_gain_a_carriage_return() {
+	let data: Vec<u8> = (0..=255).collect();
+	let got = output(&data);
+	assert_eq!(got.len(), 257);
+	assert_eq!(got, cooked(&data));
 }
 
 #[test]
@@ -247,69 +250,40 @@ fn a_grid_size_saturates_at_what_the_ioctl_carries() {
 	assert_eq!(WindowSize::of(1000, 1, (65, 1)).pixel_width, 65_000);
 }
 
-/// Output of writing `data` to the slave of our pair and of the oracle's,
-/// each read from its master until quiet.
-fn both_outputs(data: &[u8]) -> (Vec<u8>, Vec<u8>) {
-	let ours = open(cells(80, 24)).unwrap();
-	let (master, mut theirs) = oracle(cells(80, 24));
-	let ours_reading = {
-		let out = File::from(ours.master.try_clone().unwrap());
-		thread::spawn(move || drain(out))
-	};
-	let theirs_reading = {
-		let out = master.try_clone_reader().unwrap();
-		thread::spawn(move || drain(out))
-	};
-	File::from(ours.slave).write_all(data).unwrap();
-	theirs.write_all(data).unwrap();
-	(ours_reading.join().unwrap(), theirs_reading.join().unwrap())
-}
-
 #[test]
-fn output_larger_than_the_kernels_buffer_arrives_whole_as_from_portable_ptys() {
+fn output_larger_than_the_kernels_buffer_arrives_whole() {
 	// Far past what a PTY buffers (4 KiB on macOS, 64 KiB or so elsewhere),
 	// so the writer waits for the reader.
 	let data = b"line of output\n".repeat(20_000);
-	let (ours, theirs) = both_outputs(&data);
+	let got = output(&data);
 	assert_eq!(
-		ours.len(),
+		got.len(),
 		data.len() + 20_000,
 		"each newline gains a carriage return"
 	);
-	assert_eq!(ours, theirs);
+	assert_eq!(got, b"line of output\r\n".repeat(20_000));
 }
 
 #[test]
-fn typed_input_reaches_the_slave_and_echoes_as_on_portable_ptys() {
+fn typed_input_reaches_the_slave_as_an_edited_line_and_echoes() {
 	let typed = b"echo hi\tthere\x7f\x7fre\n";
-	let ours = open(cells(80, 24)).unwrap();
-	let (master, theirs) = oracle(cells(80, 24));
-	let mut lines = Vec::new();
-	let mut echoes = Vec::new();
-	for (input, mut keyboard, echo) in [
-		(
-			File::from(ours.slave.try_clone().unwrap()),
-			Box::new(File::from(ours.master.try_clone().unwrap())) as Box<dyn Write + Send>,
-			Box::new(File::from(ours.master.try_clone().unwrap())) as Box<dyn Read + Send>,
-		),
-		(
-			theirs.try_clone().unwrap(),
-			master.take_writer().unwrap(),
-			master.try_clone_reader().unwrap(),
-		),
-	] {
-		let echoing = thread::spawn(move || drain(echo));
-		keyboard.write_all(typed).unwrap();
-		// Line editing hands the slave one finished line.
-		let mut line = vec![0; 64];
-		let n = (&input).read(&mut line).unwrap();
-		lines.push(line[..n].to_vec());
-		echoes.push(echoing.join().unwrap());
-	}
-	assert_eq!(lines[0], b"echo hi\tthere\n");
-	assert_eq!(lines[0], lines[1]);
-	assert!(!echoes[0].is_empty());
-	assert_eq!(echoes[0], echoes[1]);
+	let pair = open(cells(80, 24)).unwrap();
+	let echoing = {
+		let echo = File::from(pair.master.try_clone().unwrap());
+		thread::spawn(move || drain(echo))
+	};
+	File::from(pair.master.try_clone().unwrap())
+		.write_all(typed)
+		.unwrap();
+	// Line editing hands the slave one finished line: the two erases took
+	// back "re" of "there".
+	let mut line = vec![0; 64];
+	let n = (&File::from(pair.slave)).read(&mut line).unwrap();
+	assert_eq!(&line[..n], b"echo hi\tthere\n");
+	// The echo shows what was typed, its newline cooked like any output.
+	let echo = echoing.join().unwrap();
+	assert!(echo.starts_with(b"echo hi"), "{echo:?}");
+	assert!(echo.ends_with(b"re\r\n"), "{echo:?}");
 }
 
 #[test]
@@ -324,8 +298,8 @@ fn the_master_ends_once_the_slave_closes() {
 	let n = out.read(&mut buf).unwrap();
 	assert_eq!(&buf[..n], b"last\r\n");
 	drop(slave);
-	// Then Linux answers EIO and the BSDs end of file (portable-pty's reader
-	// turns both into an end of file); a reader must stop at either.
+	// Then Linux answers EIO and the BSDs end of file; a reader must stop at
+	// either.
 	match out.read(&mut buf) {
 		Ok(0) => {}
 		Err(error) => assert_eq!(error.raw_os_error(), Some(libc::EIO)),
@@ -369,12 +343,17 @@ fn a_size_set_on_the_slave_shows_on_the_master() {
 }
 
 #[test]
-fn slaves_live_where_portable_ptys_put_theirs() {
-	let ours = open(cells(80, 24)).unwrap();
-	let (master, _slave) = oracle(cells(80, 24));
-	let theirs = master.tty_name().unwrap();
-	assert_eq!(ours.path.parent(), theirs.parent());
-	assert_ne!(ours.path, theirs);
+fn slaves_live_where_the_system_puts_terminals() {
+	let pair = open(cells(80, 24)).unwrap();
+	let name = pair.path.file_name().unwrap().to_str().unwrap();
+	// /dev/pts/N on Linux and FreeBSD, /dev/ttysNNN on macOS.
+	if cfg!(target_os = "macos") {
+		assert_eq!(pair.path.parent(), Some(Path::new("/dev")));
+		assert!(name.starts_with("ttys"), "{name}");
+	} else {
+		assert_eq!(pair.path.parent(), Some(Path::new("/dev/pts")));
+		assert!(name.parse::<u32>().is_ok(), "{name}");
+	}
 }
 
 #[test]
@@ -399,7 +378,6 @@ fn a_grid_size_reaches_programs_with_its_pixels() {
 }
 
 #[test]
-fn writing_nothing_gives_nothing_from_either_master() {
-	let (ours, theirs) = both_outputs(b"");
-	assert!(ours.is_empty() && theirs.is_empty(), "{ours:?} {theirs:?}");
+fn writing_nothing_gives_nothing() {
+	assert_eq!(output(b""), b"");
 }
