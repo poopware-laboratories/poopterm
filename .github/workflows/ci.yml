@@ -24,6 +24,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
 
       - name: Install Linux libraries
         if: runner.os == 'Linux'
@@ -67,7 +70,7 @@ jobs:
       - name: Start a headless Wayland compositor
         if: runner.os == 'Linux'
         run: |
-          mkdir -p -m 700 "$RUNNER_TEMP/xdg"
+          mkdir -m 700 "$RUNNER_TEMP/xdg"
           # The Wayland tests then fail, not skip, without it.
           printf '%s\n' "XDG_RUNTIME_DIR=$RUNNER_TEMP/xdg" WAYLAND_DISPLAY=wayland-ci POOPTERM_REQUIRE_WAYLAND=1 >> "$GITHUB_ENV"
           XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg" nohup weston --backend=headless --socket=wayland-ci --idle-time=0 > "$RUNNER_TEMP/weston.log" 2>&1 &
@@ -123,6 +126,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
       - name: Build and test on FreeBSD
         # Third-party: pinned to a commit; Dependabot updates the pin.
         uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
@@ -150,6 +156,9 @@ jobs:
     container: alpine:latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
       - name: Install libraries and nightly Rust
         # zsh, bash and fish: the shell integration tests run each of them.
         run: |
@@ -170,6 +179,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
 
       - name: Install Linux and Debian packaging libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxkbcommon-dev libwayland-dev dpkg-dev ncurses-bin
@@ -201,6 +213,9 @@ jobs:
     container: registry.fedoraproject.org/fedora:latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
 
       - name: Install Fedora packaging libraries and nightly Rust
         run: |
@@ -245,6 +260,8 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
           fetch-depth: 0
 
       # makepkg refuses to run as root and builds the tag v$pkgver; point it
@@ -265,8 +282,27 @@ jobs:
           poopterm --version
           infocmp xterm-poopterm >/dev/null
 
-  release:
+  # The one check the ruleset needs from this workflow: it fails unless every
+  # job above succeeded, so a new job is required as soon as it is listed
+  # here, and a skipped or cancelled one cannot pass for green.
+  ci-passed:
+    name: CI passed
     needs: [check, freebsd, alpine, debian-package, fedora-package, arch-package]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done
+
+  release:
+    needs: [ci-passed]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Builds the Debian and RPM packages after the version bump, on the same
     # old glibc as the debian-package job.

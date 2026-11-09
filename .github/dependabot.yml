@@ -2,12 +2,22 @@
 # AGENTS.md); these keep the existing ones and the CI actions current.
 # The prefixes give pull request titles in Conventional Commits form, which
 # the pull request rules require.
+#
+# Each ecosystem's routine updates arrive as one grouped pull request, and
+# only once a release is a few days old (`cooldown`), so a compromised or
+# broken release has time to be pulled before it reaches us. Security
+# updates are not delayed.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      crates:
+        patterns: ["*"]
     commit-message:
       prefix: build
       include: scope
@@ -15,6 +25,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
     commit-message:
       prefix: ci
       include: scope

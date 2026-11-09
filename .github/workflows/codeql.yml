@@ -11,10 +11,17 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its older analysis; main's and the
+# weekly runs each get their own group.
+concurrency:
+  group: codeql-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -27,6 +34,9 @@ jobs:
         language: [actions, python, ruby, rust]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}

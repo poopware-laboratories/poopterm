@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A new push or title edit cancels the pull request's older check.
+concurrency:
+  group: pr-rules-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   rules:
     name: Title and 3:1 test ratio
@@ -17,6 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Nothing here pushes: keep the token out of .git/config.
+          persist-credentials: false
           fetch-depth: 0
       - name: Check the title and the ratio of test lines to code lines
         env:
