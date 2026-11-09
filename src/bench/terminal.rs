@@ -137,12 +137,13 @@ impl Drop for Terminal {
 #[cfg(test)]
 pub(crate) mod tests {
 	use super::*;
+	use crate::pty::device::{self, WindowSize};
 	use crate::{
 		parser::Parser,
 		term::Term,
 		theme::{Theme, ThemeKind},
 	};
-	use portable_pty::{MasterPty, PtySize};
+	use std::os::fd::OwnedFd;
 	use std::{
 		io::Read,
 		sync::{Arc, Condvar, Mutex},
@@ -181,7 +182,7 @@ pub(crate) mod tests {
 	pub(crate) struct Emulator {
 		seen: Seen,
 		keyboard: Keyboard,
-		master: Box<dyn MasterPty + Send>,
+		master: OwnedFd,
 	}
 
 	impl Emulator {
@@ -205,12 +206,12 @@ pub(crate) mod tests {
 
 		/// Resizes the terminal, as dragging its window would.
 		fn resize(&self, cols: u16, rows: u16) {
-			let size = PtySize {
-				rows,
+			let size = WindowSize {
 				cols,
-				..PtySize::default()
+				rows,
+				..WindowSize::default()
 			};
-			self.master.resize(size).unwrap();
+			device::set_size(&self.master, size).unwrap();
 		}
 
 		/// Types `bytes` as if from the keyboard.
@@ -222,19 +223,18 @@ pub(crate) mod tests {
 	/// A terminal of `cols`×`rows` answering as `answers` says, and the
 	/// slave side for `Terminal` to drive.
 	pub(crate) fn emulator(cols: u16, rows: u16, answers: Answers) -> (File, Emulator) {
-		let size = PtySize {
-			rows,
+		let size = WindowSize {
 			cols,
-			pixel_width: 0,
-			pixel_height: 0,
+			rows,
+			..WindowSize::default()
 		};
-		let pair = crate::pty::open::openpty(size).unwrap();
-		let path = pair.master.tty_name().expect("the slave has a path");
-		let tty = File::options().read(true).write(true).open(path).unwrap();
-		drop(pair.slave);
+		let pair = device::open(size).unwrap();
+		// Opened `O_NOCTTY`: never this process's controlling terminal.
+		let tty = File::from(pair.slave);
 		let seen: Seen = Arc::default();
-		let mut input = pair.master.try_clone_reader().unwrap();
-		let keyboard: Keyboard = Arc::new(Mutex::new(pair.master.take_writer().unwrap()));
+		let mut input = File::from(pair.master.try_clone().unwrap());
+		let writer: Box<dyn Write + Send> = Box::new(File::from(pair.master.try_clone().unwrap()));
+		let keyboard: Keyboard = Arc::new(Mutex::new(writer));
 		let (theirs, output) = (seen.clone(), keyboard.clone());
 		thread::spawn(move || {
 			let theme = Theme::from_kind(ThemeKind::Poop);

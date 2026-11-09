@@ -3,6 +3,8 @@
 mod burst;
 pub(crate) mod device;
 mod exits;
+// portable-pty's pairs, for the oracle tests in `device_tests.rs` only.
+#[cfg(test)]
 pub(crate) mod open;
 pub(crate) mod pump;
 mod queue;

@@ -10,6 +10,7 @@
 
 use std::{
 	error::Error,
+	fs::File,
 	io::Read,
 	path::PathBuf,
 	process,
@@ -21,14 +22,17 @@ use std::{
 	time::Instant,
 };
 
-use portable_pty::{CommandBuilder, PtySize};
-
 use super::{
 	corpus::Size,
 	mark::{MARK, UntilMark},
 };
 use crate::{
-	pty::{OUTPUT_LIMIT, OutputQueue, open, pump, reader},
+	pty::{
+		OUTPUT_LIMIT, OutputQueue,
+		device::{self, WindowSize},
+		pump, reader,
+		spawn::{self, Command, Exit},
+	},
 	term::SharedTerm,
 };
 
@@ -57,33 +61,36 @@ type Outcome<T> = Result<T, Box<dyn Error>>;
 /// a fast, empty run.
 fn timed(argv: &[&str], size: Size, mode: Mode, read: impl FnOnce(Output)) -> Outcome<f64> {
 	let start = Instant::now();
-	let pair = open::openpty(PtySize {
-		rows: size.rows as u16,
-		cols: size.cols as u16,
-		pixel_width: 0,
-		pixel_height: 0,
-	})?;
+	let pair = device::open(WindowSize::of(size.cols, size.rows, (0, 0)))?;
 	let end = std::str::from_utf8(MARK)?;
 	let script = format!(r#"s=$1; shift; "$@"; echo $? >"$s"; printf %s '{end}'; exec sleep 3600"#);
 	let script = match mode {
 		Mode::Cooked => script,
 		Mode::Raw => format!("stty -opost || exit; {script}"),
 	};
-	let mut command = CommandBuilder::new("sh");
 	let record = Payload::new(b"")?;
-	command.args(["-c", &script, "sh", record.cat()[1]]);
-	command.args(argv);
+	let command = argv.iter().fold(
+		Command::new("sh")
+			.arg("-c")
+			.arg(&script)
+			.arg("sh")
+			.arg(record.cat()[1]),
+		|command, arg| command.arg(arg),
+	);
 	// Cloned first, so a failure leaves no child unwaited.
-	let output = pair.master.try_clone_reader()?;
-	let mut child = pair.slave.spawn_command(command)?;
+	let output = File::from(pair.master.try_clone()?);
+	let mut child = spawn::spawn(&command, &pair.slave)?;
 	drop(pair.slave);
 	read(Box::new(UntilMark::new(output)));
 	let seconds = start.elapsed().as_secs_f64();
 	// `sh` sleeps past the mark; if it ended before, its own status counts.
-	let _ = child.kill();
-	let status = child.wait()?;
+	let _ = child.hang_up();
+	let ended = match child.wait()? {
+		Exit::Code(code) => code,
+		Exit::Signal(signal) => 128 + signal,
+	};
 	let noted = std::fs::read_to_string(&record.0)?.trim().parse();
-	let code = noted.unwrap_or(status.exit_code());
+	let code = noted.unwrap_or(ended);
 	if code != 0 {
 		return Err(format!("{} exited with {code}", argv.join(" ")).into());
 	}
