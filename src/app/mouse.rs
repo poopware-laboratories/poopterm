@@ -4,7 +4,7 @@ use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mous
 use crate::input::{paste::paste_bytes, scroll::alternate_scroll_bytes};
 use crate::ui::{
 	copy::selection_text,
-	drag::drag_goes_on,
+	drag::drag_after_move,
 	header_target::{HeaderTarget, header_target},
 	links::{LinkAction, link_action},
 	window_pointer::pointer_icon,
@@ -288,9 +288,12 @@ impl App {
 		self.update_hovered_link();
 		self.hover_search();
 		// pr-check: window glue: asks the window system whether the drag's release was lost
-		if self.drag_anchor.is_some() && !drag_goes_on(crate::platform::held_mouse_buttons()) {
-			self.drag_anchor = None;
-			self.held_button = None;
+		if self.drag_anchor.is_some() {
+			let held = crate::platform::held_mouse_buttons();
+			self.drag_anchor = drag_after_move(self.drag_anchor.take(), held);
+			if self.drag_anchor.is_none() {
+				self.held_button = None;
+			}
 		}
 		// pr-check: end window glue
 		if self.drag_anchor.is_some() {

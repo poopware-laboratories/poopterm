@@ -13,3 +13,9 @@ pub(crate) fn left_is_down(mask: usize) -> bool {
 pub(crate) fn drag_goes_on(held: Option<usize>) -> bool {
 	held.is_none_or(left_is_down)
 }
+
+/// The drag after the pointer moved: kept while it goes on, `None` once the
+/// system says its release was lost.
+pub(crate) fn drag_after_move<T>(drag: Option<T>, held: Option<usize>) -> Option<T> {
+	drag.filter(|_| drag_goes_on(held))
+}
