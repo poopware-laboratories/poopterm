@@ -12,12 +12,16 @@ correct. The numbers below are minimums, not finish lines.
 CSI-heavy, cursor movement). 200 MB/s is the floor, not the ceiling: go
 higher wherever that stays safe (bounded memory, no skipped state, output
 identical to the slower path). Measured with `poopterm --benchmark --terminal` in a
-real window. Headless on the i3-N305 (26.10.93, `--benchmark --mib 16
---no-render`, median of 3) the workloads run at 116–1070 MB/s (198
-overall); emoji (135), sixel (152), shell prompts (153), Unicode (154),
-CJK (173), source (175), kitty PNG (116), cursor motion (186) and compiler
-output (188) are still below the floor there, and end to end everything is
-lower. See [`docs/performance.md`](docs/performance.md).
+real window. On the i3-N305 (26.11.51, `--benchmark --stages all`,
+median of 5) the parser alone runs the workloads at 144–1187 MB/s (257
+overall); emoji (178), kitty PNG (144), Unicode (193) and sixel (193) are
+still below the floor there. In a window the kernel's cooked PTY caps text
+at 67–118 MB/s, and Poopterm comes within 10% of that ceiling on 13 of 17
+workloads (126 MB/s overall). Raw, the window runs at 119–478 MB/s (206
+overall), and emoji (144), kitty PNG (119), sixel (152), Unicode (157),
+shell (168), source (176), CJK (178) and cursor (187) still need a faster
+parser to reach the floor. See
+[`docs/performance.md`](docs/performance.md#results).
 
 **Images: as fast as possible** for Sixel and the kitty graphics protocol,
 from first byte to pixels on screen. There is no target to stop at; at least
@@ -27,11 +31,11 @@ match text throughput, within the explicit size limits on untrusted input.
   in the corpus, so `--benchmark` and `--benchmark --terminal` cover them. Still
   missing: full-screen frames and animation, reported in frames per second.
 - **Sixel decoding.** Now decoded straight into one flat buffer of final
-  pixels (~152 MB/s headless); remaining candidates are SIMD band decoding
-  and streaming decode instead of buffering the whole DCS.
-- **Kitty image decoding.** Raw RGBA parses at ~1 GB/s and zlib through our
-  own inflate at ~231 MB/s; PNG at ~116 MB/s spends ~60% inflating and ~20%
-  unfiltering inside the PNG crate. Our own PNG decoder (our inflate plus a
+  pixels (~193 MB/s headless at 26.11.51); remaining candidates are SIMD
+  band decoding and streaming decode instead of buffering the whole DCS.
+- **Kitty image decoding.** Raw RGBA parses at ~1.2 GB/s and zlib through
+  our own inflate at ~304 MB/s (26.11.51); PNG, at ~144 MB/s, spent ~60%
+  inflating and ~20% unfiltering inside the PNG crate when last profiled. Our own PNG decoder (our inflate plus a
   SIMD unfilter) is the next step; the RGBA path could decode base64
   straight into pixels instead of through a byte buffer.
 - **Rendering during floods:** frames still write unchanged background pixels,
