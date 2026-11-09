@@ -7,7 +7,7 @@ use super::{
 	settings_pen_tests::{buttons, inside, record, texts},
 	settings_view::{
 		FONT_ROW, MIN_SIZE, OPACITY_ROW, RESTORE_ROW, SCROLLBACK_ROW, STRENGTH_ROW, THEME_ROW,
-		compose_main_settings,
+		compose_layout_settings, compose_main_settings,
 	},
 };
 use crate::{
@@ -166,4 +166,89 @@ fn the_labels_run_down_the_page_in_the_order_the_settings_are_grouped() {
 		label_row(1, "Color theme"),
 		crate::ui::settings_layout::MAIN.theme_label
 	);
+}
+
+fn layout_page(vertical: bool, scale: usize) -> Vec<crate::render::scene::Command> {
+	let mut editor = editor();
+	editor.preferences.vertical_tabs = vertical;
+	record(scale, |pen, p, style| {
+		(p.width, p.height) = (MIN_SIZE.0 * scale, MIN_SIZE.1 * scale);
+		compose_layout_settings(&editor, style, p, pen)
+	})
+}
+
+fn round_rects(commands: &[crate::render::scene::Command]) -> Vec<(usize, usize, usize, usize)> {
+	commands
+		.iter()
+		.filter_map(|command| match command {
+			crate::render::scene::Command::RoundRect(rect, ..) => Some(*rect),
+			_ => None,
+		})
+		.collect()
+}
+
+#[test]
+fn the_layout_page_labels_its_rows_and_has_no_vertical_tabs_switch() {
+	let labels: Vec<_> = texts(&layout_page(false, 1))
+		.into_iter()
+		.map(|(text, _)| text)
+		.collect();
+	for wanted in ["Show tabs", "Tab position", "Top", "Side", "Padding"] {
+		assert!(labels.contains(&wanted.to_owned()), "{wanted}");
+	}
+	assert!(!labels.iter().any(|label| label == "Vertical tabs"));
+}
+
+#[test]
+fn the_selected_segment_follows_the_tab_position_preference() {
+	let selected = |vertical| {
+		let fills = round_rects(&layout_page(vertical, 1));
+		// The track is the control's own rectangle; the filled segment follows it.
+		let track = fills
+			.iter()
+			.position(|rect| rect.2 == 156)
+			.expect("the track");
+		fills[track + 1]
+	};
+	let (top, side) = (selected(false), selected(true));
+	assert!(top.0 < side.0, "{top:?} against {side:?}");
+	assert_eq!((top.1, top.2, top.3), (side.1, side.2, side.3));
+}
+
+#[test]
+fn the_tab_position_row_sits_between_the_switch_rows_in_the_order_it_was_listed() {
+	let rows = texts(&layout_page(false, 1));
+	let row = |label: &str| rows.iter().find(|(text, _)| text == label).unwrap().1.1;
+	assert!(row("Show tabs") < row("Tab position"));
+	assert!(row("Tab position") < row("Show settings button"));
+	assert!(row("Show bottom bar") < row("Padding"));
+}
+
+#[test]
+fn the_layout_page_draws_five_switches_and_one_control_with_a_stepper_at_every_scale() {
+	for scale in [1, 2] {
+		let commands = layout_page(true, scale);
+		let pills = round_rects(&commands);
+		// Five switches draw a track and a knob each, the segmented control a
+		// track and a filled segment.
+		assert_eq!(pills.len(), 5 * 2 + 2, "x{scale}");
+		assert_eq!(
+			buttons(&commands).len(),
+			2,
+			"the padding stepper's two buttons, x{scale}"
+		);
+	}
+}
+
+#[test]
+fn nothing_on_the_layout_page_reaches_the_footer_in_the_smallest_window() {
+	for scale in [1, 2] {
+		let footer = (MIN_SIZE.1 - 52) * scale;
+		for (rect, _) in buttons(&layout_page(false, scale)) {
+			assert!(rect.1 + rect.3 <= footer, "x{scale}");
+		}
+		for rect in round_rects(&layout_page(false, scale)) {
+			assert!(rect.1 + rect.3 <= footer, "x{scale}: {rect:?}");
+		}
+	}
 }

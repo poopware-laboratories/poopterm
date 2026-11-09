@@ -363,9 +363,7 @@ impl App {
 			Some(SettingsTarget::ToggleTabs) => {
 				editor.preferences.show_tabs = !editor.preferences.show_tabs
 			}
-			Some(SettingsTarget::ToggleVerticalTabs) => {
-				editor.preferences.vertical_tabs = !editor.preferences.vertical_tabs
-			}
+			Some(SettingsTarget::SetVerticalTabs(side)) => editor.preferences.vertical_tabs = side,
 			Some(SettingsTarget::ToggleCompactTabs) => {
 				editor.preferences.compact_tabs = !editor.preferences.compact_tabs
 			}

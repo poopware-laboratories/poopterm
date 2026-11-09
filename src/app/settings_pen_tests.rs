@@ -1,7 +1,7 @@
 //! Tests of the Settings window's widgets, read from the scene they record:
 //! which buttons, where, lit or not, and the text inside them.
 use super::{
-	settings_pen::{Pen, switch_hit, switch_rect},
+	settings_pen::{Pen, segment_at, segment_rect, segmented_rect, switch_hit, switch_rect},
 	settings_view::ROW_HEIGHT,
 };
 use crate::{
@@ -542,4 +542,246 @@ fn a_larger_size_is_wider_and_so_starts_further_left() {
 	let (small, ..) = centered(1, 760, "poopterm", 0.8);
 	let (large, ..) = centered(1, 760, "poopterm", 1.5);
 	assert!(large < small);
+}
+
+const LABELS: [&str; 2] = ["Top", "Side"];
+
+#[test]
+fn the_control_is_a_156_by_28_track_24_from_the_right_edge_centered_on_the_row() {
+	for scale in [1, 2] {
+		let s = scale;
+		assert_eq!(
+			segmented_rect(900 * s, 200, s),
+			((900 - 24 - 156) * s, 206 * s, 156 * s, 28 * s),
+			"x{s}"
+		);
+	}
+}
+
+#[test]
+fn segments_split_the_track_evenly_inside_a_two_pixel_inset() {
+	let (x, y, w, h) = segmented_rect(900, 200, 1);
+	assert_eq!(segment_rect(900, 200, 1, 0, 2), (x + 2, y + 2, 76, h - 4));
+	assert_eq!(
+		segment_rect(900, 200, 1, 1, 2),
+		(x + 2 + 76, y + 2, 76, h - 4)
+	);
+	let (sx, _, sw, _) = segment_rect(900, 200, 1, 1, 2);
+	assert_eq!(
+		sx + sw,
+		x + w - 2,
+		"the pair ends at the track's inset edge"
+	);
+}
+
+#[test]
+fn the_segments_of_any_count_never_overlap_or_leave_the_track() {
+	for count in 2..=4 {
+		for scale in [1, 2] {
+			let (tx, _, tw, _) = segmented_rect(900 * scale, 200, scale);
+			let mut edge = tx;
+			for index in 0..count {
+				let (x, _, w, _) = segment_rect(900 * scale, 200, scale, index, count);
+				assert!(x >= edge, "{count} segments, #{index} at {scale}x");
+				assert!(x + w <= tx + tw, "{count} segments, #{index} at {scale}x");
+				edge = x + w;
+			}
+		}
+	}
+}
+
+#[test]
+fn a_point_names_the_segment_it_is_on_and_nothing_outside_the_track() {
+	let (x, y, w, h) = segmented_rect(900, 200, 1);
+	let at = |px, py| segment_at(900, 200, 1, (px, py), 2);
+	assert_eq!(at(x + 4, y + 4), Some(0));
+	assert_eq!(at(x + w / 2 - 1, y + h / 2), Some(0));
+	assert_eq!(at(x + w / 2, y + h / 2), Some(1));
+	assert_eq!(at(x + w - 1, y + h - 1), Some(1));
+	assert_eq!(at(x - 1, y + 4), None);
+	assert_eq!(at(x + w, y + 4), None);
+	assert_eq!(at(x + 4, y - 1), None);
+	assert_eq!(at(x + 4, y + h), None);
+}
+
+#[test]
+fn a_two_segment_control_has_a_second_half_that_names_the_second_segment_at_twice_the_scale() {
+	let (x, y, w, h) = segmented_rect(1800, 200, 2);
+	assert_eq!(segment_at(1800, 200, 2, (x + w - 3, y + h / 2), 2), Some(1));
+	assert_eq!(segment_at(1800, 200, 2, (x + 3, y + h / 2), 2), Some(0));
+}
+
+#[test]
+fn the_track_and_the_selected_segment_are_the_only_fills_and_the_selected_one_moves() {
+	for selected in [0, 1] {
+		let commands = record(1, |pen, p, style| {
+			pen.segmented(p, style, 200, &LABELS, selected)
+		});
+		let drawn = pills(&commands);
+		assert_eq!(drawn.len(), 2, "selected {selected}");
+		assert_eq!(drawn[0].0, segmented_rect(900, 200, 1));
+		assert_eq!(
+			drawn[1].0,
+			segment_rect(900, 200, 1, selected, 2),
+			"selected {selected}"
+		);
+	}
+}
+
+#[test]
+fn the_selected_segment_is_lighter_than_its_track_and_both_follow_the_style() {
+	let commands = record(1, |pen, p, style| pen.segmented(p, style, 200, &LABELS, 0));
+	let drawn = pills(&commands);
+	assert_ne!(drawn[0].2, drawn[1].2);
+	assert_ne!(
+		drawn[0].2, STYLE.background,
+		"the track stands apart from the page"
+	);
+	let lighter = |color: u32| (color >> 16 & 0xff) + (color >> 8 & 0xff) + (color & 0xff);
+	assert!(lighter(drawn[1].2) > lighter(drawn[0].2));
+}
+
+#[test]
+fn each_label_is_centered_in_its_segment_and_only_the_selected_is_full_strength() {
+	for selected in [0, 1] {
+		let commands = record(1, |pen, p, style| {
+			pen.segmented(p, style, 200, &LABELS, selected)
+		});
+		let labels = texts(&commands);
+		let words: Vec<_> = labels.iter().map(|(text, _)| text.as_str()).collect();
+		assert_eq!(words, LABELS);
+		for (index, (_, at)) in labels.iter().enumerate() {
+			assert!(
+				inside(*at, segment_rect(900, 200, 1, index, 2)),
+				"{index}: {at:?}"
+			);
+		}
+		let colors: Vec<u32> = commands
+			.iter()
+			.filter_map(|command| match command {
+				Command::Text { color, .. } => Some(*color),
+				_ => None,
+			})
+			.collect();
+		assert_ne!(colors[0], colors[1]);
+		assert_eq!(colors[selected], 0xeeeeee, "the pen's own color");
+	}
+}
+
+#[test]
+fn a_segmented_control_draws_no_buttons() {
+	let commands = record(1, |pen, p, style| pen.segmented(p, style, 200, &LABELS, 1));
+	assert!(buttons(&commands).is_empty());
+}
+
+#[test]
+fn every_pixel_of_the_control_maps_to_the_segment_drawn_under_it() {
+	for scale in [1, 2] {
+		let (x, y, w, h) = segmented_rect(900 * scale, 200, scale);
+		for py in y..y + h {
+			for px in x..x + w {
+				let named = segment_at(900 * scale, 200, scale, (px, py), 2).expect("on the track");
+				let rect = segment_rect(900 * scale, 200, scale, named, 2);
+				let inset =
+					(rect.0..rect.0 + rect.2).contains(&px) && (rect.1..rect.1 + rect.3).contains(&py);
+				// The two pixel border belongs to the nearest segment.
+				let border = px < rect.0 + rect.2 + 2 * scale && px + 2 * scale >= rect.0;
+				assert!(inset || border, "({px}, {py}) at {scale}x named {named}");
+			}
+		}
+	}
+}
+
+#[test]
+fn a_selection_past_the_labels_fills_no_segment() {
+	let commands = record(1, |pen, p, style| pen.segmented(p, style, 200, &LABELS, 5));
+	assert_eq!(pills(&commands).len(), 1, "only the track");
+	assert_eq!(texts(&commands).len(), 2);
+}
+
+#[test]
+fn a_control_with_no_labels_is_only_its_track() {
+	let commands = record(1, |pen, p, style| pen.segmented(p, style, 200, &[], 0));
+	assert_eq!(pills(&commands).len(), 1);
+	assert!(texts(&commands).is_empty());
+}
+
+#[test]
+fn a_control_of_three_labels_splits_into_thirds_and_names_each() {
+	let labels = ["One", "Two", "Three"];
+	let commands = record(1, |pen, p, style| pen.segmented(p, style, 200, &labels, 2));
+	let drawn = pills(&commands);
+	assert_eq!(drawn[1].0, segment_rect(900, 200, 1, 2, 3));
+	for (index, (_, at)) in texts(&commands).iter().enumerate() {
+		assert!(inside(*at, segment_rect(900, 200, 1, index, 3)), "{index}");
+	}
+	let (x, y, ..) = segmented_rect(900, 200, 1);
+	for (point, want) in [(x + 10, 0), (x + 60, 1), (x + 120, 2)] {
+		assert_eq!(
+			segment_at(900, 200, 1, (point, y + 10), 3),
+			Some(want),
+			"x {point}"
+		);
+	}
+}
+
+#[test]
+fn a_single_segment_takes_the_whole_track() {
+	let (x, y, ..) = segmented_rect(900, 200, 1);
+	assert_eq!(segment_at(900, 200, 1, (x + 100, y + 5), 1), Some(0));
+	assert_eq!(segment_rect(900, 200, 1, 0, 1).2, 152);
+}
+
+#[test]
+fn a_zero_count_never_divides_by_zero() {
+	let (x, y, ..) = segmented_rect(900, 200, 1);
+	assert_eq!(segment_at(900, 200, 1, (x + 5, y + 5), 0), Some(0));
+	assert_eq!(segment_rect(900, 200, 1, 0, 0).2, 152);
+}
+
+#[test]
+fn a_narrow_window_keeps_the_control_inside_it() {
+	for width in [180, 200, 400] {
+		let (x, _, w, _) = segmented_rect(width, 200, 1);
+		assert!(x + w <= width, "{width}");
+	}
+	assert_eq!(
+		segmented_rect(100, 200, 1).0,
+		0,
+		"saturates at the left edge"
+	);
+}
+
+#[test]
+fn labels_read_on_the_track_and_the_filled_segment_in_every_built_in_theme() {
+	use crate::{
+		render::blend::blend,
+		theme::{Theme, ThemeKind},
+		ui::contrast::{TEXT, ratio},
+	};
+	let mut kind = ThemeKind::MacOsDark;
+	loop {
+		let theme = Theme::from_kind(kind);
+		let track = blend(theme.bg, theme.border, 70);
+		let lit = blend(track, theme.fg, 40);
+		let muted = blend(theme.fg, theme.bg, 70);
+		assert!(
+			ratio(theme.fg, lit) >= TEXT,
+			"{kind:?} selected: {:.2}",
+			ratio(theme.fg, lit)
+		);
+		assert!(
+			ratio(muted, track) >= 3.0,
+			"{kind:?} muted: {:.2}",
+			ratio(muted, track)
+		);
+		assert!(
+			ratio(track, theme.bg) > 1.02,
+			"{kind:?} track against the page"
+		);
+		kind = kind.next();
+		if kind == ThemeKind::MacOsDark {
+			break;
+		}
+	}
 }

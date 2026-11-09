@@ -228,32 +228,7 @@ impl App {
 					pen.wide_button(p, style, row, &label, recording, &hovered);
 				}
 			}
-			SettingsPage::Layout => {
-				pen.text(p, x, 28, "Layout", 1.0);
-				pen.text(p, x, 68, "Tabs, toolbar buttons, and the bottom bar.", 0.72);
-				let prefs = editor.preferences;
-				for (row, label, enabled) in [
-					(SHOW_TABS_ROW, "Show tabs", prefs.show_tabs),
-					(VERTICAL_TABS_ROW, "Vertical tabs", prefs.vertical_tabs),
-					(
-						NEW_TAB_BUTTON_ROW,
-						"Show new tab button",
-						prefs.show_new_tab_button,
-					),
-					(
-						SETTINGS_BUTTON_ROW,
-						"Show settings button",
-						prefs.show_settings_button,
-					),
-					(BOTTOM_BAR_ROW, "Show bottom bar", prefs.show_bottom_bar),
-					(COMPACT_TABS_ROW, "Compact tabs", prefs.compact_tabs),
-				] {
-					pen.text(p, x, row + 8, label, 0.82);
-					pen.switch(p, style, row, enabled);
-				}
-				pen.text(p, x, PADDING_ROW + 8, "Padding", 0.82);
-				pen.stepper(p, style, PADDING_ROW, &format!("{} px", prefs.padding));
-			}
+			SettingsPage::Layout => compose_layout_settings(editor, style, p, &mut pen),
 			SettingsPage::Fonts => {
 				pen.text(p, x, 28, "Fonts", 1.0);
 				let visible = font_list_rows(p.height, scale);
@@ -300,6 +275,49 @@ pub(super) fn compose_about(pen: &mut Pen, p: &mut Scene, (strong, muted): (u32,
 		};
 		pen.centered_row(p, (line.row, line.size, color), &line.text);
 	}
+}
+
+/// The Layout page: tab position, switches for the bars and buttons, and
+/// the terminal's padding.
+pub(super) fn compose_layout_settings(
+	editor: &SettingsEditor,
+	style: ButtonStyle,
+	p: &mut Scene,
+	pen: &mut Pen,
+) {
+	let x = 24 * pen.scale;
+	pen.text(p, x, 28, "Layout", 1.0);
+	pen.text(p, x, 68, "Tabs, toolbar buttons, and the bottom bar.", 0.72);
+	let prefs = editor.preferences;
+	for (row, label, enabled) in [
+		(SHOW_TABS_ROW, "Show tabs", prefs.show_tabs),
+		(
+			NEW_TAB_BUTTON_ROW,
+			"Show new tab button",
+			prefs.show_new_tab_button,
+		),
+		(
+			SETTINGS_BUTTON_ROW,
+			"Show settings button",
+			prefs.show_settings_button,
+		),
+		(BOTTOM_BAR_ROW, "Show bottom bar", prefs.show_bottom_bar),
+		(COMPACT_TABS_ROW, "Compact tabs", prefs.compact_tabs),
+	] {
+		pen.text(p, x, row + 8, label, 0.82);
+		pen.switch(p, style, row, enabled);
+	}
+	pen.text(p, x, VERTICAL_TABS_ROW + 8, "Tab position", 0.82);
+	let labels = ["Top", "Side"];
+	pen.segmented(
+		p,
+		style,
+		VERTICAL_TABS_ROW,
+		&labels,
+		usize::from(prefs.vertical_tabs),
+	);
+	pen.text(p, x, PADDING_ROW + 8, "Padding", 0.82);
+	pen.stepper(p, style, PADDING_ROW, &format!("{} px", prefs.padding));
 }
 
 /// The main page: theme, wallpaper, steppers and session restore.
