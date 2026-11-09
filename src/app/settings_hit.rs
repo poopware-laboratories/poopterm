@@ -499,4 +499,51 @@ mod tests {
 				.all(|&(row, _)| row != VERTICAL_TABS_ROW)
 		);
 	}
+
+	#[test]
+	fn the_square_window_switch_answers_over_its_whole_row_at_both_scales() {
+		for scale in [1, 2] {
+			let size = (SIZE.0 * scale, SIZE.1 * scale);
+			let at = |x: usize, y: usize| {
+				settings_target((x * scale, y * scale), size, scale, SettingsPage::Layout)
+			};
+			let on = Some(SettingsTarget::ToggleWindowFrame);
+			assert_eq!(at(720, FRAME_ROW), on, "top, x{scale}");
+			assert_eq!(at(720, FRAME_ROW + ROW_HEIGHT - 1), on, "bottom, x{scale}");
+			assert_eq!(at(720, FRAME_ROW - 1), None, "above, x{scale}");
+			assert_eq!(at(720, FRAME_ROW + ROW_HEIGHT), None, "below, x{scale}");
+			assert_eq!(at(300, FRAME_ROW + 20), None, "over the label, x{scale}");
+		}
+	}
+
+	#[test]
+	fn the_square_window_switch_is_on_the_layout_page_only() {
+		for page in [
+			SettingsPage::Main,
+			SettingsPage::Shortcuts,
+			SettingsPage::Fonts,
+			SettingsPage::About,
+		] {
+			let target = settings_target((720, FRAME_ROW + 20), SIZE, 1, page);
+			assert_ne!(target, Some(SettingsTarget::ToggleWindowFrame), "{page:?}");
+		}
+	}
+
+	#[test]
+	fn the_square_window_row_clears_the_footer_in_the_smallest_window() {
+		let footer = DEFAULT_SIZE.1 - 52;
+		assert!(FRAME_ROW + ROW_HEIGHT <= footer);
+		assert!(
+			FRAME_ROW >= PADDING_ROW + ROW_HEIGHT,
+			"no overlap with padding"
+		);
+	}
+
+	#[test]
+	fn no_two_layout_rows_share_a_row() {
+		let mut rows: Vec<usize> = LAYOUT_TOGGLES.iter().map(|&(row, _)| row).collect();
+		rows.extend([VERTICAL_TABS_ROW, PADDING_ROW]);
+		rows.sort_unstable();
+		assert!(rows.windows(2).all(|pair| pair[1] - pair[0] >= ROW_HEIGHT));
+	}
 }
