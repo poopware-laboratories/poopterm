@@ -43,6 +43,10 @@ pub(crate) struct Pair {
 	/// The side the program gets as its terminal.
 	pub slave: OwnedFd,
 	/// Where the slave lives, such as `/dev/pts/3`.
+	#[cfg_attr(
+		not(test),
+		expect(dead_code, reason = "only tests name the slave so far")
+	)]
 	pub path: PathBuf,
 }
 
@@ -140,6 +144,10 @@ pub(crate) fn set_size(fd: &impl AsFd, size: WindowSize) -> io::Result<()> {
 }
 
 /// The window size of the terminal `fd` is a side of.
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "only tests read a size back so far")
+)]
 pub(crate) fn size(fd: &impl AsFd) -> io::Result<WindowSize> {
 	let mut size = raw(WindowSize::default());
 	// SAFETY: `TIOCGWINSZ` writes one `winsize`, into `size`.

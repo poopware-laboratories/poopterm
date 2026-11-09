@@ -5,7 +5,6 @@ use crate::{pty::spawn_session, session_store::save_session_dirs};
 use std::fs;
 #[cfg(target_os = "macos")]
 use std::process::Command;
-use std::thread;
 
 impl App {
 	/// Room left of the tabs: for the window buttons on macOS.
@@ -184,12 +183,10 @@ impl App {
 	}
 
 	/// Stops `session`'s shell, which is no longer shown.
-	pub(super) fn end_session(&mut self, mut session: Session) {
+	pub(super) fn end_session(&mut self, session: Session) {
 		self.notifications.forget(session.id);
-		let _ = session._child.kill();
-		thread::spawn(move || {
-			let _ = session._child.wait();
-		});
+		// Dropping it hangs up its shell and hands it to the reaper.
+		drop(session);
 	}
 
 	pub(super) fn update_window_title(&mut self) {
@@ -208,7 +205,7 @@ impl App {
 			if only_active && index != self.active {
 				continue;
 			}
-			if let Some(_pid) = session._child.process_id() {
+			if let Some(_pid) = session.pid() {
 				#[cfg(target_os = "linux")]
 				if let Ok(path) = fs::read_link(format!("/proc/{_pid}/cwd")) {
 					session.term().cwd = path;

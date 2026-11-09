@@ -1,49 +1,30 @@
 //! PTY sessions: shell spawning plus each session's reader and parser threads.
 #[cfg(any(target_os = "macos", test))]
 mod burst;
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "sessions move here with the child setup (#188)")
-)]
 pub(crate) mod device;
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "sessions are reaped here after the switch (#188)")
-)]
 mod exits;
 pub(crate) mod open;
 pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "sessions are reaped here after the switch (#188)")
-)]
 pub(crate) mod reap;
-#[cfg_attr(
-	not(test),
-	expect(
-		dead_code,
-		reason = "sessions move here with the switch from portable-pty (#188)"
-	)
-)]
 pub(crate) mod spawn;
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "sessions move here with the child setup (#188)")
-)]
 pub(crate) mod termios;
 mod writer;
 
 use std::{
 	error::Error,
-	path::PathBuf,
+	fs::File,
+	os::fd::OwnedFd,
+	path::{Path, PathBuf},
 	sync::{Arc, atomic::Ordering},
 	thread,
 };
 
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use winit::event_loop::EventLoopProxy;
+
+use device::WindowSize;
+use spawn::{Child, Command};
 
 use crate::{
 	config::Preferences,
@@ -82,10 +63,11 @@ pub(crate) struct Session {
 	/// Tab-relevant state the UI last saw, to detect changes.
 	pub(crate) seen: Seen,
 	pub(crate) custom_title: Option<String>,
-	pub(crate) master: Box<dyn MasterPty + Send>,
+	master: OwnedFd,
 	writer: PtyWriter,
 	output: Arc<OutputQueue>,
-	pub(crate) _child: Box<dyn Child + Send + Sync>,
+	/// The shell, until the session ends and hands it to the reaper.
+	child: Option<Child>,
 	pub(crate) activity: bool,
 }
 
@@ -113,10 +95,26 @@ impl Drop for Session {
 	fn drop(&mut self) {
 		// Stop the parser thread and unblock the reader if the queue is full.
 		self.output.close();
+		// Hang up as a closing terminal does, and reap the shell once it
+		// is gone, without waiting for it here.
+		if let Some(child) = self.child.take() {
+			let _ = child.hang_up();
+			reap::reap_later(child);
+		}
 	}
 }
 
 impl Session {
+	/// The shell's process id.
+	pub(crate) fn pid(&self) -> Option<u32> {
+		self.child.as_ref().map(Child::id)
+	}
+
+	/// Tells the PTY, and so the shell, its new size in cells.
+	pub(crate) fn resize(&self, cols: usize, rows: usize) {
+		let _ = device::set_size(&self.master, WindowSize::of(cols, rows, (0, 0)));
+	}
+
 	/// Sends input bytes to the shell.
 	pub(crate) fn write(&self, bytes: &[u8]) {
 		self.writer.write(bytes);
@@ -162,35 +160,17 @@ pub(crate) fn spawn_session(
 	term_env: &TermEnv,
 ) -> Result<Session, Box<dyn Error>> {
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
-	let pair = open::openpty(PtySize {
-		rows: rows as u16,
-		cols: cols as u16,
-		pixel_width: 0,
-		pixel_height: 0,
-	})?;
+	let pair = device::open(WindowSize::of(cols, rows, (0, 0)))?;
 	let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-	let mut cmd = CommandBuilder::new(&shell);
-	cmd.env("TERM", &term_env.term);
-	for (name, value) in &term_env.extra {
-		cmd.env(name, value);
-	}
-	cmd.env("COLORTERM", "truecolor");
-	cmd.env("TERM_PROGRAM", "poopterm");
-	cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
-	cmd.args(crate::shell_integration::inject::shell_args(
-		crate::shell_integration::inject::Shell::from_path(&shell),
-		&term_env.extra,
-	));
-	cmd.cwd(&cwd);
-	let child = pair.slave.spawn_command(cmd)?;
+	let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
+	// The shell holds the slave now; ours would keep the PTY open after it
+	// exits, and the reader would never see the end.
 	drop(pair.slave);
 	#[cfg(target_os = "linux")]
-	if let Some(pid) = child.process_id() {
-		crate::cgroup::place(pid);
-	}
+	crate::cgroup::place(child.id());
 
-	let reader = pair.master.try_clone_reader()?;
-	let writer = PtyWriter::spawn(pair.master.take_writer()?);
+	let reader = File::from(pair.master.try_clone()?);
+	let writer = PtyWriter::spawn(Box::new(File::from(pair.master.try_clone()?)));
 	let output = Arc::new(OutputQueue::new(OUTPUT_LIMIT));
 	let mut term = Term::new(cols, rows, theme, cwd);
 	term.scrollback_limit = Preferences::load().scrollback_lines;
@@ -229,7 +209,30 @@ pub(crate) fn spawn_session(
 		master: pair.master,
 		writer,
 		output,
-		_child: child,
+		child: Some(child),
 		activity: false,
 	})
 }
+
+/// How a tab starts `shell` in `cwd`: with its integration arguments, and
+/// the terminal's own variables over the environment we were given.
+fn shell_command(shell: &str, term_env: &TermEnv, cwd: &Path) -> Command {
+	let integration = crate::shell_integration::inject::Shell::from_path(shell);
+	let args = crate::shell_integration::inject::shell_args(integration, &term_env.extra);
+	let mut command = Command::new(shell).env("TERM", &term_env.term);
+	for (name, value) in &term_env.extra {
+		command = command.env(name, value);
+	}
+	for arg in args {
+		command = command.arg(arg);
+	}
+	command
+		.env("COLORTERM", "truecolor")
+		.env("TERM_PROGRAM", "poopterm")
+		.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"))
+		.cwd(cwd)
+}
+
+#[cfg(test)]
+#[path = "session_tests.rs"]
+mod tests;

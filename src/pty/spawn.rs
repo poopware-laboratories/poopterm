@@ -46,6 +46,10 @@ impl Command {
 
 	/// The name the program gets as `argv[0]`, such as `-zsh` for a login
 	/// shell.
+	#[cfg_attr(
+		not(test),
+		expect(dead_code, reason = "login shells come with a setting")
+	)]
 	pub(crate) fn arg0(mut self, name: impl AsRef<OsStr>) -> Self {
 		self.arg0 = name.as_ref().to_os_string();
 		self
@@ -105,6 +109,10 @@ impl Child {
 	}
 
 	/// How the program ended, or `None` while it runs; never blocks.
+	#[cfg_attr(
+		not(test),
+		expect(dead_code, reason = "exit status in the app comes next")
+	)]
 	pub(crate) fn try_wait(&mut self) -> io::Result<Option<Exit>> {
 		let mut status = 0;
 		// SAFETY: writes the status into the integer we own; never blocks.

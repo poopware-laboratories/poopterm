@@ -80,13 +80,7 @@ impl App {
 		// pr-check: window glue: a real PTY takes the size the tested layout gave
 		if (cols, rows) != (term.cols, term.rows) {
 			term.resize(cols, rows);
-			let size = PtySize {
-				rows: rows as u16,
-				cols: cols as u16,
-				pixel_width: 0,
-				pixel_height: 0,
-			};
-			let _ = session.master.resize(size);
+			session.resize(cols, rows);
 		}
 		// pr-check: end window glue
 	}

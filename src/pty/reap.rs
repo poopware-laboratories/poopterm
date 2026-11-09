@@ -100,6 +100,16 @@ impl Shared {
 	}
 }
 
+/// Reaps `child` once it ends, on the process's one reaper, started on
+/// first use; on a thread of its own should the reaper not start.
+pub(crate) fn reap_later(child: Child) {
+	static REAPER: std::sync::OnceLock<Option<Reaper>> = std::sync::OnceLock::new();
+	match REAPER.get_or_init(|| Reaper::new().ok()) {
+		Some(reaper) => reaper.watch(child, drop),
+		None => drop(thread::spawn(move || finish((child, Box::new(drop))))),
+	}
+}
+
 /// Reaps a child that has ended and says how to its code.
 fn finish((mut child, then): (Child, Then)) {
 	then(child.wait());
