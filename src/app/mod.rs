@@ -39,6 +39,8 @@ mod settings_keys;
 pub(super) mod settings_nav;
 #[cfg(test)]
 mod settings_nav_tests;
+#[cfg(test)]
+mod settings_panes_tests;
 mod settings_pen;
 #[cfg(test)]
 mod settings_pen_tests;

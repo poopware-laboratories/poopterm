@@ -136,7 +136,7 @@ fn defaults_do_not_take_the_existing_shortcuts() {
 	use super::shortcuts::{ShortcutAction, Shortcuts};
 	let panes = PaneShortcuts::from_config("", cfg!(target_os = "macos"));
 	let table = Shortcuts::from_config("");
-	for action in ShortcutAction::ALL {
+	for action in ShortcutAction::TABS {
 		let binding = table.get(action).binding();
 		let mut parts: Vec<&str> = binding.split('+').collect();
 		let key = match parts.pop().unwrap() {

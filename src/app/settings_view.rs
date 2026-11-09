@@ -34,15 +34,20 @@ pub(super) const COMPACT_TABS_ROW: usize = 344;
 pub(super) const PADDING_ROW: usize = 392;
 /// Shortcut rows sit closer than other pages' rows so all ten clear the
 /// footer at the smallest window size.
-pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 10] = {
-	let mut rows = [(ShortcutAction::NewTab, 0); 10];
+pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 10] = rows(ShortcutAction::TABS);
+/// The pane shortcuts' rows, spaced as the Shortcuts page's.
+pub(super) const PANE_ROWS: [(ShortcutAction, usize); 8] = rows(ShortcutAction::PANES);
+
+/// `actions` with the tops of their rows, 44 logical pixels apart.
+const fn rows<const N: usize>(actions: [ShortcutAction; N]) -> [(ShortcutAction, usize); N] {
+	let mut rows = [(ShortcutAction::NewTab, 0); N];
 	let mut i = 0;
-	while i < rows.len() {
-		rows[i] = (ShortcutAction::ALL[i], 104 + 44 * i);
+	while i < N {
+		rows[i] = (actions[i], 104 + 44 * i);
 		i += 1;
 	}
 	rows
-};
+}
 /// Top of the Fonts page's list and the distance between its rows.
 pub(super) const FONT_LIST_TOP: usize = 104;
 pub(super) const FONT_LIST_STRIDE: usize = 44;
@@ -206,27 +211,16 @@ impl App {
 				return;
 			}
 			SettingsPage::Shortcuts => {
-				pen.text(p, x, 28, "Keyboard shortcuts", 1.0);
-				pen.text(
-					p,
-					x,
-					68,
-					"Click a binding, then press the new key chord. Esc cancels.",
-					0.72,
-				);
-				for (action, row) in SHORTCUT_ROWS {
-					let recording = editor.recording_shortcut == Some(action);
-					let label = if recording {
-						"Press keys…".to_owned()
-					} else {
-						editor
-							.shortcuts
-							.get(action)
-							.display(cfg!(target_os = "macos"))
-					};
-					pen.text(p, x, row + 10, action.label(), 0.78);
-					pen.wide_button(p, style, row, &label, recording, &hovered);
-				}
+				let hint = "Click a binding, then press the new key chord. Esc cancels.";
+				let rows = &SHORTCUT_ROWS[..];
+				let page = ("Keyboard shortcuts", hint, rows);
+				compose_shortcuts(editor, page, style, p, &mut pen, &hovered);
+			}
+			SettingsPage::Panes => {
+				let hint = "Split a tab into panes and move between them. Click to change.";
+				let rows = &PANE_ROWS[..];
+				let page = ("Pane shortcuts", hint, rows);
+				compose_shortcuts(editor, page, style, p, &mut pen, &hovered);
 			}
 			SettingsPage::Layout => compose_layout_settings(editor, style, p, &mut pen),
 			SettingsPage::Fonts => {
@@ -321,6 +315,30 @@ pub(super) fn compose_layout_settings(
 }
 
 /// The main page: theme, wallpaper, steppers and session restore.
+/// A page of shortcut `rows` under its title and hint, each row's action
+/// with its binding on a button, or a prompt while it is being recorded.
+fn compose_shortcuts(
+	editor: &SettingsEditor,
+	(title, hint, rows): (&str, &str, &[(ShortcutAction, usize)]),
+	style: ButtonStyle,
+	p: &mut Scene,
+	pen: &mut Pen,
+	hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
+) {
+	let x = 24 * pen.scale;
+	pen.text(p, x, 28, title, 1.0);
+	pen.text(p, x, 68, hint, 0.72);
+	for &(action, row) in rows {
+		let recording = editor.recording_shortcut == Some(action);
+		let label = match recording {
+			true => "Press keys…".to_owned(),
+			false => (editor.shortcuts.get(action)).display(cfg!(target_os = "macos")),
+		};
+		pen.text(p, x, row + 10, action.label(), 0.78);
+		pen.wide_button(p, style, row, &label, recording, hovered);
+	}
+}
+
 pub(super) fn compose_main_settings(
 	editor: &SettingsEditor,
 	style: ButtonStyle,

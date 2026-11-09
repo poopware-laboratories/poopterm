@@ -15,11 +15,12 @@ use crate::{
 /// The sidebar's width, in logical pixels.
 pub(super) const NAV_WIDTH: usize = 188;
 /// The pages in reading order, with their names.
-pub(super) const ITEMS: [(SettingsPage, &str); 6] = [
+pub(super) const ITEMS: [(SettingsPage, &str); 7] = [
 	(SettingsPage::Main, "Appearance"),
 	(SettingsPage::Layout, "Layout"),
 	(SettingsPage::Fonts, "Fonts"),
 	(SettingsPage::Shortcuts, "Shortcuts"),
+	(SettingsPage::Panes, "Panes"),
 	(SettingsPage::Diagnostics, "Diagnostics"),
 	(SettingsPage::About, "About"),
 ];
