@@ -104,6 +104,11 @@ impl Child {
 		wait_for(self.pid)
 	}
 
+	/// How the program ended, or `None` while it runs; never blocks.
+	pub(crate) fn try_wait(&mut self) -> io::Result<Option<Exit>> {
+		todo!()
+	}
+
 	/// Sends `SIGHUP`, as a terminal does when it closes.
 	pub(crate) fn hang_up(&self) -> io::Result<()> {
 		// SAFETY: sends a signal to the process we started; takes no memory.
