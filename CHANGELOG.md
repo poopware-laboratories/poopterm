@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.55 "Lunar Moth" — 2026-11-09
+
+### Maintenance
+
+- Drop portable-pty (#274) (pty).
+
 ## 26.11.54 "Lunar Moth" — 2026-11-09
 
 ### Maintenance
