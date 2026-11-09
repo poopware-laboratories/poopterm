@@ -190,3 +190,132 @@ fn separate_sets_report_only_their_own_children() {
 	assert_eq!(collect(&two, &[pid(&second)]), [pid(&second)]);
 	second.wait().unwrap();
 }
+
+#[test]
+fn more_ends_than_one_wait_takes_come_with_the_next() {
+	let exits = Exits::new().unwrap();
+	let children: Vec<_> = (0..BATCH * 2 + 3).map(|_| start("exit 0")).collect();
+	// All ended before the first wait, so they are ready at once.
+	thread::sleep(Duration::from_millis(300));
+	let pids: Vec<_> = children
+		.iter()
+		.map(|(child, _)| pid(child))
+		.filter(|&pid| exits.add(pid).unwrap())
+		.collect();
+	let first = if pids.is_empty() {
+		Vec::new()
+	} else {
+		exits.wait().unwrap().unwrap()
+	};
+	assert!(first.len() <= BATCH, "{} in one wait", first.len());
+	let rest: Vec<_> = pids
+		.iter()
+		.copied()
+		.filter(|pid| !first.contains(pid))
+		.collect();
+	let mut seen = first;
+	seen.extend(collect(&exits, &rest));
+	seen.sort_unstable();
+	let mut expected = pids;
+	expected.sort_unstable();
+	assert_eq!(seen, expected);
+	for (mut child, _pair) in children {
+		child.wait().unwrap();
+	}
+}
+
+#[test]
+fn a_child_added_twice_is_reported_once() {
+	let exits = Arc::new(Exits::new().unwrap());
+	let (mut child, _pair) = start("read line");
+	assert!(exits.add(pid(&child)).unwrap());
+	assert!(exits.add(pid(&child)).unwrap());
+	child.hang_up().unwrap();
+	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
+	assert_eq!(
+		wait_within(&exits, Duration::from_millis(200)),
+		None,
+		"reported twice"
+	);
+	child.wait().unwrap();
+}
+
+extern "C" fn ignore(_: libc::c_int) {}
+
+#[test]
+fn a_signal_that_interrupts_the_wait_does_not_end_it() {
+	// A handler without SA_RESTART makes the blocking call fail with EINTR.
+	// SAFETY: installs a handler that does nothing for SIGURG, which no
+	// other test uses and which is ignored by default.
+	unsafe {
+		let mut action: libc::sigaction = std::mem::zeroed();
+		action.sa_sigaction = ignore as extern "C" fn(libc::c_int) as libc::sighandler_t;
+		assert_eq!(
+			libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut()),
+			0
+		);
+	}
+	let exits = Arc::new(Exits::new().unwrap());
+	let (mut child, _pair) = start("read line");
+	assert!(exits.add(pid(&child)).unwrap());
+	let (send, got) = mpsc::channel();
+	let waiter = exits.clone();
+	let (thread_send, thread_got) = mpsc::channel();
+	thread::spawn(move || {
+		// SAFETY: names the calling thread; takes nothing.
+		let _ = thread_send.send(unsafe { libc::pthread_self() });
+		let _ = send.send(waiter.wait());
+	});
+	let waiting = thread_got.recv().unwrap();
+	for _ in 0..5 {
+		thread::sleep(Duration::from_millis(20));
+		// SAFETY: signals a thread that is alive: it is blocked in `wait`.
+		unsafe { libc::pthread_kill(waiting, libc::SIGURG) };
+	}
+	assert!(
+		got.recv_timeout(Duration::from_millis(100)).is_err(),
+		"the signal ended it"
+	);
+	child.hang_up().unwrap();
+	let reported = got.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+	assert_eq!(reported, Some(vec![pid(&child)]));
+	child.wait().unwrap();
+}
+
+fn closes_on_exec(fd: &OwnedFd) -> bool {
+	// SAFETY: reads the flags of a descriptor we own.
+	let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+	flags >= 0 && flags & libc::FD_CLOEXEC != 0
+}
+
+#[test]
+fn none_of_its_descriptors_reach_programs_we_start() {
+	let exits = Exits::new().unwrap();
+	assert!(closes_on_exec(&exits.set));
+	assert!(closes_on_exec(&exits.stop.0) && closes_on_exec(&exits.stop.1));
+	#[cfg(target_os = "linux")]
+	{
+		let (mut child, _pair) = start("read line");
+		exits.add(pid(&child)).unwrap();
+		let pidfds = exits.pidfds.lock().unwrap();
+		assert!(pidfds.values().all(closes_on_exec));
+		drop(pidfds);
+		child.hang_up().unwrap();
+		child.wait().unwrap();
+	}
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn no_pidfd_is_kept_once_its_program_is_reported() {
+	let exits = Exits::new().unwrap();
+	let (mut child, _pair) = start("exit 0");
+	exits.add(pid(&child)).unwrap();
+	assert_eq!(exits.pidfds.lock().unwrap().len(), 1);
+	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
+	assert!(
+		exits.pidfds.lock().unwrap().is_empty(),
+		"a descriptor per ended tab leaks"
+	);
+	child.wait().unwrap();
+}

@@ -70,9 +70,12 @@ impl Reaper {
 
 impl Drop for Reaper {
 	fn drop(&mut self) {
-		// Children still running are left to the system once we exit.
+		// Children still running are left to the system once we exit. A
+		// reaper dropped by one of its own callbacks cannot wait for itself;
+		// its thread ends once that callback returns.
 		if self.shared.exits.stop().is_ok()
 			&& let Some(thread) = self.thread.take()
+			&& thread.thread().id() != thread::current().id()
 		{
 			let _ = thread.join();
 		}

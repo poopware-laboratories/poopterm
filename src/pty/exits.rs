@@ -4,10 +4,10 @@
 //! FreeBSD (`kqueue(2)`). A pipe in the same set lets another thread stop
 //! the wait; it is never read, so a stopped set stays stopped.
 
-use super::device::check;
+use super::{device::check, spawn::report_pipe};
 use std::{
 	io,
-	os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+	os::fd::{AsRawFd, FromRawFd, OwnedFd},
 };
 
 /// The programs being watched for their end.
@@ -30,14 +30,13 @@ const STOP: u64 = u64::MAX;
 
 impl Exits {
 	pub(crate) fn new() -> io::Result<Self> {
-		let stop = pipe()?;
 		let exits = Self {
 			set: new_set()?,
-			stop,
+			stop: report_pipe()?,
 			#[cfg(target_os = "linux")]
 			pidfds: Default::default(),
 		};
-		exits.listen(exits.stop.0.as_raw_fd())?;
+		exits.listen()?;
 		Ok(exits)
 	}
 
@@ -54,37 +53,22 @@ impl Exits {
 
 	/// Makes [`Self::wait`] return `None`, now and from then on.
 	pub(crate) fn stop(&self) -> io::Result<()> {
-		// SAFETY: writes one byte from a constant to a pipe we own. A full
-		// pipe (`EAGAIN`) is already readable, which is all a stop needs.
+		// SAFETY: writes one byte from a constant to a pipe we own; one byte
+		// per stop never fills it.
 		let written = unsafe { libc::write(self.stop.1.as_raw_fd(), [1u8].as_ptr().cast(), 1) };
-		match written {
-			1 => Ok(()),
-			_ if io::Error::last_os_error().kind() == io::ErrorKind::WouldBlock => Ok(()),
-			_ => Err(io::Error::last_os_error()),
+		check(written as libc::c_int).map(drop)
+	}
+}
+
+/// Calls `call` again while a signal interrupts it.
+fn retrying(mut call: impl FnMut() -> libc::c_int) -> io::Result<usize> {
+	loop {
+		match check(call()) {
+			Ok(n) => return Ok(n as usize),
+			Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+			Err(error) => return Err(error),
 		}
 	}
-}
-
-/// A pipe whose ends close on exec and never block.
-fn pipe() -> io::Result<(OwnedFd, OwnedFd)> {
-	let mut fds = [0; 2];
-	// SAFETY: writes two descriptors into the array we own.
-	check(unsafe { libc::pipe(fds.as_mut_ptr()) })?;
-	// SAFETY: both were just opened and nothing else owns them.
-	let ends = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
-	for end in [&ends.0, &ends.1] {
-		set_flags(end.as_raw_fd())?;
-	}
-	Ok(ends)
-}
-
-/// Marks `fd`, which we own, close-on-exec and non-blocking.
-fn set_flags(fd: RawFd) -> io::Result<()> {
-	// SAFETY: sets descriptor flags on a descriptor we own.
-	check(unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) })?;
-	// SAFETY: as above, for the status flags.
-	check(unsafe { libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) })?;
-	Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -98,33 +82,33 @@ fn new_set() -> io::Result<OwnedFd> {
 #[cfg(target_os = "linux")]
 impl Exits {
 	/// Puts `fd` in the set, keyed by `key`.
-	fn register(&self, fd: RawFd, key: u64) -> io::Result<()> {
+	fn register(&self, fd: &OwnedFd, key: u64) -> io::Result<()> {
+		let set = self.set.as_raw_fd();
 		let mut event = libc::epoll_event {
 			events: libc::EPOLLIN as u32,
 			u64: key,
 		};
 		// SAFETY: reads one event we own; both descriptors are open.
-		check(unsafe { libc::epoll_ctl(self.set.as_raw_fd(), libc::EPOLL_CTL_ADD, fd, &mut event) })
+		check(unsafe { libc::epoll_ctl(set, libc::EPOLL_CTL_ADD, fd.as_raw_fd(), &mut event) })
 			.map(drop)
 	}
 
-	fn listen(&self, stop: RawFd) -> io::Result<()> {
-		self.register(stop, STOP)
+	fn listen(&self) -> io::Result<()> {
+		self.register(&self.stop.0, STOP)
 	}
 
 	/// Watches `pid`, a child of ours not yet waited for. `false` means it
 	/// has already ended, which macOS reports now instead of later.
 	pub(crate) fn add(&self, pid: libc::pid_t) -> io::Result<bool> {
 		// SAFETY: takes a pid and no flags; a pidfd closes on exec.
-		let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
-		let fd = check(fd as libc::c_int)?;
+		let fd = check(unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as libc::c_int)?;
 		// SAFETY: `fd` was just made and nothing else owns it.
 		let pidfd = unsafe { OwnedFd::from_raw_fd(fd) };
 		let mut pidfds = self
 			.pidfds
 			.lock()
 			.unwrap_or_else(|poison| poison.into_inner());
-		self.register(fd, pid as u64)?;
+		self.register(&pidfd, pid as u64)?;
 		pidfds.insert(pid, pidfd);
 		Ok(true)
 	}
@@ -133,22 +117,15 @@ impl Exits {
 	/// `None` once stopped.
 	fn wait_once(&self) -> io::Result<Option<Vec<libc::pid_t>>> {
 		let mut events = [libc::epoll_event { events: 0, u64: 0 }; BATCH];
-		let ready = loop {
-			// SAFETY: writes at most `BATCH` events into the array we own.
-			let ready = unsafe {
-				libc::epoll_wait(
-					self.set.as_raw_fd(),
-					events.as_mut_ptr(),
-					BATCH as libc::c_int,
-					-1,
-				)
-			};
-			match check(ready) {
-				Ok(ready) => break ready as usize,
-				Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-				Err(error) => return Err(error),
-			}
-		};
+		// SAFETY: writes at most `BATCH` events into the array we own.
+		let ready = retrying(|| unsafe {
+			libc::epoll_wait(
+				self.set.as_raw_fd(),
+				events.as_mut_ptr(),
+				BATCH as libc::c_int,
+				-1,
+			)
+		})?;
 		let keys: Vec<u64> = events[..ready].iter().map(|event| event.u64).collect();
 		if keys.contains(&STOP) {
 			return Ok(None);
@@ -170,11 +147,9 @@ impl Exits {
 #[cfg(not(target_os = "linux"))]
 fn new_set() -> io::Result<OwnedFd> {
 	// SAFETY: takes nothing; a non-negative result is a new descriptor.
-	let fd = check(unsafe { libc::kqueue() })?;
-	// SAFETY: `fd` was just made and nothing else owns it.
-	let set = unsafe { OwnedFd::from_raw_fd(fd) };
+	let set = unsafe { OwnedFd::from_raw_fd(check(libc::kqueue())?) };
 	// SAFETY: sets a descriptor flag on a descriptor we own.
-	check(unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) })?;
+	check(unsafe { libc::fcntl(set.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) })?;
 	Ok(set)
 }
 
@@ -201,22 +176,14 @@ fn exists(pid: libc::pid_t) -> bool {
 impl Exits {
 	/// Applies one change to the kqueue.
 	fn change(&self, event: &libc::kevent) -> io::Result<()> {
+		let (set, none) = (self.set.as_raw_fd(), std::ptr::null_mut());
 		// SAFETY: reads one change we own and writes no events.
-		let result = unsafe {
-			libc::kevent(
-				self.set.as_raw_fd(),
-				event,
-				1,
-				std::ptr::null_mut(),
-				0,
-				std::ptr::null(),
-			)
-		};
-		check(result).map(drop)
+		check(unsafe { libc::kevent(set, event, 1, none, 0, std::ptr::null()) }).map(drop)
 	}
 
-	fn listen(&self, stop: RawFd) -> io::Result<()> {
-		self.change(&kevent(stop as usize, libc::EVFILT_READ, libc::EV_ADD, 0))
+	fn listen(&self) -> io::Result<()> {
+		let stop = self.stop.0.as_raw_fd() as usize;
+		self.change(&kevent(stop, libc::EVFILT_READ, libc::EV_ADD, 0))
 	}
 
 	/// Watches `pid`, a child of ours not yet waited for. `false` means it
@@ -233,29 +200,22 @@ impl Exits {
 		}
 	}
 
-	/// One wait: what ended, which another thread may have taken first, or
-	/// `None` once stopped.
+	/// One wait: what ended, or `None` once stopped.
 	fn wait_once(&self) -> io::Result<Option<Vec<libc::pid_t>>> {
 		let mut events = [kevent(0, 0, 0, 0); BATCH];
-		let ready = loop {
-			// SAFETY: writes at most `BATCH` events into the array we own;
-			// a null timeout waits for as long as it takes.
-			let ready = unsafe {
-				libc::kevent(
-					self.set.as_raw_fd(),
-					std::ptr::null(),
-					0,
-					events.as_mut_ptr(),
-					BATCH as libc::c_int,
-					std::ptr::null(),
-				)
-			};
-			match check(ready) {
-				Ok(ready) => break ready as usize,
-				Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-				Err(error) => return Err(error),
-			}
-		};
+		let (set, out) = (self.set.as_raw_fd(), events.as_mut_ptr());
+		// SAFETY: writes at most `BATCH` events into the array we own; a
+		// null timeout waits for as long as it takes.
+		let ready = retrying(|| unsafe {
+			libc::kevent(
+				set,
+				std::ptr::null(),
+				0,
+				out,
+				BATCH as libc::c_int,
+				std::ptr::null(),
+			)
+		})?;
 		let events = &events[..ready];
 		if events.iter().any(|event| event.filter == libc::EVFILT_READ) {
 			return Ok(None);

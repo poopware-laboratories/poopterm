@@ -377,7 +377,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 /// A pipe whose ends both close on exec.
-fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+pub(super) fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 	let mut fds = [0; 2];
 	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 	// SAFETY: writes two descriptors into the array we own.

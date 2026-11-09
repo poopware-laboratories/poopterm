@@ -194,3 +194,93 @@ fn a_child_someone_else_reaped_reports_the_error() {
 		.expect("never reported");
 	assert!(exit.is_err(), "{exit:?}");
 }
+
+#[test]
+fn a_reaper_dropped_by_its_own_code_does_not_wait_for_itself() {
+	use std::sync::{Arc, Mutex};
+	let slot = Arc::new(Mutex::new(Some(Reaper::new().unwrap())));
+	let (child, _pair) = start("sleep 0.1");
+	let (send, done) = mpsc::channel();
+	let inside = slot.clone();
+	slot
+		.lock()
+		.unwrap()
+		.as_ref()
+		.unwrap()
+		.watch(child, move |_| {
+			// The last reaper goes away on its own thread.
+			let last = inside.lock().unwrap().take();
+			drop(last);
+			let _ = send.send(());
+		});
+	assert!(
+		done.recv_timeout(Duration::from_secs(5)).is_ok(),
+		"the drop hung"
+	);
+	assert!(slot.lock().unwrap().is_none());
+}
+
+#[test]
+fn code_may_watch_the_next_child_as_one_ends() {
+	// As a tab that restarts its shell would.
+	let reaper = std::sync::Arc::new(Reaper::new().unwrap());
+	let (child, _first) = start("exit 1");
+	let (send, ended) = mpsc::channel();
+	let (pairs, kept) = mpsc::channel();
+	let again = std::sync::Arc::downgrade(&reaper);
+	reaper.watch(child, move |first| {
+		let _ = send.send(first.unwrap());
+		let (next, pair) = start("exit 2");
+		let _ = pairs.send(pair);
+		let send = send.clone();
+		if let Some(reaper) = again.upgrade() {
+			reaper.watch(next, move |second| {
+				let _ = send.send(second.unwrap());
+			});
+		}
+	});
+	assert_eq!(within_ok(&ended), Exit::Code(1));
+	assert_eq!(within_ok(&ended), Exit::Code(2));
+	drop(kept);
+}
+
+fn within_ok(ended: &Receiver<Exit>) -> Exit {
+	ended
+		.recv_timeout(Duration::from_secs(5))
+		.expect("its end never came")
+}
+
+#[test]
+fn every_exit_code_and_signal_comes_through_unchanged() {
+	let reaper = Reaper::new().unwrap();
+	for (script, expected) in [
+		("exit 0", Exit::Code(0)),
+		("exit 1", Exit::Code(1)),
+		("exit 127", Exit::Code(127)),
+		("exit 255", Exit::Code(255)),
+		("kill -HUP $$", Exit::Signal(libc::SIGHUP)),
+		("kill -KILL $$", Exit::Signal(libc::SIGKILL)),
+	] {
+		let (child, _pair) = start(script);
+		assert_eq!(within(&watched(&reaper, child), 5), expected, "{script}");
+	}
+}
+
+#[test]
+fn more_children_ending_at_once_than_one_wait_takes_all_arrive() {
+	let reaper = Reaper::new().unwrap();
+	let children: Vec<_> = (0..40).map(|_| start("exit 0")).collect();
+	thread::sleep(Duration::from_millis(300));
+	let (send, ended) = mpsc::channel();
+	let mut pairs = Vec::new();
+	for (child, pair) in children {
+		pairs.push(pair);
+		let send = send.clone();
+		reaper.watch(child, move |exit| {
+			let _ = send.send(exit.unwrap());
+		});
+	}
+	drop(send);
+	let all: Vec<_> = (0..40).map(|_| within_ok(&ended)).collect();
+	assert_eq!(all, vec![Exit::Code(0); 40]);
+}
