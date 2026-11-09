@@ -35,6 +35,39 @@ fn os(bytes: &[u8]) -> OsString {
 }
 
 #[test]
+fn a_relative_program_is_made_absolute_from_our_directory() {
+	let ours = std::env::current_dir().unwrap();
+	let prepared = Prepared::new(&Command::new("./Cargo.toml")).unwrap();
+	assert_eq!(
+		prepared.path.as_bytes(),
+		ours.join("Cargo.toml").as_os_str().as_bytes()
+	);
+}
+
+#[test]
+fn a_program_found_through_a_relative_path_entry_is_absolute() {
+	let dir = scratch("relative-entry");
+	file(&dir.join("poopterm-relative"), b"#!/bin/sh\n", 0o755);
+	let ours = std::env::current_dir().unwrap();
+	// The same directory, named relative to ours.
+	let up: PathBuf = ours.components().skip(1).map(|_| "..").collect();
+	let entry = up.join(dir.strip_prefix("/").unwrap());
+	let command = Command::new("poopterm-relative").env("PATH", &entry);
+	let prepared = Prepared::new(&command).unwrap();
+	let path = Path::new(OsStr::from_bytes(prepared.path.as_bytes()));
+	assert!(path.is_absolute(), "{path:?}");
+	let expected = dir.join("poopterm-relative").canonicalize().unwrap();
+	assert_eq!(path.canonicalize().unwrap(), expected);
+	fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_absolute_program_is_kept_as_written() {
+	let prepared = Prepared::new(&Command::new("/bin/../bin/sh")).unwrap();
+	assert_eq!(prepared.path.as_bytes(), b"/bin/../bin/sh");
+}
+
+#[test]
 fn a_new_command_names_its_program_in_argv0() {
 	let command = Command::new("zsh");
 	assert_eq!(command.program, "zsh");
@@ -203,11 +236,8 @@ fn the_prepared_signal_set_is_empty() {
 	let prepared = Prepared::new(&Command::new("/bin/sh")).unwrap();
 	for signal in 1..=LAST_SIGNAL.min(31) {
 		// SAFETY: reads the set the `Prepared` owns.
-		assert_eq!(
-			unsafe { libc::sigismember(&prepared.no_signals, signal) },
-			0,
-			"{signal}"
-		);
+		let member = unsafe { libc::sigismember(&prepared.no_signals, signal) };
+		assert_eq!(member, 0, "{signal}");
 	}
 }
 

@@ -200,6 +200,9 @@ impl Prepared {
 			.map(|(_, value)| value.as_os_str());
 		let path = resolve(&command.program, search, is_executable)
 			.ok_or_else(|| io::Error::from_raw_os_error(libc::ENOENT))?;
+		// Found from our directory, so made absolute before the child's
+		// `chdir` can change what a relative path means.
+		let path = std::path::absolute(path)?;
 		let argv: Vec<CString> = std::iter::once(&command.arg0)
 			.chain(&command.args)
 			.map(|arg| c_string(arg.as_bytes()))
@@ -283,14 +286,11 @@ impl Prepared {
 			if libc::ioctl(terminal, TIOCSCTTY as _, 0) < 0 {
 				return failed();
 			}
-			// A copy above 2 first, so a terminal that is 0, 1 or 2 already
-			// still loses close-on-exec on its way there.
-			let copy = libc::fcntl(terminal, libc::F_DUPFD, 3);
-			if copy < 0 {
-				return failed();
-			}
+			// The terminal is above 2: Rust's runtime opens 0, 1 and 2 at
+			// startup if they are closed, so a new descriptor never takes
+			// them, and `dup2` clears close-on-exec on each copy.
 			for stream in 0..3 {
-				if libc::dup2(copy, stream) < 0 {
+				if libc::dup2(terminal, stream) < 0 {
 					return failed();
 				}
 			}

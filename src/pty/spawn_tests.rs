@@ -27,6 +27,33 @@ fn run(command: Command) -> (String, Exit) {
 	run_on(pty(), command)
 }
 
+/// What appears on `master`, read on a thread of its own.
+fn watch(master: OwnedFd) -> mpsc::Receiver<Vec<u8>> {
+	let mut screen = File::from(master);
+	let (send, shown) = mpsc::channel();
+	thread::spawn(move || {
+		let mut buf = [0; 4096];
+		while let Ok(n @ 1..) = screen.read(&mut buf) {
+			if send.send(buf[..n].to_vec()).is_err() {
+				return;
+			}
+		}
+	});
+	shown
+}
+
+/// Reads from `shown` until `text` has appeared, and returns all of it.
+fn until(shown: &mpsc::Receiver<Vec<u8>>, text: &str) -> String {
+	let mut seen = Vec::new();
+	while !String::from_utf8_lossy(&seen).contains(text) {
+		let bytes = shown
+			.recv_timeout(Duration::from_secs(5))
+			.unwrap_or_else(|_| panic!("no {text:?} in {:?}", String::from_utf8_lossy(&seen)));
+		seen.extend_from_slice(&bytes);
+	}
+	String::from_utf8_lossy(&seen).into_owned()
+}
+
 /// Starts a shell that waits for a line on `pair`, for tests that look at
 /// it from outside while it runs.
 fn waiting(pair: &device::Pair) -> Child {
@@ -37,16 +64,7 @@ fn waiting(pair: &device::Pair) -> Child {
 fn run_on(pair: device::Pair, command: Command) -> (String, Exit) {
 	let mut child = spawn(&command, &pair.slave).unwrap();
 	drop(pair.slave);
-	let mut screen = File::from(pair.master);
-	let (send, shown) = mpsc::channel();
-	thread::spawn(move || {
-		let mut buf = [0; 4096];
-		while let Ok(n @ 1..) = screen.read(&mut buf) {
-			if send.send(buf[..n].to_vec()).is_err() {
-				return;
-			}
-		}
-	});
+	let shown = watch(pair.master);
 	let exit = child.wait().unwrap();
 	let mut output = Vec::new();
 	// What the program wrote is read while it runs and just after: macOS
@@ -78,11 +96,8 @@ fn the_program_leads_a_session_of_its_own() {
 	let mut child = waiting(&pair);
 	let pid = child.id() as libc::pid_t;
 	// SAFETY: takes only a process id.
-	assert_eq!(
-		unsafe { libc::getsid(pid) },
-		pid,
-		"the session's id is its leader's pid"
-	);
+	let session = unsafe { libc::getsid(pid) };
+	assert_eq!(session, pid, "the session's id is its leader's pid");
 	// SAFETY: as above.
 	assert_ne!(unsafe { libc::getsid(0) }, pid, "and it is not ours");
 	child.hang_up().unwrap();
@@ -357,7 +372,6 @@ fn signals_are_neither_ignored_nor_blocked() {
 	assert_eq!(output.lines().count(), 2, "{output:?}");
 }
 
-#[cfg(target_os = "linux")]
 #[test]
 fn none_of_our_descriptors_reach_the_program() {
 	// One we would leak if nothing closed it: inheritable, unlike std's.
@@ -365,7 +379,12 @@ fn none_of_our_descriptors_reach_the_program() {
 	// SAFETY: duplicates a descriptor we own, without close-on-exec.
 	let leaky = unsafe { libc::dup(std::os::fd::AsRawFd::as_raw_fd(&file)) };
 	assert!(leaky > 2);
-	let (output, _) = run(sh("ls /proc/self/fd"));
+	// macOS marks them one by one, so this checks that path there.
+	#[cfg(target_os = "linux")]
+	let script = "ls /proc/self/fd";
+	#[cfg(not(target_os = "linux"))]
+	let script = "ls /dev/fd";
+	let (output, _) = run(sh(script));
 	// SAFETY: closes the duplicate made above.
 	unsafe { libc::close(leaky) };
 	let fds: Vec<&str> = output.split_whitespace().collect();
@@ -412,4 +431,105 @@ fn an_empty_path_entry_is_the_current_directory() {
 		executable_in(&["."]),
 	);
 	assert_eq!(found, Some(PathBuf::from("./zsh")));
+}
+
+#[test]
+fn control_c_typed_on_the_master_interrupts_the_program() {
+	// Only the terminal's foreground group gets it, so this needs both the
+	// controlling terminal and default SIGINT handling.
+	let pair = pty();
+	let mut child = waiting(&pair);
+	File::from(pair.master.try_clone().unwrap())
+		.write_all(b"\x03")
+		.unwrap();
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGINT));
+}
+
+#[test]
+fn closing_the_master_hangs_up_the_session() {
+	let device::Pair { master, slave, .. } = pty();
+	let mut child = spawn(&Command::new("sh").arg("-c").arg("read line"), &slave).unwrap();
+	drop(slave);
+	drop(master);
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGHUP));
+}
+
+#[test]
+fn resizing_the_terminal_tells_the_program() {
+	let pair = pty();
+	let script = "trap 'stty size; exit 0' WINCH; echo ready; while :; do sleep 0.05; done";
+	let mut child = spawn(&Command::new("sh").arg("-c").arg(script), &pair.slave).unwrap();
+	let size = WindowSize {
+		cols: 100,
+		rows: 30,
+		..WindowSize::default()
+	};
+	let shown = watch(pair.master.try_clone().unwrap());
+	until(&shown, "ready");
+	device::set_size(&pair.master, size).unwrap();
+	assert!(until(&shown, "30 100").ends_with("30 100\r\n"));
+	assert_eq!(child.wait().unwrap(), Exit::Code(0));
+}
+
+#[test]
+fn standard_error_reaches_the_terminal_too() {
+	let (output, _) = run(sh("echo to-stderr >&2"));
+	assert_eq!(output, "to-stderr\n");
+}
+
+#[test]
+fn a_relative_directory_is_taken_from_ours() {
+	let ours = std::env::current_dir().unwrap().canonicalize().unwrap();
+	let (output, _) = run(sh("pwd -P").cwd("src"));
+	assert_eq!(output.trim_end(), ours.join("src").to_str().unwrap());
+}
+
+#[test]
+fn values_that_are_not_utf8_or_empty_arrive() {
+	use std::os::unix::ffi::OsStringExt;
+	let script = r#"printf %s "$POOPTERM_BYTES" | od -An -tx1; echo "${POOPTERM_EMPTY+set}""#;
+	let command = sh(script)
+		.env("POOPTERM_BYTES", OsString::from_vec(b"\xc3\x28".to_vec()))
+		.env("POOPTERM_EMPTY", "");
+	let (output, _) = run(command);
+	assert_eq!(
+		output.split_whitespace().collect::<Vec<_>>(),
+		["c3", "28", "set"]
+	);
+}
+
+#[test]
+fn hanging_up_a_program_already_waited_for_is_an_error() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	let mut child = spawn(&Command::new("sh").arg("-c").arg("exit 0"), &pair.slave).unwrap();
+	child.wait().unwrap();
+	assert_eq!(
+		child.hang_up().err().unwrap().raw_os_error(),
+		Some(libc::ESRCH)
+	);
+}
+
+#[test]
+fn spawns_on_many_threads_at_once_each_get_their_own_result() {
+	// Each report pipe must reach only its own child, and every child its
+	// own terminal, while other threads fork.
+	let threads: Vec<_> = (0..8)
+		.map(|thread| {
+			thread::spawn(move || {
+				for round in 0..4 {
+					let code = thread * 10 + round;
+					let pair = device::open(WindowSize::default()).unwrap();
+					let command = Command::new("sh").arg("-c").arg(format!("exit {code}"));
+					let mut child = spawn(&command, &pair.slave).unwrap();
+					assert_eq!(child.wait().unwrap(), Exit::Code(code));
+					let missing = Command::new("/nonexistent/poopterm-thread");
+					let error = spawn(&missing, &pair.slave).err().unwrap();
+					assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
+				}
+			})
+		})
+		.collect();
+	for thread in threads {
+		thread.join().unwrap();
+	}
 }
