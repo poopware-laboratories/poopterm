@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.11.61 "Lunar Moth" — 2026-11-09
+
+### Fixed
+
+- End a drag when the system says the mouse button is up (#287) (app).
+
+### Maintenance
+
+- Show the new UI in the screenshot (#286) (readme).
+
 ## 26.11.60 "Lunar Moth" — 2026-11-09
 
 ### Added
