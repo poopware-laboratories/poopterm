@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.11.50 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Navigate Settings from a sidebar (#263) (app).
+
+### Fixed
+
+- Ignore window events once the last tab has closed (#268) (app).
+
 ## 26.11.49 "Lunar Moth" — 2026-11-09
 
 ### Added
