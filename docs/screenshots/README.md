@@ -33,3 +33,4 @@ links keep working. Each folder belongs to one pull request:
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see
 [visual checks](../testing.md#visual-checks).
+| `apple-emoji/` | Apple Color Emoji drawn in color on macOS (💩 🦀 👍 ✨) once the 64 MiB font limit no longer skips it; the skin tone, astronaut and flags still draw as their parts until `morx` is read; the macOS window capture of a fake shell's emoji line |
