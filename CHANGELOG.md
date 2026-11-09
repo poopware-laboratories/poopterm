@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.49 "Lunar Moth" — 2026-11-09
+
+### Added
+
+- Reap every shell from one thread (#267) (pty).
+
 ## 26.11.48 "Lunar Moth" — 2026-11-09
 
 ### Added
