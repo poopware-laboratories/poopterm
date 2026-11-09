@@ -22,15 +22,32 @@ fn pid(child: &Child) -> libc::pid_t {
 	child.id() as libc::pid_t
 }
 
-/// What `exits.wait()` returns on another thread within `timeout`, or
-/// `None` if it is still blocked.
-fn wait_within(exits: &Arc<Exits>, timeout: Duration) -> Option<Option<Vec<libc::pid_t>>> {
+/// What `exits` reports, from one thread that stays its only waiter until
+/// it is stopped: a kqueue hands each end to one waiter, so a test that
+/// waited beside it would miss ends.
+fn reports(exits: &Arc<Exits>) -> mpsc::Receiver<Option<Vec<libc::pid_t>>> {
 	let (send, got) = mpsc::channel();
 	let exits = exits.clone();
 	thread::spawn(move || {
-		let _ = send.send(exits.wait().unwrap());
+		loop {
+			let report = exits.wait().unwrap();
+			let stopped = report.is_none();
+			if send.send(report).is_err() || stopped {
+				return;
+			}
+		}
 	});
-	got.recv_timeout(timeout).ok()
+	got
+}
+
+/// Whether nothing comes from `got` for a while.
+fn quiet(got: &mpsc::Receiver<Option<Vec<libc::pid_t>>>) -> bool {
+	got.recv_timeout(Duration::from_millis(250)).is_err()
+}
+
+/// The next report from `got`.
+fn next(got: &mpsc::Receiver<Option<Vec<libc::pid_t>>>) -> Option<Vec<libc::pid_t>> {
+	got.recv_timeout(Duration::from_secs(5)).expect("no report")
 }
 
 /// Every pid `exits` reports until it has reported all of `pids`.
@@ -123,12 +140,10 @@ fn a_reported_child_is_not_reported_again() {
 	}
 	first.wait().unwrap();
 	assert!(exits.add(pid(&second)).unwrap());
-	assert_eq!(
-		wait_within(&exits, Duration::from_millis(200)),
-		None,
-		"the first came back"
-	);
+	let got = reports(&exits);
+	assert!(quiet(&got), "the first came back");
 	second.hang_up().unwrap();
+	assert_eq!(next(&got), Some(vec![pid(&second)]));
 	second.wait().unwrap();
 }
 
@@ -218,12 +233,13 @@ fn separate_sets_report_only_their_own_children() {
 	let first_watched = one.add(pid(&first)).unwrap();
 	assert!(two.add(pid(&second)).unwrap());
 	first.wait().unwrap();
-	assert_eq!(wait_within(&two, Duration::from_millis(200)), None);
+	let from_two = reports(&two);
+	assert!(quiet(&from_two), "the other set's child came here");
 	if first_watched {
 		assert_eq!(one.wait().unwrap(), Some(vec![pid(&first)]));
 	}
 	second.hang_up().unwrap();
-	assert_eq!(collect(&two, &[pid(&second)]), [pid(&second)]);
+	assert_eq!(next(&from_two), Some(vec![pid(&second)]));
 	second.wait().unwrap();
 }
 
@@ -266,13 +282,10 @@ fn a_child_added_twice_is_reported_once() {
 	let (mut child, _pair) = start("read line");
 	assert!(exits.add(pid(&child)).unwrap());
 	assert!(exits.add(pid(&child)).unwrap());
+	let got = reports(&exits);
 	child.hang_up().unwrap();
-	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
-	assert_eq!(
-		wait_within(&exits, Duration::from_millis(200)),
-		None,
-		"reported twice"
-	);
+	assert_eq!(next(&got), Some(vec![pid(&child)]));
+	assert!(quiet(&got), "reported twice");
 	child.wait().unwrap();
 }
 
@@ -393,14 +406,11 @@ fn a_stopped_child_has_not_ended() {
 	assert!(exits.add(pid(&child)).unwrap());
 	// SAFETY: signals only the child we started.
 	unsafe { libc::kill(pid(&child), libc::SIGSTOP) };
-	assert_eq!(
-		wait_within(&exits, Duration::from_millis(200)),
-		None,
-		"a stop is no end"
-	);
+	let got = reports(&exits);
+	assert!(quiet(&got), "a stop is no end");
 	// SAFETY: as above.
 	unsafe { libc::kill(pid(&child), libc::SIGKILL) };
-	assert_eq!(collect(&exits, &[pid(&child)]), [pid(&child)]);
+	assert_eq!(next(&got), Some(vec![pid(&child)]));
 	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGKILL));
 }
 
@@ -418,13 +428,10 @@ fn a_grandchild_ending_is_not_its_parents_end() {
 	let exits = Arc::new(Exits::new().unwrap());
 	let (mut child, _pair) = start("sleep 0.05 & read line");
 	assert!(exits.add(pid(&child)).unwrap());
-	assert_eq!(
-		wait_within(&exits, Duration::from_millis(300)),
-		None,
-		"the sleep's end counted"
-	);
+	let got = reports(&exits);
+	assert!(quiet(&got), "the sleep's end counted");
 	child.hang_up().unwrap();
-	assert_eq!(collect(&exits, &[pid(&child)]), [pid(&child)]);
+	assert_eq!(next(&got), Some(vec![pid(&child)]));
 	child.wait().unwrap();
 }
 

@@ -165,12 +165,11 @@ fn kevent(ident: usize, filter: i16, flags: u16, fflags: u32) -> libc::kevent {
 	event
 }
 
-/// Whether a process `pid` exists, a zombie included. Not 0 or less, which
-/// `kill` takes as process groups.
+/// Whether a process `pid`, above 0, exists, a zombie included.
 #[cfg(not(target_os = "linux"))]
 fn exists(pid: libc::pid_t) -> bool {
 	// SAFETY: signal 0 sends nothing; it only checks the pid.
-	pid > 0 && unsafe { libc::kill(pid, 0) == 0 }
+	unsafe { libc::kill(pid, 0) == 0 }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -190,6 +189,11 @@ impl Exits {
 	/// Watches `pid`, a child of ours not yet waited for. `false` means it
 	/// has already ended, which macOS reports now instead of later.
 	pub(crate) fn add(&self, pid: libc::pid_t) -> io::Result<bool> {
+		// Pid 0 is the kernel's own (`kernel_task`, `swapper`) and below it
+		// are process groups: none is a program of ours.
+		if pid <= 0 {
+			return Err(io::Error::from_raw_os_error(libc::ESRCH));
+		}
 		let flags = libc::EV_ADD | libc::EV_ONESHOT;
 		let watch = kevent(pid as usize, libc::EVFILT_PROC, flags, libc::NOTE_EXIT);
 		match self.change(&watch) {
