@@ -3,7 +3,9 @@
 use crate::{
 	render::{
 		blend::blend,
-		header::{Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, close_rect},
+		header::{
+			Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, TabShape, close_rect,
+		},
 		label::Label,
 		window_icons::WindowIcon,
 	},
@@ -256,6 +258,11 @@ pub(crate) fn header_tab<'a>(
 		},
 		fill,
 		badge,
+		shape: if active {
+			TabShape::Joined
+		} else {
+			TabShape::Floating
+		},
 		progress,
 		close,
 	}

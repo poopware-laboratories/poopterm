@@ -54,7 +54,7 @@ pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 	let scale = chrome_scale(factor);
 	// No rim is drawn: macOS draws its own, which follows the rounded
 	// corners, and on Linux the header bar runs edge to edge.
-	let (titlebar, tab) = if macos { (44, 40) } else { (0, 44) };
+	let (titlebar, tab) = if macos { (40, 40) } else { (0, 40) };
 	Chrome {
 		border: 0,
 		titlebar_height: titlebar * scale,
@@ -136,7 +136,7 @@ mod tests {
 			Chrome {
 				border: 0,
 				titlebar_height: 0,
-				tab_height: 44,
+				tab_height: 40,
 			}
 		);
 	}
@@ -149,7 +149,7 @@ mod tests {
 			chrome,
 			Chrome {
 				border: 0,
-				titlebar_height: 44,
+				titlebar_height: 40,
 				tab_height: 40,
 			}
 		);
@@ -180,7 +180,7 @@ mod tests {
 		assert_eq!(font_px(pt(14), 1e-300), 14.0 * MIN_FACTOR as f32);
 		assert_eq!(font_px(pt(14), 0.01), 14.0 * MIN_FACTOR as f32);
 		assert_eq!(font_px(pt(16), 0.5), 8.0, "small real factors are kept");
-		assert_eq!(chrome(1e-300, false).tab_height, 44);
+		assert_eq!(chrome(1e-300, false).tab_height, 40);
 	}
 
 	#[test]
@@ -204,8 +204,8 @@ mod tests {
 			(2.5, 3, 35.0),
 		] {
 			assert_eq!(font_px(pt(14), factor), font, "{factor}");
-			assert_eq!(chrome(factor, false).tab_height, 44 * scale, "{factor}");
-			assert_eq!(chrome(factor, true).titlebar_height, 44 * scale, "{factor}");
+			assert_eq!(chrome(factor, false).tab_height, 40 * scale, "{factor}");
+			assert_eq!(chrome(factor, true).titlebar_height, 40 * scale, "{factor}");
 		}
 	}
 

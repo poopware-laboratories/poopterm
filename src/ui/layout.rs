@@ -114,8 +114,8 @@ mod tests {
 	fn the_default_linux_layout_sits_below_the_tab_bar() {
 		let expected = Layout {
 			margin: 0,
-			top: 44,
-			padding_top: 44,
+			top: 40,
+			padding_top: 40,
 			status_height: 26,
 			left: 0,
 		};
@@ -131,7 +131,7 @@ mod tests {
 		let layout = layout(&chrome(2.0, false), 2, &prefs, 0);
 		assert_eq!(layout.margin, 12);
 		assert_eq!(layout.status_height, 52);
-		assert_eq!(layout.top, 88 + 12);
+		assert_eq!(layout.top, 80 + 12);
 	}
 
 	#[test]
@@ -216,7 +216,7 @@ mod tests {
 	fn on_macos_the_tabs_live_in_the_title_bar() {
 		for prefs in tab_modes() {
 			let layout = layout(&chrome(1.0, true), 1, &prefs, 0);
-			assert_eq!(layout.top, 44, "under the title bar, with no border");
+			assert_eq!(layout.top, 40, "under the title bar, with no border");
 			assert_eq!(layout.margin, 0);
 		}
 	}
@@ -224,15 +224,15 @@ mod tests {
 	#[test]
 	fn cells_fill_the_space_left_inside_the_chrome() {
 		let layout = linux(&unpadded());
-		// 80 * 10 by 44 + 24 * 20 + 26.
-		assert_eq!(layout.grid_size((800, 550), (10, 20)), (80, 24));
+		// 80 * 10 by 40 + 24 * 20 + 26.
+		assert_eq!(layout.grid_size((800, 546), (10, 20)), (80, 24));
 		assert_eq!(
-			layout.grid_size((799, 549), (10, 20)),
+			layout.grid_size((799, 545), (10, 20)),
 			(79, 23),
 			"a pixel short"
 		);
 		assert_eq!(
-			layout.grid_size((809, 569), (10, 20)),
+			layout.grid_size((809, 565), (10, 20)),
 			(80, 24),
 			"a pixel under the next"
 		);
@@ -245,7 +245,7 @@ mod tests {
 		assert_eq!(layout.grid_size((0, 0), (0, 0)), (2, 2));
 		assert_eq!(
 			layout.grid_size((800, 550), (0, 0)),
-			(800, 480),
+			(800, 484),
 			"no division by zero"
 		);
 	}
@@ -315,7 +315,7 @@ mod tests {
 			..unpadded()
 		};
 		let layout = layout(&chrome(2.0, true), 2, &prefs, 0);
-		assert_eq!((layout.margin, layout.top, layout.left), (8, 88 + 8, 8));
+		assert_eq!((layout.margin, layout.top, layout.left), (8, 80 + 8, 8));
 	}
 
 	#[test]
@@ -327,7 +327,7 @@ mod tests {
 			..unpadded()
 		};
 		let tabs = linux(&prefs);
-		assert_eq!(tabs.top, 44 + 3);
+		assert_eq!(tabs.top, 40 + 3);
 		assert_eq!(tabs.padding_top, tabs.top);
 		let scaled = layout(&chrome(2.0, false), 2, &prefs, 0);
 		assert_eq!(scaled.padding_top, scaled.top);
@@ -353,8 +353,8 @@ mod tests {
 				..prefs
 			};
 			let layout = layout(&chrome(2.0, true), 2, &prefs, 0);
-			assert_eq!(layout.padding_top, 88, "vertical: {}", prefs.vertical_tabs);
-			assert_eq!(layout.top, 88 + 8);
+			assert_eq!(layout.padding_top, 80, "vertical: {}", prefs.vertical_tabs);
+			assert_eq!(layout.top, 80 + 8);
 		}
 	}
 
@@ -369,7 +369,7 @@ mod tests {
 					assert_eq!(layout.margin, padding * scale, "{factor}");
 					assert_eq!(layout.left, sidebar + padding * scale, "{factor}");
 					let bar = if prefs.show_tabs && !prefs.vertical_tabs {
-						44
+						40
 					} else {
 						0
 					};
@@ -386,6 +386,6 @@ mod tests {
 		// 180 + 80 * 10 across, 24 * 20 + 26 down.
 		assert_eq!(layout.window_size((80, 24), (10, 20)), (980, 506));
 		let horizontal = linux(&unpadded());
-		assert_eq!(horizontal.window_size((80, 24), (10, 20)), (800, 550));
+		assert_eq!(horizontal.window_size((80, 24), (10, 20)), (800, 546));
 	}
 }

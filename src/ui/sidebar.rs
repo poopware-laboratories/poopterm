@@ -2,7 +2,7 @@
 //! visible tab and button shows, from the layout and the tabs' state.
 use crate::{
 	render::{
-		header::{HeaderButton, Icon, Rect, Style, close_rect},
+		header::{HeaderButton, HeaderTab, Icon, Rect, Style, TabShape, close_rect},
 		sidebar::{Sidebar, SidebarRow, rail_close_rect},
 	},
 	theme::Theme,
@@ -102,7 +102,10 @@ pub(crate) fn sidebar<'a>(input: &SidebarInput<'a>) -> Sidebar<'a> {
 		SidebarRow {
 			number: index + 1,
 			rect,
-			tab: header_tab(tab, &palette, (rect.0, rect.2), (active, hovered), close),
+			tab: HeaderTab {
+				shape: TabShape::Row,
+				..header_tab(tab, &palette, (rect.0, rect.2), (active, hovered), close)
+			},
 		}
 	});
 	let buttons = buttons(layout).map(|(rect, icon)| HeaderButton {

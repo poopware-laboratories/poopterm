@@ -2,13 +2,26 @@
 //! with the display, and nests concentrically inside its outline.
 use super::metrics::{Corner, concentric, pill_radius};
 
-const KINDS: [Corner; 3] = [Corner::Control, Corner::Button, Corner::Popover];
+const KINDS: [Corner; 5] = [
+	Corner::Chip,
+	Corner::Control,
+	Corner::Button,
+	Corner::Tab,
+	Corner::Popover,
+];
 
 #[test]
 fn each_kind_keeps_the_radius_drawn_before_the_table_existed() {
 	assert_eq!(Corner::Control.radius(1), 6);
 	assert_eq!(Corner::Button.radius(1), 7);
 	assert_eq!(Corner::Popover.radius(1), 10);
+}
+
+#[test]
+fn chips_and_tabs_take_the_prototypes_radii() {
+	assert_eq!(Corner::Chip.radius(1), 5);
+	assert_eq!(Corner::Tab.radius(1), 8);
+	assert_eq!(Corner::Tab.radius(2), 16);
 }
 
 #[test]
@@ -38,6 +51,9 @@ fn larger_surfaces_get_rounder_corners_than_what_sits_on_them() {
 	for scale in 1..=4 {
 		assert!(Corner::Control.radius(scale) < Corner::Button.radius(scale));
 		assert!(Corner::Button.radius(scale) < Corner::Popover.radius(scale));
+		// A close button's light sits inside a tab's fill.
+		assert!(Corner::Chip.radius(scale) < Corner::Control.radius(scale));
+		assert!(Corner::Tab.radius(scale) < Corner::Popover.radius(scale));
 	}
 }
 

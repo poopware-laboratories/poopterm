@@ -16,6 +16,7 @@ links keep working. Each folder belongs to one pull request:
 | `light-brights/` | bright colors (bold prompts) readable on light themes |
 | `window-buttons/` | Linux window buttons in the header: light and dark, hovered and pressed; `auto` on sway (none) and `client` with the portal's `appmenu:close` |
 | `chrome-colors/` | chrome colors derived from the theme, muted inactive tabs and 8 px padding, before and after in poop, darkmode and light-mode |
+| `tab-bar/` | the header's new shape: 40 px high, the active tab joined to the terminal with rounded top corners, before and after in poop and light-mode |
 
 New screenshots go into a new folder here, in the same pull request they
 illustrate, never on a separate branch; see

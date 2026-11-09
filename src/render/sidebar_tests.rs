@@ -3,7 +3,7 @@
 use super::{
 	blend::blend,
 	glyphs::FontSet,
-	header::{Badge, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, Style, draw_tab},
+	header::{Badge, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, Style, TabShape, draw_tab},
 	label::Label,
 	sidebar::{Sidebar, SidebarRow, draw_sidebar, rail_close_rect},
 };
@@ -49,6 +49,7 @@ fn row(number: usize, rect: Rect) -> SidebarRow<'static> {
 			},
 			fill: None,
 			badge: None,
+			shape: TabShape::Row,
 			progress: None,
 			close: None,
 		},

@@ -3,7 +3,8 @@ use super::{
 	blend::blend,
 	glyphs::FontSet,
 	header::{
-		Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, close_rect, draw_header, pill,
+		Badge, Header, HeaderButton, HeaderColors, HeaderTab, Icon, Rect, TabShape, body, close_rect,
+		draw_header, inset, pill,
 	},
 	label::Label,
 };
@@ -34,6 +35,7 @@ fn tab(x: usize, width: usize, title: &str) -> HeaderTab<'_> {
 		},
 		fill: None,
 		badge: None,
+		shape: TabShape::Floating,
 		progress: None,
 		close: None,
 	}
@@ -105,12 +107,13 @@ fn the_bar_fills_the_header_above_a_separator() {
 }
 
 #[test]
-fn a_filled_tab_is_a_rounded_surface_inset_from_the_bar() {
+fn a_lit_tab_fills_an_inset_of_its_body() {
 	let mut raised = tab(20, 160, "");
 	raised.fill = Some(COLORS.raised);
 	let drawn = draw(&header(1, vec![raised], Vec::new()));
+	assert_eq!(body(20, 160, (4, 44), 1), (20, 16, 160, 32));
 	let (x, y, w, h) = pill(20, 160, (4, 44), 1);
-	assert_eq!((x, y, w, h), (20, 10, 160, 32));
+	assert_eq!((x, y, w, h), (20, 19, 160, 25));
 	assert_eq!(drawn.at(x + w / 2, y), COLORS.raised);
 	assert_eq!(drawn.at(x + w / 2, y + h - 1), COLORS.raised);
 	assert_eq!(drawn.at(x + w / 2, y - 1), COLORS.bar);
@@ -121,6 +124,61 @@ fn a_filled_tab_is_a_rounded_surface_inset_from_the_bar() {
 }
 
 #[test]
+fn the_active_tab_opens_into_the_terminal_below() {
+	let mut active = tab(20, 160, "");
+	active.fill = Some(COLORS.raised);
+	active.shape = TabShape::Joined;
+	let drawn = draw(&header(1, vec![active], Vec::new()));
+	// It covers the separator under it and nowhere else.
+	assert_eq!(drawn.at(100, 47), COLORS.raised);
+	assert_eq!(drawn.at(10, 47), COLORS.separator);
+	assert_eq!(drawn.at(200, 47), COLORS.separator);
+	// The separator outlines its sides and top, one pixel out.
+	assert_eq!(drawn.at(19, 32), COLORS.separator);
+	assert_eq!(drawn.at(180, 32), COLORS.separator);
+	assert_eq!(drawn.at(100, 15), COLORS.separator);
+	assert_eq!(
+		(drawn.at(100, 16), drawn.at(18, 32)),
+		(COLORS.raised, COLORS.bar)
+	);
+	// Square at the bottom, rounded on top.
+	assert_eq!(
+		(drawn.at(20, 47), drawn.at(179, 47)),
+		(COLORS.raised, COLORS.raised)
+	);
+	assert_ne!(drawn.at(20, 16), COLORS.raised);
+	assert_ne!(drawn.at(179, 16), COLORS.raised);
+}
+
+#[test]
+fn the_joined_tab_doubles_at_twice_the_scale() {
+	let mut active = tab(20, 300, "");
+	active.fill = Some(COLORS.raised);
+	active.shape = TabShape::Joined;
+	let drawn = draw(&header(2, vec![active], Vec::new()));
+	let (x, y, w, h) = body(20, 300, (4, 88), 2);
+	assert_eq!((x, y, w, h), (20, 28, 300, 64));
+	assert_eq!(
+		drawn.at(170, y - 2),
+		COLORS.separator,
+		"a two-pixel outline"
+	);
+	assert_eq!(drawn.at(170, y - 3), COLORS.bar);
+	assert_eq!(drawn.at(170, y + h - 1), COLORS.raised);
+	// Three pixels in from the corner: inside an 8-pixel arc, outside a 16.
+	assert_ne!(drawn.at(x + 3, y + 3), COLORS.raised);
+}
+
+#[test]
+fn a_joined_tab_without_fill_draws_nothing_of_its_own() {
+	let mut bare = tab(20, 160, "");
+	bare.shape = TabShape::Joined;
+	let drawn = draw(&header(1, vec![bare], Vec::new()));
+	assert_eq!(drawn.at(100, 47), COLORS.separator);
+	assert_eq!(drawn.at(19, 32), COLORS.bar);
+}
+
+#[test]
 fn a_tab_without_fill_shows_the_bar() {
 	let drawn = draw(&header(1, vec![tab(20, 160, "")], Vec::new()));
 	assert!(!drawn.any((0, 4, WIDTH, 43), COLORS.raised));
@@ -128,13 +186,13 @@ fn a_tab_without_fill_shows_the_bar() {
 }
 
 #[test]
-fn titles_are_centered_vertically_in_the_header() {
+fn titles_are_centered_vertically_in_the_tab_body() {
 	// "Hg" reaches from the cap height to the descender.
 	for scale in [1, 2] {
 		let drawn = draw(&header(scale, vec![tab(10, 180, "Hg")], Vec::new()));
-		let height = 44 * scale;
-		let (top, bottom) = drawn.ink_rows((10, 4, 180, height));
-		let (above, below) = (top - 4, 4 + height - 1 - bottom);
+		let (_, y, _, height) = body(10, 180, (4, 44 * scale), scale);
+		let (top, bottom) = drawn.ink_rows((10, y, 180, height));
+		let (above, below) = (top - y, y + height - 1 - bottom);
 		assert!(
 			above.abs_diff(below) <= 3 * scale,
 			"{above} above, {below} below at {scale}x"
@@ -160,19 +218,20 @@ fn titles_start_after_the_padding_and_never_reach_the_close_button() {
 #[test]
 fn the_close_button_shows_only_when_asked_and_lights_up_when_hovered() {
 	let rect = close_rect(10, 160, (4, 44), 1);
-	assert_eq!(rect, (10 + 160 - 28, 15, 22, 22));
+	assert_eq!(rect, (10 + 160 - 24, 23, 18, 18));
 	let mut shown = tab(10, 160, "");
 	shown.close = Some(false);
 	let drawn = draw(&header(1, vec![shown], Vec::new()));
 	assert!(drawn.inked(rect));
-	assert!(!drawn.any(rect, COLORS.hover) && drawn.at(rect.0 + 11, rect.1 + 1) == COLORS.bar);
+	assert!(!drawn.any(rect, COLORS.hover) && drawn.at(rect.0 + 9, rect.1 + 1) == COLORS.bar);
 	let drawn = draw(&header(1, vec![tab(10, 160, "")], Vec::new()));
 	assert!(!drawn.inked(rect));
 	let mut hovered = tab(10, 160, "");
 	hovered.close = Some(true);
 	let drawn = draw(&header(1, vec![hovered], Vec::new()));
-	// A round light: lit just inside its top, not in its corner.
-	assert_ne!(drawn.at(rect.0 + 11, rect.1 + 1), COLORS.bar);
+	// A rounded square of light: lit just inside its top, not in its corner.
+	assert_ne!(drawn.at(rect.0 + 9, rect.1 + 1), COLORS.bar);
+	assert_ne!(drawn.at(rect.0 + 3, rect.1 + 3), COLORS.bar);
 	assert_eq!(drawn.at(rect.0, rect.1), COLORS.bar);
 }
 
@@ -181,8 +240,8 @@ fn a_dot_badge_comes_before_the_title_which_moves_right() {
 	let mut dotted = tab(10, 200, "Hg");
 	dotted.badge = Some(Badge::Dot(0x00ff00));
 	let drawn = draw(&header(1, vec![dotted], Vec::new()));
-	// A 6-pixel dot 12 pixels in, centered on the header.
-	assert_eq!(drawn.at(22 + 3, 4 + 22), 0x00ff00);
+	// A 6-pixel dot 12 pixels in, centered on the tab's body.
+	assert_eq!(drawn.at(22 + 3, 16 + 16), 0x00ff00);
 	assert!(!drawn.any((40, 4, 170, 44), 0x00ff00));
 	assert!(!drawn.inked((10, 10, 26, 32)), "the title overlaps the dot");
 	assert!(drawn.inked((36, 10, 30, 32)));
@@ -324,13 +383,13 @@ fn arrows_are_centered_and_dim_when_disabled() {
 
 #[test]
 fn every_size_doubles_at_twice_the_scale() {
-	assert_eq!(pill(20, 300, (8, 88), 2), (20, 20, 300, 64));
-	assert_eq!(close_rect(20, 300, (8, 88), 2), (20 + 300 - 56, 30, 44, 44));
+	assert_eq!(pill(20, 300, (8, 88), 2), (20, 38, 300, 50));
+	assert_eq!(close_rect(20, 300, (8, 88), 2), (20 + 300 - 48, 46, 36, 36));
 	let mut raised = tab(20, 300, "");
 	raised.fill = Some(COLORS.raised);
 	let drawn = draw(&header(2, vec![raised], Vec::new()));
-	assert_eq!(drawn.at(170, 4 + 12), COLORS.raised);
-	assert_eq!(drawn.at(170, 4 + 11), COLORS.bar);
+	assert_eq!(drawn.at(170, 4 + 30), COLORS.raised);
+	assert_eq!(drawn.at(170, 4 + 29), COLORS.bar);
 	assert_eq!(drawn.at(0, 4 + 86), COLORS.separator);
 	assert_eq!(drawn.at(0, 4 + 85), COLORS.bar);
 	// The dot doubles too: 12 pixels 24 in (solid in the 10 inside, blended
@@ -345,13 +404,13 @@ fn every_size_doubles_at_twice_the_scale() {
 	let span = |values: Vec<usize>| (*values.iter().min().unwrap(), *values.iter().max().unwrap());
 	assert_eq!(span(green.iter().map(|&(x, _)| x).collect()), (45, 54));
 	let rows = span(green.iter().map(|&(_, y)| y).collect());
-	assert_eq!(rows, (4 + 39, 4 + 48), "centered on the header");
+	assert_eq!(rows, (4 + 51, 4 + 60), "centered on the tab's body");
 	assert!(!drawn.inked((20, 4, 52, 88)) && drawn.inked((72, 4, 40, 88)));
 }
 
 /// The first column holding text ink.
 fn first_ink(drawn: &Drawn) -> usize {
-	(0..WIDTH).find(|&x| drawn.inked((x, 4, 1, 44))).unwrap()
+	(0..WIDTH).find(|&x| drawn.inked((x, 4, 1, 88))).unwrap()
 }
 
 #[test]
@@ -510,11 +569,11 @@ fn each_tab_is_drawn_in_its_own_place() {
 	let mut third = tab(322, 70, "");
 	third.fill = Some(COLORS.hover);
 	let drawn = draw(&header(1, vec![first, second, third], Vec::new()));
-	// Just inside the top of each pill, clear of its rounded corners.
-	assert_eq!(drawn.at(85, 11), COLORS.raised);
-	assert_eq!(drawn.at(240, 11), COLORS.bar);
-	assert_eq!(drawn.at(357, 11), COLORS.hover);
-	assert!(drawn.inked((22, 10, 120, 32)) && drawn.inked((178, 10, 120, 32)));
+	// Just inside the top of each fill, clear of its rounded corners.
+	assert_eq!(drawn.at(85, 20), COLORS.raised);
+	assert_eq!(drawn.at(240, 20), COLORS.bar);
+	assert_eq!(drawn.at(357, 20), COLORS.hover);
+	assert!(drawn.inked((22, 16, 120, 32)) && drawn.inked((178, 16, 120, 32)));
 	assert!(
 		!drawn.inked((322, 4, 70, 44)),
 		"the untitled tab has no text"
@@ -629,4 +688,115 @@ fn arrows_are_drawn_larger_than_the_tab_text() {
 			title_bottom - title_top
 		);
 	}
+}
+
+#[test]
+fn a_body_never_grows_taller_than_its_header() {
+	// A header shorter than a tab leaves the tab its whole height.
+	assert_eq!(body(10, 100, (4, 20), 1), (10, 4, 100, 20));
+	assert_eq!(body(10, 100, (4, 0), 1), (10, 4, 100, 0));
+	assert_eq!(body(10, 100, (4, 40), 1), (10, 12, 100, 32));
+}
+
+#[test]
+fn the_body_hugs_the_headers_bottom_edge_at_every_scale() {
+	for scale in 1..=4 {
+		let (y, height) = (7, 40 * scale);
+		let (_, top, _, tall) = body(0, 50, (y, height), scale);
+		assert_eq!(top + tall, y + height, "{scale}x");
+		assert_eq!(tall, 32 * scale, "{scale}x");
+	}
+}
+
+#[test]
+fn the_floating_fill_clears_the_separator_and_the_top_edge() {
+	for scale in 1..=3 {
+		let rect = body(0, 90, (0, 40 * scale), scale);
+		let (_, y, _, h) = inset(rect, scale);
+		assert_eq!(y - rect.1, 3 * scale, "{scale}x top");
+		assert_eq!(rect.1 + rect.3 - (y + h), 4 * scale, "{scale}x bottom");
+	}
+}
+
+#[test]
+fn the_floating_fill_of_a_tiny_body_saturates_instead_of_wrapping() {
+	let (_, _, _, h) = inset((0, 0, 50, 5), 1);
+	assert_eq!(h, 0);
+	let (_, y, _, h) = inset((0, 10, 50, 0), 2);
+	assert_eq!((y, h), (16, 0));
+}
+
+#[test]
+fn a_hovered_tab_floats_clear_of_the_separator() {
+	let mut hovered = tab(20, 160, "");
+	hovered.fill = Some(COLORS.hover);
+	let drawn = draw(&header(1, vec![hovered], Vec::new()));
+	// The separator row and the one above stay the bar's.
+	assert_eq!(drawn.at(100, 47), COLORS.separator);
+	assert_eq!(drawn.at(100, 46), COLORS.bar);
+	assert_eq!(drawn.at(100, 43), COLORS.hover);
+	assert_eq!(drawn.at(100, 44), COLORS.bar);
+	assert_eq!(drawn.at(100, 18), COLORS.bar);
+	assert_eq!(drawn.at(100, 19), COLORS.hover);
+}
+
+#[test]
+fn a_sidebar_row_fills_its_whole_rectangle() {
+	let mut row = tab(10, 160, "");
+	row.fill = Some(COLORS.hover);
+	row.shape = TabShape::Row;
+	let drawn = draw(&header(1, vec![row], Vec::new()));
+	let (x, y, w, h) = body(10, 160, (4, 44), 1);
+	assert_eq!(drawn.at(x + w / 2, y), COLORS.hover);
+	assert_eq!(drawn.at(x + w / 2, y + h - 1), COLORS.hover);
+}
+
+#[test]
+fn the_joined_tab_outlines_only_its_top_and_sides() {
+	let mut active = tab(20, 160, "");
+	active.fill = Some(COLORS.raised);
+	active.shape = TabShape::Joined;
+	let drawn = draw(&header(1, vec![active], Vec::new()));
+	let (x, y, w, h) = body(20, 160, (4, 44), 1);
+	for row in y + 12..y + h {
+		assert_eq!(drawn.at(x - 1, row), COLORS.separator, "left, row {row}");
+		assert_eq!(drawn.at(x + w, row), COLORS.separator, "right, row {row}");
+	}
+	assert_eq!(
+		drawn.at(x - 2, y + 20),
+		COLORS.bar,
+		"one pixel of outline only"
+	);
+	assert_eq!(
+		drawn.at(x + w + 1, y + 20),
+		COLORS.bar,
+		"one pixel of outline only"
+	);
+}
+
+#[test]
+fn progress_runs_along_the_bottom_of_a_joined_tab() {
+	let mut busy = tab(10, 224, "");
+	busy.fill = Some(COLORS.raised);
+	busy.shape = TabShape::Joined;
+	busy.progress = Some((Some(50), 0x0000ff));
+	let drawn = draw(&header(1, vec![busy], Vec::new()));
+	let (x, y, _, h) = body(10, 224, (4, 44), 1);
+	let row = y + h - 3;
+	assert_eq!(drawn.at(x + 12, row), 0x0000ff);
+	assert_eq!(drawn.at(x + 12, y + h - 4), COLORS.raised);
+}
+
+#[test]
+fn the_close_buttons_light_is_a_chip_not_a_circle() {
+	let mut hovered = tab(10, 160, "");
+	hovered.fill = Some(COLORS.raised);
+	hovered.close = Some(true);
+	let drawn = draw(&header(1, vec![hovered], Vec::new()));
+	let (x, y, size, _) = close_rect(10, 160, (4, 44), 1);
+	// A circle leaves its corner and the point beside it unlit; a 5-pixel
+	// chip lights the second pixel of the top row.
+	assert_eq!(drawn.at(x, y), COLORS.raised);
+	assert_ne!(drawn.at(x + 2, y), COLORS.raised);
+	assert_ne!(drawn.at(x + size - 3, y), COLORS.raised);
 }
