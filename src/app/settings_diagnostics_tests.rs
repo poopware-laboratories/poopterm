@@ -3,14 +3,15 @@
 //! recorded scene and checked against the approved design (#205).
 use super::{
 	settings_diagnostics::{
-		BODY, COLUMNS, CONTENT_TOP, COPY_WIDTH, DEVICE_TOP, FACT_STRIDE, FEATURES_TOP, LOG_LINE, ROW,
-		SMALL, WELL_BOTTOM, WELL_INSET, WELL_TOP, compose_diagnostics, diagnostics_target,
-		log_capacity,
+		BODY, COLUMNS, CONTENT_TOP, COPY_WIDTH, DEVICE_TOP, FACT_STRIDE, FEATURES_TOP, FRAMES_TOP,
+		LOG_LINE, ROW, SMALL, WELL_BOTTOM, WELL_INSET, WELL_TOP, compose_diagnostics,
+		diagnostics_target, log_capacity,
 	},
 	settings_hit::{SettingsPage, SettingsTarget, settings_target},
 	settings_pen_tests::{buttons, inside, record, texts},
 	settings_view::MIN_SIZE,
 };
+use crate::ui::recent_frames::FrameCounts;
 use crate::{
 	fonts::{BUNDLED, Font},
 	render::scene::{Command, Rect},
@@ -52,6 +53,10 @@ pub(super) fn sample(drawing: Drawing, warnings: usize) -> Diagnostics {
 	Diagnostics {
 		version: "26.11.30 \"Test\"".into(),
 		drawing,
+		frames: FrameCounts {
+			gpu: 571,
+			software: 29,
+		},
 		facts: vec![
 			("Renderer setting", "auto".into()),
 			("Device", "AMD Radeon (RADV NAVI32)".into()),
@@ -722,4 +727,71 @@ fn a_long_failure_stops_24_short_of_copy_report() {
 			"x{s}: cut too early at {end}"
 		);
 	}
+}
+
+#[test]
+fn the_last_frames_sit_muted_ten_pixels_under_the_features() {
+	// The design: 13 px muted text, 10 px below the last feature's rule.
+	assert_eq!(FRAMES_TOP, FEATURES_TOP + 5 * ROW + 10);
+	for s in [1, 2, 3] {
+		let commands = draw(s, &sample(Drawing::Gpu, 0), Section::Graphics, "");
+		let line = line_at(&commands, s, (COLUMNS[0], FRAMES_TOP)).unwrap();
+		assert_eq!(line.text, "Last 600 frames: 571 GPU \u{b7} 29 software");
+		assert_eq!(
+			(line.color, line.px, line.mono),
+			(COLORS.muted, px(SMALL), false)
+		);
+	}
+}
+
+#[test]
+fn the_frames_line_clears_the_rule_above_and_the_device_heading_below() {
+	const {
+		assert!(FRAMES_TOP > FEATURES_TOP + 5 * ROW, "below the last rule");
+		// A 13 px line with its descenders, then the design's 22 px gap.
+		assert!(FRAMES_TOP + 16 + 22 <= DEVICE_TOP, "above the device");
+	}
+}
+
+#[test]
+fn before_the_first_frame_the_page_shows_no_frames_line() {
+	let diagnostics = Diagnostics {
+		frames: FrameCounts::default(),
+		..sample(Drawing::Gpu, 0)
+	};
+	let commands = draw(1, &diagnostics, Section::Graphics, "");
+	assert_eq!(line_at(&commands, 1, (COLUMNS[0], FRAMES_TOP)), None);
+	assert!(
+		!texts(&commands)
+			.iter()
+			.any(|(text, _)| text.contains("frame"))
+	);
+}
+
+#[test]
+fn a_long_frames_line_is_cut_to_the_window() {
+	let diagnostics = Diagnostics {
+		frames: FrameCounts {
+			gpu: usize::MAX / 2,
+			software: usize::MAX / 2,
+		},
+		..sample(Drawing::Gpu, 0)
+	};
+	for s in [1, 2] {
+		let commands = draw(s, &diagnostics, Section::Graphics, "");
+		let line = line_at(&commands, s, (COLUMNS[0], FRAMES_TOP)).unwrap();
+		let right = (SIZE.0 - 24) * s;
+		let (x, _) = reach(COLUMNS[0] * s, &line.text, SMALL, s);
+		assert!(x <= right, "{} reaches {x} past {right}", line.text);
+	}
+}
+
+#[test]
+fn the_log_draws_no_frames_line() {
+	let commands = draw(1, &sample(Drawing::Gpu, 2), Section::Log, "");
+	assert!(
+		!texts(&commands)
+			.iter()
+			.any(|(text, _)| text.contains("frames"))
+	);
 }

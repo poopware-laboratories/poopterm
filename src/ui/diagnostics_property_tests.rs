@@ -1,6 +1,7 @@
 //! Property tests of the Diagnostics report: for random diagnostics, its
 //! shape, the order and completeness of the log, and what never leaks.
 use super::diagnostics::{Diagnostics, Drawing, Feature, Reason, private, report};
+use crate::ui::recent_frames::FrameCounts;
 use crate::warnings::{LONGEST, Ring, Warning};
 use std::{
 	path::{Path, PathBuf},
@@ -88,6 +89,21 @@ pub(super) fn diagnostics(random: &mut Random) -> Diagnostics {
 	Diagnostics {
 		version: "26.11.30".into(),
 		drawing: drawing(random),
+		// None at all, a few, or a full ring split any way.
+		frames: match random.below(3) {
+			0 => FrameCounts::default(),
+			1 => FrameCounts {
+				gpu: random.below(3),
+				software: random.below(3),
+			},
+			_ => {
+				let gpu = random.below(601);
+				FrameCounts {
+					gpu,
+					software: 600 - gpu,
+				}
+			}
+		},
 		facts,
 		warnings: ring.warnings().cloned().collect(),
 		dropped: random.below(3),
@@ -104,19 +120,23 @@ fn every_report_has_the_same_shape() {
 		let lines: Vec<&str> = text.lines().collect();
 		let log_lines = diagnostics.warnings.len().max(1) + usize::from(diagnostics.dropped > 0)
 			- usize::from(diagnostics.warnings.is_empty() && diagnostics.dropped > 0);
-		let expected = 3 + Feature::ALL.len() + diagnostics.facts.len() + 2 + log_lines;
+		let frames = usize::from(diagnostics.frames.line().is_some());
+		let graphics = Feature::ALL.len() + frames + diagnostics.facts.len();
+		let expected = 3 + graphics + 2 + log_lines;
 		assert_eq!(lines.len(), expected, "case {case}:\n{text}");
 		assert_eq!(lines[0], "Poopterm 26.11.30 diagnostics");
 		assert_eq!(lines[2], "Graphics");
-		assert_eq!(
-			lines[3 + Feature::ALL.len() + diagnostics.facts.len() + 1],
-			"Log"
-		);
+		assert_eq!(lines[3 + graphics + 1], "Log");
 		for (i, feature) in Feature::ALL.iter().enumerate() {
 			assert!(
 				lines[3 + i].starts_with(&format!("  {:<17}", feature.name())),
 				"case {case}"
 			);
+		}
+		if frames == 1 {
+			let line = lines[3 + Feature::ALL.len()];
+			assert!(line.starts_with("  Last "), "case {case}:\n{text}");
+			assert!(line.ends_with(" software"), "case {case}:\n{text}");
 		}
 		assert!(text.ends_with('\n'));
 	}
@@ -192,6 +212,7 @@ fn warnings_built_by_hand_report_as_given() {
 		let text = report(&Diagnostics {
 			version: String::new(),
 			drawing: Drawing::Gpu,
+			frames: FrameCounts::default(),
 			facts: vec![],
 			warnings,
 			dropped: 0,

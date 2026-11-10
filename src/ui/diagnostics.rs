@@ -1,6 +1,7 @@
 //! The Diagnostics page's model: how the window is drawn and why, and
 //! recent warnings, built from plain data, and the plain-text report that
 //! Copy report puts on the clipboard. Paths in it lose the home directory.
+use super::recent_frames::FrameCounts;
 use crate::warnings::{Warning, clean};
 use std::{
 	fmt::Write,
@@ -123,6 +124,8 @@ pub(crate) fn statuses(drawing: &Drawing) -> [Status; 5] {
 pub(crate) struct Diagnostics {
 	pub(crate) version: String,
 	pub(crate) drawing: Drawing,
+	/// How the last frames were drawn.
+	pub(crate) frames: FrameCounts,
 	/// Graphics details after the features: device, presenter, frames.
 	pub(crate) facts: Vec<(&'static str, String)>,
 	pub(crate) warnings: Vec<Warning>,
@@ -175,6 +178,9 @@ pub(crate) fn report(diagnostics: &Diagnostics) -> String {
 			status.feature.name(),
 			&format!("{how}: {}", status.detail),
 		);
+	}
+	if let Some(line) = diagnostics.frames.line() {
+		let _ = writeln!(out, "  {line}");
 	}
 	for (label, value) in &diagnostics.facts {
 		row(&mut out, label, value);

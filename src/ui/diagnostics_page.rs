@@ -1,6 +1,7 @@
 //! The Diagnostics page as plain data: its sections, how a window came to
 //! draw as it does, the log rows that fit, and what Copy report says.
 use super::diagnostics::{Diagnostics, Drawing, Reason, clock, private};
+use super::recent_frames::FrameCounts;
 use crate::{config::RendererPreference, render::backend::Backend, warnings::Warning};
 use std::{io, path::PathBuf};
 
@@ -105,10 +106,12 @@ pub(crate) fn copied(written: io::Result<()>) -> String {
 }
 
 /// What the page shows of a window that draws as `drawing`, with the
-/// renderer `preference` in effect, on the GPU `device` if any, after the
-/// `recent` warnings, with paths under `home` shown as `~`.
+/// renderer `preference` in effect, on the GPU `device` if any, having
+/// drawn its last `frames` so, after the `recent` warnings, with paths
+/// under `home` shown as `~`.
 pub(crate) fn gather(
 	drawing: Drawing,
+	frames: FrameCounts,
 	preference: RendererPreference,
 	device: Option<&str>,
 	(warnings, dropped): (Vec<Warning>, usize),
@@ -123,6 +126,7 @@ pub(crate) fn gather(
 			env!("POOPTERM_CODENAME")
 		),
 		drawing,
+		frames,
 		facts: [Some(setting), device].into_iter().flatten().collect(),
 		warnings,
 		dropped,
