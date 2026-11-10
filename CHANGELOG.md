@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.67 "Lunar Moth" — 2026-11-10
+
+### Maintenance
+
+- Drop shrinking cells below 16 bytes (#295) (todo).
+- Retry scripts that a fork elsewhere keeps busy (#296) (pty).
+
 ## 26.11.66 "Lunar Moth" — 2026-11-10
 
 ### Performance
