@@ -90,11 +90,6 @@ Open:
   `-Zprofile-sample-use` ([#35](https://github.com/poopware-laboratories/poopterm/issues/35)).
 - Hot-function ordering and identical code folding at link time, which
   also works on macOS ([#38](https://github.com/poopware-laboratories/poopterm/issues/38)).
-- Shrink `Cell` below 16 bytes
-  ([#41](https://github.com/poopware-laboratories/poopterm/issues/41)). Cache
-  misses during floods come from cell rows (`scroll_region_up`, frame
-  snapshots), so this is where layout work can still pay; packing
-  scrollback rows is the suggested first step.
 
 Done (the issues hold the numbers):
 
@@ -187,8 +182,8 @@ issue before starting a piece.
   - *The scrollback ring grows by doubling and copying* (`Scrollback::grow`):
     during each step the old and new rings are both live. Grow in
     fixed-size segments without copying (fits #40). `ESC [3J` and a lower
-    line limit already give the ring's memory back. It costs about 16 bytes per cell of history,
-    per tab; shrinking `Cell` (#41) cuts all of it.
+    line limit already give the ring's memory back. It costs about 16 bytes per cell of history
+    per tab.
   - *Freed memory after a clear.* mimalloc now purges at once
     (`allocator.rs`), so `ESC [3J` after a 64 MiB flood drops the terminal
     from about 136 to 106 MiB. It still ends some 30 MiB over its start:
