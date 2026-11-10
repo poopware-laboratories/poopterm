@@ -795,3 +795,109 @@ fn the_log_draws_no_frames_line() {
 			.any(|(text, _)| text.contains("frames"))
 	);
 }
+
+/// The design's GPU, gathered as the window gathers it.
+fn on_radeon() -> Diagnostics {
+	use crate::{
+		config::RendererPreference,
+		gpu::{
+			atlas::Usage,
+			facts::{GpuFacts, Swapchain},
+		},
+		ui::diagnostics_page::gather,
+	};
+	let gpu = GpuFacts {
+		device: "AMD Radeon RX 7800 XT (RADV NAVI32)".into(),
+		api: "Vulkan",
+		version: Some(1 << 22 | 4 << 12 | 321),
+		driver: Some("Mesa 26.2.1".into()),
+		swapchain: Some(Swapchain {
+			format: "B8G8R8A8_UNORM",
+			mode: 2,
+			images: 3,
+		}),
+		atlas: Some(Usage {
+			side: 2048,
+			pages: 1,
+			// Just past 38%: the page rounds down.
+			filled: 2048 * 2048 * 38 / 100 + 1,
+		}),
+		presenter: "Vulkan on Wayland".into(),
+	};
+	let frames = FrameCounts {
+		gpu: 600,
+		software: 0,
+	};
+	let auto = RendererPreference::Auto;
+	gather(
+		Drawing::Gpu,
+		frames,
+		auto,
+		Some(&gpu),
+		(Vec::new(), 0),
+		None,
+	)
+}
+
+/// The design's five device rows, as it words them.
+const DESIGN_ROWS: [(&str, &str); 5] = [
+	("Device", "AMD Radeon RX 7800 XT (RADV NAVI32)"),
+	("Driver", "Mesa 26.2.1 \u{b7} Vulkan 1.4.321"),
+	("Swapchain", "B8G8R8A8_UNORM \u{b7} FIFO \u{b7} 3 images"),
+	("Glyph atlas", "2048 \u{d7} 2048 \u{b7} 38% used"),
+	("Presenter", "Vulkan on Wayland"),
+];
+
+#[test]
+fn on_the_gpu_the_page_lists_the_designs_five_device_rows() {
+	for s in [1, 2] {
+		let commands = draw(s, &on_radeon(), Section::Graphics, "");
+		for (i, (label, value)) in DESIGN_ROWS.into_iter().enumerate() {
+			let top = DEVICE_TOP + 24 + i * FACT_STRIDE;
+			let label_line = line_at(&commands, s, (COLUMNS[0], top)).unwrap();
+			assert_eq!(
+				(label_line.text.as_str(), label_line.color),
+				(label, COLORS.muted)
+			);
+			let value_line = line_at(&commands, s, (COLUMNS[1], top)).unwrap();
+			assert_eq!((value_line.text.as_str(), value_line.color), (value, FG));
+		}
+		// Nothing past the fifth row: no renderer setting on the GPU.
+		let after = DEVICE_TOP + 24 + 5 * FACT_STRIDE;
+		assert_eq!(line_at(&commands, s, (COLUMNS[0], after)), None);
+	}
+}
+
+#[test]
+fn the_report_lists_the_same_device_rows_as_the_page() {
+	let text = report(&on_radeon());
+	for (label, value) in DESIGN_ROWS {
+		assert!(
+			text.contains(&format!("\n  {label:<17}{value}\n")),
+			"{label}:\n{text}"
+		);
+	}
+	assert!(!text.contains("Renderer setting"), "{text}");
+	let device = text.find("  Device ").unwrap();
+	let presenter = text.find("  Presenter ").unwrap();
+	assert!(text.find("Last 600 frames").unwrap() < device);
+	assert!(device < presenter && presenter < text.find("\nLog\n").unwrap());
+}
+
+#[test]
+fn the_five_rows_end_above_copy_report_in_the_smallest_window() {
+	let s = 1;
+	let none = |_, _, _, _| false;
+	let commands = draw_in(s, MIN_SIZE, &on_radeon(), Section::Graphics, "", &none);
+	let last = DEVICE_TOP + 24 + 4 * FACT_STRIDE;
+	assert_eq!(
+		line_at(&commands, s, (COLUMNS[1], last)).map(|line| line.text),
+		Some("Vulkan on Wayland".to_owned())
+	);
+	let copy = super::settings_pen::footer_rect(MIN_SIZE, COPY_WIDTH, s);
+	assert!(
+		last + FACT_STRIDE <= copy.1,
+		"{last} reaches Copy report at {}",
+		copy.1
+	);
+}

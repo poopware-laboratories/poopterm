@@ -7,8 +7,10 @@ use super::{
 	device::Device,
 	entry::Entry,
 	image::Format,
+	optional::{self, Optional},
 	pipeline::QuadPipeline,
 	present::{Acquired, Presented},
+	present_regions::rects,
 	renderer::Renderer,
 	surface::{Surface, Window},
 	swapchain::Swapchain,
@@ -16,7 +18,7 @@ use super::{
 	timeline::Timeline,
 	types::RawPhysicalDevice,
 };
-use crate::gpu::quads::QuadPen;
+use crate::gpu::{facts::GpuFacts, quads::QuadPen};
 use std::{rc::Rc, time::Duration};
 
 /// How long a frame waits for an image to draw into: about two frames, so
@@ -47,7 +49,10 @@ pub(crate) struct GpuWindow {
 	surface: Rc<Surface>,
 	device: Rc<Device>,
 	physical: RawPhysicalDevice,
-	name: String,
+	/// Whether the swapchain has shown an image, which later ones change.
+	shown: bool,
+	/// What it draws on, without the swapchain, which may be remade.
+	facts: GpuFacts,
 }
 
 impl GpuWindow {
@@ -82,7 +87,21 @@ impl GpuWindow {
 			return Err(Error::NoDevice(why.collect()));
 		};
 		let physical = handles[choice.device];
-		let device = Device::for_windows(instance, physical, choice.family as u32)?;
+		let chosen = devices.swap_remove(choice.device);
+		let facts = GpuFacts {
+			device: chosen.name,
+			api: "Vulkan",
+			version: Some(chosen.api),
+			driver: instance.driver(physical),
+			swapchain: None,
+			atlas: None,
+			presenter: window.platform().presenter().to_owned(),
+		};
+		let disable = std::env::var(optional::VARIABLE).ok();
+		let offered = instance.device_extensions(physical)?;
+		let optional = Optional::found(&offered, disable.as_deref());
+		let family = choice.family as u32;
+		let device = Device::with_optional(instance, physical, family, optional)?;
 		let device = Rc::new(device);
 		let pipeline = Rc::new(QuadPipeline::new(&device, Format::Bgra)?);
 		let timeline = Rc::new(Timeline::new(&device)?);
@@ -90,16 +109,26 @@ impl GpuWindow {
 			renderer: Renderer::new(&pipeline, &timeline, atlas)?,
 			swapchain: None,
 			made_for: REMAKE,
+			shown: false,
 			surface,
 			device,
 			physical,
-			name: devices.swap_remove(choice.device).name,
+			facts,
 		})
 	}
 
 	/// The name of the device it draws on.
 	pub(crate) fn device_name(&self) -> &str {
-		&self.name
+		&self.facts.device
+	}
+
+	/// What it draws on and how, with its swapchain once made.
+	pub(crate) fn facts(&self) -> GpuFacts {
+		let swapchain = self.swapchain.as_ref();
+		GpuFacts {
+			swapchain: swapchain.map(|chain| chain.plan().facts(chain.images().len())),
+			..self.facts.clone()
+		}
 	}
 
 	/// Draws `pen`'s frame in the window, now `size` pixels large, and
@@ -108,6 +137,8 @@ impl GpuWindow {
 	/// it can make holds, or with images past its budget or its device) is
 	/// refused with `Error::Draw`. Either way the pen starts over.
 	pub(crate) fn draw(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
+		// For this attempt only: one drawn again is presented whole.
+		let changed = pen.changed.take();
 		if !pen.complete {
 			let grew = self.renderer.grow(pen.wanted);
 			// The glyphs it added never reach the GPU.
@@ -132,6 +163,7 @@ impl GpuWindow {
 			};
 			// Retired even if the remake fails: then made anew.
 			self.made_for = REMAKE;
+			self.shown = false;
 			let made = match self.swapchain.take() {
 				Some(old) => old.recreate(plan),
 				None => Swapchain::new(&self.device, &self.surface, plan),
@@ -152,6 +184,12 @@ impl GpuWindow {
 		};
 		let suboptimal = frame.suboptimal;
 		let image = frame.image().clone();
+		// Changes are since the last image this swapchain showed: the first
+		// it shows is new whole.
+		let mut frame = frame;
+		if let (true, Some(bands)) = (self.shown, &changed) {
+			frame.changed = rects(bands, size);
+		}
 		// A frame dropped unpresented keeps its image: remake the swapchain.
 		self.made_for = REMAKE;
 		let recorded = self.renderer.frame(pen, &image);
@@ -160,6 +198,7 @@ impl GpuWindow {
 		if !suboptimal && presented == Presented::Shown {
 			self.made_for = size;
 		}
+		self.shown = presented != Presented::OutOfDate;
 		Ok(match presented {
 			Presented::OutOfDate => Drawn::Again,
 			Presented::Shown | Presented::Suboptimal => Drawn::Shown,

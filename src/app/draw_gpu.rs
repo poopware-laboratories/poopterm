@@ -7,6 +7,7 @@ use super::{
 	App,
 	canvas::{DrawKey, Plan},
 	gpu::{Gpu, after_drawn, drawn_as, remembers},
+	present_bands::{Layout, changed_bands},
 	renderer::Renderer,
 };
 use crate::gpu::quads::QuadPen;
@@ -28,6 +29,14 @@ impl App {
 		}
 		// Kept rows move on the GPU, over a background drawn again.
 		let plan = (self.canvas).plan(&self.frame, key, size, true);
+		// The sidebar names its own changes, which only software tracks.
+		let changed = match &plan {
+			Plan::Partial(damage) if self.sidebar_width() == 0 => {
+				Some(changed_bands(damage, &self.present_layout(size)))
+			}
+			_ => None,
+		};
+		gpu.set_changed(changed);
 		let damage = match plan {
 			Plan::Full | Plan::Panes(_) => None,
 			Plan::Partial(damage) => Some(damage),
@@ -44,6 +53,16 @@ impl App {
 		let again = || self.request_redraw();
 		after_drawn(gpu, next, again, Renderer::Gpu, Renderer::after_gpu)
 	}
+
+	// pr-check: window glue: the real window's layout, as computed for drawing
+	fn present_layout(&self, (width, height): (usize, usize)) -> Layout {
+		let area = self.padding_area(width, height);
+		let status_top = height.saturating_sub(self.status_height + self.border);
+		let padding = (area.y, area.y + area.height);
+		let grid = [self.top, self.ch, self.frame.rows];
+		Layout::new(grid, height, status_top, padding)
+	}
+	// pr-check: end window glue
 
 	// pr-check: window glue: draws the real window's frame for the GPU to show
 	fn quads(&mut self, pen: &mut QuadPen) {

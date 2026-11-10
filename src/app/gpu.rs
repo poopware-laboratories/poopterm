@@ -17,7 +17,7 @@ use crate::gpu::vk::{
 };
 use crate::{
 	config::RendererPreference,
-	gpu::quads::QuadPen,
+	gpu::{facts::GpuFacts, quads::QuadPen},
 	render::{damage::GridDamage, glyphs::FontSet, scene::Scene},
 	ui::diagnostics::{Drawing, Reason},
 };
@@ -254,9 +254,12 @@ impl<W> Gpu<W> {
 		}
 	}
 
-	/// The name of the device it draws on.
-	pub(super) fn device_name(&self) -> &str {
-		self.gpu.device_name()
+	/// What it draws on and how, its pen's atlas included.
+	pub(super) fn facts(&self) -> GpuFacts {
+		GpuFacts {
+			atlas: Some(self.pen.atlas_usage()),
+			..self.gpu.facts()
+		}
 	}
 
 	/// The window it draws in.
@@ -273,6 +276,12 @@ impl<W> Gpu<W> {
 	/// pixels tall; every row without.
 	pub(super) fn plan_rows(&mut self, damage: Option<GridDamage>, cell_height: usize) {
 		self.pen.plan_rows(damage, cell_height);
+	}
+
+	/// Has the next frame's present name `changed` pixel rows as all that
+	/// changed since the last frame shown; `None` for all of them.
+	pub(super) fn set_changed(&mut self, changed: Option<Vec<(usize, usize)>>) {
+		self.pen.changed = changed;
 	}
 
 	/// Draws a frame `size` pixels large, which `quads` draws with the pen,

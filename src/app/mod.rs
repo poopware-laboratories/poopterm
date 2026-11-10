@@ -19,6 +19,11 @@ mod mouse_tabs;
 mod notifications;
 mod output;
 mod panes;
+mod present_bands;
+#[cfg(test)]
+mod present_bands_property_tests;
+#[cfg(test)]
+mod present_bands_tests;
 mod renderer;
 mod repaint;
 mod search;

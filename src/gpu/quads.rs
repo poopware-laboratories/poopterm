@@ -2,7 +2,7 @@
 //! and image into a quad, in drawing order, and keeps glyph bitmaps in an
 //! atlas, listing the ones the GPU has not been sent yet.
 use super::{
-	atlas::{Atlas, Refused, Slot, Wanted},
+	atlas::{Atlas, Refused, Slot, Usage, Wanted},
 	rows::Rows,
 };
 use crate::{
@@ -65,6 +65,9 @@ pub(crate) struct QuadPen {
 	pub uploads: Vec<Upload>,
 	/// False when the atlas could not hold a glyph, which the frame lacks.
 	pub complete: bool,
+	/// Pixel rows changed since the last frame shown, when known: the
+	/// window takes them as it presents.
+	pub changed: Option<Vec<(usize, usize)>>,
 	/// What the atlas lacked room for, for a larger one to hold.
 	pub wanted: Wanted,
 	pub(super) atlas: Atlas<Box<[u32]>>,
@@ -84,11 +87,17 @@ impl QuadPen {
 			images: Vec::new(),
 			uploads: Vec::new(),
 			complete: true,
+			changed: None,
 			wanted: Wanted::default(),
 			atlas: Atlas::new(side, pages),
 			rows: Rows::default(),
 			key: Vec::new(),
 		}
+	}
+
+	/// How full its atlas is.
+	pub(crate) fn atlas_usage(&self) -> Usage {
+		self.atlas.usage()
 	}
 
 	/// Starts a frame `size` pixels large, forgetting the last one's quads.

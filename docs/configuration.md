@@ -92,6 +92,15 @@ window or the GPU fails while drawing. The `POOPTERM_RENDERER` environment varia
 of the same three values, overrides `renderer` for one run without changing the
 file; any other value is ignored.
 
+The Vulkan renderer uses some optional extensions when the device offers them
+and works as before without them. `POOPTERM_VULKAN_DISABLE` turns them off by
+short name, comma-separated, or all of them with `all`, for a driver that offers
+one but gets it wrong:
+
+| Short name | Extension | What it does |
+|---|---|---|
+| `incremental_present` | `VK_KHR_incremental_present` | Tells the compositor which rows changed, so it redraws only those |
+
 `decorations` chooses who draws the title bar on Linux and FreeBSD Wayland:
 `auto` (the default), `client` or `server`. With `auto`, Poopterm puts the
 minimize, maximize and close buttons in its tab header, and lets the edges

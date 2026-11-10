@@ -248,7 +248,39 @@ fn a_frame_refused_or_failed_leaves_the_pen_without_rows() {
 fn the_gpu_names_the_device_it_draws_on_for_the_diagnostics_page() {
 	let gpu = gpu();
 	// The fake driver's window draws on its integrated device.
-	assert_eq!(gpu.device_name(), "Integrated");
+	assert_eq!(gpu.facts().device, "Integrated");
+	close(gpu.gpu);
+}
+
+#[test]
+fn the_gpus_facts_carry_its_pens_atlas_and_its_swapchain_once_drawn() {
+	let mut gpu = gpu();
+	let facts = gpu.facts();
+	assert_eq!(facts.device, "Integrated");
+	let (side, pages) = FAKE_ATLAS;
+	let atlas = facts.atlas.unwrap();
+	assert_eq!((atlas.side, atlas.pages, atlas.filled), (side, pages, 0));
+	assert_eq!(facts.swapchain, None);
+	let labels = |gpu: &Gpu<&str>| -> Vec<&'static str> {
+		gpu
+			.facts()
+			.rows()
+			.into_iter()
+			.map(|(label, _)| label)
+			.collect()
+	};
+	assert_eq!(
+		labels(&gpu),
+		["Device", "Driver", "Glyph atlas", "Presenter"]
+	);
+	grid_frame(&mut gpu, false);
+	assert!(gpu.facts().swapchain.is_some());
+	// Rectangles only: the atlas stays as made.
+	assert_eq!(gpu.facts().atlas, Some(atlas));
+	assert_eq!(
+		labels(&gpu),
+		["Device", "Driver", "Swapchain", "Glyph atlas", "Presenter"]
+	);
 	close(gpu.gpu);
 }
 
@@ -270,4 +302,20 @@ fn a_frame_the_gpu_abandoned_says_why_the_window_is_now_software() {
 	// Software draws later frames, so nothing changes the reason back.
 	drawn_as(&mut drawing, &Next::Done);
 	assert_eq!(drawing, abandoned);
+}
+
+#[test]
+fn rows_the_app_says_changed_reach_the_present_after_the_first_image() {
+	use crate::gpu::vk::outside_tests::{fake_incremental_window, fake_present_regions};
+	let mut gpu = Gpu::with(fake_incremental_window(), "the window", FAKE_ATLAS);
+	// The first image shows whole, whatever the app says changed.
+	gpu.set_changed(Some(vec![(0, 16)]));
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	// Bands run from a pixel row to the one past them; an empty one is dropped.
+	gpu.set_changed(Some(vec![(0, 16), (20, 24), (28, 28)]));
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	// Nothing said: the whole image changed.
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	assert_eq!(fake_present_regions(), [0, 2, 0]);
+	close(gpu.gpu);
 }

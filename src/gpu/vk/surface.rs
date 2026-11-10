@@ -38,6 +38,15 @@ impl Platform {
 		};
 		[SURFACE, own]
 	}
+
+	/// What shows the window's frames, for the Diagnostics page.
+	pub(crate) fn presenter(self) -> &'static str {
+		match self {
+			Self::Wayland => "Vulkan on Wayland",
+			Self::Xlib => "Vulkan on X11",
+			Self::Headless => "Vulkan, headless",
+		}
+	}
 }
 
 /// A window's handles, as its window system gives them.

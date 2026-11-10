@@ -150,7 +150,14 @@ fn a_settings_scene_is_drawn_by_metal_as_quads() {
 		}
 	}
 	assert_eq!(drawn, Next::Done);
-	assert!(!gpu.device_name().is_empty());
+	let facts = gpu.facts();
+	assert!(!facts.device.is_empty());
+	assert_eq!(
+		(facts.api, facts.presenter.as_str()),
+		("Metal", "Metal on macOS")
+	);
+	let labels: Vec<&str> = facts.rows().into_iter().map(|(label, _)| label).collect();
+	assert_eq!(labels, ["Device", "Glyph atlas", "Presenter"]);
 }
 
 #[test]

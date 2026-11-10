@@ -3,6 +3,10 @@
 use super::{
 	call::{Error, check, enumerate, fixed_string},
 	choose::{Device, Kind, QueueFamily},
+	driver_info::{
+		DriverProperties, GetPhysicalDeviceProperties2, PhysicalDeviceProperties2,
+		STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+	},
 	entry::{Entry, cast},
 	features::Features,
 	memory::MemoryType,
@@ -22,6 +26,8 @@ struct Functions {
 	features: GetPhysicalDeviceFeatures2,
 	create_device: CreateDevice,
 	device_function: GetDeviceProcAddr,
+	/// Only for the driver's facts: without it there are none.
+	properties2: Option<GetPhysicalDeviceProperties2>,
 }
 
 impl Functions {
@@ -39,6 +45,9 @@ impl Functions {
 				features: cast(function(c"vkGetPhysicalDeviceFeatures2")?),
 				create_device: cast(function(c"vkCreateDevice")?),
 				device_function: cast(function(c"vkGetDeviceProcAddr")?),
+				properties2: function(c"vkGetPhysicalDeviceProperties2")
+					.ok()
+					.map(|f| cast(f)),
 			})
 		}
 	}
@@ -115,14 +124,7 @@ impl Instance {
 			unsafe { (self.functions.queue_families)(device, count, families) };
 			0
 		})?;
-		let none = ExtensionProperties {
-			extension_name: [0; 256],
-			spec_version: 0,
-		};
-		let extensions = enumerate(none, |count, extensions| {
-			// SAFETY: as above, with room for `count` extensions, and no layer.
-			unsafe { (self.functions.extensions)(device, ptr::null(), count, extensions) }
-		})?;
+		let extensions = self.device_extensions(device)?;
 		Ok(Device {
 			name: fixed_string(&properties.device_name),
 			kind: Kind::from_type(properties.device_type),
@@ -134,9 +136,45 @@ impl Instance {
 					present: false,
 				})
 				.collect(),
-			swapchain: (extensions.iter())
-				.any(|extension| fixed_string(&extension.extension_name) == "VK_KHR_swapchain"),
+			swapchain: extensions.iter().any(|name| name == "VK_KHR_swapchain"),
 		})
+	}
+
+	/// The names of the extensions `device`, one of
+	/// [`Self::physical_devices`], offers.
+	pub(crate) fn device_extensions(&self, device: RawPhysicalDevice) -> Result<Vec<String>, Error> {
+		let none = ExtensionProperties {
+			extension_name: [0; 256],
+			spec_version: 0,
+		};
+		let extensions = enumerate(none, |count, extensions| {
+			// SAFETY: the device is one of this live instance's, `enumerate`
+			// passes room for `count` extensions, and no layer is named.
+			unsafe { (self.functions.extensions)(device, ptr::null(), count, extensions) }
+		})?;
+		Ok(
+			extensions
+				.iter()
+				.map(|extension| fixed_string(&extension.extension_name))
+				.collect(),
+		)
+	}
+
+	/// How the driver of `device`, one of [`Self::physical_devices`], names
+	/// itself, when it says.
+	pub(crate) fn driver(&self, device: RawPhysicalDevice) -> Option<String> {
+		let get = self.functions.properties2?;
+		let mut driver = DriverProperties::empty();
+		let mut properties = PhysicalDeviceProperties2 {
+			s_type: STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+			next: (&raw mut driver).cast(),
+			properties: PhysicalDeviceProperties::default(),
+		};
+		// SAFETY: the device is one of this live instance's, and both
+		// structures are writable, chained as the specification allows, and
+		// outlive the call.
+		unsafe { get(device, &mut properties) };
+		driver.text()
 	}
 
 	pub(super) fn properties(&self, device: RawPhysicalDevice) -> PhysicalDeviceProperties {

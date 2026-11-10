@@ -4,6 +4,7 @@
 //! that it reports each broken rule.
 use super::{
 	driver_tests::{Driver, with},
+	present_regions::{PresentRegions, STRUCTURE_TYPE_PRESENT_REGIONS},
 	present_tests::{showing, window},
 	recording::Layout,
 	recording_tests::PRESENT,
@@ -133,8 +134,51 @@ unsafe extern "system" fn present_image(queue: RawQueue, info: *const PresentInf
 			std::slice::from_raw_parts(info.image_indices, read(info.swapchain_count)),
 		)
 	};
+	// SAFETY: every chained structure starts with its sType; one of the
+	// regions' type is the regions the bindings name, whose arrays live
+	// across the call.
+	let regions = (!info.next.is_null()).then(|| unsafe {
+		let s_type = *info.next.cast::<i32>();
+		if s_type != STRUCTURE_TYPE_PRESENT_REGIONS {
+			return (s_type, None);
+		}
+		let regions = &*info.next.cast::<PresentRegions>();
+		let region = (regions.swapchain_count == 1).then(|| &*regions.regions);
+		let rects = region.map(|region| {
+			let count = region.rectangle_count as usize;
+			std::slice::from_raw_parts(region.rectangles, count).to_vec()
+		});
+		(s_type, rects)
+	});
 	with(|driver| {
 		const CALL: &str = "vkQueuePresentKHR";
+		let enabled = (driver.made.last()).is_some_and(|made| {
+			made
+				.extensions
+				.iter()
+				.any(|name| name == "VK_KHR_incremental_present")
+		});
+		let chain_holds = match &regions {
+			None => true,
+			Some((s_type, rects)) => {
+				*s_type == STRUCTURE_TYPE_PRESENT_REGIONS && rects.is_some() && enabled
+			}
+		};
+		let rects = regions.and_then(|(_, rects)| rects).unwrap_or_default();
+		let extent = driver.swapchains.last().map_or([0; 2], |made| made.extent);
+		let inside = rects.iter().all(|rect| {
+			let [x, y] = rect.offset.map(|n| n.max(0) as u32);
+			rect.offset.iter().all(|&n| n >= 0)
+				&& x + rect.extent[0] <= extent[0]
+				&& y + rect.extent[1] <= extent[1]
+				&& rect.extent.iter().all(|&n| n > 0)
+				&& rect.layer == 0
+		});
+		driver.require(chain_holds, || {
+			format!("{CALL}: present regions on an enabled extension")
+		});
+		driver.require(inside, || format!("{CALL}: regions inside the image"));
+		driver.present_regions.push(rects);
 		let (&[swapchain], &[index]) = (swapchains, indices) else {
 			driver.invalid.push(format!("{CALL}: one swapchain"));
 			return -3;
@@ -149,7 +193,7 @@ unsafe extern "system" fn present_image(queue: RawQueue, info: *const PresentInf
 		let rules = [
 			(driver.known_queue(queue), "a live device's queue"),
 			(info.s_type == STRUCTURE_TYPE_PRESENT_INFO, "sType"),
-			(info.next.is_null(), "pNext"),
+			(info.next.is_null() || chain_holds, "pNext"),
 			(
 				waits.iter().all(|&wait| driver.binary(wait) == Some(true)),
 				"waits for signalled binary semaphores",
@@ -322,7 +366,7 @@ fn the_fake_driver_reports_images_presented_against_the_rules() {
 				next: &zero as *const u32 as _,
 				..good(&zero, &swapchains)
 			},
-			&["pNext"],
+			&["present regions on an enabled extension", "pNext"],
 		),
 		(
 			queue,
@@ -404,5 +448,87 @@ fn the_fake_driver_finishes_everything_submitted_when_the_queue_goes_idle() {
 	assert_eq!(timeline.reached(), Ok(1));
 	assert!(!with(|driver| driver.presenting));
 	drop(timeline);
+	window.close();
+}
+
+#[test]
+fn the_fake_driver_checks_present_regions_against_the_rules() {
+	// Were it blind to them, the region tests would prove nothing.
+	use super::present_regions::{PresentRegion, RectLayer};
+	let mut window = window(showing());
+	window.frame().unwrap();
+	let (device, swapchain) = (window.device.handle, window.swapchain.chain.handle);
+	let functions = &window.swapchain.functions;
+	let (acquire, present) = (functions.acquire, functions.present);
+	let queue = window.device.queue();
+	let waited = Semaphore::new(&window.device).unwrap();
+	let (waits, swapchains, zero) = ([waited.handle()], [swapchain], 0u32);
+	let extent = with(|driver| driver.swapchains.last().unwrap().extent);
+	// Presents image 0, acquired again, naming `rects` for `count` swapchains.
+	let call = |rects: &[RectLayer], count: u32, s_type: i32| {
+		let mut index = 9;
+		// SAFETY: the fake only checks and records the handles.
+		unsafe { acquire(device, swapchain, 0, waited.handle(), 0, &mut index) };
+		let region = PresentRegion {
+			rectangle_count: rects.len() as u32,
+			rectangles: rects.as_ptr(),
+		};
+		let regions = PresentRegions {
+			s_type,
+			next: ptr::null(),
+			swapchain_count: count,
+			regions: &region,
+		};
+		let info = PresentInfo {
+			s_type: STRUCTURE_TYPE_PRESENT_INFO,
+			next: (&raw const regions).cast(),
+			wait_semaphore_count: 1,
+			wait_semaphores: waits.as_ptr(),
+			swapchain_count: 1,
+			swapchains: swapchains.as_ptr(),
+			image_indices: &zero,
+			results: ptr::null_mut(),
+		};
+		// SAFETY: as above; `info` and what it chains outlive the call.
+		unsafe { present(queue, &info) };
+		broken()
+	};
+	let rect = |offset: [i32; 2], extent: [u32; 2], layer| RectLayer {
+		offset,
+		extent,
+		layer,
+	};
+	let rule = |rule: &str| format!("vkQueuePresentKHR: {rule}");
+	let good = [rect([0, 0], [extent[0], 4], 0)];
+	// A device made without the extension takes no regions.
+	let off = [
+		rule("present regions on an enabled extension"),
+		rule("pNext"),
+	];
+	assert_eq!(call(&good, 1, STRUCTURE_TYPE_PRESENT_REGIONS), off);
+	with(|driver| {
+		let made = driver.made.last_mut().unwrap();
+		made.extensions.push("VK_KHR_incremental_present".into());
+	});
+	let none = Vec::<String>::new();
+	assert_eq!(call(&good, 1, STRUCTURE_TYPE_PRESENT_REGIONS), none);
+	assert_eq!(call(&good, 2, STRUCTURE_TYPE_PRESENT_REGIONS), off);
+	assert_eq!(call(&good, 1, 7), off);
+	let outside = [rule("regions inside the image")];
+	for bad in [
+		rect([0, 0], [extent[0] + 1, 4], 0),
+		rect([0, extent[1] as i32 - 2], [4, 4], 0),
+		rect([-1, 0], [4, 4], 0),
+		rect([0, 0], [0, 4], 0),
+		rect([0, 0], [4, 4], 1),
+	] {
+		let got = call(&[bad], 1, STRUCTURE_TYPE_PRESENT_REGIONS);
+		assert_eq!(got, outside, "{bad:?}");
+	}
+	// Each present's regions are kept in order, empty when none were named.
+	let named = with(|driver| driver.present_regions.clone());
+	assert_eq!(named.len(), 1 + 9);
+	assert_eq!(named[2], good);
+	drop(waited);
 	window.close();
 }

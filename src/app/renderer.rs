@@ -194,13 +194,13 @@ impl Renderer {
 		Ok((selected.value, started(selected.backend, failure, gpu_here)))
 	}
 
-	/// The device the GPU draws the window on, when it does.
+	/// What the GPU draws the window on and how, when it does.
 	// pr-check: window glue: only a real window has a renderer
-	pub(super) fn device(&self) -> Option<&str> {
+	pub(super) fn facts(&self) -> Option<crate::gpu::facts::GpuFacts> {
 		match self {
 			Self::Software(_) => None,
 			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
-			Self::Gpu(gpu) => Some(gpu.device_name()),
+			Self::Gpu(gpu) => Some(gpu.facts()),
 		}
 	}
 	// pr-check: end window glue
