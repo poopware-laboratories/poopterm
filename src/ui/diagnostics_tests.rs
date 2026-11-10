@@ -3,6 +3,7 @@
 use super::diagnostics::{
 	Diagnostics, Drawing, Feature, GPU_API, Reason, clock, private, report, statuses,
 };
+use crate::ui::recent_frames::FrameCounts;
 use crate::warnings::{LONGEST, Warning};
 use std::{
 	path::{Path, PathBuf},
@@ -155,6 +156,10 @@ fn sample() -> Diagnostics {
 	Diagnostics {
 		version: "26.11.28 \"Lunar Moth\"".into(),
 		drawing: Drawing::Gpu,
+		frames: FrameCounts {
+			gpu: 571,
+			software: 29,
+		},
 		facts: vec![
 			("Device", "AMD Radeon RX 7800 XT (RADV NAVI32)".into()),
 			("Presenter", "Vulkan on Wayland".into()),
@@ -185,6 +190,7 @@ Graphics
   Overlays         Hardware accelerated: Selection, search and cursor as quads
   Images           Hardware accelerated: Sixel and kitty images as textures
   Wallpaper        Hardware accelerated: A texture
+  Last 600 frames: 571 GPU \u{b7} 29 software
   Device           AMD Radeon RX 7800 XT (RADV NAVI32)
   Presenter        Vulkan on Wayland
 
@@ -230,9 +236,19 @@ fn a_label_as_long_as_the_column_still_leaves_no_gap_unfilled() {
 fn without_facts_the_features_lead_straight_to_the_log() {
 	let diagnostics = Diagnostics {
 		facts: vec![],
+		frames: FrameCounts::default(),
 		..sample()
 	};
 	assert!(report(&diagnostics).contains("Hardware accelerated: A texture\n\nLog\n"));
+	// The frames line alone sits between them.
+	let framed = Diagnostics {
+		frames: FrameCounts {
+			gpu: 2,
+			software: 0,
+		},
+		..diagnostics
+	};
+	assert!(report(&framed).contains("A texture\n  Last 2 frames: 2 GPU \u{b7} 0 software\n\nLog\n"));
 }
 
 #[test]
@@ -297,7 +313,7 @@ fn every_report_line_ends_in_a_newline_and_none_is_blank_but_the_separators() {
 		.map(|(i, _)| i)
 		.collect();
 	// After the title, and before the log.
-	assert_eq!(blank, [1, 10]);
+	assert_eq!(blank, [1, 11]);
 }
 
 #[test]
@@ -324,4 +340,32 @@ fn only_whole_path_components_count_as_the_home_directory() {
 		private("/home/vxx and /home/vx/a", home),
 		"/home/vxx and ~/a"
 	);
+}
+
+#[test]
+fn before_the_first_frame_the_report_has_no_frames_line() {
+	let diagnostics = Diagnostics {
+		frames: FrameCounts::default(),
+		..sample()
+	};
+	let text = report(&diagnostics);
+	assert!(!text.contains("frame"), "{text}");
+	assert!(text.contains("A texture\n  Device "), "{text}");
+}
+
+#[test]
+fn the_frames_line_sits_between_the_features_and_the_device() {
+	let text = report(&Diagnostics {
+		frames: FrameCounts {
+			gpu: 0,
+			software: 1,
+		},
+		drawing: Drawing::Software(Reason::Asked),
+		..sample()
+	});
+	let lines: Vec<&str> = text.lines().collect();
+	let at = 3 + Feature::ALL.len();
+	assert!(lines[at - 1].starts_with("  Wallpaper "), "{text}");
+	assert_eq!(lines[at], "  Last frame: 0 GPU \u{b7} 1 software");
+	assert!(lines[at + 1].starts_with("  Device "), "{text}");
 }

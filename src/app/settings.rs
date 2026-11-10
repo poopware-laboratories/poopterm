@@ -415,7 +415,15 @@ impl App {
 			std::env::var_os("HOME").map(PathBuf::from),
 			crate::warnings::recent(),
 		);
-		gather(self.drawing.clone(), preference, device, recent, home)
+		let frames = self.recent_frames.counts();
+		gather(
+			self.drawing.clone(),
+			frames,
+			preference,
+			device,
+			recent,
+			home,
+		)
 	}
 	// pr-check: end window glue
 

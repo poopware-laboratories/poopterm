@@ -192,6 +192,8 @@ pub(crate) struct App {
 	full_redraw_only: bool,
 	/// `POOPTERM_FRAME_STATS` set: frame timings, saved on exit.
 	frame_stats: Option<frame_stats::Recorder>,
+	/// How the last frames were drawn, for the Diagnostics page.
+	recent_frames: crate::ui::recent_frames::RecentFrames,
 	/// In lines, which count evicted history, so it stays on its text.
 	selection: Option<Selection>,
 	/// Where the selection being dragged with the mouse started, in lines,
@@ -443,6 +445,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		pane_frames: Vec::new(),
 		canvas: canvas::Canvas::new(),
 		full_redraw_only: std::env::var_os("POOPTERM_FULL_REDRAW").is_some(),
+		recent_frames: Default::default(),
 		frame_stats: frame_stats::Recorder::from_env(std::env::var_os(frame_stats::VARIABLE)),
 		selection: None,
 		drag_anchor: None,

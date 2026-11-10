@@ -62,6 +62,7 @@ pub(crate) mod panes;
 mod panes_table_tests;
 #[cfg(test)]
 mod panes_tests;
+pub(crate) mod recent_frames;
 pub(crate) mod scale;
 pub(crate) mod search;
 pub(crate) mod search_controls;

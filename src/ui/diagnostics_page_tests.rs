@@ -2,6 +2,7 @@
 //! came to draw as it does, the log rows that fit, and Copy report's status.
 use super::diagnostics::{Diagnostics, Drawing, Reason, report};
 use super::diagnostics_page::{Section, copied, gather, log_rows, started};
+use crate::ui::recent_frames::FrameCounts;
 use crate::{config::RendererPreference, render::backend::Backend, warnings::Warning};
 use std::{io, path::PathBuf, time::Duration};
 
@@ -18,6 +19,7 @@ fn logged(count: usize, dropped: usize) -> Diagnostics {
 	Diagnostics {
 		version: "26.11.30".into(),
 		drawing: Drawing::Gpu,
+		frames: FrameCounts::default(),
 		facts: Vec::new(),
 		warnings: (0..count)
 			.map(|i| warning(8 * 3600 + 60 * i as u64, &format!("warning {i}")))
@@ -192,8 +194,13 @@ fn renderer_preferences_name_themselves_as_config_toml_writes_them() {
 fn gathered_diagnostics_name_the_release_setting_and_device() {
 	let recent = (vec![warning(5, "drawing on RADV")], 2);
 	let home = Some(PathBuf::from("/home/ada"));
+	let frames = FrameCounts {
+		gpu: 571,
+		software: 29,
+	};
 	let diagnostics = gather(
 		Drawing::Gpu,
+		frames,
 		RendererPreference::Auto,
 		Some("AMD Radeon (RADV NAVI32)"),
 		recent.clone(),
@@ -209,6 +216,7 @@ fn gathered_diagnostics_name_the_release_setting_and_device() {
 		Diagnostics {
 			version: release,
 			drawing: Drawing::Gpu,
+			frames,
 			facts: vec![
 				("Renderer setting", "auto".into()),
 				("Device", "AMD Radeon (RADV NAVI32)".into()),
@@ -225,6 +233,7 @@ fn software_has_no_device_to_name() {
 	let drawing = Drawing::Software(Reason::Asked);
 	let diagnostics = gather(
 		drawing.clone(),
+		FrameCounts::default(),
 		RendererPreference::Software,
 		None,
 		(Vec::new(), 0),

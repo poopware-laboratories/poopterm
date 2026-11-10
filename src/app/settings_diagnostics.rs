@@ -37,6 +37,8 @@ const HEADING_GAP: usize = 24;
 /// The features' rows: their height, top and columns (name, status, detail).
 pub(super) const ROW: usize = 34;
 pub(super) const FEATURES_TOP: usize = CONTENT_TOP + HEADING_GAP;
+/// The line counting the last frames by path, 10 px under the features.
+pub(super) const FRAMES_TOP: usize = FEATURES_TOP + 5 * ROW + 10;
 pub(super) const COLUMNS: [usize; 3] = [24, 156, 384];
 /// The "Device" heading, below the features and the line under them, and
 /// the distance between its rows.
@@ -142,6 +144,10 @@ fn graphics(diagnostics: &Diagnostics, colors: &DiagnosticsColors, p: &mut Scene
 			s,
 			colors.rule,
 		);
+	}
+	if let Some(line) = diagnostics.frames.line() {
+		let line = pen.fit(&line, right.saturating_sub(name_x), SMALL);
+		pen.tinted(p, name_x, FRAMES_TOP, &line, SMALL, colors.muted);
 	}
 	pen.tinted(p, name_x, DEVICE_TOP, "Device", SMALL, colors.muted);
 	for (i, (label, value)) in diagnostics.facts.iter().enumerate() {
