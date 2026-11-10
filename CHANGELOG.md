@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.63 "Lunar Moth" — 2026-11-10
+
+### Performance
+
+- Find the end mark without comparing at every byte (#291) (bench).
+
 ## 26.11.62 "Lunar Moth" — 2026-11-09
 
 ### Fixed
