@@ -249,9 +249,13 @@ impl Term {
 
 	/// Erases blocks with a cell in the flat range `from..to`.
 	pub(crate) fn erase_multicells(&mut self, from: usize, to: usize) {
-		if self.has_multicells {
-			for i in from..to.min(self.rows * self.cols) {
-				self.erase_multicell(i % self.cols, i / self.cols);
+		let end = to.min(self.rows * self.cols);
+		if self.has_multicells && from < end {
+			let cols = self.cols;
+			for y in from / cols..=(end - 1) / cols {
+				let start = (y * cols).max(from) - y * cols;
+				let stop = ((y + 1) * cols).min(end) - y * cols;
+				self.erase_multicells_in_row(y, start, stop);
 			}
 		}
 	}

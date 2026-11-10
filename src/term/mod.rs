@@ -2,6 +2,8 @@
 #[cfg(test)]
 mod bright_tests;
 #[cfg(test)]
+mod clear_row_tests;
+#[cfg(test)]
 mod click_events_tests;
 pub(crate) mod clipboard;
 #[cfg(test)]
