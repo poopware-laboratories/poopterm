@@ -108,3 +108,60 @@ pub(super) unsafe extern "system" fn memory_properties2(
 		}
 	});
 }
+
+#[test]
+fn the_atlas_budget_agrees_with_a_model_and_only_grows_with_free_memory() {
+	let mut state = 0x9b05_688c_2b3e_6c1f_u64;
+	let mut next = || {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		state
+	};
+	for case in 0..5000 {
+		// Free memory from nothing to past the cap, in pages of 4 KB.
+		let free = (next() % (1 << 18)) << 12;
+		let current = (next() % (1 << 16)) as usize * 4096;
+		let budget = atlas_budget(Some(free), current);
+		let model = BUDGET.min((free as usize + current) / 2);
+		assert_eq!(budget, model, "case {case}: {free} {current}");
+		assert!(budget <= BUDGET, "case {case}");
+		// More free memory never makes for a smaller atlas.
+		let more = atlas_budget(Some(free + (next() % (1 << 20))), current);
+		assert!(more >= budget, "case {case}: {more} < {budget}");
+	}
+}
+
+#[test]
+fn an_atlas_grown_again_and_again_stays_within_its_budget() {
+	use crate::gpu::atlas::{Wanted, grown};
+	let more_pages = Wanted {
+		side: 0,
+		pages: true,
+	};
+	for free in [0, 20 * MB, 100 * MB, 300 * MB, 8192 * MB] {
+		let (mut atlas, mut steps) = ((1024, 4), 0);
+		loop {
+			let bytes = atlas.0 * atlas.0 * 4 * atlas.1;
+			// The atlas being replaced counts as free.
+			let budget = atlas_budget(Some(free), bytes);
+			let Some(next) = grown(atlas, more_pages, [16384, 2048], budget) else {
+				break;
+			};
+			assert!(next.0 * next.0 * 4 * next.1 <= budget, "{free}: {next:?}");
+			(atlas, steps) = (next, steps + 1);
+		}
+		// With plenty free it grows to the fixed cap: 64 pages of 4 MB.
+		let expected = if free >= 8192 * MB { (1024, 64) } else { atlas };
+		assert_eq!(atlas, expected, "{free} after {steps}");
+	}
+}
+
+#[test]
+fn a_heap_index_past_what_the_structure_holds_is_unknown() {
+	let mut budget = MemoryBudget::empty();
+	budget.heap_budget = [MB; 16];
+	assert_eq!(budget.free(15), Some(MB));
+	assert_eq!(budget.free(16), None);
+	assert_eq!(budget.free(usize::MAX), None);
+}

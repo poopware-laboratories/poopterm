@@ -123,3 +123,29 @@ fn the_fake_driver_refuses_a_budget_the_device_does_not_offer() {
 	drop(instance);
 	finish();
 }
+
+/// NVIDIA's memory without resizable BAR: video memory on heap 0, where
+/// atlases go, system memory on 1, the BAR on 2; with these budgets.
+fn nvidia(budgets: [(u64, u64); 3]) -> Driver {
+	use super::memory::{DEVICE_LOCAL, HOST_COHERENT, HOST_VISIBLE, MemoryType};
+	let host = HOST_VISIBLE | HOST_COHERENT;
+	let mut driver = budgeted(true, 0, 0);
+	driver.memory = [(DEVICE_LOCAL, 0), (host, 1), (DEVICE_LOCAL | host, 2)]
+		.map(|(flags, heap)| MemoryType { flags, heap })
+		.to_vec();
+	driver.heap_budgets = budgets.to_vec();
+	driver
+}
+
+#[test]
+fn the_budget_is_that_of_the_heap_the_atlas_goes_to() {
+	let (tight, roomy) = ((100 * KB, 50 * KB), (8 << 30, 0));
+	// Video memory tight, the rest roomy: refused.
+	let mut window = open(nvidia([tight, roomy, roomy]), false).unwrap();
+	assert_eq!(three_glyphs(&mut window), Err(Error::Draw));
+	close(window);
+	// Video memory roomy, the rest tight: grown.
+	let mut window = open(nvidia([roomy, tight, tight]), false).unwrap();
+	assert_eq!(three_glyphs(&mut window), Ok(Drawn::Again));
+	close(window);
+}

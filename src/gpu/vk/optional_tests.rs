@@ -227,3 +227,22 @@ fn an_extension_whose_feature_the_device_lacks_is_turned_off() {
 	off.keep_supported(|feature| panic!("asked about {feature}"));
 	assert_eq!(off.incremental_present, Some(INCREMENTAL_PRESENT));
 }
+
+#[test]
+fn the_memory_budget_is_found_by_its_name_and_turned_off_by_its_short_one() {
+	use super::optional::MEMORY_BUDGET;
+	assert_eq!(MEMORY_BUDGET, c"VK_EXT_memory_budget");
+	let offered = names(&["VK_EXT_memory_budget", "VK_KHR_swapchain"]);
+	let on = Optional::found(&offered, None);
+	assert_eq!(on.memory_budget, Some(MEMORY_BUDGET));
+	assert_eq!(on.names(), ["memory_budget"]);
+	// No feature to turn on: only the extension.
+	assert_eq!(on.features(), Vec::<i32>::new());
+	let off = Optional::found(&offered, Some("memory_budget"));
+	assert_eq!(off.memory_budget, None);
+	assert!(
+		Optional::found(&names(&["VK_EXT_memory_budget2"]), None)
+			.memory_budget
+			.is_none()
+	);
+}

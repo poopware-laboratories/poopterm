@@ -1,16 +1,8 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error,
-	descriptor_types::*,
-	draw_types::*,
-	entry::cast,
-	instance::Instance,
-	memory::{MemoryType, Usage, choose_memory},
-	optional::Optional,
-	pipeline_types::*,
-	submit_types::*,
-	types::*,
+	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
+	memory::MemoryType, optional::Optional, pipeline_types::*, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -156,6 +148,7 @@ impl Device {
 	/// with `VK_EXT_memory_budget` whose driver says.
 	pub(crate) fn atlas_heap_free(&self) -> Option<u64> {
 		self.optional.memory_budget?;
+		use super::memory::{Usage, choose_memory};
 		let index = choose_memory(&self.memory, u32::MAX, Usage::Device)?;
 		self
 			.instance
