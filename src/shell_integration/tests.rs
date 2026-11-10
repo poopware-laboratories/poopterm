@@ -173,14 +173,22 @@ fn ssh_uses_a_common_term_while_term_is_poopterm() {
 		),
 	] {
 		let run = |term: &str, extra: &str| {
-			shell_command(shell)
-				.args(args)
-				.arg(format!("{extra}{script}"))
-				.env("TERM", term)
-				.env("PATH", &path)
-				.output()
-				.ok()
-				.map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+			// The shell reports ssh busy when another thread forked while
+			// fake_ssh wrote it; that run says nothing, so run it again.
+			crate::busy_tests::retry_busy(|| {
+				let output = shell_command(shell)
+					.args(args)
+					.arg(format!("{extra}{script}"))
+					.env("TERM", term)
+					.env("PATH", &path)
+					.output()?;
+				if crate::busy_tests::busy_in(&output.stderr) {
+					return Err(std::io::ErrorKind::ExecutableFileBusy.into());
+				}
+				Ok(output)
+			})
+			.ok()
+			.map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
 		};
 		let Some(wrapped) = run("xterm-poopterm", "") else {
 			continue;

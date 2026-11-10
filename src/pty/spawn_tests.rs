@@ -24,7 +24,13 @@ fn pty() -> device::Pair {
 /// Runs `command` on a new 80×24 PTY and returns what it printed, read
 /// until it exits, and how it ended.
 fn run(command: Command) -> (String, Exit) {
-	run_on(pty(), command)
+	// A fresh pair per try: the BSDs revoke a slave whose session ended.
+	let (pair, child) = crate::busy_tests::retry_busy(|| {
+		let pair = pty();
+		spawn(&command, &pair.slave).map(|child| (pair, child))
+	})
+	.unwrap();
+	collect(pair, child)
 }
 
 /// What appears on `master`, read on a thread of its own.
@@ -62,7 +68,12 @@ fn waiting(pair: &device::Pair) -> Child {
 
 /// Runs `command` on `pair`, as [`run`] does.
 fn run_on(pair: device::Pair, command: Command) -> (String, Exit) {
-	let mut child = spawn(&command, &pair.slave).unwrap();
+	let child = spawn(&command, &pair.slave).unwrap();
+	collect(pair, child)
+}
+
+/// What `child`, spawned on `pair`, prints, and how it exits.
+fn collect(pair: device::Pair, mut child: Child) -> (String, Exit) {
 	drop(pair.slave);
 	let shown = watch(pair.master);
 	let exit = child.wait().unwrap();
@@ -397,10 +408,12 @@ fn exit_codes_and_signals_come_back() {
 
 /// Why `spawn` refused `program`, given by path.
 fn exec_error(program: &Path) -> Option<i32> {
-	let pair = device::open(WindowSize::default()).unwrap();
-	spawn(&Command::new(program), &pair.slave)
-		.err()?
-		.raw_os_error()
+	crate::busy_tests::retry_busy(|| {
+		let pair = device::open(WindowSize::default()).unwrap();
+		spawn(&Command::new(program), &pair.slave)
+	})
+	.err()?
+	.raw_os_error()
 }
 
 #[test]
