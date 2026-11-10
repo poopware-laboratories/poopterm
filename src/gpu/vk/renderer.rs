@@ -11,13 +11,14 @@ use super::{
 	draw::Draw,
 	image::{Format, Image},
 	memory::Usage,
+	memory_budget::atlas_budget,
 	pipeline::QuadPipeline,
 	recording::{Recording, Region},
 	timeline::Timeline,
 };
 use crate::{
 	gpu::{
-		atlas::{BUDGET, Wanted, grown},
+		atlas::{Wanted, grown},
 		encode::{QUAD, encode},
 		quads::{Fill, QuadPen},
 		shrink::{in_texture, regrown, shown_sizes, shrink, texture_size},
@@ -114,7 +115,8 @@ impl Renderer {
 	pub(crate) fn grow(&mut self, wanted: Wanted) -> Result<bool, Error> {
 		let [side, _, pages] = self.atlas.size.map(|n| n as usize);
 		let device = &self.set.pipeline.device;
-		let Some((side, pages)) = grown((side, pages), wanted, device.image_limits, BUDGET) else {
+		let budget = atlas_budget(device.atlas_heap_free(), side * side * 4 * pages);
+		let Some((side, pages)) = grown((side, pages), wanted, device.image_limits, budget) else {
 			return Ok(false);
 		};
 		let size = [side, side, pages].map(|n| n as u32);

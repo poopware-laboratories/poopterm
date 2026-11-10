@@ -22,12 +22,17 @@ pub(crate) const FIFO_LATEST_READY: [&CStr; 2] = [
 /// `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR`'s type.
 pub(crate) const FIFO_LATEST_READY_FEATURE: i32 = 1_000_361_000;
 
+/// `VK_EXT_memory_budget`: how much of each heap is free, so the glyph
+/// atlas leaves room for others.
+pub(crate) const MEMORY_BUDGET: &CStr = c"VK_EXT_memory_budget";
+
 /// Which optional extensions a device is made with: each by the name the
 /// device offered it under, or `None`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Optional {
 	pub incremental_present: Option<&'static CStr>,
 	pub fifo_latest_ready: Option<&'static CStr>,
+	pub memory_budget: Option<&'static CStr>,
 }
 
 /// Where an extension's name is.
@@ -46,7 +51,7 @@ struct Extension {
 }
 
 /// Every optional extension.
-const ALL: [Extension; 2] = [
+const ALL: [Extension; 3] = [
 	Extension {
 		names: &[INCREMENTAL_PRESENT],
 		short: "incremental_present",
@@ -58,6 +63,12 @@ const ALL: [Extension; 2] = [
 		short: "fifo_latest_ready",
 		field: |optional| &mut optional.fifo_latest_ready,
 		feature: Some(FIFO_LATEST_READY_FEATURE),
+	},
+	Extension {
+		names: &[MEMORY_BUDGET],
+		short: "memory_budget",
+		field: |optional| &mut optional.memory_budget,
+		feature: None,
 	},
 ];
 

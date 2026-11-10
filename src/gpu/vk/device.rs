@@ -1,8 +1,16 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
-	memory::MemoryType, optional::Optional, pipeline_types::*, submit_types::*, types::*,
+	call::Error,
+	descriptor_types::*,
+	draw_types::*,
+	entry::cast,
+	instance::Instance,
+	memory::{MemoryType, Usage, choose_memory},
+	optional::Optional,
+	pipeline_types::*,
+	submit_types::*,
+	types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -144,6 +152,16 @@ pub(crate) struct Device {
 }
 
 impl Device {
+	/// The bytes free in the heap a glyph atlas goes to, on a device made
+	/// with `VK_EXT_memory_budget` whose driver says.
+	pub(crate) fn atlas_heap_free(&self) -> Option<u64> {
+		self.optional.memory_budget?;
+		let index = choose_memory(&self.memory, u32::MAX, Usage::Device)?;
+		self
+			.instance
+			.heap_free(self.physical, self.memory[index as usize].heap)
+	}
+
 	/// A device on `physical`, one of the instance's, with one queue of
 	/// `family`, drawing offscreen.
 	pub(crate) fn new(
