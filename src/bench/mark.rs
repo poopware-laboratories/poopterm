@@ -308,6 +308,60 @@ mod tests {
 	}
 
 	#[test]
+	fn a_mark_split_after_a_long_held_prefix_is_found() {
+		// More held than the mark is long, so the search resumes part-way
+		// through what was held; near misses sit right before the split.
+		let prefix = [&[b'y'; 40][..], &MARK[..MARK.len() - 1]].concat();
+		for at in 1..MARK.len() {
+			let first = [&prefix[..], &MARK[..at]].concat();
+			let second = [&MARK[at..], b"after"].concat();
+			let read = all(UntilMark::new(chunks(&[&first, &second])), READ_SIZE);
+			assert_eq!(read, prefix, "split at {at}");
+		}
+	}
+
+	#[test]
+	fn a_mark_arriving_one_byte_per_read_after_a_long_prefix_is_found() {
+		let prefix = vec![b'<'; 100];
+		let mut inner: Vec<&[u8]> = vec![&prefix];
+		inner.extend(MARK.chunks(1));
+		inner.push(b"after");
+		assert_eq!(all(UntilMark::new(chunks(&inner)), READ_SIZE), prefix);
+	}
+
+	#[test]
+	fn find_with_the_first_byte_in_every_lane_still_finds_the_match() {
+		// Every lane hits the first byte, so each block falls back to the
+		// comparison and the search must step one byte at a time.
+		for at in 0..96 {
+			let mut haystack = vec![b'<'; 96 + MARK.len()];
+			haystack[at..at + MARK.len()].copy_from_slice(MARK);
+			assert_eq!(find(&haystack, MARK), naive(&haystack, MARK), "at {at}");
+		}
+		assert_eq!(find(&[b'<'; 200], MARK), None);
+	}
+
+	#[test]
+	fn find_with_a_one_byte_needle_finds_it_in_any_lane() {
+		for at in 0..100 {
+			let mut haystack = vec![b'.'; 100];
+			haystack[at] = b'!';
+			assert_eq!(find(&haystack, b"!"), Some(at), "at {at}");
+		}
+		assert_eq!(find(&[b'.'; 100], b"!"), None);
+	}
+
+	#[test]
+	fn find_never_matches_a_needle_cut_off_by_the_end() {
+		// The first byte is in the last vector lane, but the rest is missing.
+		for len in 1..=64 {
+			let mut haystack = vec![b'.'; len];
+			haystack[len - 1] = MARK[0];
+			assert_eq!(find(&haystack, MARK), None, "len {len}");
+		}
+	}
+
+	#[test]
 	fn no_workload_holds_the_mark() {
 		let size = super::super::corpus::Size { cols: 80, rows: 24 };
 		for workload in super::super::corpus::WORKLOADS {
