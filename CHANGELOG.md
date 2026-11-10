@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.68 "Lunar Moth" — 2026-11-10
+
+### Added
+
+- Count the last 600 frames by path on the diagnostics page (#297) (ui).
+
 ## 26.11.67 "Lunar Moth" — 2026-11-10
 
 ### Maintenance
