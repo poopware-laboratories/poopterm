@@ -5,12 +5,15 @@
 //! specification's valid usage rules.
 use super::{
 	buffer_tests::{INTEL, device},
+	choose::{GRAPHICS, Kind},
 	commands::Commands,
-	driver_tests::{Driver, finish, with},
+	driver_tests::{Driver, finish, install, with},
 	stamps::*,
 	submit_types::RawCommandBuffer,
+	surface_driver_tests::{gpu, present},
 	timeline::Timeline,
 	types::*,
+	window_tests::machine,
 };
 use std::{
 	ffi::{CStr, c_void},
@@ -356,4 +359,88 @@ fn the_query_pool_info_and_constants_are_as_vulkan_declares_them() {
 	assert_eq!((TOP_OF_PIPE, ALL_COMMANDS), (0x1, 0x1_0000));
 	// `timestampPeriod`'s place among the limits, as a 32-bit word.
 	assert_eq!(super::types::TIMESTAMP_PERIOD, 106);
+}
+
+#[test]
+fn a_pool_the_driver_cannot_make_leaves_the_frames_untimed_not_undrawn() {
+	// Timing is a diagnostic: out of memory for it, frames still go out.
+	let (timeline, mut commands) = timed(|driver| {
+		driver.fails = vec![(c"vkCreateQueryPool", -1)];
+	});
+	frame(&mut commands);
+	frame(&mut commands);
+	assert_eq!(commands.gpu_time(), None);
+	assert_eq!(stamped(), Vec::<String>::new());
+	drop((commands, timeline));
+	let driver = finish();
+	assert_eq!(driver.query_pools.made, 0);
+	assert!(driver.invalid.is_empty(), "{:?}", driver.invalid);
+}
+
+#[test]
+fn random_timestamps_give_the_time_modular_arithmetic_does() {
+	// xorshift, so a failure reproduces.
+	let mut state = 0x853c_49e6_748f_ea9b_u64;
+	let mut next = || {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		state
+	};
+	for _ in 0..20_000 {
+		let bits = 1 + (next() % 64) as u32;
+		let (start, end) = (next(), next());
+		let period = [1.0, 10.0, 52.083, 83.333, 0.5][(next() % 5) as usize];
+		// The counter's last `bits` bits, counted forward from start to end.
+		let ticks = (i128::from(end) - i128::from(start)).rem_euclid(1i128 << bits);
+		let nanos = (ticks as f64 * f64::from(period)) as u64;
+		let time = elapsed([start, end], bits, period);
+		let case = format!("{start:#x}..{end:#x} in {bits} bits at {period} ns");
+		assert_eq!(time, Duration::from_nanos(nanos), "{case}");
+		// Never more than one turn of the counter.
+		let turn = (1u128 << bits) as f64 * f64::from(period);
+		assert!(time.as_nanos() as f64 <= turn, "{case}");
+		// The bits above the valid ones change nothing.
+		let noise = if bits == 64 { 0 } else { next() << bits };
+		let noisy = elapsed([start ^ noise, end], bits, period);
+		assert_eq!(noisy, time, "{case}, noise {noise:#x}");
+	}
+}
+
+#[test]
+fn each_queue_familys_timestamp_bits_are_its_own_and_none_past_the_last() {
+	let families = vec![present(GRAPHICS, true), present(GRAPHICS, false)];
+	let mut driver = machine(&[gpu(Kind::Integrated, families)]);
+	driver.timestamp_bits = Some(36);
+	let entry = install(driver);
+	let instance = entry.create_instance(c"poopterm").unwrap();
+	let physical = instance.physical_devices().unwrap()[0];
+	assert_eq!(instance.timestamp_bits(physical, 0), 36);
+	assert_eq!(instance.timestamp_bits(physical, 1), 36);
+	// A family the device does not have counts nothing.
+	assert_eq!(instance.timestamp_bits(physical, 2), 0);
+	assert_eq!(instance.timestamp_bits(physical, u32::MAX), 0);
+	drop(instance);
+	assert!(finish().invalid.is_empty());
+}
+
+#[test]
+fn a_device_records_its_queues_bits_and_its_period() {
+	let device = device(&INTEL, |driver| {
+		driver.timestamp_bits = Some(40);
+		driver.timestamp_period = Some(83.333);
+	});
+	assert_eq!(device.timestamp_bits, 40);
+	assert_eq!(device.timestamp_period, 83.333);
+	assert!(device.stamps.is_some());
+	drop(device);
+	let device = device_lacking(c"vkGetQueryPoolResults");
+	assert!(device.stamps.is_none(), "all five functions or none");
+	drop(device);
+	finish();
+}
+
+/// A fake Intel device whose driver lacks `function`.
+fn device_lacking(function: &'static CStr) -> Rc<super::device::Device> {
+	device(&INTEL, |driver| driver.lacks = vec![function])
 }

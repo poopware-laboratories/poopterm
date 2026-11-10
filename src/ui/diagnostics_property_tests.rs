@@ -1,7 +1,7 @@
 //! Property tests of the Diagnostics report: for random diagnostics, its
 //! shape, the order and completeness of the log, and what never leaks.
 use super::diagnostics::{Diagnostics, Drawing, Feature, Reason, private, report};
-use crate::ui::recent_frames::FrameCounts;
+use crate::ui::recent_frames::{FrameCounts, GpuTime};
 use crate::warnings::{LONGEST, Ring, Warning};
 use std::{
 	path::{Path, PathBuf},
@@ -102,7 +102,11 @@ pub(super) fn diagnostics(random: &mut Random) -> Diagnostics {
 				FrameCounts {
 					gpu,
 					software: 600 - gpu,
-					gpu_time: None,
+					// Times as frames on the GPU have, from 0 to 99 ms.
+					gpu_time: (gpu > 0).then(|| GpuTime {
+						median: Duration::from_micros(random.below(9_000) as u64),
+						worst: Duration::from_micros(9_000 + random.below(90_000) as u64),
+					}),
 				}
 			}
 		},
@@ -138,7 +142,11 @@ fn every_report_has_the_same_shape() {
 		if frames == 1 {
 			let line = lines[3 + Feature::ALL.len()];
 			assert!(line.starts_with("  Last "), "case {case}:\n{text}");
-			assert!(line.ends_with(" software"), "case {case}:\n{text}");
+			let end = match diagnostics.frames.gpu_time {
+				Some(_) => " ms worst",
+				None => " software",
+			};
+			assert!(line.ends_with(end), "case {case}:\n{text}");
 		}
 		assert!(text.ends_with('\n'));
 	}

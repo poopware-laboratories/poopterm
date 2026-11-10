@@ -151,7 +151,9 @@ impl App {
 			recorder.painted(took);
 		}
 	}
+	// pr-check: end window glue
 
+	// pr-check: window glue: hands a real window's frame and GPU times to the tested RecentFrames and Recorder
 	/// The frame begun at `started` is done, shown in `showing`.
 	fn timed(&mut self, gpu: bool, showing: Duration, started: Instant) {
 		let time = self

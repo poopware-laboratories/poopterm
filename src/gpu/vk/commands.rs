@@ -79,10 +79,11 @@ impl Commands {
 	}
 
 	/// Commands as [`Self::new`] makes, timing each submission on the GPU
-	/// where the device can.
+	/// where the device can: a pool it cannot make leaves them untimed, as
+	/// timing is only a diagnostic.
 	pub(crate) fn timed(timeline: &Rc<Timeline>) -> Result<Self, Error> {
 		let mut commands = Self::new(timeline)?;
-		commands.stamps = Stamps::new(&commands.device)?;
+		commands.stamps = Stamps::new(&commands.device).unwrap_or(None);
 		Ok(commands)
 	}
 

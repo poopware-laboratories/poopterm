@@ -3,7 +3,7 @@
 use super::diagnostics::{
 	Diagnostics, Drawing, Feature, GPU_API, Reason, clock, private, report, statuses,
 };
-use crate::ui::recent_frames::FrameCounts;
+use crate::ui::recent_frames::{FrameCounts, GpuTime};
 use crate::warnings::{LONGEST, Warning};
 use std::{
 	path::{Path, PathBuf},
@@ -371,4 +371,33 @@ fn the_frames_line_sits_between_the_features_and_the_device() {
 	assert!(lines[at - 1].starts_with("  Wallpaper "), "{text}");
 	assert_eq!(lines[at], "  Last frame: 0 GPU \u{b7} 1 software");
 	assert!(lines[at + 1].starts_with("  Device "), "{text}");
+}
+
+#[test]
+fn the_report_gives_the_gpus_time_on_the_frames_line() {
+	let micros = Duration::from_micros;
+	let diagnostics = Diagnostics {
+		frames: FrameCounts {
+			gpu: 571,
+			software: 29,
+			gpu_time: Some(GpuTime {
+				median: micros(240),
+				worst: micros(1_960),
+			}),
+		},
+		..sample()
+	};
+	let text = report(&diagnostics);
+	let line =
+		"\n  Last 600 frames: 571 GPU \u{b7} 29 software \u{b7} GPU 0.2 ms median, 2.0 ms worst\n";
+	assert!(text.contains(line), "{text}");
+	// Only the frames line changes.
+	let without = report(&sample());
+	assert_eq!(text.lines().count(), without.lines().count());
+	let changed = text
+		.lines()
+		.zip(without.lines())
+		.filter(|(a, b)| a != b)
+		.count();
+	assert_eq!(changed, 1);
 }
