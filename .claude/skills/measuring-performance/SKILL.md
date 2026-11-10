@@ -55,5 +55,5 @@ throughput numbers are updated if the change moves them.
 | One run of each build | Alternate, several runs, medians. |
 | Comparing a debug or `debugging` build | `--release` (or `profiling` for profiles only). |
 | Measuring only the workload you targeted | Run all; show all. |
-| Keeping a change that "should" help but measures flat | Drop it. Note what was tried in the PR or TODO.md. |
+| Keeping a change that "should" help but measures flat | Drop it. Give the numbers in the PR or issue, and delete the idea from TODO.md: it lists only work still wanted. |
 | Comparing terminals at different window sizes | Same size, same session. |

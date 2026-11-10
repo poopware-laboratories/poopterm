@@ -42,9 +42,11 @@ match text throughput, within the explicit size limits on untrusted input.
   competing with parsing for memory bandwidth. Evaluate skipping those pixels
   or lowering internal resolution, retaining a change only with repeatable
   throughput and visual gains.
-- **Reduce copies in PTY input:** an owned-buffer queue prototype did not show
-  a repeatable gain across payloads and was removed. Revisit only with a
-  benchmark that isolates copy cost while preserving queue backpressure.
+- **Parsing behind a PTY:** the parser thread does the same work 20–35%
+  slower than headless (`scroll_region_up`, `sgr`, `attach_to_previous`
+  in `perf`), so `+pipeline raw` trails `parse` by about 20%. The reader
+  thread is mostly idle; find what the parser competes for (caches, memory
+  bandwidth, the reader's copies) and close the gap.
 - **Fair comparisons.** Compare terminals at the same window size and in the
   same session; the benchmark now names terminals by XTVERSION and no longer
   aborts in kitty.
@@ -94,14 +96,11 @@ Open:
   snapshots), so this is where layout work can still pay; packing
   scrollback rows is the suggested first step.
 
-Done, or measured and dropped (the issues hold the numbers):
+Done (the issues hold the numbers):
 
-- Done: runtime CPU dispatch to x86-64-v3 copies of the tokenizer,
+- Runtime CPU dispatch to x86-64-v3 copies of the tokenizer,
   printing, cell fills, UTF-8 validation and glyph blending (#36, #125);
   scrollback as one contiguous ring instead of a `Vec` per row (#40).
-- Dropped: `-Zbuild-std` (#37: −0.9% overall, nothing hot runs in std);
-  splitting `Term` into hot and cold state (#39: within noise); prefetching
-  the next scrolled row and aligning shared structures (#42: −3.1%).
 - **The 26.10.23–26.10.27 regression is recovered.** That compatibility
   work cost 2–4% on tui, editor, cursor and progress and about 6% on
   unicode. Measured again at 26.10.83 (i3-N305, release, `--benchmark`
@@ -285,13 +284,6 @@ least as fast.
     stages followed (#270).
   - **Exit status in the app.** With the reaper: exit codes and signals for
     `OSC 133` command status and the "process exited" line.
-  - **Optimization where it matters, measured.** The PTY layer is system
-    calls, not computation, so SIMD has nothing to do here (`src/vt` already
-    has it). Read straight into the `OutputQueue` instead of copying from a
-    64 KiB buffer; tune read sizes; non-blocking descriptors with
-    `poll`/`epoll`/`kqueue` to cut wake-ups during floods. Each change is benchmarked
-    before and after (`docs/performance.md`) and kept only for a
-    reproducible gain.
   - **Tests.** Side by side with portable-pty while it was here, now
     against fixed expectations: the environment, `argv[0]`,
     controlling terminal and session, window size seen by the child
