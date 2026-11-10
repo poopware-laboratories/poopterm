@@ -154,7 +154,11 @@ impl App {
 
 	/// The frame begun at `started` is done, shown in `showing`.
 	fn timed(&mut self, gpu: bool, showing: Duration, started: Instant) {
-		self.recent_frames.push(gpu);
+		let time = self
+			.renderer
+			.as_ref()
+			.and_then(renderer::Renderer::gpu_time);
+		self.recent_frames.push_drawn(gpu, time);
 		if let Some(recorder) = &mut self.frame_stats {
 			recorder.finish(gpu, showing, started, Instant::now());
 		}

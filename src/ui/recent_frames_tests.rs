@@ -12,7 +12,11 @@ fn recorded(gpu: impl IntoIterator<Item = bool>) -> RecentFrames {
 }
 
 fn split(gpu: usize, software: usize) -> FrameCounts {
-	FrameCounts { gpu, software }
+	FrameCounts {
+		gpu,
+		software,
+		gpu_time: None,
+	}
 }
 
 #[test]
@@ -113,7 +117,7 @@ fn the_counts_never_exceed_the_frames_drawn_or_the_ring() {
 	let mut frames = RecentFrames::default();
 	for drawn in 1..=KEPT + 64 {
 		frames.push(drawn % 7 != 0);
-		let FrameCounts { gpu, software } = frames.counts();
+		let FrameCounts { gpu, software, .. } = frames.counts();
 		assert_eq!(gpu + software, drawn.min(KEPT), "after {drawn}");
 	}
 }
@@ -133,4 +137,103 @@ fn the_line_counts_what_it_says() {
 		let tail = format!("{gpu} GPU \u{b7} {software} software");
 		assert!(line.ends_with(&tail), "{line}");
 	}
+}
+
+#[test]
+fn gpu_times_give_the_median_and_the_worst_of_those_kept() {
+	use super::GpuTime;
+	use std::time::Duration;
+	let us = Duration::from_micros;
+	let mut frames = RecentFrames::default();
+	assert_eq!(frames.counts().gpu_time, None);
+	for micros in [400, 300, 1100, 350, 500] {
+		frames.push_drawn(true, Some(us(micros)));
+	}
+	let expected = GpuTime {
+		median: us(400),
+		worst: us(1100),
+	};
+	assert_eq!(frames.counts().gpu_time, Some(expected));
+	// An even count takes the lower of the middle two.
+	frames.push_drawn(true, Some(us(450)));
+	assert_eq!(frames.counts().gpu_time.unwrap().median, us(400));
+}
+
+#[test]
+fn software_frames_and_gpu_frames_without_a_time_count_but_are_not_timed() {
+	use std::time::Duration;
+	let mut frames = RecentFrames::default();
+	frames.push_drawn(true, Some(Duration::from_micros(500)));
+	// A stale time beside a software frame is not counted.
+	frames.push_drawn(false, Some(Duration::from_millis(90)));
+	frames.push_drawn(true, None);
+	let counts = frames.counts();
+	assert_eq!((counts.gpu, counts.software), (2, 1));
+	let time = counts.gpu_time.unwrap();
+	assert_eq!(
+		(time.median, time.worst),
+		(Duration::from_micros(500), Duration::from_micros(500))
+	);
+}
+
+#[test]
+fn only_the_last_600_times_are_kept() {
+	use std::time::Duration;
+	let mut frames = RecentFrames::default();
+	frames.push_drawn(true, Some(Duration::from_millis(50)));
+	for _ in 0..KEPT {
+		frames.push_drawn(true, Some(Duration::from_micros(200)));
+	}
+	// The slow first frame has been pushed out.
+	let time = frames.counts().gpu_time.unwrap();
+	assert_eq!(time.worst, Duration::from_micros(200));
+}
+
+#[test]
+fn the_line_ends_with_the_gpu_time_in_milliseconds() {
+	use super::GpuTime;
+	use std::time::Duration;
+	let counts = FrameCounts {
+		gpu: 600,
+		software: 0,
+		gpu_time: Some(GpuTime {
+			median: Duration::from_micros(420),
+			worst: Duration::from_micros(1_149),
+		}),
+	};
+	let line = "Last 600 frames: 600 GPU \u{b7} 0 software \u{b7} GPU 0.4 ms median, 1.1 ms worst";
+	assert_eq!(counts.line().as_deref(), Some(line));
+	// Without times the line is as before.
+	let untimed = FrameCounts {
+		gpu_time: None,
+		..counts
+	};
+	assert_eq!(
+		untimed.line().as_deref(),
+		Some("Last 600 frames: 600 GPU \u{b7} 0 software")
+	);
+	// Slow frames keep whole milliseconds readable.
+	let slow = GpuTime {
+		median: Duration::from_millis(16),
+		worst: Duration::from_micros(250_049),
+	};
+	let line = FrameCounts {
+		gpu_time: Some(slow),
+		..counts
+	}
+	.line()
+	.unwrap();
+	assert!(
+		line.ends_with("GPU 16.0 ms median, 250.0 ms worst"),
+		"{line}"
+	);
+}
+
+#[test]
+fn a_time_past_what_microseconds_in_32_bits_hold_is_kept_as_the_most() {
+	use std::time::Duration;
+	let mut frames = RecentFrames::default();
+	frames.push_drawn(true, Some(Duration::from_secs(10_000)));
+	let worst = frames.counts().gpu_time.unwrap().worst;
+	assert_eq!(worst, Duration::from_micros(u64::from(u32::MAX)));
 }

@@ -95,12 +95,14 @@ pub(super) fn diagnostics(random: &mut Random) -> Diagnostics {
 			1 => FrameCounts {
 				gpu: random.below(3),
 				software: random.below(3),
+				gpu_time: None,
 			},
 			_ => {
 				let gpu = random.below(601);
 				FrameCounts {
 					gpu,
 					software: 600 - gpu,
+					gpu_time: None,
 				}
 			}
 		},

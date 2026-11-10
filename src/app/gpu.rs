@@ -254,6 +254,11 @@ impl<W> Gpu<W> {
 		}
 	}
 
+	/// The GPU time of a recent frame, where the device times them.
+	pub(super) fn gpu_time(&self) -> Option<std::time::Duration> {
+		self.gpu.gpu_time()
+	}
+
 	/// What it draws on and how, its pen's atlas included.
 	pub(super) fn facts(&self) -> GpuFacts {
 		GpuFacts {

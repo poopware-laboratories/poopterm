@@ -319,3 +319,22 @@ fn rows_the_app_says_changed_reach_the_present_after_the_first_image() {
 	assert_eq!(fake_present_regions(), [0, 2, 0]);
 	close(gpu.gpu);
 }
+
+#[test]
+fn the_gpu_time_of_a_frame_is_known_once_the_next_is_drawn() {
+	use crate::gpu::vk::outside_tests::fake_timestamps;
+	use std::time::Duration;
+	let mut gpu = gpu();
+	fake_timestamps(1_000, 351_000);
+	assert_eq!(gpu.gpu_time(), None);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	// Read when the next frame waits for this one to finish.
+	assert_eq!(gpu.gpu_time(), None);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(350)));
+	// The fake answers with the timestamps set when they are read.
+	fake_timestamps(0, 90_000);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(90)));
+	close(gpu.gpu);
+}

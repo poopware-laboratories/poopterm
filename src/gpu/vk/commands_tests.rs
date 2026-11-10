@@ -68,7 +68,10 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkBeginCommandBuffer" => transmute::<BeginCommandBuffer, VoidFunction>(begin),
 			b"vkEndCommandBuffer" => transmute::<EndCommandBuffer, VoidFunction>(end),
 			b"vkQueueSubmit2" => transmute::<QueueSubmit2, VoidFunction>(submit),
-			_ => return super::recording_tests::function(name),
+			_ => {
+				let stamps = super::stamps_tests::function(name);
+				return stamps.or_else(|| super::recording_tests::function(name));
+			}
 		})
 	}
 }

@@ -159,6 +159,7 @@ fn sample() -> Diagnostics {
 		frames: FrameCounts {
 			gpu: 571,
 			software: 29,
+			gpu_time: None,
 		},
 		facts: vec![
 			("Device", "AMD Radeon RX 7800 XT (RADV NAVI32)".into()),
@@ -245,6 +246,7 @@ fn without_facts_the_features_lead_straight_to_the_log() {
 		frames: FrameCounts {
 			gpu: 2,
 			software: 0,
+			gpu_time: None,
 		},
 		..diagnostics
 	};
@@ -359,6 +361,7 @@ fn the_frames_line_sits_between_the_features_and_the_device() {
 		frames: FrameCounts {
 			gpu: 0,
 			software: 1,
+			gpu_time: None,
 		},
 		drawing: Drawing::Software(Reason::Asked),
 		..sample()

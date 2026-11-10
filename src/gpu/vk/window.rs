@@ -123,6 +123,12 @@ impl GpuWindow {
 		&self.facts.device
 	}
 
+	/// The GPU time of the frame before the last, where the device times
+	/// them.
+	pub(crate) fn gpu_time(&self) -> Option<std::time::Duration> {
+		self.renderer.gpu_time()
+	}
+
 	/// What it draws on and how, with its swapchain once made.
 	pub(crate) fn facts(&self) -> GpuFacts {
 		let swapchain = self.swapchain.as_ref();

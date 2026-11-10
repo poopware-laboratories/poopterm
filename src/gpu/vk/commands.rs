@@ -6,6 +6,7 @@ use super::{
 	call::{Error, check},
 	device::Device,
 	recording::Recording,
+	stamps::Stamps,
 	submit_types::*,
 	timeline::Timeline,
 };
@@ -27,6 +28,10 @@ pub(crate) struct Commands {
 	pub(super) held: Vec<Rc<dyn Any>>,
 	/// Outlives the submissions that raise it.
 	pub(super) timeline: Rc<Timeline>,
+	/// The timestamps of each submission, on commands that time them.
+	pub(super) stamps: Option<Stamps>,
+	/// The GPU time of the last submission, once finished and read.
+	pub(super) gpu_time: Option<Duration>,
 	/// Dropped after the pool is destroyed, as it was made from it.
 	pub(super) device: Rc<Device>,
 }
@@ -53,6 +58,8 @@ impl Commands {
 			submitted: 0,
 			held: Vec::new(),
 			timeline: timeline.clone(),
+			stamps: None,
+			gpu_time: None,
 			device: device.clone(),
 		};
 		let info = CommandBufferAllocateInfo {
@@ -71,6 +78,19 @@ impl Commands {
 		Ok(commands)
 	}
 
+	/// Commands as [`Self::new`] makes, timing each submission on the GPU
+	/// where the device can.
+	pub(crate) fn timed(timeline: &Rc<Timeline>) -> Result<Self, Error> {
+		let mut commands = Self::new(timeline)?;
+		commands.stamps = Stamps::new(&commands.device)?;
+		Ok(commands)
+	}
+
+	/// The GPU time of the last submission, read when recording the next.
+	pub(crate) fn gpu_time(&self) -> Option<Duration> {
+		self.gpu_time
+	}
+
 	/// What the last submission raises the timeline to; 0 before any.
 	pub(crate) fn submitted(&self) -> u64 {
 		self.submitted
@@ -85,6 +105,7 @@ impl Commands {
 	/// before, which recording replaces.
 	pub(crate) fn record(&mut self) -> Result<Recording<'_>, Error> {
 		self.finish()?;
+		self.gpu_time = self.stamps.as_mut().and_then(Stamps::read);
 		self.held.clear();
 		let (device, functions) = (self.device.handle, &self.device.functions);
 		// SAFETY: the pool is the device's, and the GPU has finished its
@@ -99,6 +120,9 @@ impl Commands {
 		// SAFETY: the reset left the buffer initial, and `info` outlives the
 		// call.
 		check(unsafe { (functions.begin)(self.buffer, &info) })?;
+		if let Some(stamps) = &self.stamps {
+			stamps.start(self.buffer);
+		}
 		Ok(Recording::new(self))
 	}
 }
