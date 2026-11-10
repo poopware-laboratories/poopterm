@@ -410,11 +410,11 @@ impl App {
 	pub(super) fn diagnostics(&self) -> Diagnostics {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(self.preferences.renderer, variable.as_deref());
-		let device = self.renderer.as_ref().and_then(renderer::Renderer::device);
+		let gpu = self.renderer.as_ref().and_then(renderer::Renderer::facts);
 		let home = std::env::var_os("HOME").map(PathBuf::from);
 		let (drawing, frames) = (self.drawing.clone(), self.recent_frames.counts());
 		let recent = crate::warnings::recent();
-		gather(drawing, frames, preference, device, recent, home)
+		gather(drawing, frames, preference, gpu.as_ref(), recent, home)
 	}
 	// pr-check: end window glue
 

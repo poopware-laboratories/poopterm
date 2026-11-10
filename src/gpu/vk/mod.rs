@@ -40,6 +40,9 @@ mod draw_tests;
 pub(crate) mod draw_types;
 #[cfg(test)]
 mod draw_types_tests;
+pub(crate) mod driver_info;
+#[cfg(test)]
+mod driver_info_tests;
 #[cfg(test)]
 mod driver_tests;
 pub(crate) mod entry;
@@ -128,6 +131,8 @@ pub(crate) mod version;
 pub(crate) mod window;
 #[cfg(test)]
 mod window_atlas_tests;
+#[cfg(test)]
+mod window_facts_tests;
 #[cfg(test)]
 mod window_frame_tests;
 #[cfg(test)]

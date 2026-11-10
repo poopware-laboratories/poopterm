@@ -120,6 +120,26 @@ impl Page {
 	}
 }
 
+/// How full an atlas is: its pages, `side` pixels square, and the pixels
+/// its shelves hold, the gaps between bitmaps included.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Usage {
+	pub side: usize,
+	pub pages: usize,
+	pub filled: usize,
+}
+
+impl Usage {
+	/// The share of the pages filled, in whole percent, rounded down.
+	pub(crate) fn percent(self) -> usize {
+		let whole = self.side * self.side * self.pages;
+		match whole {
+			0 => 0,
+			whole => (self.filled * 100 / whole).min(100),
+		}
+	}
+}
+
 /// Bitmaps keyed by `K` on up to `max_pages` pages `side` pixels square.
 pub(crate) struct Atlas<K> {
 	side: usize,
@@ -211,6 +231,18 @@ impl<K: Hash + Eq> Atlas<K> {
 		// Its old pixels are never sampled again, so only new ones are dirty.
 		self.pages[oldest] = Page::default();
 		Ok(oldest)
+	}
+
+	/// How much of the pages it may use its shelves hold.
+	pub(crate) fn usage(&self) -> Usage {
+		Usage {
+			side: self.side,
+			pages: self.max_pages,
+			filled: (self.pages.iter())
+				.flat_map(|page| &page.shelves)
+				.map(|shelf| shelf.x * shelf.h)
+				.sum(),
+		}
 	}
 
 	/// What changed since the last call, page by page, for the GPU to upload.

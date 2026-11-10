@@ -8,6 +8,7 @@ use super::{
 	choose::{Device, GRAPHICS, Kind, QueueFamily, TRANSFER},
 	commands_tests::CommandBuffer,
 	device_tests::{self, Made},
+	driver_info,
 	entry::Entry,
 	features::Flag,
 	image_tests::{MadeImage, MadeView},
@@ -63,6 +64,8 @@ pub(super) struct Driver {
 	pub destroyed_devices: Vec<RawDevice>,
 	/// maxImageDimension2D and maxImageArrayLayers, if not 16384 and 2048.
 	pub image_limits: Option<(u32, u32)>,
+	/// The driver's name and info, for every device.
+	pub driver_info: Option<(&'static str, &'static str)>,
 	/// The memory types buffers may use, as `memoryTypeBits`; `None` for
 	/// every type.
 	pub buffer_bits: Option<u32>,
@@ -301,6 +304,9 @@ unsafe extern "system" fn get_instance_proc_addr(
 				b"vkGetPhysicalDeviceFeatures2" => {
 					transmute::<GetPhysicalDeviceFeatures2, VoidFunction>(device_tests::features2)
 				}
+				b"vkGetPhysicalDeviceProperties2" => {
+					transmute::<driver_info::GetPhysicalDeviceProperties2, VoidFunction>(properties2)
+				}
 				b"vkCreateDevice" => transmute::<CreateDevice, VoidFunction>(device_tests::create_device),
 				b"vkGetDeviceProcAddr" => {
 					transmute::<GetDeviceProcAddr, VoidFunction>(device_tests::get_device_proc_addr)
@@ -532,6 +538,39 @@ unsafe extern "system" fn properties(
 	})
 }
 
+/// `vkGetPhysicalDeviceProperties2`: the properties, and the driver's
+/// name and info into any driver properties chained to them.
+unsafe extern "system" fn properties2(
+	device: RawPhysicalDevice,
+	chain: *mut driver_info::PhysicalDeviceProperties2,
+) {
+	// SAFETY: the bindings pass a writable chain.
+	let head = unsafe { &mut *chain };
+	if head.s_type != driver_info::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 {
+		with(|driver| (driver.invalid).push("vkGetPhysicalDeviceProperties2: sType".into()));
+	}
+	// SAFETY: as above, the base properties are writable.
+	unsafe { properties(device, &mut head.properties) };
+	let mut next = head.next;
+	while !next.is_null() {
+		// SAFETY: every structure in a chain starts with sType and pNext.
+		let s_type = unsafe { *next.cast::<i32>() };
+		if s_type == driver_info::STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES {
+			// SAFETY: a structure of this type is driver properties.
+			let out = unsafe { &mut *next.cast::<driver_info::DriverProperties>() };
+			let (name, info) = with(|driver| driver.driver_info.unwrap_or(("", "")));
+			out.driver_id = 3;
+			out.driver_name = field(name);
+			out.driver_info = field(info);
+			out.conformance = [1, 4, 0, 0];
+			next = out.next;
+		} else {
+			with(|driver| (driver.invalid).push(format!("unknown sType {s_type} chained")));
+			return;
+		}
+	}
+}
+
 unsafe extern "system" fn queue_families(
 	device: RawPhysicalDevice,
 	count: *mut u32,
@@ -687,6 +726,7 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 		(handle, "vkGetPhysicalDeviceFeatures2"),
 		(handle, "vkCreateDevice"),
 		(handle, "vkGetDeviceProcAddr"),
+		(handle, "vkGetPhysicalDeviceProperties2"),
 	];
 	let lookups: Vec<_> = driver
 		.lookups

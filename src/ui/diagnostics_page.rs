@@ -2,7 +2,9 @@
 //! draw as it does, the log rows that fit, and what Copy report says.
 use super::diagnostics::{Diagnostics, Drawing, Reason, clock, private};
 use super::recent_frames::FrameCounts;
-use crate::{config::RendererPreference, render::backend::Backend, warnings::Warning};
+use crate::{
+	config::RendererPreference, gpu::facts::GpuFacts, render::backend::Backend, warnings::Warning,
+};
 use std::{io, path::PathBuf};
 
 /// The page's sections, which its switch shows one at a time.
@@ -106,19 +108,22 @@ pub(crate) fn copied(written: io::Result<()>) -> String {
 }
 
 /// What the page shows of a window that draws as `drawing`, with the
-/// renderer `preference` in effect, on the GPU `device` if any, having
-/// drawn its last `frames` so, after the `recent` warnings, with paths
-/// under `home` shown as `~`.
+/// renderer `preference` in effect, on the GPU described by `gpu` if any,
+/// having drawn its last `frames` so, after the `recent` warnings, with
+/// paths under `home` shown as `~`. On the GPU the facts are the design's
+/// five rows; in software the setting, which says why.
 pub(crate) fn gather(
 	drawing: Drawing,
 	frames: FrameCounts,
 	preference: RendererPreference,
-	device: Option<&str>,
+	gpu: Option<&GpuFacts>,
 	(warnings, dropped): (Vec<Warning>, usize),
 	home: Option<PathBuf>,
 ) -> Diagnostics {
-	let setting = ("Renderer setting", preference.name().to_owned());
-	let device = device.map(|device| ("Device", device.to_owned()));
+	let facts = match gpu {
+		Some(gpu) => gpu.rows(),
+		None => vec![("Renderer setting", preference.name().to_owned())],
+	};
 	Diagnostics {
 		version: format!(
 			"{} \"{}\"",
@@ -127,7 +132,7 @@ pub(crate) fn gather(
 		),
 		drawing,
 		frames,
-		facts: [Some(setting), device].into_iter().flatten().collect(),
+		facts,
 		warnings,
 		dropped,
 		home,

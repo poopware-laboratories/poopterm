@@ -2,7 +2,7 @@
 //! and image into a quad, in drawing order, and keeps glyph bitmaps in an
 //! atlas, listing the ones the GPU has not been sent yet.
 use super::{
-	atlas::{Atlas, Refused, Slot, Wanted},
+	atlas::{Atlas, Refused, Slot, Usage, Wanted},
 	rows::Rows,
 };
 use crate::{
@@ -89,6 +89,11 @@ impl QuadPen {
 			rows: Rows::default(),
 			key: Vec::new(),
 		}
+	}
+
+	/// How full its atlas is.
+	pub(crate) fn atlas_usage(&self) -> Usage {
+		self.atlas.usage()
 	}
 
 	/// Starts a frame `size` pixels large, forgetting the last one's quads.

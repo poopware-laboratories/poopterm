@@ -16,7 +16,7 @@ use super::{
 	timeline::Timeline,
 	types::RawPhysicalDevice,
 };
-use crate::gpu::quads::QuadPen;
+use crate::gpu::{facts::GpuFacts, quads::QuadPen};
 use std::{rc::Rc, time::Duration};
 
 /// How long a frame waits for an image to draw into: about two frames, so
@@ -47,7 +47,8 @@ pub(crate) struct GpuWindow {
 	surface: Rc<Surface>,
 	device: Rc<Device>,
 	physical: RawPhysicalDevice,
-	name: String,
+	/// What it draws on, without the swapchain, which may be remade.
+	facts: GpuFacts,
 }
 
 impl GpuWindow {
@@ -82,6 +83,16 @@ impl GpuWindow {
 			return Err(Error::NoDevice(why.collect()));
 		};
 		let physical = handles[choice.device];
+		let chosen = devices.swap_remove(choice.device);
+		let facts = GpuFacts {
+			device: chosen.name,
+			api: "Vulkan",
+			version: Some(chosen.api),
+			driver: instance.driver(physical),
+			swapchain: None,
+			atlas: None,
+			presenter: window.platform().presenter().to_owned(),
+		};
 		let device = Device::for_windows(instance, physical, choice.family as u32)?;
 		let device = Rc::new(device);
 		let pipeline = Rc::new(QuadPipeline::new(&device, Format::Bgra)?);
@@ -93,13 +104,22 @@ impl GpuWindow {
 			surface,
 			device,
 			physical,
-			name: devices.swap_remove(choice.device).name,
+			facts,
 		})
 	}
 
 	/// The name of the device it draws on.
 	pub(crate) fn device_name(&self) -> &str {
-		&self.name
+		&self.facts.device
+	}
+
+	/// What it draws on and how, with its swapchain once made.
+	pub(crate) fn facts(&self) -> GpuFacts {
+		let swapchain = self.swapchain.as_ref();
+		GpuFacts {
+			swapchain: swapchain.map(|chain| chain.plan().facts(chain.images().len())),
+			..self.facts.clone()
+		}
 	}
 
 	/// Draws `pen`'s frame in the window, now `size` pixels large, and

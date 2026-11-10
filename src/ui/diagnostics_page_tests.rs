@@ -2,6 +2,10 @@
 //! came to draw as it does, the log rows that fit, and Copy report's status.
 use super::diagnostics::{Diagnostics, Drawing, Reason, report};
 use super::diagnostics_page::{Section, copied, gather, log_rows, started};
+use crate::gpu::{
+	atlas::Usage,
+	facts::{GpuFacts, Swapchain},
+};
 use crate::ui::recent_frames::FrameCounts;
 use crate::{config::RendererPreference, render::backend::Backend, warnings::Warning};
 use std::{io, path::PathBuf, time::Duration};
@@ -198,11 +202,28 @@ fn gathered_diagnostics_name_the_release_setting_and_device() {
 		gpu: 571,
 		software: 29,
 	};
+	let gpu = GpuFacts {
+		device: "AMD Radeon (RADV NAVI32)".into(),
+		api: "Vulkan",
+		version: Some(1 << 22 | 4 << 12 | 321),
+		driver: Some("Mesa 26.2.1".into()),
+		swapchain: Some(Swapchain {
+			format: "B8G8R8A8_UNORM",
+			mode: 2,
+			images: 3,
+		}),
+		atlas: Some(Usage {
+			side: 2048,
+			pages: 1,
+			filled: 0,
+		}),
+		presenter: "Vulkan on Wayland".into(),
+	};
 	let diagnostics = gather(
 		Drawing::Gpu,
 		frames,
 		RendererPreference::Auto,
-		Some("AMD Radeon (RADV NAVI32)"),
+		Some(&gpu),
 		recent.clone(),
 		home.clone(),
 	);
@@ -211,16 +232,19 @@ fn gathered_diagnostics_name_the_release_setting_and_device() {
 		env!("CARGO_PKG_VERSION"),
 		env!("POOPTERM_CODENAME")
 	);
+	let labels: Vec<&str> = diagnostics.facts.iter().map(|(label, _)| *label).collect();
+	assert_eq!(
+		labels,
+		["Device", "Driver", "Swapchain", "Glyph atlas", "Presenter"]
+	);
 	assert_eq!(
 		diagnostics,
 		Diagnostics {
 			version: release,
 			drawing: Drawing::Gpu,
 			frames,
-			facts: vec![
-				("Renderer setting", "auto".into()),
-				("Device", "AMD Radeon (RADV NAVI32)".into()),
-			],
+			// The design's five rows, the GPU's own; no setting row.
+			facts: gpu.rows(),
 			warnings: recent.0,
 			dropped: 2,
 			home,

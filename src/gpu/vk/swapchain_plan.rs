@@ -56,6 +56,18 @@ pub(crate) struct Plan {
 	pub alpha: u32,
 }
 
+impl Plan {
+	/// The swapchain made from it, holding `images` images, as the
+	/// Diagnostics page lists it.
+	pub(crate) fn facts(&self, images: usize) -> crate::gpu::facts::Swapchain {
+		crate::gpu::facts::Swapchain {
+			format: self.format.name(),
+			mode: self.mode,
+			images: u32::try_from(images).unwrap_or(u32::MAX),
+		}
+	}
+}
+
 /// Why no swapchain suits the surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Unfit {

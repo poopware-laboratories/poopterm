@@ -17,7 +17,7 @@ use crate::gpu::vk::{
 };
 use crate::{
 	config::RendererPreference,
-	gpu::quads::QuadPen,
+	gpu::{facts::GpuFacts, quads::QuadPen},
 	render::{damage::GridDamage, glyphs::FontSet, scene::Scene},
 	ui::diagnostics::{Drawing, Reason},
 };
@@ -254,9 +254,12 @@ impl<W> Gpu<W> {
 		}
 	}
 
-	/// The name of the device it draws on.
-	pub(super) fn device_name(&self) -> &str {
-		self.gpu.device_name()
+	/// What it draws on and how, its pen's atlas included.
+	pub(super) fn facts(&self) -> GpuFacts {
+		GpuFacts {
+			atlas: Some(self.pen.atlas_usage()),
+			..self.gpu.facts()
+		}
 	}
 
 	/// The window it draws in.

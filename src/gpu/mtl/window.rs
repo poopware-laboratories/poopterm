@@ -9,7 +9,7 @@ use super::{
 	texture::{BGRA, Texture, Usage},
 };
 use crate::{
-	gpu::quads::QuadPen,
+	gpu::{facts::GpuFacts, quads::QuadPen},
 	objc::{Bool, Object, Pool, class},
 };
 use std::{ffi::c_void, ptr::NonNull, rc::Rc};
@@ -113,6 +113,19 @@ impl MetalWindow {
 	/// The name of the device it draws on.
 	pub(crate) fn device_name(&self) -> &str {
 		self.device.name()
+	}
+
+	/// What it draws on; Metal says nothing of drivers or swapchains here.
+	pub(crate) fn facts(&self) -> GpuFacts {
+		GpuFacts {
+			device: self.device_name().to_owned(),
+			api: "Metal",
+			version: None,
+			driver: None,
+			swapchain: None,
+			atlas: None,
+			presenter: "Metal on macOS".to_owned(),
+		}
 	}
 
 	/// Draws `pen`'s frame in the window, now `size` pixels large at

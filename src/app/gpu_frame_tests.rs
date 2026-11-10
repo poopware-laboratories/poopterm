@@ -248,7 +248,39 @@ fn a_frame_refused_or_failed_leaves_the_pen_without_rows() {
 fn the_gpu_names_the_device_it_draws_on_for_the_diagnostics_page() {
 	let gpu = gpu();
 	// The fake driver's window draws on its integrated device.
-	assert_eq!(gpu.device_name(), "Integrated");
+	assert_eq!(gpu.facts().device, "Integrated");
+	close(gpu.gpu);
+}
+
+#[test]
+fn the_gpus_facts_carry_its_pens_atlas_and_its_swapchain_once_drawn() {
+	let mut gpu = gpu();
+	let facts = gpu.facts();
+	assert_eq!(facts.device, "Integrated");
+	let (side, pages) = FAKE_ATLAS;
+	let atlas = facts.atlas.unwrap();
+	assert_eq!((atlas.side, atlas.pages, atlas.filled), (side, pages, 0));
+	assert_eq!(facts.swapchain, None);
+	let labels = |gpu: &Gpu<&str>| -> Vec<&'static str> {
+		gpu
+			.facts()
+			.rows()
+			.into_iter()
+			.map(|(label, _)| label)
+			.collect()
+	};
+	assert_eq!(
+		labels(&gpu),
+		["Device", "Driver", "Glyph atlas", "Presenter"]
+	);
+	grid_frame(&mut gpu, false);
+	assert!(gpu.facts().swapchain.is_some());
+	// Rectangles only: the atlas stays as made.
+	assert_eq!(gpu.facts().atlas, Some(atlas));
+	assert_eq!(
+		labels(&gpu),
+		["Device", "Driver", "Swapchain", "Glyph atlas", "Presenter"]
+	);
 	close(gpu.gpu);
 }
 

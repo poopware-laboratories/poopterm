@@ -7,6 +7,8 @@ pub(crate) mod atlas;
 mod atlas_growth_tests;
 #[cfg(test)]
 mod atlas_tests;
+#[cfg(test)]
+mod atlas_usage_tests;
 pub(crate) mod bands;
 #[cfg(test)]
 mod bands_tests;
@@ -14,6 +16,9 @@ pub(crate) mod curves;
 #[cfg(test)]
 mod curves_tests;
 pub(crate) mod encode;
+pub(crate) mod facts;
+#[cfg(test)]
+mod facts_tests;
 #[cfg(target_os = "macos")]
 pub(crate) mod mtl;
 pub(crate) mod quads;

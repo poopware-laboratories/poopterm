@@ -22,6 +22,16 @@ pub(crate) enum Format {
 	Bgra = 44,
 }
 
+impl Format {
+	/// Its name in the specification, without `VK_FORMAT_`.
+	pub(crate) fn name(self) -> &'static str {
+		match self {
+			Self::Rgba => "R8G8B8A8_UNORM",
+			Self::Bgra => "B8G8R8A8_UNORM",
+		}
+	}
+}
+
 pub(crate) struct Image {
 	handle: RawImage,
 	/// Zero until allocated.
