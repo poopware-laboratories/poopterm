@@ -366,3 +366,32 @@ fn frames_are_still_timed_after_the_swapchain_is_remade_or_a_frame_refused() {
 	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(120)));
 	close(gpu.gpu);
 }
+
+#[test]
+fn a_lost_device_hands_the_window_to_software_saying_why() {
+	use crate::gpu::vk::outside_tests::fake_faulty_window;
+	use crate::ui::diagnostics::{Drawing, Reason};
+	let mut gpu = Gpu::with(
+		fake_faulty_window(b"page fault in shader"),
+		"the window",
+		FAKE_ATLAS,
+	);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	fake_failing(Some((c"vkQueueSubmit2", -4)));
+	let next = frame(&mut gpu, false);
+	let reason = "the Vulkan device was lost: page fault in shader; \
+		a write to invalid address 0x7f001200–0x7f0012ff";
+	assert_eq!(next, Next::Abandon(reason.into()));
+	let mut drawing = Drawing::Gpu;
+	drawn_as(&mut drawing, &next);
+	assert_eq!(drawing, Drawing::Software(Reason::Abandoned(reason.into())));
+	// What the Diagnostics page and its report say for each feature.
+	let said = format!("The GPU failed while drawing: {reason}");
+	let statuses = crate::ui::diagnostics::statuses(&drawing);
+	assert!(
+		statuses.iter().all(|status| status.detail == said),
+		"{statuses:?}"
+	);
+	fake_failing(None);
+	close(gpu.gpu);
+}

@@ -498,3 +498,134 @@ fn the_fault_structures_and_constants_are_as_vulkan_declares_them() {
 	);
 	assert_eq!(DEVICE_LOST, -4);
 }
+
+/// A small deterministic generator (xorshift), so failures reproduce.
+fn random(seed: u64) -> impl FnMut() -> u64 {
+	let mut state = seed;
+	move || {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		state
+	}
+}
+
+#[test]
+fn random_addresses_span_an_aligned_power_of_two_holding_the_reported() {
+	let mut next = random(0x2545_f491_4f6c_dd1d);
+	for _ in 0..20_000 {
+		let reported = next();
+		let precision = match next() % 5 {
+			0 => 0,
+			1 => 1 << (next() % 64),
+			2 => next() % 0x1_0000,
+			3 => u64::MAX - next() % 4,
+			_ => next(),
+		};
+		let address = Address::new(AddressInfo {
+			kind: 1,
+			reported,
+			precision,
+		});
+		let case = format!("{reported:#x} to {precision:#x}");
+		assert!(
+			address.first <= reported && reported <= address.last,
+			"{case}"
+		);
+		// The bits below the span are unknown, those above are reported.
+		let unknown = address.last - address.first;
+		assert_eq!(
+			unknown & unknown.wrapping_add(1),
+			0,
+			"a power of two: {case}"
+		);
+		assert_eq!(address.first & unknown, 0, "aligned: {case}");
+		assert_eq!(address.first, reported & !unknown, "{case}");
+		// The smallest such span the precision allows.
+		let span = u128::from(unknown) + 1;
+		assert!(span >= u128::from(precision.max(1)), "{case}");
+		assert!(span < 2 * u128::from(precision.max(1)), "{case}");
+	}
+}
+
+#[test]
+fn random_driver_text_reads_as_its_printable_part_before_any_nul() {
+	let mut next = random(0x9e37_79b9_7f4a_7c15);
+	for case in 0..200 {
+		let length = (next() % 300) as usize;
+		// Mostly letters, with control bytes, NULs and bytes past ASCII.
+		let bytes: Vec<u8> = (0..length)
+			.map(|_| match next() % 10 {
+				0 => (next() % 0x20) as u8,
+				1 => 0x80 + (next() % 0x80) as u8,
+				_ => b'a' + (next() % 26) as u8,
+			})
+			.collect();
+		let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+		let faults = Faults {
+			description: bytes,
+			vendor: vec![(bytes, 1, 2)],
+			..Faults::default()
+		};
+		let device = device(faulty(false, faults));
+		let fault = read(&device).expect("a fault");
+		let kept = &bytes[..bytes.len().min(255)];
+		let kept = kept.split(|&byte| byte == 0).next().unwrap_or_default();
+		let expected: String = String::from_utf8_lossy(kept)
+			.chars()
+			.filter(|c| !c.is_control())
+			.collect();
+		assert_eq!(fault.description, expected, "case {case}");
+		assert_eq!(fault.vendor[0].description, expected, "case {case}");
+		let said = fault.to_string();
+		assert!(!said.chars().any(char::is_control), "case {case}: {said:?}");
+		drop(device);
+		finish();
+	}
+}
+
+#[test]
+fn a_device_offering_the_extension_without_its_feature_is_made_without_both() {
+	let mut driver = faulty(false, sample());
+	driver.lacked_features = vec![DEVICE_FAULT_FEATURE];
+	let mut window = open(driver, false).unwrap();
+	with(|driver| driver.fails = vec![(c"vkQueueSubmit2", DEVICE_LOST)]);
+	assert_eq!(draw(&mut window, SIZE), Err(Error::Failed(DEVICE_LOST)));
+	with(|driver| driver.fails.clear());
+	let driver = close(window);
+	let made = &driver.made[0];
+	assert!(
+		!made
+			.extensions
+			.iter()
+			.any(|name| name == "VK_EXT_device_fault")
+	);
+	assert!(
+		!made
+			.enabled
+			.iter()
+			.any(|&(s_type, _)| s_type == DEVICE_FAULT_FEATURE)
+	);
+	assert_eq!(driver.faults.asked, Vec::<String>::new());
+}
+
+#[test]
+fn an_offscreen_device_has_no_fault_to_read() {
+	let instance = Rc::new(
+		install(faulty(false, sample()))
+			.create_instance(c"poopterm")
+			.unwrap(),
+	);
+	let physical = instance.physical_devices().unwrap()[0];
+	// Made without the optional extensions, as the headless renderer is.
+	let device = Device::new(instance, physical, 0).unwrap();
+	assert_eq!(read(&device), None);
+	drop(device);
+	let driver = finish();
+	assert_eq!(driver.faults.asked, Vec::<String>::new());
+	assert!(
+		driver.made[0].extensions.is_empty(),
+		"{:?}",
+		driver.made[0].extensions
+	);
+}

@@ -107,3 +107,13 @@ pub(crate) fn headless_window(atlas: (usize, usize)) -> Option<GpuWindow> {
 	// SAFETY: a headless surface has no window handles to keep live.
 	Some(unsafe { GpuWindow::new(entry, Window::Headless, true, atlas) }.expect("a window"))
 }
+
+/// A fake window on a device offering `VK_EXT_device_fault`, whose driver
+/// says `description` once the device is lost.
+pub(crate) fn fake_faulty_window(description: &'static [u8]) -> GpuWindow {
+	let mut driver = showing();
+	driver.device_extensions = vec!["VK_EXT_device_fault"];
+	driver.faults.description = description;
+	driver.faults.addresses = vec![(2, 0x7f00_1234, 0x100)];
+	open(driver, false).unwrap()
+}
