@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.66 "Lunar Moth" — 2026-11-10
+
+### Performance
+
+- Clear one-row erasures without dividing indices (#294) (term).
+
 ## 26.11.65 "Lunar Moth" — 2026-11-10
 
 ### Maintenance
