@@ -97,3 +97,80 @@ fn a_driver_without_facts_leaves_them_unknown() {
 	assert!(window.facts().version.is_some());
 	close(window);
 }
+
+/// The swapchain row's facts after drawing a frame of `size`.
+fn drawn_swapchain(window: &mut super::window::GpuWindow, size: [u32; 2]) -> Option<Swapchain> {
+	super::window_tests::draw(window, size).unwrap();
+	window.facts().swapchain
+}
+
+#[test]
+fn the_mode_shown_is_the_one_the_plan_chose_from_the_surface() {
+	use super::window_tests::{SIZE, close, open, showing};
+	// MAILBOX when offered, FIFO, which every surface has, when not.
+	for (modes, chosen) in [(vec![FIFO, MAILBOX], MAILBOX), (vec![FIFO], FIFO)] {
+		let mut driver = showing();
+		driver.present_modes = Some(modes);
+		let mut window = open(driver, false).unwrap();
+		let swapchain = drawn_swapchain(&mut window, SIZE).unwrap();
+		assert_eq!(swapchain.mode, chosen);
+		close(window);
+	}
+}
+
+#[test]
+fn a_remade_swapchain_shows_its_new_image_count() {
+	use super::{
+		driver_tests::with,
+		surface_query_tests::mesa_wayland,
+		swapchain_plan::Capabilities,
+		window_tests::{SIZE, close, open, showing},
+	};
+	let mut driver = showing();
+	driver.surface_capabilities = Some(Capabilities {
+		min_images: 2,
+		..mesa_wayland()
+	});
+	let mut window = open(driver, false).unwrap();
+	// The plan asks for three at least, where two would do.
+	assert_eq!(drawn_swapchain(&mut window, SIZE).unwrap().images, 3);
+	with(|driver| {
+		driver.surface_capabilities = Some(Capabilities {
+			min_images: 5,
+			..mesa_wayland()
+		})
+	});
+	assert_eq!(drawn_swapchain(&mut window, [64, 48]).unwrap().images, 5);
+	close(window);
+}
+
+#[test]
+fn a_swapchain_that_failed_to_remake_is_not_shown_until_made_again() {
+	use super::{
+		call::Error,
+		driver_tests::with,
+		window_tests::{SIZE, close, draw, open, showing},
+	};
+	let mut window = open(showing(), false).unwrap();
+	assert!(drawn_swapchain(&mut window, SIZE).is_some());
+	with(|driver| driver.fails = vec![(c"vkCreateSwapchainKHR", -1)]);
+	assert_eq!(draw(&mut window, [64, 48]), Err(Error::Failed(-1)));
+	assert_eq!(window.facts().swapchain, None);
+	with(|driver| driver.fails.clear());
+	assert!(drawn_swapchain(&mut window, SIZE).is_some());
+	close(window);
+}
+
+#[test]
+fn an_x11_window_names_x11_as_its_presenter() {
+	use super::driver_tests::install;
+	use super::{
+		surface_driver_tests::XLIB,
+		window::GpuWindow,
+		window_tests::{ATLAS, close, showing},
+	};
+	// SAFETY: the fake driver only records the window's handles.
+	let window = unsafe { GpuWindow::new(install(showing()), XLIB, false, ATLAS) }.unwrap();
+	assert_eq!(window.facts().presenter, "Vulkan on X11");
+	close(window);
+}

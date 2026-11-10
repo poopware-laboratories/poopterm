@@ -157,3 +157,93 @@ fn the_metal_version_names_metal() {
 	};
 	assert_eq!(row(&facts, "Driver").unwrap(), "Metal 3.0.0");
 }
+
+#[test]
+fn rows_keep_the_designs_order_and_never_show_an_empty_value() {
+	// Random facts, each part known or not: the rows that remain keep the
+	// design's order, the device and presenter always among them.
+	const ORDER: [&str; 5] = ["Device", "Driver", "Swapchain", "Glyph atlas", "Presenter"];
+	let mut state = 0x2545_f491_4f6c_dd1d_u64;
+	let mut next = |n: u64| {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		state % n
+	};
+	for case in 0..500 {
+		let facts = GpuFacts {
+			device: ["Radeon", "llvmpipe", "Apple M2"][next(3) as usize].into(),
+			api: ["Vulkan", "Metal"][next(2) as usize],
+			version: (next(2) == 0).then(|| (next(3) as u32) << 22 | (next(5) as u32) << 12),
+			driver: [None, Some(""), Some(" "), Some("Mesa 26.2.1")][next(4) as usize].map(str::to_owned),
+			swapchain: (next(2) == 0).then(|| Swapchain {
+				format: "B8G8R8A8_UNORM",
+				mode: next(5) as i32,
+				images: next(5) as u32,
+			}),
+			atlas: (next(2) == 0).then(|| Usage {
+				side: 1 << next(12),
+				pages: next(4) as usize,
+				filled: next(1 << 20) as usize,
+			}),
+			presenter: "Vulkan on Wayland".into(),
+		};
+		let rows = facts.rows();
+		let labels: Vec<&str> = rows.iter().map(|(label, _)| *label).collect();
+		let mut order = ORDER.iter().filter(|label| labels.contains(label));
+		let ordered = labels.iter().all(|label| order.next() == Some(label));
+		assert!(ordered, "case {case}: {labels:?}");
+		assert_eq!(labels.first(), Some(&"Device"), "case {case}");
+		assert_eq!(labels.last(), Some(&"Presenter"), "case {case}");
+		for (label, value) in &rows {
+			assert!(!value.trim().is_empty(), "case {case}: {label} is empty");
+		}
+		let said = facts
+			.driver
+			.as_deref()
+			.is_some_and(|d| !d.trim().is_empty());
+		let driver_row = labels.contains(&"Driver");
+		assert_eq!(driver_row, said || facts.version.is_some(), "case {case}");
+		assert_eq!(labels.contains(&"Swapchain"), facts.swapchain.is_some());
+		assert_eq!(labels.contains(&"Glyph atlas"), facts.atlas.is_some());
+	}
+}
+
+#[test]
+fn the_driver_row_puts_the_driver_before_the_api() {
+	let facts = GpuFacts {
+		driver: Some("NVIDIA 570.86.16".into()),
+		version: Some(1 << 22 | 4 << 12 | 303),
+		..radeon()
+	};
+	assert_eq!(
+		row(&facts, "Driver").unwrap(),
+		"NVIDIA 570.86.16 \u{b7} Vulkan 1.4.303"
+	);
+	// Padding around the driver's own words is not kept.
+	let padded = GpuFacts {
+		driver: Some("  Mesa 26.2.1 ".into()),
+		..radeon()
+	};
+	assert!(
+		row(&padded, "Driver")
+			.unwrap()
+			.starts_with("Mesa 26.2.1 \u{b7}")
+	);
+}
+
+#[test]
+fn an_atlas_with_no_pages_yet_reads_zero_not_a_division_by_zero() {
+	let facts = GpuFacts {
+		atlas: Some(Usage {
+			side: 0,
+			pages: 0,
+			filled: 0,
+		}),
+		..radeon()
+	};
+	assert_eq!(
+		row(&facts, "Glyph atlas").unwrap(),
+		"0 \u{d7} 0 \u{d7} 0 pages \u{b7} 0% used"
+	);
+}
