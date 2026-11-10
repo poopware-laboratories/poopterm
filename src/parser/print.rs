@@ -50,7 +50,7 @@ impl Term {
 			let count = width.min(cols - x);
 			self.erase_multicells_for_shift(x, y, count, true);
 			self.grid[y].copy_within(x..cols - count, x + count);
-			self.clear_range(i, i + count);
+			self.clear_row(y, x, x + count);
 			self.repair_wide_rows(y, y + 1);
 		}
 		self.erase_images(i, i + width);

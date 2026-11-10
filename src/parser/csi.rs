@@ -282,8 +282,7 @@ impl Term {
 				let (x, cols) = (self.cx, self.cols);
 				self.erase_multicells_for_shift(x, self.cy, count, true);
 				self.grid[self.cy].copy_within(x..cols - count, x + count);
-				let start = self.idx(x, self.cy);
-				self.clear_range(start, start + count);
+				self.clear_row(self.cy, x, x + count);
 			}
 			'P' => {
 				self.erase_images(self.cy * self.cols, (self.cy + 1) * self.cols);
@@ -291,12 +290,11 @@ impl Term {
 				let (x, cols) = (self.cx, self.cols);
 				self.erase_multicells_for_shift(x, self.cy, count, false);
 				self.grid[self.cy].copy_within(x + count..cols, x);
-				let end = self.idx(cols, self.cy);
-				self.clear_range(end - count, end);
+				self.clear_row(self.cy, cols - count, cols);
 			}
 			'X' => {
-				let start = self.idx(self.cx, self.cy);
-				self.clear_range(start, start + p(0, 1).min(self.cols - self.cx));
+				let count = p(0, 1).min(self.cols - self.cx);
+				self.clear_row(self.cy, self.cx, self.cx + count);
 			}
 			'L' | 'M' if self.cy >= self.scroll_top && self.cy <= self.scroll_bottom => {
 				self.erase_images(self.cy * self.cols, (self.scroll_bottom + 1) * self.cols);

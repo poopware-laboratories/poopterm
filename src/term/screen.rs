@@ -193,6 +193,21 @@ impl Term {
 		self.grid.scroll_down(top, bottom, count, blank);
 	}
 
+	/// Blanks columns `from..to` of row `y` with the current background,
+	/// removing images that overlap them: [`clear_range`](Self::clear_range)
+	/// for erasures that stay on one row, without dividing indices.
+	pub(crate) fn clear_row(&mut self, y: usize, from: usize, to: usize) {
+		let to = to.min(self.cols);
+		if from >= to || y >= self.rows {
+			return;
+		}
+		let base = y * self.cols;
+		self.erase_images(base + from, base + to);
+		self.erase_multicells_in_row(y, from, to);
+		let blank = self.blank();
+		self.grid.fill(y, from, to, blank);
+	}
+
 	/// Blanks cells in the flat range `from..to` (index `y * cols + x`) with
 	/// the current background, removing images that overlap it.
 	pub(crate) fn clear_range(&mut self, from: usize, to: usize) {
