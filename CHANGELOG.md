@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.72 "Lunar Moth" — 2026-11-10
+
+### Added
+
+- Show the GPU's frame time on the diagnostics page (#303) (ui).
+
 ## 26.11.71 "Lunar Moth" — 2026-11-10
 
 ### Added
