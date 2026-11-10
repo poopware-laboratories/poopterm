@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.71 "Lunar Moth" — 2026-11-10
+
+### Added
+
+- Keep the glyph atlas to half the free video memory with VK_EXT_memory_budget (#302) (gpu).
+
 ## 26.11.70 "Lunar Moth" — 2026-11-10
 
 ### Added
