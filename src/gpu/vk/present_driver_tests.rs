@@ -4,6 +4,7 @@
 //! that it reports each broken rule.
 use super::{
 	driver_tests::{Driver, with},
+	present_regions::{PresentRegions, STRUCTURE_TYPE_PRESENT_REGIONS},
 	present_tests::{showing, window},
 	recording::Layout,
 	recording_tests::PRESENT,
@@ -133,8 +134,51 @@ unsafe extern "system" fn present_image(queue: RawQueue, info: *const PresentInf
 			std::slice::from_raw_parts(info.image_indices, read(info.swapchain_count)),
 		)
 	};
+	// SAFETY: every chained structure starts with its sType; one of the
+	// regions' type is the regions the bindings name, whose arrays live
+	// across the call.
+	let regions = (!info.next.is_null()).then(|| unsafe {
+		let s_type = *info.next.cast::<i32>();
+		if s_type != STRUCTURE_TYPE_PRESENT_REGIONS {
+			return (s_type, None);
+		}
+		let regions = &*info.next.cast::<PresentRegions>();
+		let region = (regions.swapchain_count == 1).then(|| &*regions.regions);
+		let rects = region.map(|region| {
+			let count = region.rectangle_count as usize;
+			std::slice::from_raw_parts(region.rectangles, count).to_vec()
+		});
+		(s_type, rects)
+	});
 	with(|driver| {
 		const CALL: &str = "vkQueuePresentKHR";
+		let enabled = (driver.made.last()).is_some_and(|made| {
+			made
+				.extensions
+				.iter()
+				.any(|name| name == "VK_KHR_incremental_present")
+		});
+		let chain_holds = match &regions {
+			None => true,
+			Some((s_type, rects)) => {
+				*s_type == STRUCTURE_TYPE_PRESENT_REGIONS && rects.is_some() && enabled
+			}
+		};
+		let rects = regions.and_then(|(_, rects)| rects).unwrap_or_default();
+		let extent = driver.swapchains.last().map_or([0; 2], |made| made.extent);
+		let inside = rects.iter().all(|rect| {
+			let [x, y] = rect.offset.map(|n| n.max(0) as u32);
+			rect.offset.iter().all(|&n| n >= 0)
+				&& x + rect.extent[0] <= extent[0]
+				&& y + rect.extent[1] <= extent[1]
+				&& rect.extent.iter().all(|&n| n > 0)
+				&& rect.layer == 0
+		});
+		driver.require(chain_holds, || {
+			format!("{CALL}: present regions on an enabled extension")
+		});
+		driver.require(inside, || format!("{CALL}: regions inside the image"));
+		driver.present_regions.push(rects);
 		let (&[swapchain], &[index]) = (swapchains, indices) else {
 			driver.invalid.push(format!("{CALL}: one swapchain"));
 			return -3;
@@ -149,7 +193,7 @@ unsafe extern "system" fn present_image(queue: RawQueue, info: *const PresentInf
 		let rules = [
 			(driver.known_queue(queue), "a live device's queue"),
 			(info.s_type == STRUCTURE_TYPE_PRESENT_INFO, "sType"),
-			(info.next.is_null(), "pNext"),
+			(info.next.is_null() || chain_holds, "pNext"),
 			(
 				waits.iter().all(|&wait| driver.binary(wait) == Some(true)),
 				"waits for signalled binary semaphores",
@@ -322,7 +366,7 @@ fn the_fake_driver_reports_images_presented_against_the_rules() {
 				next: &zero as *const u32 as _,
 				..good(&zero, &swapchains)
 			},
-			&["pNext"],
+			&["present regions on an enabled extension", "pNext"],
 		),
 		(
 			queue,

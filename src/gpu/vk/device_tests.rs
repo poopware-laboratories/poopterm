@@ -169,7 +169,10 @@ pub(super) unsafe extern "system" fn create_device(
 			.map(|index| unsafe { CStr::from_ptr(*info.enabled_extension_names.add(index)) })
 			.map(|name| name.to_string_lossy().into())
 			.collect();
-		let offered = |name: &String| device.swapchain && name == "VK_KHR_swapchain";
+		let extra = driver.device_extensions.clone();
+		let offered = |name: &String| {
+			(device.swapchain && name == "VK_KHR_swapchain") || extra.contains(&name.as_str())
+		};
 		if let Some(name) = extensions.iter().find(|name| !offered(name)) {
 			(driver.invalid).push(format!("vkCreateDevice: {name}, which the device lacks"));
 			// VK_ERROR_EXTENSION_NOT_PRESENT.
