@@ -161,7 +161,11 @@ parser, terminal state and rendering, so it is the base training run
 prompts, frequent frames) are trained too, not only floods. Sessions with `make pgo-use` add the
 paths only a window exercises: input, tabs, the UI and real programs.
 Profiles accumulate under `target/pgo/profiles` until `make pgo-clean`;
-after large code changes, clean and retrain.
+after large code changes, clean and retrain. Instrumented builds run
+several times slower than the optimized one, so the training runs' tables
+go to `target/pgo/training.log` (BOLT's to `target/pgo/bolt/training.log`)
+instead of the screen; they say nothing about the build being installed.
+Measure that with `make pgo-compare`.
 
 Released Debian and RPM packages ship the PGO build: the release job runs
 `scripts/pgo.sh dist`, which instruments, trains and rebuilds, then puts the

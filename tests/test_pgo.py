@@ -32,6 +32,8 @@ case $RUSTFLAGS in
 	cat > "$dir/poopterm" <<EOF
 #!/bin/sh
 echo "train \\$*" >> "$FAKE/log"
+echo "| instrumented table \\$* |"
+echo "instrumented note" >&2
 [ -e "$FAKE/fail-train" ] && exit 1
 touch "$profiles/run\\$\\$.profraw"
 EOF
@@ -71,7 +73,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 if [ -n "$profile" ]; then
-	printf '#!/bin/sh\necho "bolt-train $*" >> "$FAKE/log"\ntouch "%s.$$.fdata"\n' "$profile" > "$out"
+	printf '#!/bin/sh\necho "bolt-train $*" >> "$FAKE/log"\necho "| bolt table |"\n[ -e "$FAKE/fail-bolt-train" ] && exit 1\ntouch "%s.$$.fdata"\n' "$profile" > "$out"
 else
 	printf '#!/bin/sh\necho bolted with %s\n' "$data" > "$out"
 fi
@@ -138,6 +140,53 @@ class Pgo(unittest.TestCase):
         runs = [line for line in self.log() if line.startswith('train')]
         self.assertEqual(runs, ['train --benchmark --repeat 1 --mib 2',
                                 'train --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64'])
+
+    def test_training_tables_go_to_a_log_instead_of_the_screen(self):
+        # Instrumented builds run several times slower than the real one, so
+        # their benchmark tables read like a regression if printed.
+        result = self.pgo('train', '2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('table', result.stdout + result.stderr)
+        log = (self.repo / 'target/pgo/training.log').read_text()
+        self.assertEqual(log.count('| instrumented table'), 2)
+        self.assertEqual(log.count('instrumented note'), 2)
+
+    def test_training_says_its_numbers_are_not_the_real_builds(self):
+        result = self.pgo('train')
+        self.assertIn('pgo.sh: training the instrumented build', result.stdout)
+        self.assertIn('slower than the optimized build', result.stdout)
+        self.assertIn(f'{self.repo}/target/pgo/training.log', result.stdout)
+
+    def test_a_failed_training_run_shows_its_log_and_fails(self):
+        (self.fake / 'fail-train').touch()
+        result = self.pgo('train')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('| instrumented table --benchmark --repeat 1 --mib 8 |', result.stderr)
+        # The second run never starts once the first has failed.
+        self.assertEqual(len([line for line in self.log() if line.startswith('train')]), 1)
+
+    def test_each_training_starts_a_fresh_log(self):
+        self.assertEqual(self.pgo('train').returncode, 0)
+        self.assertEqual(self.pgo('train').returncode, 0)
+        log = (self.repo / 'target/pgo/training.log').read_text()
+        self.assertEqual(log.count('| instrumented table'), 2)
+
+    def test_bolt_training_tables_go_to_their_own_log(self):
+        self.assertEqual(self.pgo('all').returncode, 0)
+        result = self.pgo('bolt')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('table', result.stdout + result.stderr)
+        self.assertIn('pgo.sh: training the BOLT-instrumented build', result.stdout)
+        log = (self.repo / 'target/pgo/bolt/training.log').read_text()
+        self.assertEqual(log.count('| bolt table |'), 2)
+
+    def test_a_failed_bolt_training_shows_its_log_and_ships_pgo(self):
+        (self.fake / 'fail-bolt-train').touch()
+        result = self.pgo('dist')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('| bolt table |', result.stderr)
+        self.assertIn('::warning::pgo.sh: BOLT failed; shipping the PGO build', result.stderr)
+        self.assertEqual(self.shipped(), f'optimized with {self.repo}/target/pgo/merged.profdata')
 
     def test_dist_ships_the_optimized_build_trained_on_every_run(self):
         result = self.pgo('dist', FAKE_OS='Darwin')

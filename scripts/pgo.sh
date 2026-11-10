@@ -75,17 +75,29 @@ need_instrumented() {
 	[ -x "$instrumented" ] || instrument
 }
 
-# Runs the training corpus on the instrumented binary $1.
+# Runs the training corpus on the instrumented binary $2, named $1, into
+# the log $3. Instrumentation makes it several times slower than the
+# optimized build, so its benchmark tables go to the log rather than the
+# screen, where they read like a regression; a failure shows them.
 run_training() {
-	"$1" --benchmark --repeat 1 --mib "${2:-8}"
-	# Interactive programs write a few bytes at a time (key echo, prompts)
-	# and get a frame for most writes; keep their paths in the profile too.
-	"$1" --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64
+	name=$1 binary=$2 log=$3
+	shift 3
+	echo "pgo.sh: training the $name build; it runs slower than the optimized build," \
+		"so its numbers are not the real ones (log: $log)"
+	if ! {
+		"$binary" --benchmark --repeat 1 --mib "${1:-8}" &&
+			# Interactive programs write a few bytes at a time (key echo,
+			# prompts) and get a frame for most writes; profile them too.
+			"$binary" --benchmark --repeat 1 --kib 64 --read 16 --frame-every 64
+	} >"$log" 2>&1; then
+		cat "$log" >&2
+		return 1
+	fi
 }
 
 train() {
 	need_instrumented
-	run_training "$instrumented" "$@"
+	run_training instrumented "$instrumented" "$pgo/training.log" "$@"
 }
 
 # The binary releases ship, at the path packaging expects. Training runs
@@ -153,7 +165,7 @@ bolt() {
 	mkdir -p "$bolt_dir"
 	"$llvm_bolt" "$optimized" -o "$bolt_dir/instrumented" -instrument \
 		-instrumentation-file="$bolt_dir/profile" -instrumentation-file-append-pid
-	run_training "$bolt_dir/instrumented" "$@"
+	run_training BOLT-instrumented "$bolt_dir/instrumented" "$bolt_dir/training.log" "$@"
 	"$merge_fdata" "$bolt_dir"/profile.*.fdata >"$bolt_dir/merged.fdata"
 	# Without huge-page alignment the new code fits the old text, so the
 	# binary keeps its size.
@@ -193,7 +205,7 @@ bolt) bolt "$@" ;;
 compare) compare "$@" ;;
 path) echo "$optimized" ;;
 dist) dist "$@" ;;
-clean) rm -rf "$profiles" "$merged" "$bolt_dir" ;;
+clean) rm -rf "$profiles" "$merged" "$pgo/training.log" "$bolt_dir" ;;
 -h | --help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' ;;
 *)
 	echo "pgo.sh: unknown command: $command (try --help)" >&2
