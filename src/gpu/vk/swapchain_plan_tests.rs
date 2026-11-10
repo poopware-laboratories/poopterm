@@ -359,3 +359,32 @@ fn undefined_alone_suits_only_in_srgb_nonlinear_color() {
 	let made = plan(&wayland(), &[any], &[FIFO], [10, 10]);
 	assert_eq!(made, Err(Unfit::Format));
 }
+
+#[test]
+fn without_mailbox_fifo_latest_ready_replaces_a_queued_frame_before_plain_fifo() {
+	use super::swapchain_plan::FIFO_LATEST_READY;
+	// As NVIDIA offers under XWayland: no mailbox, so the newest frame
+	// ready at each refresh is shown instead of the oldest queued.
+	let cases = [
+		(
+			vec![IMMEDIATE, FIFO, FIFO_RELAXED, FIFO_LATEST_READY],
+			FIFO_LATEST_READY,
+		),
+		(vec![FIFO_LATEST_READY, FIFO], FIFO_LATEST_READY),
+		(vec![FIFO_LATEST_READY], FIFO_LATEST_READY),
+		// Mailbox stays first: it never waits for a refresh to take one.
+		(vec![FIFO_LATEST_READY, MAILBOX, FIFO], MAILBOX),
+		(vec![MAILBOX, FIFO_LATEST_READY], MAILBOX),
+	];
+	for (modes, mode) in cases {
+		let made = plan(&wayland(), &[BGRA], &modes, [10, 10]);
+		assert_eq!(made.unwrap().mode, mode, "{modes:?}");
+	}
+}
+
+#[test]
+fn the_new_modes_value_is_the_specifications() {
+	use super::swapchain_plan::FIFO_LATEST_READY;
+	// `VK_PRESENT_MODE_FIFO_LATEST_READY_KHR`, the EXT's alias.
+	assert_eq!(FIFO_LATEST_READY, 1_000_361_000);
+}

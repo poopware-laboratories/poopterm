@@ -48,7 +48,7 @@ fn the_renderer_turns_on_dynamic_rendering_synchronization2_and_timeline_semapho
 	// VkPhysicalDeviceVulkan12Features.
 	let flags: Vec<_> = NEEDED.iter().map(|&(flag, _)| flag).collect();
 	assert_eq!(flags, [Flag::V13(12), Flag::V13(9), Flag::V12(37)]);
-	let needed = Features::needed();
+	let needed = Features::needed(&[]);
 	let on: Vec<_> = every_flag().filter(|&flag| needed.get(flag)).collect();
 	assert_eq!(on, [Flag::V12(37), Flag::V13(9), Flag::V13(12)]);
 	// As VkBool32 VK_TRUE, which is 1, not just nonzero.
@@ -105,4 +105,40 @@ fn any_nonzero_vk_bool32_counts_as_true() {
 	features.v12.flags[37] = 2;
 	assert!(features.get(Flag::V13(12)) && features.get(Flag::V12(37)));
 	assert_eq!(features.missing(), None);
+}
+
+#[test]
+fn one_flag_structures_follow_the_1_3_features_in_order_and_survive_a_move() {
+	use super::features::OneFeature;
+	use std::mem::{offset_of, size_of};
+	// `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR` and its like.
+	assert_eq!(size_of::<OneFeature>(), 24);
+	assert_eq!(offset_of!(OneFeature, enabled), 16);
+	let features = Features::none_with(&[7, 9, 11]);
+	let moved = [features];
+	let features = &moved[0];
+	let types: Vec<_> = features.extra.iter().map(|link| link.s_type).collect();
+	assert_eq!(types, [7, 9, 11]);
+	assert!(ptr::eq(features.v13.next.cast(), &features.extra[0]));
+	assert!(ptr::eq(features.extra[0].next.cast(), &features.extra[1]));
+	assert!(ptr::eq(features.extra[1].next.cast(), &features.extra[2]));
+	assert!(features.extra[2].next.is_null());
+	// Off, for the driver to say.
+	assert!(features.extra.iter().all(|link| link.enabled == 0));
+}
+
+#[test]
+fn needed_turns_on_the_one_flag_structures_it_is_given_and_no_others() {
+	let needed = Features::needed(&[1_000_361_000]);
+	assert_eq!(needed.extra.len(), 1);
+	assert_eq!(
+		(needed.extra[0].s_type, needed.extra[0].enabled),
+		(1_000_361_000, 1)
+	);
+	assert!(ptr::eq(needed.v13.next.cast(), &needed.extra[0]));
+	assert!(needed.extra[0].next.is_null());
+	// Without any, the chain ends at the 1.3 features as before.
+	let plain = Features::needed(&[]);
+	assert!(plain.extra.is_empty() && plain.v13.next.is_null());
+	assert!(Features::none().extra.is_empty());
 }

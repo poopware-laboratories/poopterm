@@ -37,6 +37,8 @@ pub(crate) fn mode_name(mode: i32) -> String {
 	const NAMES: [&str; 4] = ["IMMEDIATE", "MAILBOX", "FIFO", "FIFO_RELAXED"];
 	match usize::try_from(mode).ok().and_then(|mode| NAMES.get(mode)) {
 		Some(name) => (*name).to_owned(),
+		// `VK_PRESENT_MODE_FIFO_LATEST_READY_KHR`.
+		None if mode == 1_000_361_000 => "FIFO_LATEST_READY".to_owned(),
 		None => format!("mode {mode}"),
 	}
 }

@@ -234,9 +234,9 @@ fn headless_swapchains(entry: Entry) -> Result<Vec<(Plan, usize, Vec<Presented>)
 			physical,
 			family as u32,
 		)?);
-		let plan = surface.plan(physical, [64, 48])?;
+		let plan = surface.plan(physical, [64, 48], false)?;
 		let swapchain = Swapchain::new(&device, &surface, plan.clone())?;
-		let smaller = surface.plan(physical, [32, 24])?;
+		let smaller = surface.plan(physical, [32, 24], false)?;
 		let mut swapchain = swapchain.recreate(smaller)?;
 		let mut commands = Commands::new(&Rc::new(Timeline::new(&device)?))?;
 		// More frames than images, so each image and semaphore is reused.

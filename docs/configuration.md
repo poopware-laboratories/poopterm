@@ -100,6 +100,7 @@ one but gets it wrong:
 | Short name | Extension | What it does |
 |---|---|---|
 | `incremental_present` | `VK_KHR_incremental_present` | Tells the compositor which rows changed, so it redraws only those |
+| `fifo_latest_ready` | `VK_KHR_present_mode_fifo_latest_ready`, or the older `VK_EXT_present_mode_fifo_latest_ready` | Where the window has no mailbox mode (NVIDIA under XWayland), shows the newest frame ready at each refresh instead of the oldest queued, so typing reaches the screen sooner |
 
 `decorations` chooses who draws the title bar on Linux and FreeBSD Wayland:
 `auto` (the default), `client` or `server`. With `auto`, Poopterm puts the

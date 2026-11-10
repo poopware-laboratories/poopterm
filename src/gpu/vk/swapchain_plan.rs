@@ -10,6 +10,9 @@ pub(crate) const SRGB_NONLINEAR: i32 = 0;
 /// `VkPresentModeKHR`.
 pub(crate) const MAILBOX: i32 = 1;
 pub(crate) const FIFO: i32 = 2;
+/// `VK_PRESENT_MODE_FIFO_LATEST_READY_KHR`: FIFO that shows the newest
+/// frame ready at each refresh, dropping older ones, as mailbox does.
+pub(crate) const FIFO_LATEST_READY: i32 = 1_000_361_000;
 /// `VkCompositeAlphaFlagBitsKHR`.
 pub(crate) const OPAQUE: u32 = 1;
 pub(crate) const PRE_MULTIPLIED: u32 = 2;
@@ -131,11 +134,10 @@ pub(crate) fn plan(
 	let max = capabilities.max_images;
 	Ok(Plan {
 		format,
-		mode: if modes.contains(&MAILBOX) {
-			MAILBOX
-		} else {
-			FIFO
-		},
+		mode: [MAILBOX, FIFO_LATEST_READY]
+			.into_iter()
+			.find(|mode| modes.contains(mode))
+			.unwrap_or(FIFO),
 		extent,
 		images: if max == 0 { images } else { images.min(max) },
 		transform: capabilities.current_transform,

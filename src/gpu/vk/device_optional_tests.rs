@@ -7,7 +7,7 @@ use super::{
 	device::Device,
 	driver_tests::{Driver, family, finish, install, with, with_devices},
 	instance::Instance,
-	optional::Optional,
+	optional::{INCREMENTAL_PRESENT, Optional},
 	types::RawPhysicalDevice,
 	version::api_version,
 };
@@ -88,7 +88,7 @@ fn an_offered_optional_extension_is_enabled_after_the_swapchain() {
 	let offered = instance.device_extensions(physical).unwrap();
 	let optional = Optional::found(&offered, None);
 	let device = Device::with_optional(instance, physical, 1, optional).unwrap();
-	assert!(device.optional.incremental_present);
+	assert!(device.optional.incremental_present.is_some());
 	drop(device);
 	assert_eq!(
 		made(),
@@ -119,7 +119,8 @@ fn a_device_lacking_the_extension_never_has_it_asked_for() {
 	// Asked for anyway, the driver refuses: the reason it is looked for.
 	let (instance, physical) = open(offering(vec![]));
 	let forced = Optional {
-		incremental_present: true,
+		incremental_present: Some(INCREMENTAL_PRESENT),
+		..Optional::default()
 	};
 	let refused = Device::with_optional(instance, physical, 1, forced).err();
 	assert_eq!(refused, Some(Error::Failed(-7)));
