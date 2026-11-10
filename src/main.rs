@@ -15,6 +15,8 @@ mod about_menu;
 mod allocator;
 mod app;
 mod bench;
+#[cfg(test)]
+mod busy_tests;
 #[cfg(target_os = "linux")]
 mod cgroup;
 #[cfg(target_os = "linux")]

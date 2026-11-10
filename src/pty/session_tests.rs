@@ -44,9 +44,13 @@ fn term_env(term: &str, extra: &[(&str, &str)]) -> TermEnv {
 
 /// Runs `shell` as a tab would, in `cwd`, and returns what it printed.
 fn run(shell: &Path, env: &TermEnv, cwd: &Path) -> Vec<String> {
-	let pair = device::open(WindowSize::default()).unwrap();
 	let command = shell_command(shell.to_str().unwrap(), env, cwd);
-	let mut child = spawn::spawn(&command, &pair.slave).unwrap();
+	// A fresh pair per try: the BSDs revoke a slave whose session ended.
+	let (pair, mut child) = crate::busy_tests::retry_busy(|| {
+		let pair = device::open(WindowSize::default()).unwrap();
+		spawn::spawn(&command, &pair.slave).map(|child| (pair, child))
+	})
+	.unwrap();
 	drop(pair.slave);
 	let mut screen = File::from(pair.master);
 	let (send, shown) = mpsc::channel();
