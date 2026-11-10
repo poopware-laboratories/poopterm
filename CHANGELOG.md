@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.11.70 "Lunar Moth" — 2026-11-10
+
+### Added
+
+- Fall back to FIFO_LATEST_READY where the window has no mailbox (#300) (gpu).
+
+### Fixed
+
+- Allocate from the next heap when the first is full (#301) (gpu).
+
 ## 26.11.69 "Lunar Moth" — 2026-11-10
 
 ### Added
