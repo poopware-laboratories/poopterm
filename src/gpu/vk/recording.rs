@@ -274,6 +274,9 @@ impl<'a> Recording<'a> {
 	) -> Result<u64, Error> {
 		let commands = self.commands;
 		let functions = &commands.device.functions;
+		if let Some(stamps) = &commands.stamps {
+			stamps.end(commands.buffer);
+		}
 		// SAFETY: the buffer is being recorded.
 		check(unsafe { (functions.end)(commands.buffer) })?;
 		// A failed submission skips its value, which nothing waits for.
@@ -312,6 +315,9 @@ impl<'a> Recording<'a> {
 		// was given before, and `info` and what it points to outlive the call.
 		check(unsafe { (functions.submit)(commands.device.queue(), 1, &info, 0) })?;
 		commands.submitted = value;
+		if let Some(stamps) = &mut commands.stamps {
+			stamps.written = true;
+		}
 		for (image, layout) in self.layouts {
 			image.layout.set(layout);
 		}

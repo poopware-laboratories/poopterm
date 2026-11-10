@@ -111,6 +111,16 @@ pub(super) struct Driver {
 	/// Pools reset, buffers begun, ended and submitted, and the barriers
 	/// and copies recorded, in order.
 	pub recorded: Vec<String>,
+	/// Query pools, and the timestamps reset, written and read, in order.
+	pub query_pools: super::stamps_tests::Pools,
+	pub stamped: Vec<String>,
+	/// The two timestamps results give, what `vkGetQueryPoolResults`
+	/// answers (success when `None`), the valid bits of every family's
+	/// timestamps (64 when `None`), and the period (1 ns when `None`).
+	pub timestamps: [u64; 2],
+	pub query_answer: Option<i32>,
+	pub timestamp_bits: Option<u32>,
+	pub timestamp_period: Option<f32>,
 	/// The layout each image was left in by the submissions so far, the
 	/// last one for an image counting.
 	pub image_layouts: Vec<(RawImage, i32)>,
@@ -203,6 +213,7 @@ impl Driver {
 		let (dimension, layers) = self.image_limits.unwrap_or((16384, 2048));
 		limits.0[MAX_IMAGE_DIMENSION_2D] = dimension;
 		limits.0[MAX_IMAGE_ARRAY_LAYERS] = layers;
+		limits.0[TIMESTAMP_PERIOD] = self.timestamp_period.unwrap_or(1.0).to_bits();
 		limits
 	}
 
@@ -603,7 +614,7 @@ unsafe extern "system" fn queue_families(
 			.map(|family| QueueFamilyProperties {
 				queue_flags: family.flags,
 				queue_count: family.count,
-				timestamp_valid_bits: 64,
+				timestamp_valid_bits: driver.timestamp_bits.unwrap_or(64),
 				min_image_transfer_granularity: [1, 1, 1],
 			})
 			.collect();

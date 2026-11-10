@@ -105,6 +105,8 @@ pub(crate) struct Limits(pub [u32; 126]);
 /// The indices of `maxImageDimension2D` and `maxImageArrayLayers`.
 pub(crate) const MAX_IMAGE_DIMENSION_2D: usize = 1;
 pub(crate) const MAX_IMAGE_ARRAY_LAYERS: usize = 4;
+/// The index of `timestampPeriod`, a `float`.
+pub(crate) const TIMESTAMP_PERIOD: usize = 106;
 
 /// `VkQueueFamilyProperties`.
 #[repr(C)]

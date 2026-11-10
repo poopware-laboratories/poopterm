@@ -201,6 +201,7 @@ fn gathered_diagnostics_name_the_release_setting_and_device() {
 	let frames = FrameCounts {
 		gpu: 571,
 		software: 29,
+		gpu_time: None,
 	};
 	let gpu = GpuFacts {
 		device: "AMD Radeon (RADV NAVI32)".into(),

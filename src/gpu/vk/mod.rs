@@ -111,6 +111,9 @@ pub(crate) mod semaphore;
 pub(crate) mod shader;
 #[cfg(test)]
 mod shader_tests;
+pub(crate) mod stamps;
+#[cfg(test)]
+mod stamps_tests;
 pub(crate) mod submit_types;
 #[cfg(test)]
 mod submit_types_tests;

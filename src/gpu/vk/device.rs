@@ -2,7 +2,7 @@
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
 	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
-	memory::MemoryType, optional::Optional, pipeline_types::*, submit_types::*, types::*,
+	memory::MemoryType, optional::Optional, pipeline_types::*, stamps, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -138,6 +138,12 @@ pub(crate) struct Device {
 	pub(super) swapchain: bool,
 	/// The optional extensions it was made with.
 	pub(crate) optional: Optional,
+	/// Its query functions, when its driver has them all.
+	pub(super) stamps: Option<stamps::Functions>,
+	/// The bits of its queue's timestamps that count, none if it has none,
+	/// and the nanoseconds a tick.
+	pub(super) timestamp_bits: u32,
+	pub(super) timestamp_period: f32,
 	destroy: DestroyDevice,
 	/// Dropped after the device is destroyed, as it was made from it.
 	pub(super) instance: Rc<Instance>,
@@ -217,6 +223,18 @@ impl Device {
 		// is writable.
 		unsafe { (functions.get_queue)(handle, family, 0, &mut queue) };
 		let limits = instance.properties(physical).limits.0;
+		let stamp = |name: &'static CStr| instance.device_function(handle, name).ok();
+		// SAFETY: the functions the driver returned for these names have
+		// these types.
+		let stamps = (|| unsafe {
+			Some(stamps::Functions {
+				create: cast(stamp(c"vkCreateQueryPool")?),
+				destroy: cast(stamp(c"vkDestroyQueryPool")?),
+				reset: cast(stamp(c"vkCmdResetQueryPool")?),
+				write: cast(stamp(c"vkCmdWriteTimestamp2")?),
+				results: cast(stamp(c"vkGetQueryPoolResults")?),
+			})
+		})();
 		Ok(Self {
 			handle,
 			functions,
@@ -230,6 +248,9 @@ impl Device {
 			physical,
 			swapchain,
 			optional: Optional::default(),
+			stamps,
+			timestamp_bits: instance.timestamp_bits(physical, family),
+			timestamp_period: f32::from_bits(limits[TIMESTAMP_PERIOD]),
 			destroy,
 			instance,
 		})

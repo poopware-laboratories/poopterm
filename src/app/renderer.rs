@@ -194,6 +194,17 @@ impl Renderer {
 		Ok((selected.value, started(selected.backend, failure, gpu_here)))
 	}
 
+	/// The GPU time of a recent frame, when the GPU draws and times them.
+	// pr-check: window glue: only a real window has a renderer
+	pub(super) fn gpu_time(&self) -> Option<std::time::Duration> {
+		match self {
+			Self::Software(_) => None,
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+			Self::Gpu(gpu) => gpu.gpu_time(),
+		}
+	}
+	// pr-check: end window glue
+
 	/// What the GPU draws the window on and how, when it does.
 	// pr-check: window glue: only a real window has a renderer
 	pub(super) fn facts(&self) -> Option<crate::gpu::facts::GpuFacts> {

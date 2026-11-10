@@ -67,7 +67,7 @@ impl Renderer {
 		let size = [side, side, pages].map(|n| n as u32);
 		Ok(Self {
 			textures: Textures::new(TEXTURES),
-			commands: Commands::new(timeline)?,
+			commands: Commands::timed(timeline)?,
 			set: Rc::new(QuadSet::new(pipeline)?),
 			atlas: Rc::new(Image::new(
 				device,
@@ -292,6 +292,10 @@ impl Renderer {
 	}
 
 	/// Waits for the GPU to finish every frame submitted.
+	pub(crate) fn gpu_time(&self) -> Option<std::time::Duration> {
+		self.commands.gpu_time()
+	}
+
 	pub(crate) fn finish(&self) -> Result<(), Error> {
 		self.commands.finish()
 	}

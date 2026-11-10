@@ -319,3 +319,50 @@ fn rows_the_app_says_changed_reach_the_present_after_the_first_image() {
 	assert_eq!(fake_present_regions(), [0, 2, 0]);
 	close(gpu.gpu);
 }
+
+#[test]
+fn the_gpu_time_of_a_frame_is_known_once_the_next_is_drawn() {
+	use crate::gpu::vk::outside_tests::fake_timestamps;
+	use std::time::Duration;
+	let mut gpu = gpu();
+	fake_timestamps(1_000, 351_000);
+	assert_eq!(gpu.gpu_time(), None);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	// Read when the next frame waits for this one to finish.
+	assert_eq!(gpu.gpu_time(), None);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(350)));
+	// The fake answers with the timestamps set when they are read.
+	fake_timestamps(0, 90_000);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(90)));
+	close(gpu.gpu);
+}
+
+#[test]
+fn frames_are_still_timed_after_the_swapchain_is_remade_or_a_frame_refused() {
+	use crate::gpu::vk::outside_tests::fake_timestamps;
+	use std::time::Duration;
+	let mut gpu = gpu();
+	fake_timestamps(0, 350_000);
+	frame(&mut gpu, false);
+	frame(&mut gpu, false);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(350)));
+	// Out of date, remade at a new size: timing carries on.
+	fake_out_of_date();
+	assert_eq!(frame_of(&mut gpu, (24, 10), false), Next::Redraw);
+	// The last frame's time stands until another is read.
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(350)));
+	assert_eq!(frame_of(&mut gpu, (24, 10), false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(350)));
+	fake_timestamps(0, 120_000);
+	assert_eq!(frame_of(&mut gpu, (24, 10), false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(120)));
+	// A frame refused for want of atlas room submits nothing to time.
+	assert_eq!(frame(&mut gpu, true), refused());
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(120)));
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(frame(&mut gpu, false), Next::Done);
+	assert_eq!(gpu.gpu_time(), Some(Duration::from_micros(120)));
+	close(gpu.gpu);
+}

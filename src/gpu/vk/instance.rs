@@ -169,6 +169,21 @@ impl Instance {
 		)
 	}
 
+	/// How many bits of the timestamps of `family` of `device`, one of
+	/// [`Self::physical_devices`], count; none when it has none.
+	pub(crate) fn timestamp_bits(&self, device: RawPhysicalDevice, family: u32) -> u32 {
+		let families = enumerate(QueueFamilyProperties::default(), |count, families| {
+			// SAFETY: the device is one of this live instance's, with room
+			// for `count` families.
+			unsafe { (self.functions.queue_families)(device, count, families) };
+			0
+		});
+		let family = families
+			.ok()
+			.and_then(|all| all.get(family as usize).copied());
+		family.map_or(0, |family| family.timestamp_valid_bits)
+	}
+
 	/// How the driver of `device`, one of [`Self::physical_devices`], names
 	/// itself, when it says.
 	pub(crate) fn driver(&self, device: RawPhysicalDevice) -> Option<String> {

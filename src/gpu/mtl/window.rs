@@ -115,6 +115,11 @@ impl MetalWindow {
 		self.device.name()
 	}
 
+	/// Metal's frames are not timed yet.
+	pub(crate) fn gpu_time(&self) -> Option<std::time::Duration> {
+		None
+	}
+
 	/// What it draws on; Metal says nothing of drivers or swapchains here.
 	pub(crate) fn facts(&self) -> GpuFacts {
 		GpuFacts {

@@ -56,6 +56,7 @@ pub(super) fn sample(drawing: Drawing, warnings: usize) -> Diagnostics {
 		frames: FrameCounts {
 			gpu: 571,
 			software: 29,
+			gpu_time: None,
 		},
 		facts: vec![
 			("Renderer setting", "auto".into()),
@@ -774,6 +775,7 @@ fn a_long_frames_line_is_cut_to_the_window() {
 		frames: FrameCounts {
 			gpu: usize::MAX / 2,
 			software: usize::MAX / 2,
+			gpu_time: None,
 		},
 		..sample(Drawing::Gpu, 0)
 	};
@@ -827,6 +829,7 @@ fn on_radeon() -> Diagnostics {
 	let frames = FrameCounts {
 		gpu: 600,
 		software: 0,
+		gpu_time: None,
 	};
 	let auto = RendererPreference::Auto;
 	gather(
@@ -900,4 +903,37 @@ fn the_five_rows_end_above_copy_report_in_the_smallest_window() {
 		"{last} reaches Copy report at {}",
 		copy.1
 	);
+}
+
+#[test]
+fn the_frames_line_with_gpu_times_fits_the_smallest_window_whole() {
+	use crate::ui::recent_frames::GpuTime;
+	use std::time::Duration;
+	// Slow frames, with two digits before the point.
+	let frames = FrameCounts {
+		gpu: 571,
+		software: 29,
+		gpu_time: Some(GpuTime {
+			median: Duration::from_micros(16_700),
+			worst: Duration::from_micros(99_900),
+		}),
+	};
+	let line = frames.line().unwrap();
+	assert!(
+		line.ends_with("GPU 16.7 ms median, 99.9 ms worst"),
+		"{line}"
+	);
+	let room = MIN_SIZE.0 - 24 - COLUMNS[0];
+	for s in [1, 2] {
+		let (x, _) = reach(0, &line, SMALL, s);
+		assert!(x <= room * s, "{line} takes {x} of {}", room * s);
+	}
+	// And the page draws it uncut.
+	let diagnostics = Diagnostics {
+		frames,
+		..sample(Drawing::Gpu, 0)
+	};
+	let commands = draw(1, &diagnostics, Section::Graphics, "");
+	let drawn = line_at(&commands, 1, (COLUMNS[0], FRAMES_TOP)).unwrap();
+	assert_eq!(drawn.text, line);
 }

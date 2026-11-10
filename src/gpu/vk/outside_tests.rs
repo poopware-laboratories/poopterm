@@ -35,6 +35,12 @@ pub(crate) fn fake_present_regions() -> Vec<usize> {
 	with(|driver| driver.present_regions.iter().map(Vec::len).collect())
 }
 
+/// Has the fake's frames take the GPU from `start` to `end`, in ticks of a
+/// nanosecond.
+pub(crate) fn fake_timestamps(start: u64, end: u64) {
+	with(|driver| driver.timestamps = [start, end]);
+}
+
 /// Drops the window, checking it left nothing behind.
 pub(crate) fn fake_close(window: GpuWindow) {
 	close(window);
