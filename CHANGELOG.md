@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.64 "Lunar Moth" — 2026-11-10
+
+### Maintenance
+
+- Keep the slow training tables out of the build output (#292) (pgo).
+
 ## 26.11.63 "Lunar Moth" — 2026-11-10
 
 ### Performance
