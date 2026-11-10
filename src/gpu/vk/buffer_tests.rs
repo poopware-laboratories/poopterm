@@ -162,7 +162,12 @@ unsafe extern "system" fn allocate(
 		for (holds, rule) in rules {
 			driver.require(holds, || format!("vkAllocateMemory: {rule}"));
 		}
-		if let Some(code) = driver.failing(c"vkAllocateMemory") {
+		driver.allocation_attempts.push(info.memory_type_index);
+		let kind = driver.memory.get(info.memory_type_index as usize);
+		let full = kind.is_some_and(|kind| driver.full_heaps.contains(&kind.heap));
+		// VK_ERROR_OUT_OF_DEVICE_MEMORY for a full heap.
+		let failed = driver.failing(c"vkAllocateMemory").or(full.then_some(-2));
+		if let Some(code) = failed {
 			// SAFETY: the bindings pass a writable handle.
 			unsafe { memory.write(GARBAGE) };
 			return code;

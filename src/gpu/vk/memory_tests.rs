@@ -191,3 +191,78 @@ fn random_memory_is_chosen_from_as_the_tiers_of_preference_say() {
 		"{found:?}"
 	);
 }
+
+/// Every usable type in the order the tiers say: by the first tier each is
+/// in, then by index.
+fn expected_order(types: &[MemoryType], allowed: u32, usage: Usage) -> Vec<u32> {
+	let usable =
+		|index: usize| index < 32 && allowed & (1 << index) != 0 && types[index].flags & 0xf0 == 0;
+	let mut order = Vec::new();
+	for tier in tiers(usage) {
+		for index in (0..types.len()).filter(|&i| usable(i) && tier(types[i].flags)) {
+			if !order.contains(&(index as u32)) {
+				order.push(index as u32);
+			}
+		}
+	}
+	order
+}
+
+#[test]
+fn every_fallback_is_listed_in_the_order_of_the_tiers_of_preference() {
+	use super::memory::memory_choices;
+	let mut rng = crate::bench::corpus::Rng::new(31);
+	for case in 0..5000 {
+		let memory: Vec<_> = (0..1 + rng.below(32))
+			.map(|_| MemoryType {
+				flags: rng.below(16) as u32 | if rng.below(8) == 0 { 0x40 } else { 0 },
+				heap: rng.below(3) as u32,
+			})
+			.collect();
+		let allowed = if rng.below(2) == 0 {
+			ALL
+		} else {
+			rng.next() as u32
+		};
+		for usage in USAGES {
+			let listed = memory_choices(&memory, allowed, usage);
+			assert_eq!(
+				listed,
+				expected_order(&memory, allowed, usage),
+				"case {case}: {usage:?}"
+			);
+			// The first is what one allocation alone would take.
+			assert_eq!(
+				listed.first().copied(),
+				choose_memory(&memory, allowed, usage)
+			);
+		}
+	}
+}
+
+#[test]
+fn a_discrete_gpu_without_resizable_bar_lists_system_memory_after_its_bar() {
+	use super::memory::memory_choices;
+	// NVIDIA: video memory, system memory, the 256 MB BAR.
+	let nvidia = [
+		MemoryType {
+			flags: DEVICE_LOCAL,
+			heap: 0,
+		},
+		MemoryType {
+			flags: HOST_VISIBLE | HOST_COHERENT,
+			heap: 1,
+		},
+		MemoryType {
+			flags: DEVICE_LOCAL | HOST_VISIBLE | HOST_COHERENT,
+			heap: 2,
+		},
+	];
+	assert_eq!(memory_choices(&nvidia, ALL, Usage::Upload), [2, 1]);
+	assert_eq!(memory_choices(&nvidia, ALL, Usage::Device), [0, 2, 1]);
+	assert_eq!(memory_choices(&nvidia, ALL, Usage::Readback), [1, 2]);
+	assert_eq!(
+		memory_choices(&nvidia, 0b001, Usage::Upload),
+		Vec::<u32>::new()
+	);
+}

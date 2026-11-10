@@ -1,9 +1,10 @@
 //! A Vulkan image in the GPU's own memory with a view of all its layers,
 //! destroyed and freed when dropped, or a swapchain's image with a view.
 use super::{
+	allocation::allocate,
 	call::{Error, check},
 	device::Device,
-	memory::{Usage, choose_memory},
+	memory::Usage,
 	recording::Layout,
 	types::*,
 };
@@ -104,17 +105,7 @@ impl Image {
 		let mut needs = MemoryRequirements::default();
 		// SAFETY: the image is the device's, and `needs` is writable.
 		unsafe { (functions.image_requirements)(device.handle, handle, &mut needs) };
-		let index = choose_memory(&device.memory, needs.memory_type_bits, Usage::Device);
-		let info = MemoryAllocateInfo {
-			s_type: STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-			next: ptr::null(),
-			allocation_size: needs.size,
-			memory_type_index: index.ok_or(Error::NoMemory)?,
-		};
-		// A failed call may leave anything in its output.
-		let mut memory = 0;
-		// SAFETY: as for the image.
-		check(unsafe { (functions.allocate)(device.handle, &info, ptr::null(), &mut memory) })?;
+		let memory = allocate(device, &needs, Usage::Device)?;
 		image.memory = memory;
 		// SAFETY: the memory is of a type the image allows, and as large as
 		// it needs.
