@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.65 "Lunar Moth" — 2026-11-10
+
+### Maintenance
+
+- List only work still wanted (#293) (todo).
+
 ## 26.11.64 "Lunar Moth" — 2026-11-10
 
 ### Maintenance
