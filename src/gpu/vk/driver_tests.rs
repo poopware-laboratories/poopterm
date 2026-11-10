@@ -66,6 +66,8 @@ pub(super) struct Driver {
 	pub image_limits: Option<(u32, u32)>,
 	/// The driver's name and info, for every device.
 	pub driver_info: Option<(&'static str, &'static str)>,
+	/// Device extensions offered besides those every device lists.
+	pub device_extensions: Vec<&'static str>,
 	/// The memory types buffers may use, as `memoryTypeBits`; `None` for
 	/// every type.
 	pub buffer_bits: Option<u32>,
@@ -118,6 +120,8 @@ pub(super) struct Driver {
 	pub present_answers: Vec<i32>,
 	/// The images presented, of which swapchains.
 	pub presents: Vec<(RawSwapchain, u32)>,
+	/// The regions each present named, empty for the whole image.
+	pub present_regions: Vec<Vec<super::present_regions::RectLayer>>,
 	/// Binary semaphores signalled and waited for, in order.
 	pub semaphore_ops: Vec<String>,
 	/// Whether something was presented since the queue was last idle.
@@ -615,6 +619,7 @@ unsafe extern "system" fn extensions(
 		if device.swapchain {
 			names.insert(1, "VK_KHR_swapchain");
 		}
+		names.extend(driver.device_extensions.iter().copied());
 		let all: Vec<_> = (names.iter())
 			.map(|name| ExtensionProperties {
 				extension_name: field(name),

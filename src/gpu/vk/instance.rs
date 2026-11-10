@@ -124,14 +124,7 @@ impl Instance {
 			unsafe { (self.functions.queue_families)(device, count, families) };
 			0
 		})?;
-		let none = ExtensionProperties {
-			extension_name: [0; 256],
-			spec_version: 0,
-		};
-		let extensions = enumerate(none, |count, extensions| {
-			// SAFETY: as above, with room for `count` extensions, and no layer.
-			unsafe { (self.functions.extensions)(device, ptr::null(), count, extensions) }
-		})?;
+		let extensions = self.device_extensions(device)?;
 		Ok(Device {
 			name: fixed_string(&properties.device_name),
 			kind: Kind::from_type(properties.device_type),
@@ -143,9 +136,28 @@ impl Instance {
 					present: false,
 				})
 				.collect(),
-			swapchain: (extensions.iter())
-				.any(|extension| fixed_string(&extension.extension_name) == "VK_KHR_swapchain"),
+			swapchain: extensions.iter().any(|name| name == "VK_KHR_swapchain"),
 		})
+	}
+
+	/// The names of the extensions `device`, one of
+	/// [`Self::physical_devices`], offers.
+	pub(crate) fn device_extensions(&self, device: RawPhysicalDevice) -> Result<Vec<String>, Error> {
+		let none = ExtensionProperties {
+			extension_name: [0; 256],
+			spec_version: 0,
+		};
+		let extensions = enumerate(none, |count, extensions| {
+			// SAFETY: the device is one of this live instance's, `enumerate`
+			// passes room for `count` extensions, and no layer is named.
+			unsafe { (self.functions.extensions)(device, ptr::null(), count, extensions) }
+		})?;
+		Ok(
+			extensions
+				.iter()
+				.map(|extension| fixed_string(&extension.extension_name))
+				.collect(),
+		)
 	}
 
 	/// How the driver of `device`, one of [`Self::physical_devices`], names

@@ -4,6 +4,7 @@
 use super::{
 	call::{Error, check},
 	image::Image,
+	present_regions::{PresentRegion, PresentRegions, RectLayer, STRUCTURE_TYPE_PRESENT_REGIONS},
 	recording::{Layout, Recording},
 	semaphore::Semaphore,
 	submit_types::{STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, SemaphoreSubmitInfo},
@@ -57,6 +58,9 @@ pub(crate) struct Frame<'a> {
 	/// The swapchain still shows, but no longer matches the surface:
 	/// remake it after presenting.
 	pub suboptimal: bool,
+	/// What changed since the last image shown, if known: the present
+	/// names it on a device with `VK_KHR_incremental_present`.
+	pub changed: Vec<RectLayer>,
 }
 
 /// What presenting a frame came to.
@@ -100,6 +104,7 @@ impl Swapchain {
 					index,
 					acquire,
 					suboptimal: code == SUBOPTIMAL,
+					changed: Vec::new(),
 				}))
 			}
 			Err(error) => Err(error),
@@ -163,12 +168,31 @@ impl Recording<'_> {
 		let signal = semaphore(drawn, ALL_COMMANDS);
 		let timeline = self.commands.timeline.clone();
 		let queue = self.commands.device.queue();
+		let incremental = self.commands.device.optional.incremental_present;
 		let value = self.submit_with(Some(&wait), Some(&signal))?;
 		swapchain.acquires[frame.acquire].state = State::Waited(timeline, value);
 		let waits = [drawn.handle()];
+		// Named only on a device that takes them; else the whole image.
+		let rects = match incremental {
+			true => frame.changed.as_slice(),
+			false => &[],
+		};
+		let region = PresentRegion {
+			rectangle_count: rects.len() as u32,
+			rectangles: rects.as_ptr(),
+		};
+		let regions = PresentRegions {
+			s_type: STRUCTURE_TYPE_PRESENT_REGIONS,
+			next: ptr::null(),
+			swapchain_count: 1,
+			regions: &region,
+		};
 		let info = PresentInfo {
 			s_type: STRUCTURE_TYPE_PRESENT_INFO,
-			next: ptr::null(),
+			next: match rects.is_empty() {
+				true => ptr::null(),
+				false => (&raw const regions).cast(),
+			},
 			wait_semaphore_count: 1,
 			wait_semaphores: waits.as_ptr(),
 			swapchain_count: 1,

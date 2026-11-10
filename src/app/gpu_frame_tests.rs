@@ -303,3 +303,19 @@ fn a_frame_the_gpu_abandoned_says_why_the_window_is_now_software() {
 	drawn_as(&mut drawing, &Next::Done);
 	assert_eq!(drawing, abandoned);
 }
+
+#[test]
+fn rows_the_app_says_changed_reach_the_present_after_the_first_image() {
+	use crate::gpu::vk::outside_tests::{fake_incremental_window, fake_present_regions};
+	let mut gpu = Gpu::with(fake_incremental_window(), "the window", FAKE_ATLAS);
+	// The first image shows whole, whatever the app says changed.
+	gpu.set_changed(Some(vec![(0, 16)]));
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	// Bands run from a pixel row to the one past them; an empty one is dropped.
+	gpu.set_changed(Some(vec![(0, 16), (20, 24), (28, 28)]));
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	// Nothing said: the whole image changed.
+	assert_eq!(grid_frame(&mut gpu, false).0, Next::Done);
+	assert_eq!(fake_present_regions(), [0, 2, 0]);
+	close(gpu.gpu);
+}

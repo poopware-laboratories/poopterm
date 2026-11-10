@@ -2,7 +2,7 @@
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
 	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
-	memory::MemoryType, pipeline_types::*, submit_types::*, types::*,
+	memory::MemoryType, optional::Optional, pipeline_types::*, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -136,6 +136,8 @@ pub(crate) struct Device {
 	pub(super) physical: RawPhysicalDevice,
 	/// Whether it was made to show in windows, with `VK_KHR_swapchain`.
 	pub(super) swapchain: bool,
+	/// The optional extensions it was made with.
+	pub(crate) optional: Optional,
 	destroy: DestroyDevice,
 	/// Dropped after the device is destroyed, as it was made from it.
 	pub(super) instance: Rc<Instance>,
@@ -149,7 +151,7 @@ impl Device {
 		physical: RawPhysicalDevice,
 		family: u32,
 	) -> Result<Self, Error> {
-		Self::make(instance, physical, family, false)
+		Self::make(instance, physical, family, None)
 	}
 
 	/// A device as [`Self::new`] makes, that also shows in windows: its
@@ -159,17 +161,33 @@ impl Device {
 		physical: RawPhysicalDevice,
 		family: u32,
 	) -> Result<Self, Error> {
-		Self::make(instance, physical, family, true)
+		Self::with_optional(instance, physical, family, Optional::default())
 	}
 
+	/// A device as [`Self::for_windows`] makes, with the `optional`
+	/// extensions, which it must offer.
+	pub(crate) fn with_optional(
+		instance: Rc<Instance>,
+		physical: RawPhysicalDevice,
+		family: u32,
+		optional: Optional,
+	) -> Result<Self, Error> {
+		let mut device = Self::make(instance, physical, family, Some(optional))?;
+		device.optional = optional;
+		Ok(device)
+	}
+
+	/// With `windows`, it shows in them, made with the optional extensions.
 	fn make(
 		instance: Rc<Instance>,
 		physical: RawPhysicalDevice,
 		family: u32,
-		swapchain: bool,
+		windows: Option<Optional>,
 	) -> Result<Self, Error> {
-		let extensions: &[_] = if swapchain { &[SWAPCHAIN] } else { &[] };
-		let handle = instance.create_device(physical, family, extensions)?;
+		let swapchain = windows.is_some();
+		let mut extensions = Vec::from(if swapchain { &[SWAPCHAIN][..] } else { &[] });
+		extensions.extend(windows.unwrap_or_default().extensions());
+		let handle = instance.create_device(physical, family, &extensions)?;
 		// A driver without it is broken, and the device leaks.
 		// SAFETY: the function the driver returned for this name has this type.
 		let destroy: DestroyDevice =
@@ -199,6 +217,7 @@ impl Device {
 			family,
 			physical,
 			swapchain,
+			optional: Optional::default(),
 			destroy,
 			instance,
 		})

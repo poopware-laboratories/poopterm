@@ -278,6 +278,12 @@ impl<W> Gpu<W> {
 		self.pen.plan_rows(damage, cell_height);
 	}
 
+	/// Has the next frame's present name `changed` pixel rows as all that
+	/// changed since the last frame shown; `None` for all of them.
+	pub(super) fn set_changed(&mut self, changed: Option<Vec<(usize, usize)>>) {
+		self.pen.changed = changed;
+	}
+
 	/// Draws a frame `size` pixels large, which `quads` draws with the pen,
 	/// and shows it.
 	pub(super) fn frame(&mut self, size: (usize, usize), quads: impl FnOnce(&mut QuadPen)) -> Next {

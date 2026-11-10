@@ -25,6 +25,8 @@ pub(crate) mod descriptors;
 mod descriptors_tests;
 pub(crate) mod device;
 #[cfg(test)]
+mod device_optional_tests;
+#[cfg(test)]
 mod device_tests;
 pub(crate) mod draw;
 #[cfg(test)]
@@ -60,6 +62,9 @@ pub(crate) mod memory;
 mod memory_driver_tests;
 #[cfg(test)]
 mod memory_tests;
+pub(crate) mod optional;
+#[cfg(test)]
+mod optional_tests;
 #[cfg(test)]
 pub(crate) mod outside_tests;
 pub(crate) mod pipeline;
@@ -73,6 +78,9 @@ mod pipeline_types_tests;
 pub(crate) mod present;
 #[cfg(test)]
 mod present_driver_tests;
+pub(crate) mod present_regions;
+#[cfg(test)]
+mod present_regions_tests;
 #[cfg(test)]
 mod present_tests;
 pub(crate) mod recording;
@@ -139,5 +147,7 @@ mod window_frame_tests;
 mod window_gpu_tests;
 #[cfg(test)]
 mod window_open_tests;
+#[cfg(test)]
+mod window_regions_tests;
 #[cfg(test)]
 mod window_tests;
