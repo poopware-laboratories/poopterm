@@ -85,6 +85,9 @@ fn found_agrees_with_a_model_for_random_offers_and_variables() {
 		"VK_KHR_incremental_present2",
 		"VK_KHR_incremental",
 		"vk_khr_incremental_present",
+		"VK_KHR_present_mode_fifo_latest_ready",
+		"VK_EXT_present_mode_fifo_latest_ready",
+		"VK_EXT_present_mode_fifo",
 	];
 	let words = [
 		"incremental_present",
@@ -94,6 +97,7 @@ fn found_agrees_with_a_model_for_random_offers_and_variables() {
 		"",
 		" ",
 		"incremental",
+		"fifo_latest_ready",
 	];
 	let mut state = 0x510e_527f_ade6_82d1_u64;
 	let mut below = |n: usize| {
@@ -103,29 +107,39 @@ fn found_agrees_with_a_model_for_random_offers_and_variables() {
 		(state % n as u64) as usize
 	};
 	for case in 0..3000 {
-		let offered: Vec<String> = (0..below(4)).map(|_| offers[below(5)].into()).collect();
+		let offered: Vec<String> = (0..below(5)).map(|_| offers[below(8)].into()).collect();
 		let disable = (below(3) > 0).then(|| {
-			let chosen: Vec<_> = (0..below(4)).map(|_| words[below(7)]).collect();
+			let chosen: Vec<_> = (0..below(4)).map(|_| words[below(8)]).collect();
 			chosen.join(if below(2) == 0 { "," } else { " , " })
 		});
-		let off = disable.as_deref().is_some_and(|value| {
-			value
-				.split(',')
-				.any(|word| matches!(word.trim(), "incremental_present" | "all"))
-		});
-		let on = !off
-			&& offered
-				.iter()
-				.any(|name| name == "VK_KHR_incremental_present");
+		let off = |short: &str| {
+			disable.as_deref().is_some_and(|value| {
+				value
+					.split(',')
+					.any(|word| [short, "all"].contains(&word.trim()))
+			})
+		};
+		let has = |name: &str| offered.iter().any(|offer| offer == name);
+		let on = !off("incremental_present") && has("VK_KHR_incremental_present");
+		// The KHR when offered, else the EXT.
+		let [khr, ext] = super::optional::FIFO_LATEST_READY;
+		let latest = [khr, ext]
+			.into_iter()
+			.find(|name| has(name.to_str().unwrap()));
+		let latest = latest.filter(|_| !off("fifo_latest_ready"));
 		let optional = Optional::found(&offered, disable.as_deref());
-		assert_eq!(
-			optional.incremental_present.is_some(),
-			on,
-			"case {case}: {offered:?} {disable:?}"
-		);
+		let context = format!("case {case}: {offered:?} {disable:?}");
+		assert_eq!(optional.incremental_present.is_some(), on, "{context}");
+		assert_eq!(optional.fifo_latest_ready, latest, "{context}");
 		let (extensions, names) = (optional.extensions(), optional.names());
-		assert_eq!(extensions.len(), usize::from(on), "case {case}");
-		assert_eq!(names.len(), extensions.len(), "case {case}");
+		let count = usize::from(on) + usize::from(latest.is_some());
+		assert_eq!(extensions.len(), count, "{context}");
+		assert_eq!(names.len(), count, "{context}");
+		assert_eq!(
+			optional.features().len(),
+			usize::from(latest.is_some()),
+			"{context}"
+		);
 	}
 }
 
