@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.69 "Lunar Moth" — 2026-11-10
+
+### Added
+
+- List the driver, swapchain, glyph atlas and presenter on the diagnostics page (#298) (ui).
+
 ## 26.11.68 "Lunar Moth" — 2026-11-10
 
 ### Added
