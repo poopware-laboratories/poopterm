@@ -197,8 +197,10 @@ noise.
 ## Results
 
 Intel i3-N305 (8 E-cores, AVX2), Linux 7.3 (CachyOS), sway, `performance`
-governor, plain release build (no PGO) of 26.11.51 (`0bd2aad`), the first
-with every PTY on our own layer. 16 MiB per workload, five runs each,
+governor, plain release builds (no PGO): the headless table from 26.11.62
+with the faster end-mark search (`d5557eb`), the window table from 26.11.51
+(`0bd2aad`), the first with every PTY on our own layer. 16 MiB per
+workload, five runs each,
 median MB/s with the slowest and fastest run; the overall row is total
 bytes over total time.
 
@@ -210,32 +212,34 @@ cooked (`\n` becomes `\r\n` in the kernel) and raw:
 
 | Workload | parse | +render | pty | pty raw | +pipeline | +pipeline raw |
 |---|--:|--:|--:|--:|--:|--:|
-| log | 421 (387–436) | 320 (310–335) | 95 (93–107) | 346 (335–357) | 97 (95–101) | 313 (277–318) |
-| compiler | 260 (254–262) | 233 (230–238) | 84 (82–88) | 351 (326–362) | 84 (83–84) | 198 (194–202) |
-| ls | 318 (302–330) | 275 (266–283) | 85 (84–95) | 360 (347–364) | 80 (80–84) | 242 (237–243) |
-| source | 223 (218–224) | 199 (165–203) | 121 (114–124) | 356 (349–369) | 112 (111–114) | 176 (173–178) |
-| unicode | 193 (184–198) | 175 (174–177) | 78 (74–80) | 353 (338–359) | 77 (76–82) | 156 (149–161) |
-| cjk | 226 (220–228) | 208 (203–211) | 76 (75–82) | 354 (339–373) | 72 (71–75) | 180 (171–180) |
-| emoji | 178 (169–179) | 165 (163–168) | 64 (63–66) | 346 (342–358) | 63 (62–68) | 143 (141–144) |
-| tui | 327 (292–333) | 272 (233–281) | 278 (275–300) | 352 (346–366) | 245 (244–253) | 245 (241–249) |
-| editor | 338 (324–345) | 279 (231–291) | 198 (192–205) | 345 (329–349) | 185 (183–193) | 255 (254–255) |
-| progress | 464 (434–465) | 373 (348–382) | 275 (245–297) | 354 (347–374) | 263 (247–276) | 323 (318–335) |
-| truecolor | 309 (300–314) | 248 (240–255) | 264 (259–268) | 350 (347–357) | 221 (208–239) | 240 (227–243) |
-| cursor | 226 (222–227) | 209 (208–214) | 264 (252–273) | 353 (343–364) | 181 (171–183) | 177 (175–179) |
-| shell | 202 (199–205) | 183 (170–187) | 99 (96–113) | 346 (345–353) | 98 (97–106) | 162 (161–167) |
-| sixel | 193 (189–195) | 152 (149–152) | 294 (287–313) | 347 (343–358) | 158 (154–159) | 152 (151–153) |
-| kitty-rgba | 1187 (1040–1291) | 602 (567–620) | 273 (259–291) | 343 (312–348) | 264 (262–267) | 299 (297–303) |
-| kitty-png | 144 (140–144) | 119 (96–126) | 292 (277–304) | 340 (325–364) | 122 (117–123) | 116 (115–121) |
-| kitty-zlib | 304 (294–307) | 237 (226–241) | 290 (278–302) | 345 (341–347) | 240 (236–243) | 226 (218–234) |
-| **overall** | **257** | **219** | **133** | **349** | **119** | **195** |
+| log | 424 (388–436) | 327 (322–334) | 100 (94–107) | 425 (413–436) | 101 (88–107) | 317 (303–329) |
+| compiler | 259 (255–263) | 235 (231–238) | 84 (84–86) | 424 (420–448) | 84 (82–85) | 204 (201–207) |
+| ls | 329 (316–329) | 272 (263–283) | 87 (84–92) | 431 (426–440) | 84 (81–99) | 243 (221–251) |
+| source | 225 (220–226) | 206 (199–207) | 116 (112–122) | 430 (410–453) | 111 (110–116) | 178 (176–179) |
+| unicode | 177 (173–187) | 177 (153–177) | 80 (76–82) | 419 (404–428) | 77 (76–79) | 159 (156–162) |
+| cjk | 226 (218–228) | 210 (204–211) | 80 (76–82) | 419 (412–433) | 75 (73–77) | 183 (162–184) |
+| emoji | 180 (177–180) | 170 (157–170) | 63 (62–66) | 425 (417–437) | 62 (61–76) | 146 (144–149) |
+| tui | 328 (324–336) | 282 (279–284) | 283 (274–310) | 430 (408–435) | 250 (242–254) | 256 (249–258) |
+| editor | 347 (339–348) | 298 (292–299) | 198 (195–201) | 428 (414–434) | 192 (190–198) | 265 (258–269) |
+| progress | 463 (442–464) | 380 (370–381) | 275 (273–278) | 416 (412–430) | 270 (265–272) | 337 (326–343) |
+| truecolor | 304 (299–314) | 252 (246–254) | 268 (265–272) | 443 (432–451) | 244 (237–249) | 244 (235–248) |
+| cursor | 224 (221–225) | 212 (210–214) | 278 (274–282) | 426 (417–446) | 183 (178–186) | 183 (180–187) |
+| shell | 215 (214–216) | 198 (196–199) | 101 (98–116) | 437 (422–457) | 98 (98–99) | 175 (170–178) |
+| sixel | 194 (189–195) | 155 (154–155) | 301 (289–312) | 428 (422–432) | 161 (160–161) | 158 (157–160) |
+| kitty-rgba | 1269 (1170–1286) | 618 (611–634) | 298 (294–300) | 430 (423–435) | 261 (246–269) | 394 (373–401) |
+| kitty-png | 145 (144–146) | 128 (128–128) | 299 (286–309) | 425 (413–443) | 123 (119–126) | 123 (122–124) |
+| kitty-zlib | 311 (303–313) | 246 (243–248) | 295 (294–313) | 437 (433–451) | 247 (242–249) | 242 (233–248) |
+| **overall** | **258** | **226** | **135** | **428** | **122** | **204** |
 
 Kernel-bound (`+pipeline` at 90% or more of `pty`): cooked, log, compiler,
-ls, source, unicode, cjk, emoji, editor, progress, shell and kitty-rgba;
-raw, log and progress.
+ls, source, unicode, cjk, emoji, editor, progress, truecolor and shell;
+raw, kitty-rgba.
 
 **End to end in a window**, `poopterm --benchmark --terminal --repeat 5`
 as the shell of a Poopterm window (GPU renderer) of 86×42 cells, beside
-the PTY ceiling measured in the same run:
+the PTY ceiling measured in the same run. Its `pty raw` column predates the
+faster end-mark search and reads about 20% low: the reader timing the PTY
+stages spent half its time looking for the mark that ends the output.
 
 | Workload | pty | pty raw | terminal | terminal raw |
 |---|--:|--:|--:|--:|
@@ -266,10 +270,11 @@ Cooked, as programs normally write, the kernel's newline translation sets
 the pace: text workloads arrive at 63–120 MB/s whatever the terminal does,
 and Poopterm reaches 90% of that ceiling on 13 of 17 workloads. Raw, the
 parser is the limit again, and the window runs within a few percent of the
-headless pipeline (206 against 195 MB/s overall). Below 200 MB/s even
+headless pipeline (206 against 204 MB/s overall). Below 200 MB/s even
 headless are emoji, kitty-png, unicode and sixel; through the raw pipeline
-also compiler, source, cjk, cursor and shell. Kitty RGBA raw measured above
-`cat`'s raw ceiling in this run; that has not been looked into yet.
+also source, cjk, cursor and shell. Kitty RGBA raw measured above `cat`'s
+raw ceiling in the window run because that ceiling was set by the slow
+end-mark search; with it fixed, `cat` raw reaches 430 MB/s.
 
 ### 26.10 results
 
