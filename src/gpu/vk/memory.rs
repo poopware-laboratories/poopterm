@@ -38,6 +38,12 @@ pub(crate) enum Usage {
 /// those `allowed` (a resource's `memoryTypeBits`): the most preferred,
 /// then the first. `None` when none will do.
 pub(crate) fn choose_memory(types: &[MemoryType], allowed: u32, usage: Usage) -> Option<u32> {
+	memory_choices(types, allowed, usage).first().copied()
+}
+
+/// Every type in `types` that will do for `usage` among those `allowed`,
+/// the most preferred first, then in the driver's order.
+pub(crate) fn memory_choices(types: &[MemoryType], allowed: u32, usage: Usage) -> Vec<u32> {
 	let candidates = (types.iter().take(32).enumerate()).filter_map(|(index, kind)| {
 		let has = |bit| kind.flags & bit != 0;
 		let usable = allowed >> index & 1 != 0 && kind.flags & AVOIDED == 0;
@@ -54,5 +60,7 @@ pub(crate) fn choose_memory(types: &[MemoryType], allowed: u32, usage: Usage) ->
 		};
 		(usable && wanted).then_some((rank, index as u32))
 	});
-	candidates.min().map(|(_, index)| index)
+	let mut ranked: Vec<_> = candidates.collect();
+	ranked.sort_unstable();
+	ranked.into_iter().map(|(_, index)| index).collect()
 }

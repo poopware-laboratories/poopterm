@@ -78,6 +78,11 @@ pub(super) struct Driver {
 	pub live_buffers: Vec<RawBuffer>,
 	/// Each allocation's size and memory type.
 	pub allocations: Vec<(u64, u32)>,
+	/// The type of each allocation asked for, made or not.
+	pub allocation_attempts: Vec<u32>,
+	/// Heaps with no room left: allocating from them fails with
+	/// `VK_ERROR_OUT_OF_DEVICE_MEMORY`, as a full BAR does.
+	pub full_heaps: Vec<u32>,
 	pub live_memory: Vec<RawMemory>,
 	/// Which memory each buffer is bound to.
 	pub bound: Vec<(RawBuffer, RawMemory)>,

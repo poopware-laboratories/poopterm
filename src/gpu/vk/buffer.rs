@@ -1,9 +1,10 @@
 //! A Vulkan buffer with memory of its own, mapped for the CPU when it
 //! uploads or reads back, destroyed and freed when dropped.
 use super::{
+	allocation::allocate,
 	call::{Error, check},
 	device::Device,
-	memory::{Usage, choose_memory},
+	memory::Usage,
 	types::*,
 };
 use std::{num::NonZeroUsize, ptr, rc::Rc, slice};
@@ -57,17 +58,7 @@ impl Buffer {
 		let mut needs = MemoryRequirements::default();
 		// SAFETY: the buffer is the device's, and `needs` is writable.
 		unsafe { (functions.buffer_requirements)(device.handle, handle, &mut needs) };
-		let index = choose_memory(&device.memory, needs.memory_type_bits, purpose);
-		let info = MemoryAllocateInfo {
-			s_type: STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-			next: ptr::null(),
-			allocation_size: needs.size,
-			memory_type_index: index.ok_or(Error::NoMemory)?,
-		};
-		// A failed call may leave anything in its output.
-		let mut memory = 0;
-		// SAFETY: as for the buffer.
-		check(unsafe { (functions.allocate)(device.handle, &info, ptr::null(), &mut memory) })?;
+		let memory = allocate(device, &needs, purpose)?;
 		buffer.memory = memory;
 		// SAFETY: the memory is of a type the buffer allows, and as large as
 		// it needs.
