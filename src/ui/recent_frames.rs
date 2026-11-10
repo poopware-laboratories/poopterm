@@ -6,23 +6,13 @@
 pub(crate) const KEPT: usize = 600;
 
 /// One bit per remembered frame, set when the GPU drew it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RecentFrames {
 	gpu: [u64; KEPT.div_ceil(64)],
 	/// Where the next frame goes, and how many have been recorded, up to
 	/// [`KEPT`].
 	next: usize,
 	recorded: usize,
-}
-
-impl Default for RecentFrames {
-	fn default() -> Self {
-		Self {
-			gpu: [0; KEPT.div_ceil(64)],
-			next: 0,
-			recorded: 0,
-		}
-	}
 }
 
 /// How many of the recent frames each path drew.

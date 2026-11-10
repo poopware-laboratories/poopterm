@@ -79,3 +79,58 @@ fn the_line_names_how_many_frames_it_covers() {
 	assert_eq!(line(12, 0), "Last 12 frames: 12 GPU \u{b7} 0 software");
 	assert_eq!(line(0, 1), "Last frame: 0 GPU \u{b7} 1 software");
 }
+
+#[test]
+fn the_ring_agrees_with_a_queue_of_the_last_frames() {
+	// Differential: a plain queue of the last KEPT frames, against the
+	// ring, after every frame of runs that mix the paths in long and short
+	// streaks.
+	use crate::ui::diagnostics_property_tests::Random;
+	use std::collections::VecDeque;
+	let mut random = Random(0x2545_f491_4f6c_dd1d);
+	for case in 0..20 {
+		let (mut ring, mut queue) = (RecentFrames::default(), VecDeque::new());
+		let streak = 1 + random.below(200);
+		let mut gpu = random.below(2) == 1;
+		for frame in 0..random.below(3 * KEPT) {
+			if random.below(streak) == 0 {
+				gpu = !gpu;
+			}
+			ring.push(gpu);
+			queue.push_back(gpu);
+			if queue.len() > KEPT {
+				queue.pop_front();
+			}
+			let on_gpu = queue.iter().filter(|&&gpu| gpu).count();
+			let want = split(on_gpu, queue.len() - on_gpu);
+			assert_eq!(ring.counts(), want, "case {case}, frame {frame}");
+		}
+	}
+}
+
+#[test]
+fn the_counts_never_exceed_the_frames_drawn_or_the_ring() {
+	let mut frames = RecentFrames::default();
+	for drawn in 1..=KEPT + 64 {
+		frames.push(drawn % 7 != 0);
+		let FrameCounts { gpu, software } = frames.counts();
+		assert_eq!(gpu + software, drawn.min(KEPT), "after {drawn}");
+	}
+}
+
+#[test]
+fn the_line_counts_what_it_says() {
+	// The total it names is the sum of the two it splits it into.
+	for (gpu, software) in [(1, 0), (0, 2), (300, 300), (599, 1)] {
+		let line = split(gpu, software).line().unwrap();
+		let total = gpu + software;
+		let head = if total == 1 {
+			"Last frame: ".to_owned()
+		} else {
+			format!("Last {total} frames: ")
+		};
+		assert!(line.starts_with(&head), "{line}");
+		let tail = format!("{gpu} GPU \u{b7} {software} software");
+		assert!(line.ends_with(&tail), "{line}");
+	}
+}

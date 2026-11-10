@@ -411,19 +411,10 @@ impl App {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(self.preferences.renderer, variable.as_deref());
 		let device = self.renderer.as_ref().and_then(renderer::Renderer::device);
-		let (home, recent) = (
-			std::env::var_os("HOME").map(PathBuf::from),
-			crate::warnings::recent(),
-		);
-		let frames = self.recent_frames.counts();
-		gather(
-			self.drawing.clone(),
-			frames,
-			preference,
-			device,
-			recent,
-			home,
-		)
+		let home = std::env::var_os("HOME").map(PathBuf::from);
+		let (drawing, frames) = (self.drawing.clone(), self.recent_frames.counts());
+		let recent = crate::warnings::recent();
+		gather(drawing, frames, preference, device, recent, home)
 	}
 	// pr-check: end window glue
 
