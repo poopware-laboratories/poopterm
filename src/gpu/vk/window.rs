@@ -99,7 +99,8 @@ impl GpuWindow {
 		};
 		let disable = std::env::var(optional::VARIABLE).ok();
 		let offered = instance.device_extensions(physical)?;
-		let optional = Optional::found(&offered, disable.as_deref());
+		let mut optional = Optional::found(&offered, disable.as_deref());
+		optional.keep_supported(|feature| instance.has_feature(physical, feature));
 		let family = choice.family as u32;
 		let device = Device::with_optional(instance, physical, family, optional)?;
 		let device = Rc::new(device);
@@ -155,7 +156,8 @@ impl GpuWindow {
 			return Ok(Drawn::Skipped);
 		}
 		if self.made_for != size {
-			let plan = match self.surface.plan(self.physical, size) {
+			let latest_ready = self.device.optional.fifo_latest_ready.is_some();
+			let plan = match self.surface.plan(self.physical, size, latest_ready) {
 				Err(Error::Unfit(Unfit::Hidden)) => return Ok(Drawn::Skipped),
 				// The shaders write BGRA: RGBA images would swap red and blue.
 				Ok(plan) if plan.format != Format::Bgra => return Err(Error::Unfit(Unfit::Format)),

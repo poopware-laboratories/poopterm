@@ -11,19 +11,55 @@ pub(crate) const VARIABLE: &str = "POOPTERM_VULKAN_DISABLE";
 /// changed, so the compositor redraws only those.
 pub(crate) const INCREMENTAL_PRESENT: &CStr = c"VK_KHR_incremental_present";
 
-/// Which optional extensions a device is made with.
+/// `VK_KHR_present_mode_fifo_latest_ready`, and the EXT it was promoted
+/// from, which older drivers offer alone: a FIFO mode showing the newest
+/// frame ready, for surfaces without mailbox.
+pub(crate) const FIFO_LATEST_READY: [&CStr; 2] = [
+	c"VK_KHR_present_mode_fifo_latest_ready",
+	c"VK_EXT_present_mode_fifo_latest_ready",
+];
+
+/// `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR`'s type.
+pub(crate) const FIFO_LATEST_READY_FEATURE: i32 = 1_000_361_000;
+
+/// Which optional extensions a device is made with: each by the name the
+/// device offered it under, or `None`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Optional {
-	pub incremental_present: bool,
+	pub incremental_present: Option<&'static CStr>,
+	pub fifo_latest_ready: Option<&'static CStr>,
 }
 
-/// Where an extension's flag is.
-type Flag = fn(&mut Optional) -> &mut bool;
+/// Where an extension's name is.
+type Field = fn(&mut Optional) -> &mut Option<&'static CStr>;
 
-/// Each extension: its name, its short name, and its flag.
-const ALL: [(&CStr, &str, Flag); 1] = [(INCREMENTAL_PRESENT, "incremental_present", |optional| {
-	&mut optional.incremental_present
-})];
+/// An optional extension.
+struct Extension {
+	/// Its names, the preferred first.
+	names: &'static [&'static CStr],
+	/// What `POOPTERM_VULKAN_DISABLE` calls it.
+	short: &'static str,
+	field: Field,
+	/// The type of the one-flag structure turning on the feature it is
+	/// used for, when it has one.
+	feature: Option<i32>,
+}
+
+/// Every optional extension.
+const ALL: [Extension; 2] = [
+	Extension {
+		names: &[INCREMENTAL_PRESENT],
+		short: "incremental_present",
+		field: |optional| &mut optional.incremental_present,
+		feature: None,
+	},
+	Extension {
+		names: &FIFO_LATEST_READY,
+		short: "fifo_latest_ready",
+		field: |optional| &mut optional.fifo_latest_ready,
+		feature: Some(FIFO_LATEST_READY_FEATURE),
+	},
+];
 
 impl Optional {
 	/// Those among the device's `offered` extensions, less the short names
@@ -31,25 +67,55 @@ impl Optional {
 	pub(crate) fn found(offered: &[String], disable: Option<&str>) -> Self {
 		let disabled: Vec<&str> = disable.unwrap_or("").split(',').map(str::trim).collect();
 		let mut optional = Self::default();
-		for (name, short, flag) in ALL {
-			let name = name.to_str().unwrap_or_default();
-			let off = disabled.contains(&short) || disabled.contains(&"all");
-			*flag(&mut optional) = !off && offered.iter().any(|offer| offer == name);
+		for extension in ALL {
+			let off = disabled.contains(&extension.short) || disabled.contains(&"all");
+			let mut names = extension.names.iter().copied();
+			let name = names.find(|name| {
+				offered
+					.iter()
+					.any(|offer| offer.as_bytes() == name.to_bytes())
+			});
+			*(extension.field)(&mut optional) = name.filter(|_| !off);
 		}
 		optional
 	}
 
+	/// The extensions on, with their entries in [`ALL`].
+	fn on(&self) -> impl Iterator<Item = (&'static CStr, Extension)> {
+		let mut optional = *self;
+		ALL.into_iter().filter_map(move |extension| {
+			Some((
+				(extension.field)(&mut optional).as_ref().copied()?,
+				extension,
+			))
+		})
+	}
+
 	/// The extensions to make the device with.
 	pub(crate) fn extensions(&self) -> Vec<&'static CStr> {
-		let mut on = *self;
-		let enabled = ALL.into_iter().filter(|(_, _, flag)| *flag(&mut on));
-		enabled.map(|(name, _, _)| name).collect()
+		self.on().map(|(name, _)| name).collect()
 	}
 
 	/// The short names of those enabled.
 	pub(crate) fn names(&self) -> Vec<&'static str> {
-		let mut on = *self;
-		let enabled = ALL.into_iter().filter(|(_, _, flag)| *flag(&mut on));
-		enabled.map(|(_, short, _)| short).collect()
+		self.on().map(|(_, extension)| extension.short).collect()
+	}
+
+	/// The types of the feature structures to turn on with them.
+	pub(crate) fn features(&self) -> Vec<i32> {
+		self
+			.on()
+			.filter_map(|(_, extension)| extension.feature)
+			.collect()
+	}
+
+	/// Turns off those whose feature the device lacks, as `supported` says.
+	pub(crate) fn keep_supported(&mut self, mut supported: impl FnMut(i32) -> bool) {
+		for extension in ALL {
+			let on = (extension.field)(self).is_some();
+			if on && extension.feature.is_some_and(|feature| !supported(feature)) {
+				*(extension.field)(self) = None;
+			}
+		}
 	}
 }

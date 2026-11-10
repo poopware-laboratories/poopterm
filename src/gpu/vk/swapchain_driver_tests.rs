@@ -7,7 +7,7 @@ use super::{
 	image_tests::MadeImage,
 	surface_query_tests::{BGRA, BGRA_SRGB, mesa_wayland},
 	surface_types::RawSurface,
-	swapchain_plan::{FIFO, MAILBOX, SRGB_NONLINEAR, SurfaceFormat},
+	swapchain_plan::{FIFO, FIFO_LATEST_READY, MAILBOX, SRGB_NONLINEAR, SurfaceFormat},
 	swapchain_types::*,
 	types::*,
 };
@@ -90,6 +90,8 @@ impl Driver {
 			.unwrap_or_else(mesa_wayland);
 		let formats = (self.surface_formats.clone()).unwrap_or(vec![BGRA_SRGB, BGRA]);
 		let modes = self.present_modes.clone().unwrap_or(vec![MAILBOX, FIFO, 0]);
+		let latest_ready =
+			(self.made_device(device)).is_some_and(|made| made.enabled.contains(&(FIFO_LATEST_READY, 0)));
 		let surface_live = self
 			.live_surfaces
 			.iter()
@@ -145,6 +147,10 @@ impl Driver {
 				"compositeAlpha",
 			),
 			(modes.contains(&info.present_mode), "presentMode"),
+			(
+				info.present_mode != FIFO_LATEST_READY || latest_ready,
+				"FIFO_LATEST_READY with its feature on",
+			),
 			(info.clipped <= 1, "clipped"),
 			(
 				old.is_none_or(|old| old.is_some_and(|old| old.surface == info.surface && !old.retired)),

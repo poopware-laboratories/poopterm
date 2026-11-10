@@ -168,7 +168,7 @@ impl Recording<'_> {
 		let signal = semaphore(drawn, ALL_COMMANDS);
 		let timeline = self.commands.timeline.clone();
 		let queue = self.commands.device.queue();
-		let incremental = self.commands.device.optional.incremental_present;
+		let incremental = self.commands.device.optional.incremental_present.is_some();
 		let value = self.submit_with(Some(&wait), Some(&signal))?;
 		swapchain.acquires[frame.acquire].state = State::Waited(timeline, value);
 		let waits = [drawn.handle()];

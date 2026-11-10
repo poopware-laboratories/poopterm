@@ -185,14 +185,24 @@ impl Instance {
 		properties
 	}
 
+	/// Whether `physical`, one of this instance's, has the feature of the
+	/// one-flag structure of type `s_type`, an extension's it offers.
+	pub(crate) fn has_feature(&self, physical: RawPhysicalDevice, s_type: i32) -> bool {
+		let mut asked = Features::none_with(&[s_type]);
+		// SAFETY: the device is live, and the chain is valid and writable.
+		unsafe { (self.functions.features)(physical, &mut asked.head) };
+		asked.extra[0].enabled != 0
+	}
+
 	/// A new device on `physical`, one of this instance's, with one queue
-	/// of `family`, the features the renderer needs and `extensions`, or
-	/// why not.
+	/// of `family`, the features the renderer needs and `extensions`, with
+	/// the one-flag feature structures of types `features`, or why not.
 	pub(super) fn create_device(
 		&self,
 		physical: RawPhysicalDevice,
 		family: u32,
 		extensions: &[&'static CStr],
+		features: &[i32],
 	) -> Result<RawDevice, Error> {
 		// Older devices know nothing of the 1.3 features.
 		let api = self.properties(physical).api_version;
@@ -205,7 +215,7 @@ impl Instance {
 		if let Some(feature) = supported.missing() {
 			return Err(Error::Lacks(feature));
 		}
-		let enabled = Features::needed();
+		let enabled = Features::needed(features);
 		let names: Vec<_> = extensions.iter().map(|name| name.as_ptr()).collect();
 		let priority = 1.0;
 		let queue = DeviceQueueCreateInfo {

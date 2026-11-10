@@ -37,8 +37,27 @@ struct Link {
 	next: *mut c_void,
 }
 
+/// The one-flag feature structures the fake knows, each with the
+/// extensions that define it.
+const ONE_FLAG: [(i32, [&str; 2]); 1] = [(
+	1_000_361_000,
+	[
+		"VK_KHR_present_mode_fifo_latest_ready",
+		"VK_EXT_present_mode_fifo_latest_ready",
+	],
+)];
+
+/// The extensions defining the one-flag feature structure of type
+/// `s_type`, if the fake knows it.
+fn defined_by(s_type: i32) -> Option<[&'static str; 2]> {
+	let mut known = ONE_FLAG.iter();
+	known
+		.find(|(known, _)| *known == s_type)
+		.map(|&(_, names)| names)
+}
+
 /// The flags of the feature structure `link`, if it is one of the three
-/// the bindings use, and how many there are.
+/// the bindings use or a one-flag one, and how many there are.
 ///
 /// # Safety
 ///
@@ -46,7 +65,8 @@ struct Link {
 unsafe fn flags(link: *mut Link) -> Option<*mut u32> {
 	// SAFETY: every structure starts with its type.
 	let s_type = unsafe { (*link).s_type };
-	matches!(s_type, STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 | 51 | 53)
+	let known = matches!(s_type, STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 | 51 | 53);
+	(known || defined_by(s_type).is_some())
 		// SAFETY: the flags follow the type and the pointer.
 		.then(|| unsafe { link.add(1) }.cast())
 }
@@ -55,7 +75,22 @@ fn length(s_type: i32) -> usize {
 	match s_type {
 		STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 => 55,
 		51 => 47,
-		_ => 15,
+		53 => 15,
+		_ => 1,
+	}
+}
+
+impl Driver {
+	/// Whether the devices have the feature of the one-flag structure of
+	/// type `s_type`: offering an extension defining it, and not told to
+	/// lack it.
+	fn has_one_flag(&self, s_type: i32) -> bool {
+		let offered = |names: [&str; 2]| {
+			names
+				.iter()
+				.any(|name| self.device_extensions.contains(name))
+		};
+		defined_by(s_type).is_some_and(offered) && !self.lacked_features.contains(&s_type)
 	}
 }
 
@@ -119,7 +154,8 @@ pub(super) unsafe extern "system" fn features2(
 				let lacked = match s_type {
 					51 => driver.lacked.contains(&Flag::V12(index)),
 					53 => driver.lacked.contains(&Flag::V13(index)),
-					_ => false,
+					STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 => false,
+					_ => !driver.has_one_flag(s_type),
 				};
 				// SAFETY: within the structure's flags.
 				unsafe { flags.add(index).write(u32::from(!lacked)) };
@@ -218,10 +254,20 @@ pub(super) unsafe extern "system" fn create_device(
 				}
 			}
 		}
+		for &(s_type, _) in &enabled {
+			let Some(names) = defined_by(s_type) else {
+				continue;
+			};
+			if !extensions.iter().any(|name| names.contains(&name.as_str())) {
+				let rule = format!("vkCreateDevice: {s_type} without its extension");
+				driver.invalid.push(rule);
+			}
+		}
 		let lacked = enabled.iter().any(|&(s_type, index)| match s_type {
 			51 => driver.lacked.contains(&Flag::V12(index)),
 			53 => driver.lacked.contains(&Flag::V13(index)),
-			_ => false,
+			STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 => false,
+			_ => !driver.has_one_flag(s_type),
 		});
 		if lacked {
 			driver

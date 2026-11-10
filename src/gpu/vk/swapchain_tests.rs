@@ -305,7 +305,7 @@ fn planned_and_made(mut driver: Driver, platform: Platform, window: [u32; 2]) ->
 		},
 	);
 	let surface = Rc::new(made.unwrap());
-	let plan = surface.plan(physical, window).expect("plan");
+	let plan = surface.plan(physical, window, false).expect("plan");
 	let swapchain = Swapchain::new(&device, &surface, plan).expect("swapchain");
 	drop((swapchain, device, surface, instance));
 	finish().swapchains.remove(0)

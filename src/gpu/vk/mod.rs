@@ -146,6 +146,8 @@ mod window_frame_tests;
 #[cfg(test)]
 mod window_gpu_tests;
 #[cfg(test)]
+mod window_latest_ready_tests;
+#[cfg(test)]
 mod window_open_tests;
 #[cfg(test)]
 mod window_regions_tests;

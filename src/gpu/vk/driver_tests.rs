@@ -59,6 +59,9 @@ pub(super) struct Driver {
 	pub memory: Vec<MemoryType>,
 	/// Features the devices lack; they have every other one.
 	pub lacked: Vec<Flag>,
+	/// The types of one-flag feature structures the devices lack though
+	/// they offer the extension; they have every other one they offer.
+	pub lacked_features: Vec<i32>,
 	pub made: Vec<Made>,
 	pub live_devices: Vec<RawDevice>,
 	pub destroyed_devices: Vec<RawDevice>,

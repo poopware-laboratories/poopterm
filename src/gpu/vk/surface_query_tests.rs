@@ -142,7 +142,7 @@ fn planned(driver: Driver, platform: Platform, window: [u32; 2]) -> Result<Plan,
 	);
 	let made = made.unwrap();
 	let physical = instance.physical_devices().unwrap()[0];
-	let planned = made.plan(physical, window);
+	let planned = made.plan(physical, window, false);
 	drop((made, instance));
 	planned
 }

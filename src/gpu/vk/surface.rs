@@ -7,7 +7,7 @@ use super::{
 	entry::cast,
 	instance::Instance,
 	surface_types::*,
-	swapchain_plan::{Capabilities, Plan, SurfaceFormat, plan},
+	swapchain_plan::{Capabilities, FIFO_LATEST_READY, Plan, SurfaceFormat, plan},
 	types::RawPhysicalDevice,
 };
 use std::{
@@ -197,8 +197,15 @@ impl Surface {
 	}
 
 	/// The swapchain to make on `physical`, one of the instance's devices,
-	/// for a window of `window` pixels; `Error::Unfit` says why none suits.
-	pub(crate) fn plan(&self, physical: RawPhysicalDevice, window: [u32; 2]) -> Result<Plan, Error> {
+	/// for a window of `window` pixels, in FIFO_LATEST_READY only when
+	/// `latest_ready`, the device made able to; `Error::Unfit` says why none
+	/// suits.
+	pub(crate) fn plan(
+		&self,
+		physical: RawPhysicalDevice,
+		window: [u32; 2],
+		latest_ready: bool,
+	) -> Result<Plan, Error> {
 		let (functions, handle) = (&self.functions, self.handle);
 		let mut capabilities = Capabilities::default();
 		// SAFETY: `physical` is one of the instance's devices, the surface is
@@ -212,10 +219,12 @@ impl Surface {
 			// SAFETY: as above, and `enumerate` passes room for `count`.
 			unsafe { (functions.formats)(physical, handle, count, formats) }
 		})?;
-		let modes = enumerate(0, |count, modes| {
+		let mut modes = enumerate(0, |count, modes| {
 			// SAFETY: as above.
 			unsafe { (functions.modes)(physical, handle, count, modes) }
 		})?;
+		// Listed whether or not the device was made able to use it.
+		modes.retain(|&mode| latest_ready || mode != FIFO_LATEST_READY);
 		plan(&capabilities, &formats, &modes, window).map_err(Error::Unfit)
 	}
 }

@@ -186,8 +186,9 @@ impl Device {
 	) -> Result<Self, Error> {
 		let swapchain = windows.is_some();
 		let mut extensions = Vec::from(if swapchain { &[SWAPCHAIN][..] } else { &[] });
-		extensions.extend(windows.unwrap_or_default().extensions());
-		let handle = instance.create_device(physical, family, &extensions)?;
+		let optional = windows.unwrap_or_default();
+		extensions.extend(optional.extensions());
+		let handle = instance.create_device(physical, family, &extensions, &optional.features())?;
 		// A driver without it is broken, and the device leaks.
 		// SAFETY: the function the driver returned for this name has this type.
 		let destroy: DestroyDevice =

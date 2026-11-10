@@ -640,7 +640,7 @@ fn surface_functions_are_looked_up_once_per_surface_not_per_query() {
 	let mut described = instance.describe(physical).unwrap();
 	for _ in 0..3 {
 		made.mark_present(physical, &mut described).unwrap();
-		made.plan(physical, [64, 48]).unwrap();
+		made.plan(physical, [64, 48], false).unwrap();
 	}
 	assert_eq!(with(|driver| driver.lookups.len()), looked_up);
 	drop((made, instance));
