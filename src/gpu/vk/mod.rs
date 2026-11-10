@@ -61,6 +61,9 @@ pub(crate) mod instance;
 #[cfg(test)]
 mod loader_tests;
 pub(crate) mod memory;
+pub(crate) mod memory_budget;
+#[cfg(test)]
+mod memory_budget_tests;
 #[cfg(test)]
 mod memory_driver_tests;
 #[cfg(test)]
@@ -142,6 +145,8 @@ pub(crate) mod version;
 pub(crate) mod window;
 #[cfg(test)]
 mod window_atlas_tests;
+#[cfg(test)]
+mod window_budget_tests;
 #[cfg(test)]
 mod window_facts_tests;
 #[cfg(test)]

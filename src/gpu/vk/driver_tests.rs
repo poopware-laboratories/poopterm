@@ -83,6 +83,8 @@ pub(super) struct Driver {
 	/// Heaps with no room left: allocating from them fails with
 	/// `VK_ERROR_OUT_OF_DEVICE_MEMORY`, as a full BAR does.
 	pub full_heaps: Vec<u32>,
+	/// Each heap's budget and usage, as `VK_EXT_memory_budget` reports them.
+	pub heap_budgets: Vec<(u64, u64)>,
 	pub live_memory: Vec<RawMemory>,
 	/// Which memory each buffer is bound to.
 	pub bound: Vec<(RawBuffer, RawMemory)>,
@@ -318,6 +320,11 @@ unsafe extern "system" fn get_instance_proc_addr(
 				}
 				b"vkGetPhysicalDeviceProperties2" => {
 					transmute::<driver_info::GetPhysicalDeviceProperties2, VoidFunction>(properties2)
+				}
+				b"vkGetPhysicalDeviceMemoryProperties2" => {
+					transmute::<super::memory_budget::GetPhysicalDeviceMemoryProperties2, VoidFunction>(
+						super::memory_budget_tests::memory_properties2,
+					)
 				}
 				b"vkCreateDevice" => transmute::<CreateDevice, VoidFunction>(device_tests::create_device),
 				b"vkGetDeviceProcAddr" => {
@@ -740,6 +747,7 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 		(handle, "vkCreateDevice"),
 		(handle, "vkGetDeviceProcAddr"),
 		(handle, "vkGetPhysicalDeviceProperties2"),
+		(handle, "vkGetPhysicalDeviceMemoryProperties2"),
 	];
 	let lookups: Vec<_> = driver
 		.lookups

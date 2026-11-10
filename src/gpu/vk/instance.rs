@@ -10,6 +10,10 @@ use super::{
 	entry::{Entry, cast},
 	features::Features,
 	memory::MemoryType,
+	memory_budget::{
+		GetPhysicalDeviceMemoryProperties2, MemoryBudget, MemoryProperties2,
+		STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+	},
 	surface::Platform,
 	types::*,
 	version::major_minor,
@@ -28,6 +32,8 @@ struct Functions {
 	device_function: GetDeviceProcAddr,
 	/// Only for the driver's facts: without it there are none.
 	properties2: Option<GetPhysicalDeviceProperties2>,
+	/// Only for memory budgets: without it there are none.
+	memory2: Option<GetPhysicalDeviceMemoryProperties2>,
 }
 
 impl Functions {
@@ -46,6 +52,9 @@ impl Functions {
 				create_device: cast(function(c"vkCreateDevice")?),
 				device_function: cast(function(c"vkGetDeviceProcAddr")?),
 				properties2: function(c"vkGetPhysicalDeviceProperties2")
+					.ok()
+					.map(|f| cast(f)),
+				memory2: function(c"vkGetPhysicalDeviceMemoryProperties2")
 					.ok()
 					.map(|f| cast(f)),
 			})
@@ -175,6 +184,23 @@ impl Instance {
 		// outlive the call.
 		unsafe { get(device, &mut properties) };
 		driver.text()
+	}
+
+	/// The bytes `heap` of `device`, one offering `VK_EXT_memory_budget`,
+	/// has free for this program, when the driver says.
+	pub(crate) fn heap_free(&self, device: RawPhysicalDevice, heap: u32) -> Option<u64> {
+		let get = self.functions.memory2?;
+		let mut budget = MemoryBudget::empty();
+		let mut properties = MemoryProperties2 {
+			s_type: STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+			next: (&raw mut budget).cast(),
+			properties: MemoryProperties::default(),
+		};
+		// SAFETY: the device is one of this live instance's and offers the
+		// extension, and both structures are writable, chained as the
+		// specification allows, and outlive the call.
+		unsafe { get(device, &mut properties) };
+		budget.free(heap as usize)
 	}
 
 	pub(super) fn properties(&self, device: RawPhysicalDevice) -> PhysicalDeviceProperties {
