@@ -18,13 +18,17 @@ pub(crate) const NEEDED: [(Flag, &str); 3] = [
 	(Flag::V12(37), "timelineSemaphore"),
 ];
 
-/// A feature structure of one `VkBool32`, as the optional extensions'
-/// are: `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR` and others.
+/// A feature structure of the optional extensions', whose first
+/// `VkBool32` is the feature the renderer uses, as in
+/// `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR`. Some have a
+/// second (`VkPhysicalDeviceFaultFeaturesEXT`'s vendor binary), which
+/// `unused` gives room for, kept off.
 #[repr(C)]
 pub(crate) struct OneFeature {
 	pub s_type: i32,
 	pub next: *mut c_void,
 	pub enabled: u32,
+	pub unused: u32,
 }
 
 /// `VkPhysicalDeviceFeatures2` chained to the 1.2 and 1.3 features, then to
@@ -49,6 +53,7 @@ impl Features {
 			s_type,
 			next: ptr::null_mut(),
 			enabled: 0,
+			unused: 0,
 		});
 		let mut features = Box::new(Self {
 			head: PhysicalDeviceFeatures2 {

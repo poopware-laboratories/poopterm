@@ -1,7 +1,7 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, descriptor_types::*, draw_types::*, entry::cast, instance::Instance,
+	call::Error, descriptor_types::*, draw_types::*, entry::cast, fault, instance::Instance,
 	memory::MemoryType, optional::Optional, pipeline_types::*, stamps, submit_types::*, types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
@@ -144,6 +144,9 @@ pub(crate) struct Device {
 	/// and the nanoseconds a tick.
 	pub(super) timestamp_bits: u32,
 	pub(super) timestamp_period: f32,
+	/// What says why it was lost, on a device made with
+	/// `VK_EXT_device_fault`.
+	pub(super) fault: Option<fault::GetDeviceFaultInfo>,
 	destroy: DestroyDevice,
 	/// Dropped after the device is destroyed, as it was made from it.
 	pub(super) instance: Rc<Instance>,
@@ -191,6 +194,12 @@ impl Device {
 	) -> Result<Self, Error> {
 		let mut device = Self::make(instance, physical, family, Some(optional))?;
 		device.optional = optional;
+		let name = c"vkGetDeviceFaultInfoEXT";
+		let found = optional
+			.device_fault
+			.and_then(|_| device.instance.device_function(device.handle, name).ok());
+		// SAFETY: the function the driver returned for this name has this type.
+		device.fault = found.map(|function| unsafe { cast(function) });
 		Ok(device)
 	}
 
@@ -251,6 +260,7 @@ impl Device {
 			stamps,
 			timestamp_bits: instance.timestamp_bits(physical, family),
 			timestamp_period: f32::from_bits(limits[TIMESTAMP_PERIOD]),
+			fault: None,
 			destroy,
 			instance,
 		})

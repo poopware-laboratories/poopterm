@@ -1,7 +1,7 @@
 //! Calling Vulkan: result codes as errors, the two-call pattern that lists
 //! objects (count first, then the items), and the fixed-size strings it
 //! writes.
-use super::{choose::Unsuited, swapchain_plan::Unfit};
+use super::{choose::Unsuited, fault::Fault, swapchain_plan::Unfit};
 use std::{
 	ffi::{CStr, c_char},
 	fmt,
@@ -23,6 +23,8 @@ pub(crate) enum Error {
 	TooOld(u32),
 	/// A call returned this `VkResult`.
 	Failed(i32),
+	/// The device was lost, and its driver said why.
+	Lost(Fault),
 	/// The device lacks this feature, which the renderer needs.
 	Lacks(&'static str),
 	/// No memory type suits the resource and what it is for.
@@ -61,6 +63,7 @@ impl fmt::Display for Error {
 				write!(f, "Vulkan {major}.{minor} is older than 1.3")
 			}
 			Self::Failed(code) => write!(f, "VkResult {code}"),
+			Self::Lost(fault) => write!(f, "the Vulkan device was lost: {fault}"),
 			Self::Lacks(feature) => write!(f, "the Vulkan device lacks {feature}"),
 			Self::NoMemory => write!(f, "no Vulkan memory type suits the resource"),
 			Self::ImageSize([width, height, layers]) => write!(
