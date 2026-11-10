@@ -291,6 +291,8 @@ mod tests {
 		let tail = [&[b'<'; 33][..], MARK].concat();
 		assert_eq!(find(&tail, MARK), Some(33));
 		assert_eq!(find(&tail[..tail.len() - 1], MARK), None);
+		assert_eq!(find(b"<", b"<p"), None);
+		assert_eq!(find(b"x<<p", b"<p"), Some(2));
 	}
 
 	#[test]
