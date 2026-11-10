@@ -74,3 +74,43 @@ fn bands_too_large_for_vulkans_offsets_are_dropped() {
 	let far = i32::MAX as usize + 1;
 	assert_eq!(rects(&[(far, far + 10)], [800, u32::MAX]), []);
 }
+
+#[test]
+fn each_band_is_the_rectangle_a_model_makes_of_it_or_none() {
+	// Xorshift, so a failing case comes back the same.
+	let mut state = 0xa54f_f53a_5f1d_36f1_u64;
+	let mut below = |n: u32| {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		(state % u64::from(n)) as u32
+	};
+	for case in 0..3000 {
+		let extent = [below(3) * below(500), 1 + below(400)];
+		let count = below(6);
+		let bands: Vec<(usize, usize)> = (0..count)
+			.map(|_| {
+				(
+					below(extent[1] + 20) as usize,
+					below(extent[1] + 20) as usize,
+				)
+			})
+			.collect();
+		let expected: Vec<_> = (bands.iter())
+			.filter_map(|&(start, end)| {
+				let end = (end as u32).min(extent[1]);
+				let rows = end.checked_sub(start as u32).filter(|&rows| rows > 0)?;
+				(extent[0] > 0).then_some(([0, start as i32], [extent[0], rows]))
+			})
+			.collect();
+		let got: Vec<_> = (rects(&bands, extent).into_iter())
+			.inspect(|rect| assert_eq!(rect.layer, 0, "case {case}"))
+			.map(|rect| (rect.offset, rect.extent))
+			.collect();
+		assert_eq!(got, expected, "case {case}: {bands:?} in {extent:?}");
+		// Every rectangle lies inside the image, as the present requires.
+		for (offset, size) in got {
+			assert!(offset[1] as u32 + size[1] <= extent[1], "case {case}");
+		}
+	}
+}

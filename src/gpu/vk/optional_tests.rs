@@ -71,3 +71,54 @@ fn the_enabled_ones_are_listed_by_short_name() {
 	assert_eq!(on.names(), ["incremental_present"]);
 	assert!(Optional::default().names().is_empty());
 }
+
+#[test]
+fn found_agrees_with_a_model_for_random_offers_and_variables() {
+	let offers = [
+		"VK_KHR_swapchain",
+		"VK_KHR_incremental_present",
+		"VK_KHR_incremental_present2",
+		"VK_KHR_incremental",
+		"vk_khr_incremental_present",
+	];
+	let words = [
+		"incremental_present",
+		"all",
+		"ALL",
+		"present_wait",
+		"",
+		" ",
+		"incremental",
+	];
+	let mut state = 0x510e_527f_ade6_82d1_u64;
+	let mut below = |n: usize| {
+		state ^= state << 13;
+		state ^= state >> 7;
+		state ^= state << 17;
+		(state % n as u64) as usize
+	};
+	for case in 0..3000 {
+		let offered: Vec<String> = (0..below(4)).map(|_| offers[below(5)].into()).collect();
+		let disable = (below(3) > 0).then(|| {
+			let chosen: Vec<_> = (0..below(4)).map(|_| words[below(7)]).collect();
+			chosen.join(if below(2) == 0 { "," } else { " , " })
+		});
+		let off = disable.as_deref().is_some_and(|value| {
+			value
+				.split(',')
+				.any(|word| matches!(word.trim(), "incremental_present" | "all"))
+		});
+		let on = !off
+			&& offered
+				.iter()
+				.any(|name| name == "VK_KHR_incremental_present");
+		let optional = Optional::found(&offered, disable.as_deref());
+		assert_eq!(
+			optional.incremental_present, on,
+			"case {case}: {offered:?} {disable:?}"
+		);
+		let (extensions, names) = (optional.extensions(), optional.names());
+		assert_eq!(extensions.len(), usize::from(on), "case {case}");
+		assert_eq!(names.len(), extensions.len(), "case {case}");
+	}
+}

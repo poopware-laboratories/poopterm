@@ -25,6 +25,8 @@ pub(crate) mod descriptors;
 mod descriptors_tests;
 pub(crate) mod device;
 #[cfg(test)]
+mod device_optional_tests;
+#[cfg(test)]
 mod device_tests;
 pub(crate) mod draw;
 #[cfg(test)]

@@ -23,6 +23,18 @@ pub(crate) fn fake_window() -> GpuWindow {
 	open(showing(), false).unwrap()
 }
 
+/// A fake window on a device offering `VK_KHR_incremental_present`.
+pub(crate) fn fake_incremental_window() -> GpuWindow {
+	let mut driver = showing();
+	driver.device_extensions = vec!["VK_KHR_incremental_present"];
+	open(driver, false).unwrap()
+}
+
+/// How many rectangles each present so far named.
+pub(crate) fn fake_present_regions() -> Vec<usize> {
+	with(|driver| driver.present_regions.iter().map(Vec::len).collect())
+}
+
 /// Drops the window, checking it left nothing behind.
 pub(crate) fn fake_close(window: GpuWindow) {
 	close(window);

@@ -112,3 +112,62 @@ fn a_frame_drawn_again_after_out_of_date_is_whole() {
 	);
 	close(window);
 }
+
+#[test]
+fn a_skipped_frame_keeps_the_last_image_shown_as_the_base() {
+	// Minimized: nothing presented, so changes after still follow the
+	// image last shown.
+	let mut window = open(incremental(), false).unwrap();
+	draw_changed(&mut window, SIZE, None);
+	assert_eq!(
+		draw_changed(&mut window, [0, 0], Some(vec![(0, 4)])),
+		Drawn::Skipped
+	);
+	draw_changed(&mut window, SIZE, Some(vec![(4, 8)]));
+	assert_eq!(named(), [vec![], vec![band(4, 4)]]);
+	close(window);
+}
+
+#[test]
+fn a_frame_drawn_again_after_no_image_came_free_is_whole() {
+	use super::present_driver_tests::TIMEOUT;
+	let mut window = open(incremental(), false).unwrap();
+	draw_changed(&mut window, SIZE, None);
+	with(|driver| driver.acquire_answers = vec![TIMEOUT]);
+	let drawn = draw_changed(&mut window, SIZE, Some(vec![(0, 4)]));
+	assert_eq!(drawn, Drawn::Again);
+	// The retry has no bands: the pen gave them to the failed attempt.
+	let mut pen = pen(SIZE);
+	assert_eq!(window.draw(&mut pen, SIZE).unwrap(), Drawn::Shown);
+	assert_eq!(named(), [vec![], vec![]]);
+	close(window);
+}
+
+#[test]
+fn a_suboptimal_present_starts_the_remade_swapchain_whole() {
+	use super::present_driver_tests::SUBOPTIMAL;
+	let mut window = open(incremental(), false).unwrap();
+	draw_changed(&mut window, SIZE, None);
+	with(|driver| driver.present_answers = vec![SUBOPTIMAL]);
+	// Shown, and named, but the swapchain is remade before the next.
+	draw_changed(&mut window, SIZE, Some(vec![(0, 4)]));
+	draw_changed(&mut window, SIZE, Some(vec![(0, 4)]));
+	draw_changed(&mut window, SIZE, Some(vec![(8, 12)]));
+	assert_eq!(
+		named(),
+		[vec![], vec![band(0, 4)], vec![], vec![band(8, 4)]]
+	);
+	let made = with(|driver| driver.swapchains.len());
+	assert_eq!(made, 2);
+	close(window);
+}
+
+#[test]
+fn the_pen_gives_its_bands_up_with_each_frame() {
+	let mut window = open(incremental(), false).unwrap();
+	let mut pen = pen(SIZE);
+	pen.changed = Some(vec![(0, 4)]);
+	window.draw(&mut pen, SIZE).unwrap();
+	assert_eq!(pen.changed, None);
+	close(window);
+}
