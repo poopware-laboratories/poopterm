@@ -353,7 +353,7 @@ fn every_entry_is_tried_in_order_until_one_holds_it() {
 	);
 }
 
-fn close_on_exec(fd: &OwnedFd) -> bool {
+fn close_on_exec(fd: &impl AsRawFd) -> bool {
 	// SAFETY: reads the flags of a descriptor we own.
 	let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
 	assert!(flags >= 0);
@@ -424,9 +424,7 @@ fn a_report_pipe_closed_unwritten_means_exec_worked() {
 #[test]
 fn a_report_carries_the_childs_errno() {
 	let (read, write) = report_pipe().unwrap();
-	File::from(write)
-		.write_all(&libc::EACCES.to_ne_bytes())
-		.unwrap();
+	(&write).write_all(&libc::EACCES.to_ne_bytes()).unwrap();
 	let error = read_report(&read).err().unwrap();
 	assert_eq!(error.raw_os_error(), Some(libc::EACCES));
 }
@@ -434,7 +432,7 @@ fn a_report_carries_the_childs_errno() {
 #[test]
 fn a_short_report_is_invalid_data() {
 	let (read, write) = report_pipe().unwrap();
-	File::from(write).write_all(&[1, 2]).unwrap();
+	(&write).write_all(&[1, 2]).unwrap();
 	let error = read_report(&read).err().unwrap();
 	assert_eq!(error.kind(), io::ErrorKind::InvalidData);
 }
@@ -446,7 +444,9 @@ fn a_report_that_cannot_be_read_is_an_error() {
 		.write(true)
 		.open("/dev/null")
 		.unwrap();
-	let error = read_report(&OwnedFd::from(write_only)).err().unwrap();
+	let error = read_report(&io::PipeReader::from(OwnedFd::from(write_only)))
+		.err()
+		.unwrap();
 	assert_eq!(error.raw_os_error(), Some(libc::EBADF));
 }
 

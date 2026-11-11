@@ -64,3 +64,25 @@ fn the_descriptor_is_closed_on_exec() {
 	let flags = unsafe { libc::fcntl(memory.fd(), libc::F_GETFD) };
 	assert_eq!(flags & libc::FD_CLOEXEC, libc::FD_CLOEXEC);
 }
+
+#[test]
+fn the_file_is_sized_exactly_around_page_boundaries() {
+	for pixels in [1, 1023, 1024, 1025, 4096, 1 << 20] {
+		let mut memory = Memory::new(pixels).unwrap();
+		assert_eq!(file_size(&memory), pixels as i64 * 4, "{pixels} pixels");
+		let last = memory.pixels().last_mut().unwrap();
+		assert_eq!(*last, 0);
+		*last = u32::MAX;
+	}
+}
+
+#[test]
+fn each_buffer_has_its_own_file() {
+	let mut first = Memory::new(2).unwrap();
+	let mut second = Memory::new(2).unwrap();
+	assert_ne!(first.fd(), second.fd());
+	first.pixels()[0] = 1;
+	assert_eq!(second.pixels(), [0, 0]);
+	second.pixels()[1] = 2;
+	assert_eq!(first.pixels(), [1, 0]);
+}

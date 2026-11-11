@@ -2,6 +2,8 @@
 #[cfg(test)]
 mod bright_tests;
 #[cfg(test)]
+mod cell_tests;
+#[cfg(test)]
 mod clear_row_tests;
 #[cfg(test)]
 mod click_events_tests;
@@ -149,17 +151,22 @@ impl Cell {
 	/// The cell as one 128-bit word; equal exactly when the cells are.
 	#[inline(always)]
 	pub(crate) fn bits(self) -> u128 {
-		// SAFETY: `repr(C)` with 4 + 4 + 4 + 1 + 1 + 2 bytes of fields leaves
-		// no padding, so every byte is initialized.
-		unsafe { std::mem::transmute(self) }
+		// The fields at their places in memory, low bytes first: one 128-bit
+		// load once compiled, as the layout leaves no padding.
+		u128::from(self.ch)
+			| u128::from(self.fg) << 32
+			| u128::from(self.bg) << 64
+			| u128::from(self.attrs) << 96
+			| u128::from(self.width) << 104
+			| u128::from(self.extra) << 112
 	}
 
 	/// The cell as four 32-bit lanes, the character first, for building cells
 	/// in vector registers.
 	#[inline(always)]
 	pub(crate) fn words(self) -> std::simd::u32x4 {
-		// SAFETY: as in `bits`.
-		unsafe { std::mem::transmute(self) }
+		let last = u32::from(self.attrs) | u32::from(self.width) << 8 | u32::from(self.extra) << 16;
+		std::simd::u32x4::from_array([u32::from(self.ch), self.fg, self.bg, last])
 	}
 
 	/// `words` from [`Cell::words`], with width 0, given `width` instead.

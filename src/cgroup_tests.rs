@@ -323,8 +323,7 @@ fn the_worker_stops_on_hybrid_or_unmounted_hierarchies() {
 fn user_systemd() -> bool {
 	let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
 	let ours = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-	// SAFETY: getuid takes no arguments and cannot fail.
-	let slice = format!("/user-{}.slice/", unsafe { libc::getuid() });
+	let slice = format!("/user-{}.slice/", crate::platform::uid());
 	available(&ours, true)
 		&& ours.contains(&slice)
 		&& Path::new(&runtime).join("systemd/private").exists()

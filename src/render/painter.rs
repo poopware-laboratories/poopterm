@@ -98,12 +98,11 @@ impl<'a> Painter<'a> {
 		self.glyph_with(glyph, origin, clip, italic, color);
 	}
 
-	/// # Safety
-	///
-	/// The CPU must have the features [`crate::cpu::has_v3`] checks.
+	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
+	/// checks.
 	#[cfg(target_arch = "x86_64")]
 	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	unsafe fn glyph_v3(
+	fn glyph_v3(
 		&mut self,
 		glyph: &Glyph,
 		origin: (i32, i32),

@@ -519,3 +519,5 @@ fn the_v3_variant_reports_the_same_events_as_the_baseline() {
 		assert_eq!(v3.events, baseline.events, "cut at {cuts:?}: {stream:?}");
 	}
 }
+
+mod malformed;

@@ -332,7 +332,7 @@ fn a_signal_that_interrupts_the_wait_does_not_end_it() {
 	child.wait().unwrap();
 }
 
-fn closes_on_exec(fd: &OwnedFd) -> bool {
+fn closes_on_exec(fd: &impl AsRawFd) -> bool {
 	// SAFETY: reads the flags of a descriptor we own.
 	let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
 	flags >= 0 && flags & libc::FD_CLOEXEC != 0

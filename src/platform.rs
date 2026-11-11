@@ -67,3 +67,10 @@ pub(crate) fn held_mouse_buttons() -> Option<usize> {
 pub(crate) fn held_mouse_buttons() -> Option<usize> {
 	None
 }
+
+/// This process's real user ID, which names its runtime files and finds
+/// its account.
+pub(crate) fn uid() -> u32 {
+	// SAFETY: `getuid` takes no arguments, touches no memory and cannot fail.
+	unsafe { libc::getuid() }
+}

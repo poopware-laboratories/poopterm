@@ -12,7 +12,7 @@ use std::{
 	ffi::{CString, OsStr, OsString},
 	fs, io,
 	os::{
-		fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+		fd::{AsRawFd, OwnedFd, RawFd},
 		unix::{ffi::OsStrExt, fs::PermissionsExt},
 	},
 	path::{Path, PathBuf},
@@ -388,37 +388,23 @@ fn is_executable(path: &Path) -> bool {
 	fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 
-/// A pipe whose ends both close on exec.
-pub(super) fn report_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
-	let mut fds = [0; 2];
-	#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-	// SAFETY: writes two descriptors into the array we own.
-	check(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) })?;
-	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
-	// SAFETY: as above.
-	check(unsafe { libc::pipe(fds.as_mut_ptr()) })?;
-	// SAFETY: both were just opened and nothing else owns them.
-	let ends = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
-	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
-	for end in [&ends.0, &ends.1] {
-		// SAFETY: sets a descriptor flag on a descriptor we own.
-		check(unsafe { libc::fcntl(end.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) })?;
-	}
-	Ok(ends)
+/// A pipe whose ends both close on exec, as `std::io::pipe` makes them on
+/// every Unix.
+pub(super) fn report_pipe() -> io::Result<(io::PipeReader, io::PipeWriter)> {
+	io::pipe()
 }
 
 /// Nothing once `exec` closed the pipe, else the error the child sent.
-fn read_report(pipe: &OwnedFd) -> io::Result<()> {
+fn read_report(mut pipe: &io::PipeReader) -> io::Result<()> {
+	use io::Read;
 	let mut bytes = [0u8; 4];
 	loop {
-		// SAFETY: reads into the array we own, at most its length.
-		let n = unsafe { libc::read(pipe.as_raw_fd(), bytes.as_mut_ptr().cast(), bytes.len()) };
-		match n {
-			0 => return Ok(()),
-			4 => return Err(io::Error::from_raw_os_error(i32::from_ne_bytes(bytes))),
-			n if n < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted => {}
-			n if n < 0 => return Err(io::Error::last_os_error()),
-			_ => return Err(io::Error::from(io::ErrorKind::InvalidData)),
+		match pipe.read(&mut bytes) {
+			Ok(0) => return Ok(()),
+			Ok(4) => return Err(io::Error::from_raw_os_error(i32::from_ne_bytes(bytes))),
+			Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+			Err(error) => return Err(error),
+			Ok(_) => return Err(io::Error::from(io::ErrorKind::InvalidData)),
 		}
 	}
 }

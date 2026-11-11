@@ -113,14 +113,20 @@ pub(super) const INCOMPLETE: [u8; 32] = {
 #[cfg(target_arch = "x86_64")]
 pub(super) mod x86 {
 	use std::arch::x86_64::*;
+	use std::simd::{u8x16, u8x32};
 
 	use super::{HIGH, INCOMPLETE, PREV_HIGH, PREV_LOW};
+
+	/// 32 bytes in a register: one unaligned load once compiled.
+	#[target_feature(enable = "avx2")]
+	fn load(bytes: &[u8; 32]) -> __m256i {
+		u8x32::from_array(*bytes).into()
+	}
 
 	/// A 16-entry table repeated in both 128-bit lanes, for `vpshufb`.
 	#[target_feature(enable = "avx2")]
 	fn table(entries: &[u8; 16]) -> __m256i {
-		// SAFETY: 16 readable bytes.
-		let half = unsafe { _mm_loadu_si128(entries.as_ptr().cast()) };
+		let half: __m128i = u8x16::from_array(*entries).into();
 		_mm256_broadcastsi128_si256(half)
 	}
 
@@ -157,14 +163,11 @@ pub(super) mod x86 {
 		_mm256_xor_si256(expected, special)
 	}
 
-	/// # Safety
-	///
-	/// The CPU must support AVX2.
+	/// Callable only where the CPU supports AVX2.
 	#[target_feature(enable = "avx2")]
-	pub(in crate::vt) unsafe fn is_valid(bytes: &[u8]) -> bool {
+	pub(in crate::vt) fn is_valid(bytes: &[u8]) -> bool {
 		let tables = [table(&PREV_HIGH), table(&PREV_LOW), table(&HIGH)];
-		// SAFETY: 32 readable bytes.
-		let incomplete_max = unsafe { _mm256_loadu_si256(INCOMPLETE.as_ptr().cast()) };
+		let incomplete_max = load(&INCOMPLETE);
 		let (chunks, rest) = bytes.as_chunks::<32>();
 		let mut tail = [0u8; 32];
 		tail[..rest.len()].copy_from_slice(rest);
@@ -176,8 +179,7 @@ pub(super) mod x86 {
 		// The zero-padded tail is ASCII after the last byte, so a character
 		// cut off at the end shows up as an error in it.
 		for chunk in chunks.iter().chain([&tail]) {
-			// SAFETY: 32 readable bytes.
-			let input = unsafe { _mm256_loadu_si256(chunk.as_ptr().cast()) };
+			let input = load(chunk);
 			if _mm256_movemask_epi8(input) == 0 {
 				// ASCII: valid unless the previous block left a character open.
 				// A nonzero `incomplete` is already an error, so it may stay.
