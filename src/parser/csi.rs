@@ -129,6 +129,7 @@ impl Term {
 					1049 | 47 | 1047 => self.alternate_screen(enabled),
 					1000 | 1002 | 1003 => self.mouse_tracking = if enabled { p } else { 0 },
 					1004 => self.focus_reporting = enabled,
+					1007 => self.alternate_scroll = enabled,
 					1006 => self.mouse_sgr = enabled,
 					2004 => self.bracketed_paste = enabled,
 					_ => self
@@ -360,6 +361,7 @@ impl Term {
 			80 => self.sixel_scrolling,
 			1000 | 1002 | 1003 => self.mouse_tracking == mode,
 			1004 => self.focus_reporting,
+			1007 => self.alternate_scroll,
 			1006 => self.mouse_sgr,
 			2004 => self.bracketed_paste,
 			_ => return self.keyboard.clone().mode(mode).copied(),

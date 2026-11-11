@@ -1,7 +1,10 @@
 //! Mouse events: selection, links, wheel scrolling and mouse reporting.
 use super::*;
 use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
-use crate::input::{paste::paste_bytes, scroll::alternate_scroll_bytes};
+use crate::input::{
+	paste::paste_bytes,
+	scroll::{WheelAction, alternate_scroll_bytes, wheel_action},
+};
 use crate::ui::{
 	copy::selection_text,
 	drag::drag_after_move,
@@ -274,18 +277,27 @@ impl App {
 		}
 		let over_grid = self.point_at(x, y).is_some();
 		let mut term = self.active_term();
-		if term.mouse_tracking != 0 && over_grid {
-			return;
+		let alternate = term.primary_screen.is_some();
+		match wheel_action(
+			term.mouse_tracking != 0,
+			over_grid,
+			alternate,
+			term.alternate_scroll,
+		) {
+			// pr-check: window glue: carries out what wheel_action chose for a real wheel turn
+			WheelAction::Report | WheelAction::Nothing => {}
+			WheelAction::Keys => {
+				let bytes = alternate_scroll_bytes(lines, term.application_cursor);
+				drop(term);
+				self.active_session().write(&bytes);
+			}
+			WheelAction::ScrollView => {
+				term.scroll_view(lines);
+				drop(term);
+				self.request_redraw();
+			}
 		}
-		if term.primary_screen.is_some() {
-			let bytes = alternate_scroll_bytes(lines, term.application_cursor);
-			drop(term);
-			self.active_session().write(&bytes);
-			return;
-		}
-		term.scroll_view(lines);
-		drop(term);
-		self.request_redraw();
+		// pr-check: end window glue
 	}
 
 	pub(super) fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
