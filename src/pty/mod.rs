@@ -6,7 +6,6 @@ pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
 pub(crate) mod reap;
-pub(crate) mod spawn;
 mod writer;
 
 use std::{
@@ -31,7 +30,7 @@ use crate::{
 	theme::Theme,
 };
 
-pub(crate) use crate::sys::pty as device;
+pub(crate) use crate::sys::{pty as device, spawn};
 pub(crate) use queue::OutputQueue;
 use writer::PtyWriter;
 

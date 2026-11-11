@@ -127,6 +127,20 @@ fn a_variable_of_ours_is_replaced_not_repeated() {
 }
 
 #[test]
+fn a_variable_set_twice_keeps_the_later_value_once() {
+	let vars = Command::new("sh")
+		.env("POOPTERM_TWICE", "first")
+		.env("POOPTERM_TWICE", "second")
+		.environment();
+	let set: Vec<_> = vars
+		.iter()
+		.filter(|(name, _)| name == "POOPTERM_TWICE")
+		.collect();
+	assert_eq!(set, [&("POOPTERM_TWICE".into(), "second".into())]);
+	assert_eq!(vars.len(), std::env::vars_os().count() + 1);
+}
+
+#[test]
 fn names_differing_only_in_case_are_different_variables() {
 	let vars = Command::new("sh")
 		.env("POOPTERM_CASE", "upper")

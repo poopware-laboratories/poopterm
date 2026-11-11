@@ -837,13 +837,11 @@ fn report_shells_huge_pages() {
 fn a_shell_gets_the_systems_huge_pages_though_the_terminal_has_none() {
 	// The flag is inherited through fork and execve: without clearing it,
 	// every program run in the terminal would lose huge pages too.
+	// The test's path follows this module, wherever it moves.
+	let module = module_path!().split_once("::").unwrap().1;
+	let test = format!("{module}::report_shells_huge_pages");
 	let output = std::process::Command::new(std::env::current_exe().unwrap())
-		.args([
-			"--exact",
-			"pty::spawn::tests::report_shells_huge_pages",
-			"--ignored",
-			"--nocapture",
-		])
+		.args(["--exact", &test, "--ignored", "--nocapture"])
 		.output()
 		.unwrap();
 	let stdout = String::from_utf8_lossy(&output.stdout);
