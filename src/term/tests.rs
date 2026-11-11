@@ -38,10 +38,12 @@ fn row(term: &Term, row: usize) -> String {
 fn dec_private_modes_are_read_from_intermediates() {
 	let mut t = terminal(20, 5);
 	feed(&mut t, b"\x1b[?1;25;1002;1006;2004h");
-	assert!(t.application_cursor && t.cursor_visible && t.mouse_sgr && t.bracketed_paste);
+	assert!(t.application_cursor && t.cursor_visible && t.bracketed_paste);
+	assert_eq!(t.mouse_encoding, crate::input::mouse::MouseEncoding::Sgr);
 	assert_eq!(t.mouse_tracking, 1002);
 	feed(&mut t, b"\x1b[?1;25;1002;1006;2004l");
-	assert!(!t.application_cursor && !t.cursor_visible && !t.mouse_sgr && !t.bracketed_paste);
+	assert!(!t.application_cursor && !t.cursor_visible && !t.bracketed_paste);
+	assert_eq!(t.mouse_encoding, crate::input::mouse::MouseEncoding::X10);
 	assert_eq!(t.mouse_tracking, 0);
 }
 

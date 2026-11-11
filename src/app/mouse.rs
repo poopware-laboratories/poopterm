@@ -1,6 +1,6 @@
 //! Mouse events: selection, links, wheel scrolling and mouse reporting.
 use super::*;
-use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
+use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse, tracked};
 use crate::input::{
 	paste::paste_bytes,
 	scroll::{WheelAction, alternate_scroll_bytes, wheel_action},
@@ -161,12 +161,7 @@ impl App {
 			return false;
 		};
 		let term = self.active_term();
-		let wants = match kind {
-			MouseAction::Motion if button == MouseButtonCode::None => term.mouse_tracking == 1003,
-			MouseAction::Motion => matches!(term.mouse_tracking, 1002 | 1003),
-			_ => term.mouse_tracking != 0,
-		};
-		if !wants {
+		if !tracked(term.mouse_tracking, button, kind) {
 			return false;
 		}
 		let visible_start = term.scrollback.len().saturating_sub(term.scroll_offset);
@@ -177,7 +172,7 @@ impl App {
 			row: point.row.saturating_sub(visible_start) + 1,
 			mods: self.mods,
 		};
-		if let Some(bytes) = encode_mouse(report, term.mouse_sgr) {
+		if let Some(bytes) = encode_mouse(report, term.mouse_encoding, term.mouse_tracking) {
 			self.active_session().write(&bytes);
 		}
 		true
