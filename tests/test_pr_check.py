@@ -417,6 +417,10 @@ class Unsafe(unittest.TestCase):
             '--- a/src/a.txt\n+++ b/src/a.rs\n@@ -1 +1 @@\n+unsafe { f() };'
         self.assertEqual(pr_check.unsafe_changes(diff), (1, 0, 0))
 
+    def test_context_lines_do_not_count(self):
+        diff = rust_diff('src/a.rs', ' \tunsafe { f() };', ' #![allow(unsafe_code)]', '+\tg();')
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 0, 0))
+
     def test_removed_lines_count_as_removed(self):
         diff = rust_diff('src/a.rs', '-\tunsafe { f() };', '-unsafe fn g() {}', '+\tf();')
         self.assertEqual(pr_check.unsafe_changes(diff), (0, 2, 0))
@@ -628,6 +632,30 @@ class Main(unittest.TestCase):
             self.git(root, 'add', '.')
             self.git(root, 'commit', '-qm', 'docs: list b')
             self.assertEqual(self.run_check(root, 'feat: add b'), 0)
+
+    def test_a_new_allow_list_entry_without_docs_fails(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            (root / 'src/a.rs').write_text('#![allow(unsafe_code)]\nfn a() {}\n')
+            self.git(root, 'commit', '-qam', 'refactor: allow unsafe in a')
+            self.assertEqual(self.run_check(root, 'refactor: allow unsafe in a'), 1)
+            self.assertIn('allow(unsafe_code)', self.errors)
+
+    def test_removing_unsafe_needs_no_docs_and_reports_the_balance(self):
+        directory, root = self.repository()
+        with directory:
+            (root / 'src/a.rs').write_text('fn a() {}\nfn b() { unsafe { c() } }\n')
+            self.git(root, 'commit', '-qam', 'feat: unsafe b')
+            self.git(root, 'switch', '-q', '-c', 'work')
+            # Only deleted lines, so the ratio has nothing to count.
+            (root / 'src/a.rs').write_text('fn a() {}\n')
+            self.git(root, 'commit', '-qam', 'refactor: drop b')
+            base = subprocess.run(['git', 'rev-parse', 'main'], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                code = pr_check.main(['--base', base, '--title', 'refactor: drop b'], cwd=root)
+            self.assertEqual(code, 0)
+            self.assertIn('unsafe: +0 -1', out.getvalue())
 
     def test_the_summary_reports_the_unsafe_balance(self):
         directory, root = self.repository()
