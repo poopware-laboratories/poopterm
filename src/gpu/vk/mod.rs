@@ -1,6 +1,10 @@
 //! Our own Vulkan bindings: the loader opened at run time, so Poopterm
 //! runs where there is no Vulkan, and only the types and functions the
 //! renderer uses, laid out as the specification declares them.
+#![expect(
+	clippy::multiple_unsafe_ops_per_block,
+	reason = "driver calls get one safe wrapper each in the safe-Vulkan step, which removes this"
+)]
 pub(crate) mod allocation;
 #[cfg(test)]
 mod allocation_tests;

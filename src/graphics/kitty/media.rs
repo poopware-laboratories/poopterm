@@ -264,25 +264,21 @@ mod tests {
 		let c_name = std::ffi::CString::new(name.clone()).unwrap();
 		// macOS cannot `write` shared memory, so it is sized and mapped, as
 		// clients do.
-		// SAFETY: plain POSIX calls on a descriptor and a 6-byte mapping this
-		// test owns.
-		unsafe {
-			let fd = libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
-			assert!(fd >= 0);
-			assert_eq!(libc::ftruncate(fd, 6), 0);
-			let map = libc::mmap(
-				std::ptr::null_mut(),
-				6,
-				libc::PROT_READ | libc::PROT_WRITE,
-				libc::MAP_SHARED,
-				fd,
-				0,
-			);
-			assert_ne!(map, libc::MAP_FAILED);
-			std::ptr::copy_nonoverlapping(b"shared".as_ptr(), map.cast(), 6);
-			libc::munmap(map, 6);
-			libc::close(fd);
-		}
+		// SAFETY: a C string this test owns.
+		let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
+		assert!(fd >= 0);
+		// SAFETY: a descriptor this test owns.
+		assert_eq!(unsafe { libc::ftruncate(fd, 6) }, 0);
+		let protection = libc::PROT_READ | libc::PROT_WRITE;
+		// SAFETY: a new shared mapping of the 6 bytes just sized.
+		let map = unsafe { libc::mmap(std::ptr::null_mut(), 6, protection, libc::MAP_SHARED, fd, 0) };
+		assert_ne!(map, libc::MAP_FAILED);
+		// SAFETY: the mapping is 6 writable bytes and overlaps nothing.
+		unsafe { std::ptr::copy_nonoverlapping(b"shared".as_ptr(), map.cast(), 6) };
+		// SAFETY: unmaps the mapping above, used no more.
+		unsafe { libc::munmap(map, 6) };
+		// SAFETY: closes the descriptor above, used no more.
+		unsafe { libc::close(fd) };
 		assert_eq!(
 			load(&command("t=s,S=4"), name.clone().into_bytes()).unwrap(),
 			b"shar"

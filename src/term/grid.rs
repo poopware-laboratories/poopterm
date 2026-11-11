@@ -160,11 +160,7 @@ impl Grid {
 			let dirty = evict(row, used);
 			Cell::fill(&mut row[..dirty], blank);
 		}
-		if count == 1 {
-			rotate_left_one(region);
-		} else {
-			region.rotate_left(count);
-		}
+		region.rotate_left(count);
 		// The rows that wrapped around are all blank: one move, unlike a rotation.
 		let kept = used.len() - count;
 		used.copy_within(count.., 0);
@@ -205,22 +201,6 @@ impl Grid {
 			let stray = row[used..].iter().position(|cell| *cell != self.pad);
 			assert_eq!(stray, None, "row {y} used {used}");
 		}
-	}
-}
-
-/// `rows.rotate_left(1)`, for a non-empty `rows`, with one move of the row headers; the slice method
-/// copies through a buffer, in three calls, on every line feed.
-#[inline]
-fn rotate_left_one(rows: &mut [Row]) {
-	let last = rows.len() - 1;
-	let rows = rows.as_mut_ptr();
-	// SAFETY: the first row is read out, the others shift down by one inside
-	// the slice, and the first is written to the slot that frees up, so every
-	// row is owned exactly once again; nothing between can panic.
-	unsafe {
-		let first = std::ptr::read(rows);
-		std::ptr::copy(rows.add(1), rows, last);
-		std::ptr::write(rows.add(last), first);
 	}
 }
 

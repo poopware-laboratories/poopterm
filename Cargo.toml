@@ -87,6 +87,8 @@ fontdue = "^0.9"
 [lints.clippy]
 # Every unsafe block says why it is sound (see AGENTS.md).
 undocumented_unsafe_blocks = "deny"
+# One unsafe operation per block, so each SAFETY comment covers exactly one.
+multiple_unsafe_ops_per_block = "deny"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -471,15 +471,15 @@ fn signals_we_ignore_are_not_ignored_in_the_program() {
 #[test]
 fn signals_we_block_are_not_blocked_in_the_program() {
 	// fork copies the calling thread's mask, so block one here.
-	// SAFETY: plain sets on our stack, changing only this thread's mask.
-	let old = unsafe {
-		let mut block = std::mem::zeroed::<libc::sigset_t>();
-		let mut old = std::mem::zeroed::<libc::sigset_t>();
-		libc::sigemptyset(&mut block);
-		libc::sigaddset(&mut block, libc::SIGUSR1);
-		libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old);
-		old
-	};
+	// SAFETY: all zeroes is a valid `sigset_t`.
+	let mut block = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+	let mut old = block;
+	// SAFETY: initializes a set on our stack.
+	unsafe { libc::sigemptyset(&mut block) };
+	// SAFETY: adds to the set just initialized.
+	unsafe { libc::sigaddset(&mut block, libc::SIGUSR1) };
+	// SAFETY: changes only this thread's mask, saving the old one in `old`.
+	unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old) };
 	let (_, exit) = run(Command::new("sh").arg("-c").arg("kill -USR1 $$; exit 0"));
 	// SAFETY: restores this thread's mask from the copy above.
 	unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut()) };

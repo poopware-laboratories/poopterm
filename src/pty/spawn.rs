@@ -235,14 +235,10 @@ impl Prepared {
 				.chain(std::iter::once(ptr::null()))
 				.collect()
 		};
-		// SAFETY: both are plain C structs for which all zeroes is valid,
-		// and all zeroes in `sa_sigaction` is `SIG_DFL`.
-		let (mut no_signals, default_action) = unsafe {
-			(
-				std::mem::zeroed::<libc::sigset_t>(),
-				std::mem::zeroed::<libc::sigaction>(),
-			)
-		};
+		// SAFETY: a plain C struct for which all zeroes is valid.
+		let mut no_signals = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+		// SAFETY: as above, and all zeroes in `sa_sigaction` is `SIG_DFL`.
+		let default_action = unsafe { std::mem::zeroed::<libc::sigaction>() };
 		// SAFETY: initializes the set we own.
 		unsafe { libc::sigemptyset(&mut no_signals) };
 		// SAFETY: takes only a constant name.
@@ -269,14 +265,13 @@ impl Prepared {
 	///
 	/// Only in the child of a fork, where it must be the only thing run.
 	unsafe fn start(&self, terminal: RawFd, report: RawFd) -> ! {
-		// SAFETY: every call below is async-signal-safe and uses only
-		// descriptors we hold and memory `self` owns.
-		unsafe {
-			let errno = self.become_program(terminal);
-			let bytes = errno.to_ne_bytes();
-			libc::write(report, bytes.as_ptr().cast(), bytes.len());
-			libc::_exit(127)
-		}
+		// SAFETY: we are the child of a fork, as the caller vouches.
+		let errno = unsafe { self.become_program(terminal) };
+		let bytes = errno.to_ne_bytes();
+		// SAFETY: async-signal-safe; `report` is ours and `bytes` is ours.
+		unsafe { libc::write(report, bytes.as_ptr().cast(), bytes.len()) };
+		// SAFETY: async-signal-safe, and nothing of the parent's needs running.
+		unsafe { libc::_exit(127) }
 	}
 
 	/// Each step of the child's setup; returns `errno` if one fails.
@@ -290,40 +285,51 @@ impl Prepared {
 				.raw_os_error()
 				.unwrap_or(libc::EIO)
 		};
-		// SAFETY: see `start`.
-		unsafe {
-			if libc::setsid() < 0 {
-				return failed();
-			}
-			if libc::ioctl(terminal, TIOCSCTTY as _, 0) < 0 {
-				return failed();
-			}
-			// The terminal is above 2: Rust's runtime opens 0, 1 and 2 at
-			// startup if they are closed, so a new descriptor never takes
-			// them, and `dup2` clears close-on-exec on each copy.
-			for stream in 0..3 {
-				if libc::dup2(terminal, stream) < 0 {
-					return failed();
-				}
-			}
-			self.close_ours_on_exec();
-			libc::sigprocmask(libc::SIG_SETMASK, &self.no_signals, ptr::null_mut());
-			for signal in 1..=LAST_SIGNAL {
-				// SIGKILL, SIGSTOP and unused numbers fail; that is fine.
-				libc::sigaction(signal, &self.default_action, ptr::null_mut());
-			}
-			if let Some(dir) = &self.cwd
-				&& libc::chdir(dir.as_ptr()) < 0
-			{
-				return failed();
-			}
-			// The terminal turned huge pages off for itself; programs run
-			// in it keep the system's choice. A plain flag of this process.
-			#[cfg(target_os = "linux")]
-			libc::prctl(libc::PR_SET_THP_DISABLE, 0, 0, 0, 0);
-			libc::execve(self.path.as_ptr(), self.argv.as_ptr(), self.envp.as_ptr());
-			failed()
+		// Every call here is async-signal-safe, as the child of a fork needs,
+		// and uses only descriptors we hold and memory `self` owns.
+		// SAFETY: takes no arguments.
+		if unsafe { libc::setsid() } < 0 {
+			return failed();
 		}
+		// SAFETY: `terminal` is ours; the request takes an integer.
+		if unsafe { libc::ioctl(terminal, TIOCSCTTY as _, 0) } < 0 {
+			return failed();
+		}
+		// The terminal is above 2: Rust's runtime opens 0, 1 and 2 at
+		// startup if they are closed, so a new descriptor never takes
+		// them, and `dup2` clears close-on-exec on each copy.
+		for stream in 0..3 {
+			// SAFETY: takes only descriptor numbers.
+			if unsafe { libc::dup2(terminal, stream) } < 0 {
+				return failed();
+			}
+		}
+		// SAFETY: we are the child of a fork, as the caller vouches.
+		unsafe { self.close_ours_on_exec() };
+		// SAFETY: `no_signals` is an initialized set `self` owns.
+		unsafe { libc::sigprocmask(libc::SIG_SETMASK, &self.no_signals, ptr::null_mut()) };
+		for signal in 1..=LAST_SIGNAL {
+			// SIGKILL, SIGSTOP and unused numbers fail; that is fine.
+			// SAFETY: `default_action` is a valid action `self` owns.
+			unsafe { libc::sigaction(signal, &self.default_action, ptr::null_mut()) };
+		}
+		if let Some(dir) = &self.cwd
+			// SAFETY: `dir` is a C string `self` owns.
+			&& unsafe { libc::chdir(dir.as_ptr()) } < 0
+		{
+			return failed();
+		}
+		// The terminal turned huge pages off for itself; programs run
+		// in it keep the system's choice. A plain flag of this process.
+		#[cfg(target_os = "linux")]
+		// SAFETY: takes only numbers.
+		unsafe {
+			libc::prctl(libc::PR_SET_THP_DISABLE, 0, 0, 0, 0)
+		};
+		// SAFETY: the path, and the null-terminated pointer arrays to C
+		// strings, are all owned by `self`.
+		unsafe { libc::execve(self.path.as_ptr(), self.argv.as_ptr(), self.envp.as_ptr()) };
+		failed()
 	}
 
 	/// Marks every descriptor above 2 close-on-exec, all at once where the

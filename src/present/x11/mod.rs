@@ -1,6 +1,10 @@
 //! Frames shown on an X11 window: through MIT-SHM where the server shares
 //! memory with us, else in `PutImage` requests, with libxcb opened at run
 //! time.
+#![expect(
+	clippy::multiple_unsafe_ops_per_block,
+	reason = "libxcb calls give way to our own X11 protocol code, which removes this"
+)]
 pub(crate) mod client;
 #[cfg(test)]
 mod client_tests;
