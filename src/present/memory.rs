@@ -24,12 +24,9 @@ impl Memory {
 		let bytes = (pixels.checked_mul(4))
 			.filter(|&bytes| bytes <= MAX_BYTES)
 			.ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
-		let fd = anonymous()?;
-		// SAFETY: `fd` is a fresh shared memory object this owns, and `bytes`
-		// fits an `off_t`.
-		if unsafe { libc::ftruncate(fd.as_raw_fd(), bytes as libc::off_t) } != 0 {
-			return Err(io::Error::last_os_error());
-		}
+		let file = std::fs::File::from(anonymous()?);
+		file.set_len(bytes as u64)?;
+		let fd = OwnedFd::from(file);
 		let protection = libc::PROT_READ | libc::PROT_WRITE;
 		// SAFETY: maps the whole object, which is `bytes` long, shared, at an
 		// address the kernel picks; the result is checked before use.

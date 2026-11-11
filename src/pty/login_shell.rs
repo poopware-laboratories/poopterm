@@ -29,7 +29,7 @@ pub(super) fn account_shell() -> Option<String> {
 	// length is passed with it; `getpwuid_r` writes only inside them.
 	let status = unsafe {
 		libc::getpwuid_r(
-			libc::getuid(),
+			crate::platform::uid(),
 			entry.as_mut_ptr(),
 			buffer.as_mut_ptr().cast(),
 			buffer.len(),

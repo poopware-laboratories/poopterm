@@ -15,7 +15,7 @@ pub(crate) struct Exits {
 	/// The epoll set or kqueue.
 	set: OwnedFd,
 	/// The pipe that stops [`Self::wait`]: its read end is in `set`.
-	stop: (OwnedFd, OwnedFd),
+	stop: (io::PipeReader, io::PipeWriter),
 	/// Each watched program's pidfd, closed once it is reported.
 	#[cfg(target_os = "linux")]
 	pub(super) pidfds: std::sync::Mutex<std::collections::HashMap<libc::pid_t, OwnedFd>>,
@@ -53,10 +53,8 @@ impl Exits {
 
 	/// Makes [`Self::wait`] return `None`, now and from then on.
 	pub(crate) fn stop(&self) -> io::Result<()> {
-		// SAFETY: writes one byte from a constant to a pipe we own; one byte
-		// per stop never fills it.
-		let written = unsafe { libc::write(self.stop.1.as_raw_fd(), [1u8].as_ptr().cast(), 1) };
-		check(written as libc::c_int).map(drop)
+		// One byte per stop never fills it.
+		io::Write::write_all(&mut &self.stop.1, &[1])
 	}
 }
 
@@ -82,7 +80,7 @@ fn new_set() -> io::Result<OwnedFd> {
 #[cfg(target_os = "linux")]
 impl Exits {
 	/// Puts `fd` in the set, keyed by `key`.
-	fn register(&self, fd: &OwnedFd, key: u64) -> io::Result<()> {
+	fn register(&self, fd: &impl AsRawFd, key: u64) -> io::Result<()> {
 		let set = self.set.as_raw_fd();
 		let mut event = libc::epoll_event {
 			events: libc::EPOLLIN as u32,

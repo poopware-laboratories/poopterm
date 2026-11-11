@@ -4,11 +4,9 @@ use std::arch::x86_64::*;
 
 use super::Cell;
 
-/// # Safety
-///
-/// The CPU must support AVX2.
+/// Callable only where the CPU supports AVX2.
 #[target_feature(enable = "avx2")]
-pub(super) unsafe fn fill(cells: &mut [Cell], cell: Cell) {
+pub(super) fn fill(cells: &mut [Cell], cell: Cell) {
 	let bits = cell.bits();
 	let one = _mm_set_epi64x((bits >> 64) as i64, bits as i64);
 	let two = _mm256_broadcastsi128_si256(one);

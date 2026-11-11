@@ -128,12 +128,11 @@ impl Parser {
 		self.advance_with(handler, bytes);
 	}
 
-	/// # Safety
-	///
-	/// The CPU must have the features [`crate::cpu::has_v3`] checks.
+	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
+	/// checks.
 	#[cfg(target_arch = "x86_64")]
 	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	pub(crate) unsafe fn advance_v3<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
+	pub(crate) fn advance_v3<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
 		self.advance_with(handler, bytes);
 	}
 
@@ -201,34 +200,32 @@ impl Parser {
 	/// read (`at_end`) is kept for the next one; before a control it is
 	/// malformed.
 	#[inline(always)]
-	fn text<H: Handler>(&mut self, handler: &mut H, mut run: &[u8], at_end: bool, c1: bool) {
+	fn text<H: Handler>(&mut self, handler: &mut H, run: &[u8], at_end: bool, c1: bool) {
 		if utf8::is_valid(run) {
 			// SAFETY: just validated.
 			return print_valid(handler, unsafe { std::str::from_utf8_unchecked(run) }, c1);
 		}
-		loop {
-			match std::str::from_utf8(run) {
-				Ok(text) => return print_valid(handler, text, c1),
-				Err(error) => {
-					let (valid, invalid) = run.split_at(error.valid_up_to());
-					// SAFETY: `from_utf8` validated this prefix.
-					print_valid(handler, unsafe { std::str::from_utf8_unchecked(valid) }, c1);
-					let Some(len) = error.error_len() else {
-						if at_end {
-							self.partial[..invalid.len()].copy_from_slice(invalid);
-							self.partial_len = invalid.len();
-						} else {
-							handler.print("\u{fffd}");
-						}
-						return;
-					};
-					if len == 1 && (0x80..=0x9f).contains(&invalid[0]) {
-						handler.execute(invalid[0]);
-					} else {
-						handler.print("\u{fffd}");
-					}
-					run = &invalid[len..];
+		// Each chunk is valid text, then at most one malformed sequence: the
+		// longest prefix of a character, or a byte no character starts with.
+		let mut chunks = run.utf8_chunks().peekable();
+		while let Some(chunk) = chunks.next() {
+			print_valid(handler, chunk.valid(), c1);
+			let invalid = chunk.invalid();
+			let incomplete = || std::str::from_utf8(invalid).is_err_and(|e| e.error_len().is_none());
+			if invalid.is_empty() {
+				continue;
+			} else if chunks.peek().is_none() && incomplete() {
+				// A character cut off at the end of the run.
+				if at_end {
+					self.partial[..invalid.len()].copy_from_slice(invalid);
+					self.partial_len = invalid.len();
+				} else {
+					handler.print("\u{fffd}");
 				}
+			} else if let [byte @ 0x80..=0x9f] = invalid {
+				handler.execute(*byte);
+			} else {
+				handler.print("\u{fffd}");
 			}
 		}
 	}
@@ -259,8 +256,8 @@ impl Parser {
 				}
 			},
 			_ => {
-				// SAFETY: `from_utf8` validated at least this character.
-				let text = unsafe { std::str::from_utf8_unchecked(&joined[..len]) };
+				// `from_utf8` found at least this character valid.
+				let text = std::str::from_utf8(&joined[..len]).unwrap_or("\u{fffd}");
 				print_valid(handler, text, true);
 				&bytes[len - held..]
 			}

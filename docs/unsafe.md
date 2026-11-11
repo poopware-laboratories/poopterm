@@ -67,8 +67,9 @@ the features is undefined behavior.
 | `vt/utf8.rs` `is_valid` → `x86::is_valid` (AVX2) | UTF-8 validation of printable runs. |
 
 - **Sound because** each call site checks `has_v3()` (or AVX2 alone)
-  first, in the same function, and the `unsafe fn`s are private to their
-  module or crate.
+  first, in the same function. The copies themselves are safe
+  `#[target_feature]` functions: only the call needs `unsafe`, and code
+  compiled with the same features may call them without it.
 - **Tested** by differential tests that run both copies on the same input
   and require identical results: `vt/tests.rs` (the tokenizer, also
   against vte), `parser/dispatch_tests.rs` (parsing and printing),
@@ -85,7 +86,6 @@ the features is undefined behavior.
 | `term/fill.rs` | `_mm256_storeu_si256` (two cells) and `_mm_store_si128` (the last one) | The pointers come from `&mut [Cell]` chunks of exactly 32 and 16 bytes; `Cell` is 16-byte aligned. |
 | `term/scrollback.rs` `stream_copy` | `_mm_stream_si128` copies rows into history without pulling them into the cache | Cells are 16 bytes and 16-byte aligned; SSE2 is part of every x86-64 CPU. |
 | `term/scrollback.rs` `publish_streamed` | `_mm_sfence` after the streamed stores | Streaming stores are weakly ordered. The fence orders them before the unlock that publishes the rows to the render thread; without it the renderer could read stale cells. SSE is part of x86-64. |
-| `vt/utf8.rs` | `_mm_loadu_si128` and `_mm256_loadu_si256` loads | Each reads from an array or chunk of at least the loaded size; the tail is copied into a zero-padded block first. |
 
 There is no safe intrinsic for non-temporal stores, and the history copy
 is the largest `memmove` in text floods (see
@@ -96,20 +96,19 @@ is the largest `memmove` in text floods (see
 `Cell` is `#[repr(C, align(16))]`: `ch` (4 bytes), `fg` (4), `bg` (4),
 `attrs` (1), `width` (1), `extra` (2). That is exactly 16 bytes with no
 padding, so every byte is initialized and the cell can be viewed as vector
-words. `term/tests.rs` asserts the size, and `transmute` refuses to compile
-if it changes.
+words.
 
 | Where | View |
 |-------|------|
-| `term/mod.rs` `Cell::bits` | The cell as one `u128` (equal exactly when the cells are). |
-| `term/mod.rs` `Cell::words` | The cell as `u32x4`, the character in lane 0. |
 | `term/mod.rs` `Cell::words_mut` | `&mut [Cell]` as `&mut [u32x4]`, to store whole cells with one vector store. |
 | `parser/ascii.rs` `write` | Calls `Cell::words_mut` to store byte-derived characters and the template fields as whole cells. |
 | `term/mod.rs` `Cell::fill` (portable path) | `&mut [Cell]` as `&mut [u64x2]`. |
 | `term/scrollback.rs` `trimmed_len` | `&[Cell]` as `&[u64]`, to find trailing blank cells four at a time. |
 
-The read-only views are always sound: any bit pattern is a valid integer.
-The mutable views can write any bits, but a `char` has invalid values
+The read-only views, `Cell::bits` (one `u128`) and `Cell::words` (`u32x4`),
+need no `unsafe`: they assemble the fields with shifts, which compile to one
+16-byte load (`term/cell_tests.rs` checks them against the bytes in
+memory). The mutable views can write any bits, but a `char` has invalid values
 (surrogates, above U+10FFFF), so writers must keep lane 0 a valid `char`:
 
 - `Cell::fill` writes copies of a real `Cell`, so this holds.
@@ -129,8 +128,7 @@ checked at compile time by a `const` assert next to `Cell`.
 | Where | Conversion | Proven by |
 |-------|-----------|-----------|
 | `vt/mod.rs` `Handler::print_ascii` | `str::from_utf8_unchecked` | The tokenizer only passes `0x20..=0x7e` here, which is ASCII and so UTF-8. |
-| `vt/mod.rs` `text` (2 blocks) | `str::from_utf8_unchecked` | The run, or the prefix `from_utf8` reported valid, was validated just before. |
-| `vt/mod.rs` (character split across reads) | `str::from_utf8_unchecked` | `from_utf8` validated at least this character. |
+| `vt/mod.rs` `text` | `str::from_utf8_unchecked` | The SIMD validator (`vt/utf8.rs`) accepted the whole run just before. Runs it rejects go through `<[u8]>::utf8_chunks`, which is safe. |
 | `parser/narrow.rs` (2 blocks) | `char::from_u32_unchecked` | The SIMD decoder only reads lanes that end a character of input already validated as UTF-8, and valid UTF-8 never encodes a surrogate or anything above U+10FFFF. |
 
 The vt differential tests feed random and malformed bytes against vte, and
@@ -154,7 +152,7 @@ through a buffer in three calls; this does one `ptr::read`, one
 
 | Where | Call | Why it is sound |
 |-------|------|-----------------|
-| `dbus/mod.rs`, `notifier/freedesktop.rs` (2) | `libc::getuid` | Takes no arguments and cannot fail. Used for D-Bus `EXTERNAL` authentication and for a per-user icon directory, which is used only if it is ours and not group- or world-writable. |
+| `platform.rs` `uid` | `libc::getuid` | Takes no arguments, touches no memory and cannot fail. The one safe wrapper, used for D-Bus `EXTERNAL` authentication, for a per-user icon directory (used only if it is ours and not group- or world-writable) and to look up the login shell. |
 | `term/iterm.rs` | `libc::gethostname` | Writes into a buffer that is writable for the length passed. The result is checked, and the name is cut at the first NUL. |
 | `graphics/kitty/media.rs` | `shm_open`, `OwnedFd::from_raw_fd`, `shm_unlink` | The name is a valid C string. A non-negative result is a new descriptor that the `OwnedFd` then owns and closes. The object is unlinked straight away, as the kitty protocol requires, whatever happens next. |
 | `graphics/kitty/media.rs` (macOS) | `mmap`, `munmap` | macOS cannot `read` shared memory. The mapping is fresh, read-only and `offset + size` bytes, within the size the descriptor reports; the bytes are copied out and the mapping is removed before returning. |
@@ -167,10 +165,10 @@ through a buffer in three calls; this does one `ptr::read`, one
 | `pty/device.rs` | `ioctl(TIOCSWINSZ)`, `ioctl(TIOCGWINSZ)` | Each reads or writes exactly one `libc::winsize`, which lives on the stack through the call, on a descriptor borrowed through `AsFd`. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
 | `pty/termios.rs` | `tcgetattr` (with `MaybeUninit::assume_init`), `tcsetattr`, `cfsetispeed`, `cfsetospeed` | `tcgetattr` fills the whole `termios` on success, and only then is it read; on failure the error is returned and the memory dropped unread. `tcsetattr` reads one `termios` that outlives the call. The speed setters write a field of a `termios` we own, with a speed the platform defines. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
 | `pty/spawn.rs` | `fork`, then in the child `setsid`, `ioctl(TIOCSCTTY)`, ``dup2`, `close_range`/`syscall(SYS_close_range)` or `fcntl(F_SETFD)` per descriptor, `sigprocmask`, `sigaction`, `chdir`, `prctl(PR_SET_THP_DISABLE, 0)` (Linux), `execve`, `write`, `_exit` | The child of a threaded process may make only async-signal-safe calls, and every call after `fork` is one; none allocates, locks or unwinds. The path, `argv`, `envp` (NUL-terminated pointer arrays), working directory, empty signal set and default `sigaction` are all built before the fork and owned by a `Prepared` that outlives `execve`. `errno` goes back as four bytes on a pipe whose ends are close-on-exec, so a successful `execve` closes it and the parent reads nothing; on failure the child `_exit`s, running no destructors or `atexit` handlers. macOS's `TIOCSCTTY` (`_IO('t', 97)`, missing from the libc crate there) is copied from `<sys/ttycom.h>`. Tested from inside the program in `spawn_tests.rs`: controlling terminal, session, signals, leaked descriptors, `exec` errors. |
-| `pty/spawn.rs` | `pipe2`/`pipe` with `OwnedFd::from_raw_fd`, `fcntl(F_SETFD)` (macOS), `read`, `waitpid`, `kill`, `sysconf`, `sigemptyset`, `mem::zeroed` for `sigset_t` and `sigaction` | In the parent: each writes only into a buffer, integer or struct we own and checks its result; the two new pipe descriptors are owned right away. `kill` signals only the child we started. All zeroes is a valid `sigset_t` and `sigaction`, and zero in `sa_sigaction` is `SIG_DFL`. `try_wait` is `waitpid` with `WNOHANG` into an integer we own. |
+| `pty/spawn.rs` | `waitpid`, `kill`, `sysconf`, `sigemptyset`, `mem::zeroed` for `sigset_t` and `sigaction` | In the parent: each writes only into a buffer, integer or struct we own and checks its result. The pipe that reports `exec` errors is `std::io::pipe`, closed on exec, read safely. `kill` signals only the child we started. All zeroes is a valid `sigset_t` and `sigaction`, and zero in `sa_sigaction` is `SIG_DFL`. `try_wait` is `waitpid` with `WNOHANG` into an integer we own. |
 | `platform.rs` | `msg_send![NSEvent, pressedMouseButtons]` (macOS) | A class method with no arguments that returns an `NSUInteger` bitmask of the buttons held now; it reads system state and changes nothing. Called on the main thread from the pointer-move handler, only while a selection drag is active. Tested through its pure use in `ui/drag_tests.rs`; the call itself is covered by running the app. |
-| `pty/login_shell.rs` | `getpwuid_r`, `getuid`, `CStr::from_ptr` | `getpwuid_r` writes only into a `passwd`, a buffer and a pointer we own, with the buffer's length passed; its result and the returned pointer are checked before anything is read. `pw_shell` is a NUL-terminated string inside that buffer, null is treated as none, and it is copied before the buffer drops. Never plain `getpwuid`, whose static buffer other threads share. Tested in `login_shell_tests.rs`. |
-| `pty/exits.rs` | `epoll_create1`, `epoll_ctl`, `epoll_wait`, `syscall(SYS_pidfd_open)` (Linux); `kqueue`, `kevent`, `fcntl(F_SETFD)`, `mem::zeroed` for `kevent`, `kill(pid, 0)` (macOS, FreeBSD); `write`, `OwnedFd::from_raw_fd` | Each new descriptor (the epoll set or kqueue, each pidfd) is checked and owned by an `OwnedFd` at once, and closes on exec (`EPOLL_CLOEXEC`, pidfds by default, `FD_CLOEXEC` on the kqueue). `epoll_ctl` and `kevent` read one event we own; the waits write at most `BATCH` events into an array we own and retry on `EINTR`. All zeroes is a valid `kevent` (no data, null `udata`), and the fields set after are plain numbers. `kill` with signal 0 sends nothing, only for pids above 0, which `kill` would take as process groups. The stop `write` sends one byte from a constant. Tested in `exits_tests.rs`: batches, double adds, concurrent waiters, `EINTR`, descriptor flags. |
+| `pty/login_shell.rs` | `getpwuid_r`, `CStr::from_ptr` | `getpwuid_r` writes only into a `passwd`, a buffer and a pointer we own, with the buffer's length passed; its result and the returned pointer are checked before anything is read. `pw_shell` is a NUL-terminated string inside that buffer, null is treated as none, and it is copied before the buffer drops. Never plain `getpwuid`, whose static buffer other threads share. Tested in `login_shell_tests.rs`. |
+| `pty/exits.rs` | `epoll_create1`, `epoll_ctl`, `epoll_wait`, `syscall(SYS_pidfd_open)` (Linux); `kqueue`, `kevent`, `fcntl(F_SETFD)`, `mem::zeroed` for `kevent`, `kill(pid, 0)` (macOS, FreeBSD); `OwnedFd::from_raw_fd` | Each new descriptor (the epoll set or kqueue, each pidfd) is checked and owned by an `OwnedFd` at once, and closes on exec (`EPOLL_CLOEXEC`, pidfds by default, `FD_CLOEXEC` on the kqueue). `epoll_ctl` and `kevent` read one event we own; the waits write at most `BATCH` events into an array we own and retry on `EINTR`. All zeroes is a valid `kevent` (no data, null `udata`), and the fields set after are plain numbers. `kill` with signal 0 sends nothing, only for pids above 0, which `kill` would take as process groups. The stop pipe is a `std::io::pipe`, written safely. Tested in `exits_tests.rs`: batches, double adds, concurrent waiters, `EINTR`, descriptor flags. |
 | `platform.rs` (macOS) | Objective-C `window`, then `setAlphaValue:` | `view` is the live `NSView` winit gave for the window; `window` returns its `NSWindow` or nil, checked before use, and both selectors take and return the types written. |
 
 The size and range checks (`range()` in `media.rs`, the kitty size limits)
@@ -278,7 +276,7 @@ in `PutImage` requests.
 
 | Where | What | Why it is sound |
 |-------|------|-----------------|
-| `present/memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `ftruncate`, `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized before it is mapped, the size is at most `i32::MAX` bytes (what `wl_shm.create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor or X server reads it only between a commit or put and its release, and the pool never draws into a held buffer. |
+| `present/memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized (safely, with `File::set_len`) before it is mapped, the size is at most `i32::MAX` bytes (what `wl_shm.create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor or X server reads it only between a commit or put and its release, and the pool never draws into a held buffer. |
 
 
 ### Test-only

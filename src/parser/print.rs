@@ -95,12 +95,11 @@ impl Term {
 		self.print_text_with(text);
 	}
 
-	/// # Safety
-	///
-	/// The CPU must have the features [`crate::cpu::has_v3`] checks.
+	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
+	/// checks.
 	#[cfg(target_arch = "x86_64")]
 	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	pub(super) unsafe fn print_text_v3(&mut self, text: &str) {
+	pub(super) fn print_text_v3(&mut self, text: &str) {
 		self.print_text_with(text);
 	}
 

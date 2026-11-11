@@ -131,8 +131,7 @@ fn a_nul_in_the_environment_is_not_a_program() {
 /// The shell `/etc/passwd` lists for the current user, read without libc.
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn passwd_file_shell() -> Option<String> {
-	// SAFETY: `getuid` takes no arguments and cannot fail.
-	let uid = unsafe { libc::getuid() }.to_string();
+	let uid = crate::platform::uid().to_string();
 	let file = std::fs::read_to_string("/etc/passwd").ok()?;
 	file.lines().find_map(|line| {
 		// name:password:uid:gid:gecos:home:shell
