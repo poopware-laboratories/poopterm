@@ -71,7 +71,9 @@ impl Handler for Term {
 	#[inline(always)]
 	fn print(&mut self, text: Text<'_>) {
 		if self.iterm.capture.is_some() {
-			self.iterm.capture(text.to_str());
+			self
+				.iterm
+				.capture(std::str::from_utf8(text.as_bytes()).unwrap_or_default());
 		}
 		self.print_text(text);
 	}

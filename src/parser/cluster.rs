@@ -40,7 +40,7 @@ pub(super) fn join_marks(
 		};
 		extra = id.unwrap_or(extra);
 		joining = extras.marks(extra).last() == Some(&'\u{200d}');
-		used = rest.len() - chars.as_bytes().len();
+		used = rest.as_bytes().len() - chars.as_bytes().len();
 	};
 	cell.extra = extra;
 	match taken {

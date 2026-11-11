@@ -7,7 +7,7 @@
 use super::utf8;
 
 /// Valid UTF-8, as bytes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Text<'a>(&'a [u8]);
 
 impl<'a> Text<'a> {
@@ -26,16 +26,6 @@ impl<'a> Text<'a> {
 	}
 
 	#[inline]
-	pub(crate) fn len(self) -> usize {
-		self.0.len()
-	}
-
-	#[inline]
-	pub(crate) fn is_empty(self) -> bool {
-		self.0.is_empty()
-	}
-
-	#[inline]
 	pub(crate) fn chars(self) -> Chars<'a> {
 		Chars(self.0)
 	}
@@ -43,14 +33,14 @@ impl<'a> Text<'a> {
 	/// The text before and after byte `at`, which must start a character.
 	#[inline]
 	pub(crate) fn split_at(self, at: usize) -> (Self, Self) {
-		debug_assert!(self.0.get(at).is_none_or(|&byte| !is_continuation(byte)));
+		debug_assert!(
+			self
+				.0
+				.get(at)
+				.is_none_or(|byte| !(0x80..0xc0).contains(byte))
+		);
 		let (before, after) = self.0.split_at(at);
 		(Self(before), Self(after))
-	}
-
-	/// The text as a `str`. Checks it again, so it is for cold paths.
-	pub(crate) fn to_str(self) -> &'a str {
-		std::str::from_utf8(self.0).unwrap_or("\u{fffd}")
 	}
 }
 
@@ -59,10 +49,6 @@ impl<'a> From<&'a str> for Text<'a> {
 	fn from(text: &'a str) -> Self {
 		Self(text.as_bytes())
 	}
-}
-
-fn is_continuation(byte: u8) -> bool {
-	byte & 0xc0 == 0x80
 }
 
 /// The characters of a [`Text`], with the bytes not yet decoded.

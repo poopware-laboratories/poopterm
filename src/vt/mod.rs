@@ -289,13 +289,13 @@ fn utf8_len(lead: u8) -> usize {
 fn print_valid<H: Handler>(handler: &mut H, mut text: Text<'_>, c1: bool) {
 	while let Some(at) = c1.then(|| c1_position(text.as_bytes())).flatten() {
 		let (before, control) = text.split_at(at);
-		if !before.is_empty() {
+		if !before.as_bytes().is_empty() {
 			handler.print(before);
 		}
 		handler.execute(control.as_bytes()[1]);
 		text = control.split_at(2).1;
 	}
-	if !text.is_empty() {
+	if !text.as_bytes().is_empty() {
 		handler.print(text);
 	}
 }

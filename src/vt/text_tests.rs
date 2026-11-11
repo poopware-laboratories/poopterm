@@ -23,10 +23,8 @@ const EDGES: [char; 12] = [
 #[test]
 fn valid_bytes_make_text_and_malformed_ones_do_not() {
 	assert_eq!(Text::new(b"").map(Text::as_bytes), Some(&b""[..]));
-	assert_eq!(
-		Text::new("a\u{e9}\u{732b}\u{1f600}".as_bytes()).map(Text::len),
-		Some(10)
-	);
+	let mixed = "a\u{e9}\u{732b}\u{1f600}";
+	assert_eq!(Text::new(mixed.as_bytes()), Some(Text::from(mixed)));
 	for malformed in [
 		&b"\x80"[..],
 		b"\xc0\x80",
@@ -98,22 +96,24 @@ fn advancing_past_the_end_panics_like_slicing() {
 }
 
 #[test]
-fn splitting_keeps_both_halves() {
-	let text = Text::from("x\u{732b}y");
-	assert_eq!(text.split_at(1), (Text::from("x"), Text::from("\u{732b}y")));
-	assert_eq!(text.split_at(0), (Text::default(), text));
-	assert_eq!(text.split_at(5), (text, Text::default()));
-	assert!(text.split_at(5).1.is_empty());
-	assert!(!text.is_empty());
+fn splitting_at_every_boundary_gives_the_two_strs() {
+	let mut rng = Rng::new(0x5917);
+	for _ in 0..300 {
+		let text = random_text(&mut rng);
+		for at in (0..=text.len()).filter(|&at| text.is_char_boundary(at)) {
+			let (before, after) = Text::from(text.as_str()).split_at(at);
+			assert_eq!(before, Text::from(&text[..at]), "{text:?} at {at}");
+			assert_eq!(after, Text::from(&text[at..]), "{text:?} at {at}");
+			assert!(after.chars().eq(text[at..].chars()), "{text:?} at {at}");
+		}
+	}
 }
 
 #[test]
-fn text_reads_back_as_a_str() {
-	assert_eq!(Text::from("caf\u{e9}").to_str(), "caf\u{e9}");
-	assert_eq!(Text::REPLACEMENT.to_str(), "\u{fffd}");
-	assert_eq!(Text::REPLACEMENT.chars().collect::<String>(), "\u{fffd}");
-	// Only reachable by breaking the invariant from inside the module.
-	assert_eq!(Text(b"\xff").to_str(), "\u{fffd}");
+fn the_replacement_is_one_u_fffd() {
+	let mut chars = Text::REPLACEMENT.chars();
+	assert_eq!(chars.next(), Some('\u{fffd}'));
+	assert_eq!(chars.next(), None);
 }
 
 #[test]
@@ -230,4 +230,32 @@ fn malformed_runs_print_replacements_and_c1_controls_execute() {
 	Parser::new().advance(&mut printed, b"a\xffb\xc2\x85c\xe2\x82");
 	// The cut-off character at the end waits for the next read.
 	assert_eq!(printed.0, "a\u{fffd}b\u{85}c");
+}
+
+#[test]
+fn malformed_bytes_stay_bounded_and_the_valid_prefix_decodes_like_std() {
+	// A `Text` never holds these, but decoding must not trust that.
+	let mut rng = Rng::new(0xbad);
+	for _ in 0..3000 {
+		let mut bytes = random_text(&mut rng).into_bytes();
+		for _ in 0..1 + rng.below(3) {
+			let at = rng.below(bytes.len() + 1);
+			bytes.insert(at, rng.below(256) as u8);
+		}
+		let valid = match std::str::from_utf8(&bytes) {
+			Ok(text) => text.len(),
+			Err(error) => error.valid_up_to(),
+		};
+		let decoded: Vec<char> = Chars(&bytes).collect();
+		assert!(decoded.len() <= bytes.len(), "{bytes:x?}");
+		let prefix = std::str::from_utf8(&bytes[..valid]).unwrap();
+		assert!(
+			decoded
+				.iter()
+				.copied()
+				.take(prefix.chars().count())
+				.eq(prefix.chars()),
+			"{bytes:x?}"
+		);
+	}
 }

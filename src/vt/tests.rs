@@ -283,6 +283,16 @@ fn fragment(rng: &mut Rng, out: &mut Vec<u8>) {
 		b"\xed\xa0\x80",
 		b"\xc0\xaf",
 		b"\xf4\x90\x80\x80",
+		// The edges of each encoded length, of C1 and of the surrogates.
+		b"\xc2\x9f",
+		b"\xc2\xa0",
+		b"\xdf\xbf",
+		b"\xe0\xa0\x80",
+		b"\xed\x9f\xbf",
+		b"\xee\x80\x80",
+		b"\xef\xbf\xbf",
+		b"\xf0\x90\x80\x80",
+		b"\xf4\x8f\xbf\xbf",
 	];
 	const BYTES: &[u8] = &[
 		0x00, 0x07, 0x08, 0x0a, 0x0d, 0x18, 0x1a, 0x1b, 0x1c, 0x1f, b' ', b'0', b'9', b':', b';', b'<',
