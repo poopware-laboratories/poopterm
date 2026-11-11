@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.83 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Look up the user and host through sys::user (#317) (sys).
+- Check, hang up and wait for processes through sys::process (#318) (sys).
+
 ## 26.11.82 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
