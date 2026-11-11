@@ -40,16 +40,9 @@ median of 5, MB/s):
 \* On log the ceiling is memory bandwidth: one 16-byte history cell per
 input byte. Plain stores into the history ring read each cache line from
 memory before overwriting it, so history copies run at about 6.6 GB/s here
-however they are batched below glibc's ~4 MiB non-temporal threshold. The
-safe way past it is fewer bytes per history cell (see below). Emoji,
-Unicode, shell, source, CJK and cursor are furthest from their goals.
-
-- **Compact history rows.** Rows scrolled into history are copied as
-  16-byte cells, which costs log, ls and every flood that scrolls (log
-  −19%, ls −17% when the non-temporal stores went). Store history rows
-  in a smaller format (characters plus runs of one style) and expand
-  them when read, so the copy moves a fraction of the bytes; the
-  `ceiling` model then needs the same format.
+however they are batched below glibc's ~4 MiB non-temporal threshold.
+Emoji, Unicode, shell, source, CJK and cursor are furthest from their
+goals.
 
 End to end in a window, the kernel's cooked PTY caps text at 67–118 MB/s
 on this laptop, and Poopterm comes within 10% of that ceiling on 13 of 17
