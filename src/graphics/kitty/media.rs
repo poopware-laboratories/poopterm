@@ -263,32 +263,68 @@ mod tests {
 		std::fs::remove_file(unmarked).unwrap();
 	}
 
-	#[test]
-	fn shared_memory_is_read_and_unlinked() {
-		let name = format!("/poopterm-kitty-{}", std::process::id());
-		let c_name = std::ffi::CString::new(name.clone()).unwrap();
-		// macOS cannot `write` shared memory, so it is sized and mapped, as
-		// clients do.
+	/// A shared memory object named `name` holding `bytes`, made the way
+	/// clients do: macOS cannot `write` shared memory, so it is sized and
+	/// mapped.
+	fn shared_memory(name: &str, bytes: &[u8]) {
+		let c_name = std::ffi::CString::new(name).unwrap();
 		// SAFETY: a C string this test owns.
 		let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
 		assert!(fd >= 0);
 		// SAFETY: a descriptor this test owns.
-		assert_eq!(unsafe { libc::ftruncate(fd, 6) }, 0);
+		assert_eq!(
+			unsafe { libc::ftruncate(fd, bytes.len() as libc::off_t) },
+			0
+		);
 		let protection = libc::PROT_READ | libc::PROT_WRITE;
-		// SAFETY: a new shared mapping of the 6 bytes just sized.
-		let map = unsafe { libc::mmap(std::ptr::null_mut(), 6, protection, libc::MAP_SHARED, fd, 0) };
+		// SAFETY: a new shared mapping of the bytes just sized.
+		let map = unsafe {
+			libc::mmap(
+				std::ptr::null_mut(),
+				bytes.len(),
+				protection,
+				libc::MAP_SHARED,
+				fd,
+				0,
+			)
+		};
 		assert_ne!(map, libc::MAP_FAILED);
-		// SAFETY: the mapping is 6 writable bytes and overlaps nothing.
-		unsafe { std::ptr::copy_nonoverlapping(b"shared".as_ptr(), map.cast(), 6) };
+		// SAFETY: the mapping is `bytes.len()` writable bytes and overlaps nothing.
+		unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), map.cast(), bytes.len()) };
 		// SAFETY: unmaps the mapping above, used no more.
-		unsafe { libc::munmap(map, 6) };
+		unsafe { libc::munmap(map, bytes.len()) };
 		// SAFETY: closes the descriptor above, used no more.
 		unsafe { libc::close(fd) };
+	}
+
+	#[test]
+	fn shared_memory_is_read_and_unlinked() {
+		let name = format!("/poopterm-kitty-{}", std::process::id());
+		shared_memory(&name, b"shared");
 		assert_eq!(
 			load(&command("t=s,S=4"), name.clone().into_bytes()).unwrap(),
 			b"shar"
 		);
 		assert_eq!(code(load(&command("t=s"), name.into_bytes())), "ENOENT");
 		assert_eq!(code(load(&command("t=s"), b"/a/b".to_vec())), "EINVAL");
+	}
+
+	#[test]
+	fn shared_memory_is_read_from_an_offset_and_clamped_at_its_end() {
+		let name = format!("/poopterm-kitty-offset-{}", std::process::id());
+		for (keys, expected) in [
+			("t=s,O=2,S=3", &b"are"[..]),
+			("t=s,O=4", b"ed"),
+			("t=s,O=5,S=9", b"d"),
+		] {
+			shared_memory(&name, b"shared");
+			let read = load(&command(keys), name.clone().into_bytes()).unwrap();
+			assert_eq!(read, expected, "{keys}");
+			// Each read consumes the object.
+			assert_eq!(
+				code(load(&command("t=s"), name.clone().into_bytes())),
+				"ENOENT"
+			);
+		}
 	}
 }
