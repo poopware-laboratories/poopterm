@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.78 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Print validated text without unchecked conversions (#310) (vt).
+
 ## 26.11.77 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
