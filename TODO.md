@@ -8,20 +8,46 @@ Open work, roughly in priority order. Measure before and after every step
 Everything should be as fast as we can make it while staying stable and
 correct. The numbers below are minimums, not finish lines.
 
-**Text: at least 200 MB/s end to end on every payload** (ASCII, Unicode,
-CSI-heavy, cursor movement). 200 MB/s is the floor, not the ceiling: go
-higher wherever that stays safe (bounded memory, no skipped state, output
-identical to the slower path). Measured with `poopterm --benchmark --terminal` in a
-real window. On the i3-N305 (26.11.51, `--benchmark --stages all`,
-median of 5) the parser alone runs the workloads at 144–1187 MB/s (257
-overall); emoji (178), kitty PNG (144), Unicode (193) and sixel (193) are
-still below the floor there. In a window the kernel's cooked PTY caps text
-at 67–118 MB/s, and Poopterm comes within 10% of that ceiling on 13 of 17
-workloads (126 MB/s overall). Raw, the window runs at 119–478 MB/s (206
-overall), and emoji (144), kitty PNG (119), sixel (152), Unicode (157),
-shell (168), source (176), CJK (178) and cursor (187) still need a faster
-parser to reach the floor. See
-[`docs/performance.md`](docs/performance.md#results).
+**Text: 500 MB/s on every payload, or the machine's ceiling where that is
+lower.** 200 MB/s stays the floor everywhere. The ceiling is measured, not
+guessed: `poopterm --benchmark --stages ceiling,parse` runs, next to the
+parser, the memory traffic no terminal can avoid for each workload (every
+byte read once, one 16-byte cell written per character, the used cells of
+each scrolled line copied into history; see
+[`docs/performance.md`](docs/performance.md)). Run it on any device to get
+that device's goal: `parse` should reach the lower of 500 MB/s and
+`ceiling`, in safe code, with output identical to the slower path.
+
+On the i3-N305 laptop (26.11.76, 120x40, median of 5, MB/s):
+
+| workload | ceiling | parse | goal | parse / goal |
+|---|---|---|---|---|
+| log | 359 | 419 | 359* | met |
+| compiler | 724 | 256 | 500 | 51% |
+| ls | 431 | 316 | 431 | 73% |
+| source | 942 | 222 | 500 | 44% |
+| unicode | 497 | 199 | 497 | 40% |
+| cjk | 750 | 233 | 500 | 47% |
+| emoji | 830 | 179 | 500 | 36% |
+| tui | 397 | 337 | 397 | 85% |
+| editor | 588 | 345 | 500 | 69% |
+| progress | 2720 | 460 | 500 | 92% |
+| truecolor | 6088 | 321 | 500 | 64% |
+| cursor | 1713 | 240 | 500 | 48% |
+| shell | 843 | 207 | 500 | 41% |
+
+\* On log the ceiling is memory bandwidth: one 16-byte history cell per
+input byte. The parser beats it there only through the non-temporal history
+stores, which are `unsafe` and being replaced with safe code; the goal is
+then to stay at the ceiling. Emoji, Unicode, shell, source, CJK and cursor
+are furthest from their goals.
+
+End to end in a window, the kernel's cooked PTY caps text at 67–118 MB/s
+on this laptop, and Poopterm comes within 10% of that ceiling on 13 of 17
+workloads; raw, the window ran at 119–478 MB/s (206 overall) at 26.11.51.
+`poopterm --benchmark --terminal` measures it; the PTY ceiling there is the
+kernel's, so headless `parse` against `ceiling` is where the 500 MB/s goal
+is tracked. See [`docs/performance.md`](docs/performance.md#results).
 
 **Images: as fast as possible** for Sixel and the kitty graphics protocol,
 from first byte to pixels on screen. There is no target to stop at; at least

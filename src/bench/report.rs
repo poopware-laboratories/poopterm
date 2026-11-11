@@ -15,6 +15,9 @@ use super::{
 /// What one measurement covers.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Stage {
+	/// The least work any terminal must do: characters into cells, lines
+	/// into history, escape sequences skipped (`bench::ceiling`).
+	Ceiling,
 	/// The parser and terminal state only.
 	Parse,
 	/// The same plus a software-rendered frame every `--frame-every` bytes.
@@ -31,7 +34,8 @@ pub(crate) enum Stage {
 
 /// Every stage with its `--stages` name and column heading, in the order
 /// they run.
-const STAGES: [(Stage, &str, &str); 8] = [
+const STAGES: [(Stage, &str, &str); 9] = [
+	(Stage::Ceiling, "ceiling", "ceiling"),
 	(Stage::Parse, "parse", "parse"),
 	(Stage::Render, "render", "+render"),
 	(Stage::Pty(Mode::Cooked), "pty", "pty"),
@@ -175,11 +179,15 @@ mod tests {
 	fn stages_are_named_by_comma_separated_lists() {
 		assert_eq!(stages("parse"), Ok(vec![Stage::Parse]));
 		assert_eq!(
+			stages("ceiling,parse"),
+			Ok(vec![Stage::Ceiling, Stage::Parse])
+		);
+		assert_eq!(
 			stages("pty,pipeline-raw"),
 			Ok(vec![Stage::Pty(Mode::Cooked), Stage::Pipeline(Mode::Raw)])
 		);
 		// Everything but the terminal, so `all` runs anywhere, CI included.
-		let every: Vec<Stage> = STAGES[..6].iter().map(|&(stage, ..)| stage).collect();
+		let every: Vec<Stage> = STAGES[..7].iter().map(|&(stage, ..)| stage).collect();
 		assert_eq!(stages("all"), Ok(every));
 		let both = Ok(vec![Stage::Terminal(Mode::Raw), Stage::Parse]);
 		assert_eq!(stages("terminal-raw,parse"), both);
@@ -187,7 +195,8 @@ mod tests {
 
 	#[test]
 	fn an_unknown_or_empty_stage_is_refused_with_the_known_ones() {
-		let known = "parse, render, pty, pty-raw, pipeline, pipeline-raw, terminal, terminal-raw, all";
+		let known =
+			"ceiling, parse, render, pty, pty-raw, pipeline, pipeline-raw, terminal, terminal-raw, all";
 		assert_eq!(
 			stages("pty,fast"),
 			Err(format!("unknown stage: fast; the stages are {known}"))
@@ -334,14 +343,38 @@ mod tests {
 	}
 
 	#[test]
+	fn the_ceiling_is_the_first_column_and_runs_before_parsing() {
+		let args = ["--only", "log,emoji", "--kib", "8", "--repeat", "1"];
+		let mut args = args.to_vec();
+		args.extend(["--stages", "parse,ceiling"]);
+		let (table, calls) = fake_report(&args);
+		assert_eq!(table.columns, ["ceiling", "parse"]);
+		// Per workload: the warm-up through the last stage, then each stage.
+		let stages: Vec<Stage> = calls.iter().map(|&(stage, _)| stage).collect();
+		let per_workload = [Stage::Parse, Stage::Ceiling, Stage::Parse];
+		assert_eq!(stages, [per_workload, per_workload].concat());
+		// Every run sees the whole workload but the warm-up, an eighth of it.
+		assert_eq!(calls[0].1, calls[1].1 / 8);
+		assert_eq!(calls[1].1, calls[2].1);
+	}
+
+	#[test]
+	fn all_measures_the_ceiling_but_the_default_does_not() {
+		assert_eq!(stages("all").unwrap()[0], Stage::Ceiling);
+		assert!(!HEADLESS.contains(&Stage::Ceiling));
+		let (table, _) = fake_report(&["--only", "log", "--kib", "8", "--repeat", "1"]);
+		assert_eq!(table.columns, ["parse", "+render"]);
+	}
+
+	#[test]
 	fn a_stage_named_twice_runs_once() {
 		let args = ["--only", "log", "--kib", "8", "--repeat", "2"];
 		let mut args = args.to_vec();
 		args.extend(["--stages", "pty,all,pty"]);
 		let (table, calls) = fake_report(&args);
-		assert_eq!(table.columns.len(), 6);
+		assert_eq!(table.columns.len(), 7);
 		// The warm-up, then two runs of each stage.
-		assert_eq!(calls.len(), 1 + 2 * 6);
+		assert_eq!(calls.len(), 1 + 2 * 7);
 	}
 
 	#[test]

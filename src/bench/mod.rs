@@ -7,6 +7,9 @@
 //! bytes through a real PTY, Poopterm's own PTY pipeline, or (`--terminal`)
 //! whatever terminal it runs in, so every terminal is measured on identical
 //! input. `poopterm --bench-corpus NAME` prints a workload's bytes.
+pub(crate) mod ceiling;
+#[cfg(test)]
+mod ceiling_tests;
 pub(crate) mod corpus;
 pub(crate) mod images;
 pub(crate) mod mark;
@@ -265,6 +268,7 @@ fn benchmark(
 	let mut fonts = fonts();
 	let (size, feed) = (options.size, options.feed);
 	let mut table = report(&options, |stage, data| match stage {
+		Stage::Ceiling => Ok(ceiling::rate(data, size)),
 		Stage::Parse => Ok(measure(data, size, feed, None)),
 		Stage::Render => Ok(measure(data, size, feed, Some(&mut fonts))),
 		Stage::Pty(mode) => pty::rate(data, size, mode, false),
@@ -426,9 +430,9 @@ mod tests {
 	#[test]
 	fn no_render_after_all_drops_only_rendering() {
 		let stages = parsed(&["--stages", "all", "--no-render"]).unwrap().stages;
-		assert_eq!(stages.len(), 5, "{stages:?}");
+		assert_eq!(stages.len(), 6, "{stages:?}");
 		assert!(!stages.contains(&Stage::Render));
-		assert_eq!(stages[0], Stage::Parse);
+		assert_eq!(stages[..2], [Stage::Ceiling, Stage::Parse]);
 	}
 
 	#[test]

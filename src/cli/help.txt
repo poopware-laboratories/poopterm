@@ -36,9 +36,10 @@ BENCHMARK OPTIONS
 	program (64 KiB by default).
       --frame-every BYTES	Draw a frame after this much output (1 MiB).
       --no-render	Only parse; draw no frames.
-      --stages LIST	Stages to time: parse, render, pty, pty-raw,
-	pipeline, pipeline-raw, terminal, terminal-raw,
-	or all but the terminal ones (parse,render).
+      --stages LIST	Stages to time: ceiling, parse, render, pty,
+	pty-raw, pipeline, pipeline-raw, terminal,
+	terminal-raw, or all but the terminal ones
+	(parse,render).
       --terminal	Time the terminal this runs in, cooked and
 	raw, against the PTY ceiling, at its size.
       --repeat N	Time each stage N times after a warm-up; show
