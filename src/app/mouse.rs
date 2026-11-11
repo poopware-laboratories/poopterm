@@ -170,6 +170,7 @@ impl App {
 			kind,
 			col: point.col + 1,
 			row: point.row.saturating_sub(visible_start) + 1,
+			pixel: self.grid_geometry().pixel_at(x, y).unwrap_or((1, 1)),
 			mods: self.mods,
 		};
 		if let Some(bytes) = encode_mouse(report, term.mouse_encoding, term.mouse_tracking) {

@@ -126,6 +126,18 @@ impl GridGeometry {
 		(inside && self.rows > 0).then(|| self.nearest(x, y))
 	}
 
+	/// The pixel under `(x, y)` counted from 1,1 at the grid's top-left, as
+	/// SGR-Pixels mouse reports give it, or `None` outside the grid. Below
+	/// the last row, where cells still count as the last row's, it is the
+	/// grid's last pixel row.
+	pub(crate) fn pixel_at(&self, x: f64, y: f64) -> Option<(usize, usize)> {
+		self.point_at(x, y)?;
+		let last_row = (self.rows * self.cell.1).saturating_sub(1);
+		let dx = (x - self.left as f64) as usize;
+		let dy = ((y - self.top as f64) as usize).min(last_row);
+		Some((dx + 1, dy + 1))
+	}
+
 	/// The cell closest to `(x, y)`, so a drag past an edge keeps reaching
 	/// the cells along it.
 	pub(crate) fn nearest(&self, x: f64, y: f64) -> CellPoint {

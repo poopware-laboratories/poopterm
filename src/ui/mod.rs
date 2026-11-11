@@ -36,6 +36,8 @@ mod font_size_tests;
 pub(crate) mod frame;
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod grid_pixel_tests;
 pub(crate) mod header;
 pub(crate) mod header_target;
 #[cfg(test)]

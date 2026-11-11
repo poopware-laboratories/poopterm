@@ -131,7 +131,7 @@ impl Term {
 					9 | 1000 | 1002 | 1003 => self.mouse_tracking = if enabled { p } else { 0 },
 					1004 => self.focus_reporting = enabled,
 					1007 => self.alternate_scroll = enabled,
-					1005 | 1006 | 1015 => {
+					1005 | 1006 | 1015 | 1016 => {
 						let encoding = MouseEncoding::from_mode(p).unwrap_or_default();
 						if enabled {
 							self.mouse_encoding = encoding;
@@ -370,7 +370,7 @@ impl Term {
 			9 | 1000 | 1002 | 1003 => self.mouse_tracking == mode,
 			1004 => self.focus_reporting,
 			1007 => self.alternate_scroll,
-			1005 | 1006 | 1015 => self.mouse_encoding.mode() == Some(mode),
+			1005 | 1006 | 1015 | 1016 => self.mouse_encoding.mode() == Some(mode),
 			2004 => self.bracketed_paste,
 			_ => return self.keyboard.clone().mode(mode).copied(),
 		})
