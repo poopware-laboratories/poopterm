@@ -5,6 +5,7 @@
 	all(target_os = "macos", not(test)),
 	expect(dead_code, reason = "no window buffers")
 )]
+pub(crate) mod exits;
 pub(crate) mod mem;
 pub(crate) mod process;
 pub(crate) mod pty;

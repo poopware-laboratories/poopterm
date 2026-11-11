@@ -2,10 +2,8 @@
 //! [`Reaper`] watches its children through [`Exits`], waits for each as it
 //! ends and hands its [`Exit`] to the code given with it.
 
-use super::{
-	exits::Exits,
-	spawn::{Child, Exit},
-};
+use super::spawn::{Child, Exit};
+use crate::sys::exits::Exits;
 use std::{
 	collections::HashMap,
 	io,

@@ -3,10 +3,8 @@
 //! `epoll(7)`), `EVFILT_PROC` with `NOTE_EXIT` in a kqueue on macOS and
 //! FreeBSD (`kqueue(2)`). A pipe in the same set lets another thread stop
 //! the wait; it is never read, so a stopped set stays stopped.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 
-use super::{device::check, spawn::report_pipe};
+use super::pty::check;
 use std::{
 	io,
 	os::fd::{AsRawFd, FromRawFd, OwnedFd},
@@ -20,7 +18,7 @@ pub(crate) struct Exits {
 	stop: (io::PipeReader, io::PipeWriter),
 	/// Each watched program's pidfd, closed once it is reported.
 	#[cfg(target_os = "linux")]
-	pub(super) pidfds: std::sync::Mutex<std::collections::HashMap<libc::pid_t, OwnedFd>>,
+	pub(crate) pidfds: std::sync::Mutex<std::collections::HashMap<libc::pid_t, OwnedFd>>,
 }
 
 /// How many ends one wait takes in at most; more come with the next.
@@ -34,7 +32,7 @@ impl Exits {
 	pub(crate) fn new() -> io::Result<Self> {
 		let exits = Self {
 			set: new_set()?,
-			stop: report_pipe()?,
+			stop: io::pipe()?,
 			#[cfg(target_os = "linux")]
 			pidfds: Default::default(),
 		};
