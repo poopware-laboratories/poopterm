@@ -333,11 +333,11 @@ impl Shared {
 			Ok(memory) => memory,
 			Err(error) => return Ok(Err(failed(error))),
 		};
-		// SAFETY: the descriptor is open; libxcb closes the copy once sent.
-		let fd = unsafe { libc::fcntl(memory.fd(), libc::F_DUPFD_CLOEXEC, 0) };
-		if fd < 0 {
-			return Ok(Err(failed(std::io::Error::last_os_error())));
-		}
+		// A copy closed on exec, which libxcb closes once sent.
+		let fd = match memory.fd().try_clone_to_owned() {
+			Ok(fd) => std::os::fd::IntoRawFd::into_raw_fd(fd),
+			Err(error) => return Ok(Err(failed(error))),
+		};
 		let (client, connection) = (&target.client, target.connection);
 		// SAFETY: the connection is live, and the descriptor ours to give.
 		let shmseg = unsafe {

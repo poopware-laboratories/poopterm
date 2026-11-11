@@ -4,15 +4,20 @@
 // The tests call C, the kernel or CPU-dispatched copies directly.
 #![allow(unsafe_code)]
 use super::memory::{MAX_BYTES, Memory};
-use std::io::ErrorKind;
+use std::{
+	fs::File,
+	io::ErrorKind,
+	os::{fd::AsRawFd, unix::fs::FileExt},
+};
+
+/// The file behind `memory`, as the compositor sees it.
+fn file(memory: &Memory) -> File {
+	File::from(memory.fd().try_clone_to_owned().unwrap())
+}
 
 /// The size of the file behind `memory`.
 fn file_size(memory: &Memory) -> i64 {
-	// SAFETY: a zeroed `stat` is valid.
-	let mut stat = unsafe { std::mem::zeroed::<libc::stat>() };
-	// SAFETY: the descriptor is open, and `stat` is ours to fill.
-	assert_eq!(unsafe { libc::fstat(memory.fd(), &mut stat) }, 0);
-	stat.st_size as i64
+	file(memory).metadata().unwrap().len() as i64
 }
 
 #[test]
@@ -29,9 +34,7 @@ fn pixels_written_are_what_the_file_holds() {
 		.pixels()
 		.copy_from_slice(&[0x00ff_0000, 0x0000_ff00, 0x1234_5678]);
 	let mut bytes = [0u8; 12];
-	// SAFETY: reads into a buffer of that many bytes.
-	let read = unsafe { libc::pread(memory.fd(), bytes.as_mut_ptr().cast(), 12, 0) };
-	assert_eq!(read, 12);
+	file(&memory).read_exact_at(&mut bytes, 0).unwrap();
 	let pixels: Vec<u32> = bytes
 		.chunks(4)
 		.map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
@@ -62,7 +65,7 @@ fn the_largest_buffer_an_int_can_size_is_allowed() {
 fn the_descriptor_is_closed_on_exec() {
 	let memory = Memory::new(1).unwrap();
 	// SAFETY: reads the descriptor's flags.
-	let flags = unsafe { libc::fcntl(memory.fd(), libc::F_GETFD) };
+	let flags = unsafe { libc::fcntl(memory.fd().as_raw_fd(), libc::F_GETFD) };
 	assert_eq!(flags & libc::FD_CLOEXEC, libc::FD_CLOEXEC);
 }
 
@@ -81,7 +84,7 @@ fn the_file_is_sized_exactly_around_page_boundaries() {
 fn each_buffer_has_its_own_file() {
 	let mut first = Memory::new(2).unwrap();
 	let mut second = Memory::new(2).unwrap();
-	assert_ne!(first.fd(), second.fd());
+	assert_ne!(first.fd().as_raw_fd(), second.fd().as_raw_fd());
 	first.pixels()[0] = 1;
 	assert_eq!(second.pixels(), [0, 0]);
 	second.pixels()[1] = 2;

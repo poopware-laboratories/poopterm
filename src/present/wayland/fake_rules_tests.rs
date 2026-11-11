@@ -6,7 +6,7 @@ use super::{
 	fake_tests::{DISPLAY, client, install, with},
 };
 use crate::present::memory::Memory;
-use std::ptr;
+use std::{os::fd::AsRawFd, ptr};
 
 /// The objects a well-behaved client makes, up to a buffer on a surface.
 struct World {
@@ -93,7 +93,7 @@ fn world(surface_version: u32) -> World {
 	let memory = Memory::new((WIDTH * HEIGHT) as usize).unwrap();
 	let mut arguments = [
 		new_id(),
-		Argument { fd: memory.fd() },
+		Argument { fd: memory.fd().as_raw_fd() },
 		int(WIDTH * HEIGHT * 4),
 	];
 	let pool = make(&client, shm, 0, client.shm_pool, 2, &mut arguments);
@@ -229,7 +229,7 @@ fn binding_what_is_not_offered_or_above_its_version_is_flagged() {
 fn pools_larger_than_their_memory_or_of_bad_descriptors_are_flagged() {
 	let world = world(6);
 	let memory = Memory::new(4).unwrap();
-	let mut arguments = [new_id(), Argument { fd: memory.fd() }, int(17)];
+	let mut arguments = [new_id(), Argument { fd: memory.fd().as_raw_fd() }, int(17)];
 	make(
 		&world.client,
 		world.shm,

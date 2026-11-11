@@ -12,22 +12,13 @@ use std::{
 	fs::OpenOptions,
 	io,
 	ops::Deref,
-	os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
+	os::{fd::AsFd, unix::fs::OpenOptionsExt},
 	path::Path,
-	ptr::{self, NonNull},
-	slice,
 };
 
-pub(crate) struct Mapped {
-	map: NonNull<u8>,
-	len: usize,
-}
+use crate::sys::mem::Map;
 
-// SAFETY: the mapping is read only and never written through, like a
-// `&'static [u8]`, so any thread may read it and drop it.
-unsafe impl Send for Mapped {}
-// SAFETY: as above; shared access only reads.
-unsafe impl Sync for Mapped {}
+pub(crate) struct Mapped(Map);
 
 impl Mapped {
 	/// Maps the regular file at `path`. Refuses other kinds of file and
@@ -46,26 +37,8 @@ impl Mapped {
 		}
 		// `mmap` refuses an empty file (`EINVAL`) as `InvalidInput` too.
 		let len = usize::try_from(metadata.len()).map_err(|_| refused())?;
-		// SAFETY: maps `len` bytes of an open file, read only and private, at
-		// an address the kernel picks; the result is checked before use.
-		let map = unsafe {
-			libc::mmap(
-				ptr::null_mut(),
-				len,
-				libc::PROT_READ,
-				libc::MAP_PRIVATE,
-				file.as_raw_fd(),
-				0,
-			)
-		};
-		if map == libc::MAP_FAILED {
-			return Err(io::Error::last_os_error());
-		}
 		// The mapping holds its own reference to the file; `file` closes here.
-		Ok(Self {
-			map: NonNull::new(map.cast()).expect("mmap never maps address 0"),
-			len,
-		})
+		Map::read(file.as_fd(), len, false).map(Self)
 	}
 }
 
@@ -73,17 +46,7 @@ impl Deref for Mapped {
 	type Target = [u8];
 
 	fn deref(&self) -> &[u8] {
-		// SAFETY: the mapping holds `len` readable bytes and lives until
-		// `self` drops; nothing writes to it.
-		unsafe { slice::from_raw_parts(self.map.as_ptr(), self.len) }
-	}
-}
-
-impl Drop for Mapped {
-	fn drop(&mut self) {
-		// SAFETY: the mapping is this one's, of this length, and no borrow of
-		// it outlives `self`.
-		unsafe { libc::munmap(self.map.as_ptr().cast(), self.len) };
+		self.0.bytes()
 	}
 }
 

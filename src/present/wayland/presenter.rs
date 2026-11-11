@@ -12,7 +12,7 @@ use crate::present::{
 	copy::{History, Rows},
 	pool::{Pick, Pool},
 };
-use std::{io, ptr};
+use std::{io, os::fd::AsRawFd, ptr};
 
 // Request opcodes, from wayland.xml.
 const GET_REGISTRY: u32 = 1;
@@ -276,7 +276,13 @@ impl Presenter {
 		let pixels = pixels.ok_or_else(|| failed(io::ErrorKind::InvalidInput.into()))?;
 		let memory = Memory::new(pixels).map_err(failed)?;
 		let (client, int) = (&self.client, |value: usize| Argument::int(value as i32));
-		let mut arguments = [Argument::NEW, Argument { fd: memory.fd() }, int(pixels * 4)];
+		let mut arguments = [
+			Argument::NEW,
+			Argument {
+				fd: memory.fd().as_raw_fd(),
+			},
+			int(pixels * 4),
+		];
 		// SAFETY: `wl_shm` is live; the arguments match `create_pool`'s
 		// signature, and sending duplicates the descriptor, which `memory`
 		// keeps open meanwhile.

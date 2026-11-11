@@ -7,6 +7,7 @@ use crate::present::memory::Memory;
 use std::{
 	ffi::{CStr, c_void},
 	io::ErrorKind,
+	os::fd::AsRawFd,
 	ptr::NonNull,
 };
 
@@ -164,7 +165,7 @@ fn the_whole_mapping_is_unmapped_on_drop() {
 	// SAFETY: a zeroed `stat` is valid, and the descriptor is open.
 	let inode = unsafe {
 		let mut stat = std::mem::zeroed::<libc::stat>();
-		assert_eq!(libc::fstat(memory.fd(), &mut stat), 0);
+		assert_eq!(libc::fstat(memory.fd().as_raw_fd(), &mut stat), 0);
 		stat.st_ino
 	};
 	assert_eq!(mappings_of(inode).len(), 1, "mapped once while alive");
