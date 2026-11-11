@@ -397,6 +397,26 @@ class Unsafe(unittest.TestCase):
         )
         self.assertEqual(pr_check.unsafe_changes(diff), (5, 0, 0))
 
+    def test_functions_with_an_abi_count_but_function_pointer_types_do_not(self):
+        diff = rust_diff(
+            'src/a.rs',
+            '+unsafe extern "system" fn requirements(device: RawDevice) {',
+            '+unsafe fn send<R>(self) -> R {',
+            '+type Create = unsafe extern "system" fn(RawDevice, *const Info) -> i32;',
+            '+\tdestroy: unsafe extern "C" fn(Proxy),',
+            '+\tcallback: Option<unsafe fn()>,',
+        )
+        self.assertEqual(pr_check.unsafe_changes(diff), (2, 0, 0))
+
+    def test_extern_blocks_count_with_or_without_an_abi(self):
+        diff = rust_diff('src/a.rs', '+unsafe extern "C" {', '+unsafe extern {', '+extern "C" {')
+        self.assertEqual(pr_check.unsafe_changes(diff), (2, 0, 0))
+
+    def test_a_renamed_file_counts_under_its_new_name(self):
+        diff = 'diff --git a/src/a.txt b/src/a.rs\nrename from src/a.txt\nrename to src/a.rs\n' \
+            '--- a/src/a.txt\n+++ b/src/a.rs\n@@ -1 +1 @@\n+unsafe { f() };'
+        self.assertEqual(pr_check.unsafe_changes(diff), (1, 0, 0))
+
     def test_removed_lines_count_as_removed(self):
         diff = rust_diff('src/a.rs', '-\tunsafe { f() };', '-unsafe fn g() {}', '+\tf();')
         self.assertEqual(pr_check.unsafe_changes(diff), (0, 2, 0))

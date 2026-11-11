@@ -20,9 +20,12 @@ INLINE_TESTS = re.compile(r'\s*(pub(\([a-z]+\))? )?mod \w+ \{')
 GLUE_START = re.compile(r'\s*// pr-check: window glue:(.*)')
 GLUE_END = re.compile(r'\s*// pr-check: end window glue\s*$')
 GLUE_LIMIT = 12
-# Unsafe blocks, functions, impls, extern blocks and attributes, and the
+# Unsafe blocks, named functions, impls, extern blocks and attributes (not
+# function pointer types such as `unsafe extern "C" fn(i32)`), and the
 # entries that let a module use them.
-UNSAFE = re.compile(r'\bunsafe\s*(\{|fn\b|impl\b|extern\b)|#!?\[unsafe\(')
+UNSAFE = re.compile(
+    r'\bunsafe\s*\{|\bunsafe\s+(extern\s+"[^"]*"\s+)?fn\s+[A-Za-z_]|\bunsafe\s+impl\b'
+    r'|\bunsafe\s+extern\s*("[^"]*"\s*)?\{|#!?\[unsafe\(')
 ALLOW_UNSAFE = re.compile(r'\ballow\(unsafe_code\b')
 DIFF_FILE = re.compile(r'diff --git a/(\S+) b/(\S+)')
 
