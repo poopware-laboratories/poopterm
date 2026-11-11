@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.73 "Lunar Moth" — 2026-11-11
+
+### Added
+
+- Say why the device was lost with VK_EXT_device_fault (#304) (gpu).
+
 ## 26.11.72 "Lunar Moth" — 2026-11-10
 
 ### Added
