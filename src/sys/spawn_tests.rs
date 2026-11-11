@@ -582,6 +582,87 @@ fn a_directory_that_does_not_exist_is_an_error() {
 	assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
 }
 
+/// The children of this thread that still exist, zombies included.
+#[cfg(target_os = "linux")]
+fn our_children() -> Vec<String> {
+	let list = std::fs::read_to_string("/proc/thread-self/children").unwrap();
+	list.split_whitespace().map(str::to_owned).collect()
+}
+
+/// Expects `command` to fail with `errno` after the fork, its child reaped.
+#[cfg(target_os = "linux")]
+fn fails_and_is_reaped(command: Command, terminal: &OwnedFd, errno: libc::c_int) {
+	let before = our_children();
+	let error = spawn(&command, terminal).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(errno), "{error}");
+	assert_eq!(our_children(), before, "the failed child is left");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_started_program_is_our_child_until_waited_for() {
+	// Shows `our_children` sees children, so the tests below can fail.
+	let pair = device::open(WindowSize::default()).unwrap();
+	let mut child = spawn(&sh("exit 3"), &pair.slave).unwrap();
+	assert_eq!(our_children(), [child.id().to_string()]);
+	assert_eq!(child.wait().unwrap(), Exit::Code(3));
+	assert_eq!(our_children(), [] as [String; 0]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_that_cannot_enter_its_directory_is_reaped() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	fails_and_is_reaped(sh("true").cwd("Cargo.toml"), &pair.slave, libc::ENOTDIR);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_refused_its_terminal_is_reaped() {
+	let file = OwnedFd::from(File::open("Cargo.toml").unwrap());
+	fails_and_is_reaped(sh("true"), &file, libc::ENOTTY);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_whose_exec_fails_is_reaped() {
+	// A path with a slash is not searched, so only execve can refuse it.
+	let pair = device::open(WindowSize::default()).unwrap();
+	fails_and_is_reaped(Command::new("/"), &pair.slave, libc::EACCES);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn reaping_a_failed_child_leaves_our_other_children_alone() {
+	// The terminal is taken, so the second program fails after the fork.
+	let pair = pty();
+	let mut first = waiting(&pair);
+	fails_and_is_reaped(sh("true"), &pair.slave, libc::EPERM);
+	assert_eq!(our_children(), [first.id().to_string()]);
+	first.hang_up().unwrap();
+	first.wait().unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_real_time_signal_we_block_is_not_blocked_in_the_program() {
+	// Past the first 32 signals, in the mask's upper half.
+	// SAFETY: all zeroes is a valid `sigset_t`.
+	let mut block = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+	let mut old = block;
+	// SAFETY: initializes a set on our stack.
+	unsafe { libc::sigemptyset(&mut block) };
+	// SAFETY: adds to the set just initialized.
+	unsafe { libc::sigaddset(&mut block, libc::SIGRTMAX()) };
+	// SAFETY: changes only this thread's mask, saving the old one in `old`.
+	unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old) };
+	let (output, _) = run(sh("grep '^SigBlk' /proc/self/status"));
+	// SAFETY: restores this thread's mask from the copy above.
+	unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut()) };
+	let mask = output.split_whitespace().nth(1).unwrap();
+	assert!(mask.chars().all(|digit| digit == '0'), "{output:?}");
+}
+
 #[test]
 fn hanging_up_ends_a_shell_waiting_for_input() {
 	let pair = device::open(WindowSize::default()).unwrap();
@@ -611,6 +692,41 @@ fn signals_are_neither_ignored_nor_blocked() {
 		assert!(mask.chars().all(|digit| digit == '0'), "{line}");
 	}
 	assert_eq!(output.lines().count(), 2, "{output:?}");
+}
+
+/// Runs `script` with `signal` ignored in this process, then restores it.
+fn with_ignored(signal: libc::c_int, script: &str) -> (String, Exit) {
+	// SAFETY: all zeroes is a valid `sigaction`; its handler is then set
+	// to `SIG_IGN`.
+	let mut ignore = unsafe { std::mem::zeroed::<libc::sigaction>() };
+	ignore.sa_sigaction = libc::SIG_IGN;
+	let mut old = ignore;
+	// SAFETY: sets this signal's disposition from the struct above and
+	// saves the old one in `old`.
+	assert_eq!(unsafe { libc::sigaction(signal, &ignore, &mut old) }, 0);
+	let result = run(sh(script));
+	// SAFETY: restores the disposition saved above.
+	unsafe { libc::sigaction(signal, &old, std::ptr::null_mut()) };
+	result
+}
+
+#[test]
+fn the_first_signal_gets_its_default_action_back() {
+	// SIGHUP is 1, where the loop resetting every signal starts.
+	let (_, exit) = with_ignored(libc::SIGHUP, "kill -HUP $$; exit 0");
+	assert_eq!(exit, Exit::Signal(libc::SIGHUP));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_last_real_time_signal_gets_its_default_action_back() {
+	// Where the loop ends: an ignored SIGRTMAX would stay ignored after
+	// exec, as the shell's own SigIgn mask shows.
+	let last = libc::SIGRTMAX();
+	assert_eq!(last, 64);
+	let (output, _) = with_ignored(last, "grep '^SigIgn' /proc/self/status");
+	let mask = output.split_whitespace().nth(1).unwrap();
+	assert!(mask.chars().all(|digit| digit == '0'), "{output:?}");
 }
 
 #[test]

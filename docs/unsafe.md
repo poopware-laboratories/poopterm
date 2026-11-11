@@ -25,10 +25,10 @@ The compiler enforces both: `Cargo.toml` denies clippy's
 `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block`, and
 rustc's `unsafe_op_in_unsafe_fn`. An `unsafe fn` must still wrap each
 unsafe operation inside it in its own commented block, and documents what
-callers must ensure under `# Safety`. Three module trees still expect
-several operations per block, each with its reason: `gpu::vk`,
-`present::x11` and `present::wayland`, whose driver and library calls
-get one safe wrapper each in the steps that follow.
+callers must ensure under `# Safety`. Some C bindings still expect
+several operations per block, each with its reason: `gpu::vk`, `gpu::mtl`,
+`present::x11`, `present::wayland`, `objc` and `about_menu`, whose driver
+and library calls get one safe wrapper each in the steps that follow.
 
 ### Where it is allowed
 
