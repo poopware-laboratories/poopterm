@@ -298,3 +298,27 @@ fn remote_hosts_are_labeled_unless_they_are_this_one() {
 	assert_eq!(t.iterm.remote_label("ZETA.example.com"), None);
 	assert_eq!(t.iterm.remote_label("beta"), Some("me@zeta.example.com"));
 }
+
+#[test]
+fn copies_capture_every_encoded_length_once_across_reads() {
+	let mut t = terminal();
+	let mut parser = Parser::new();
+	parser.advance(
+		&mut t,
+		b"\x1b]1337;CopyToClipboard=\x07\xe7\x8c\xab\xf0\x9f",
+	);
+	// The emoji is cut between reads; it is captured once, whole.
+	parser.advance(&mut t, b"\x98\x80\xc3\xa9\x1b]1337;EndCopy\x07");
+	assert_eq!(copied(&t), ["\u{732b}\u{1f600}\u{e9}"]);
+}
+
+#[test]
+fn copies_capture_replacements_but_not_c1_controls() {
+	let mut t = terminal();
+	// NEL (C1, encoded) moves the cursor but is not text; a stray byte is
+	// shown and copied as U+FFFD.
+	send(&mut t, "\x1b]1337;CopyToClipboard=\x07a\u{85}b");
+	Parser::new().advance(&mut t, b"\xffc\x1b]1337;EndCopy\x07");
+	assert_eq!(copied(&t), ["ab\u{fffd}c"]);
+	assert_eq!(t.grid[1][0].ch, 'b');
+}

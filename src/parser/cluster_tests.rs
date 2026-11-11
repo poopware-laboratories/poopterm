@@ -110,3 +110,24 @@ fn repeated_marks_reuse_the_cluster_without_copying_the_table() {
 	assert!(Arc::ptr_eq(&shared, &extras));
 	assert_eq!(first, second);
 }
+
+#[test]
+fn marks_of_every_encoded_length_count_their_bytes() {
+	// Two-, three- and four-byte marks: U+0301, U+20DD, U+E0100.
+	let rest = "\u{301}\u{20dd}\u{e0100}x";
+	let (mut extras, mut cell) = linked();
+	assert_eq!(
+		join_marks(&mut extras, &mut cell, rest.into(), 1),
+		(10, Some(('x', 1)))
+	);
+	assert_eq!(
+		extras.marks(cell.extra),
+		['\u{301}', '\u{20dd}', '\u{e0100}']
+	);
+	// Without room the marks are used and the character is left.
+	let (mut extras, mut cell) = linked();
+	assert_eq!(
+		join_marks(&mut extras, &mut cell, rest.into(), 0),
+		(9, None)
+	);
+}
