@@ -251,3 +251,118 @@ fn an_object_opened_to_read_cannot_be_mapped_to_write() {
 		.map(|error| error.kind());
 	assert_eq!(refused, Some(ErrorKind::PermissionDenied));
 }
+
+/// The lines of `/proc/self/maps` that map `path`.
+#[cfg(target_os = "linux")]
+fn maps_of(path: &std::path::Path) -> usize {
+	let maps = std::fs::read_to_string("/proc/self/maps").unwrap();
+	let path = path.to_str().unwrap();
+	maps.lines().filter(|line| line.ends_with(path)).count()
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn dropping_a_map_unmaps_every_page_of_it() {
+	// Several pages and a partial one, so unmapping only the first, or a
+	// length rounded down, would leave some behind.
+	let (temp, file) = temp("drop", &vec![7; 3 * 4096 + 5]);
+	for shared in [false, true] {
+		let map = Map::read(file.as_fd(), 3 * 4096 + 5, shared).unwrap();
+		assert_eq!(maps_of(&temp.0), 1);
+		drop(map);
+		assert_eq!(maps_of(&temp.0), 0, "shared: {shared}");
+	}
+	let map = Map::shared(file.as_fd(), 3 * 4096 + 5).unwrap();
+	drop(map);
+	assert_eq!(maps_of(&temp.0), 0);
+}
+
+#[test]
+fn a_map_outlives_its_file_being_removed_or_replaced() {
+	// Package managers replace fonts by renaming a new file over the old.
+	let (temp, file) = temp("replaced", b"old font");
+	let map = Map::read(file.as_fd(), 8, false).unwrap();
+	let new = temp.0.with_extension("new");
+	std::fs::write(&new, b"new font").unwrap();
+	std::fs::rename(&new, &temp.0).unwrap();
+	assert_eq!(map.bytes(), b"old font");
+	std::fs::remove_file(&temp.0).unwrap();
+	assert_eq!(map.bytes(), b"old font");
+}
+
+#[test]
+fn a_mapping_ends_where_asked_within_its_last_page() {
+	let (_temp, file) = temp("tail", &[1; 4100]);
+	for len in [1, 4095, 4096, 4097, 4100] {
+		let map = Map::read(file.as_fd(), len, false).unwrap();
+		assert_eq!(map.bytes().len(), len);
+		assert!(map.bytes().iter().all(|&byte| byte == 1), "{len} bytes");
+	}
+}
+
+#[test]
+fn words_cover_every_page_of_a_large_mapping() {
+	let len = 3 * 4096 + 8;
+	let (_temp, file) = temp("large-words", &vec![0; len]);
+	let mut map = Map::shared(file.as_fd(), len).unwrap();
+	let words = map.words_mut().unwrap();
+	assert_eq!(words.len(), len / 4);
+	*words.last_mut().unwrap() = u32::from_ne_bytes(*b"last");
+	let mut tail = [0; 4];
+	file.read_exact_at(&mut tail, (len - 4) as u64).unwrap();
+	assert_eq!(&tail, b"last");
+}
+
+#[test]
+fn threads_read_one_map_at_once() {
+	let (_temp, file) = temp("sync", b"shared by all");
+	let map = Map::read(file.as_fd(), 13, true).unwrap();
+	std::thread::scope(|scope| {
+		let readers: Vec<_> = (0..4)
+			.map(|_| scope.spawn(|| map.bytes().to_vec()))
+			.collect();
+		for reader in readers {
+			assert_eq!(reader.join().unwrap(), b"shared by all");
+		}
+	});
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[test]
+fn two_mappings_of_one_anonymous_object_see_each_other() {
+	// As the compositor maps a window buffer through the descriptor sent.
+	let object = File::from(anonymous(c"poopterm-test").unwrap());
+	object.set_len(8).unwrap();
+	let mut ours = Map::shared(object.as_fd(), 8).unwrap();
+	let theirs = Map::read(object.as_fd(), 8, true).unwrap();
+	ours.words_mut().unwrap()[1] = u32::from_ne_bytes(*b"seen");
+	assert_eq!(&theirs.bytes()[4..], b"seen");
+}
+
+#[test]
+fn reopening_a_named_object_to_create_keeps_its_contents() {
+	let name = shm_name("reopen");
+	let _ = shm_unlink(&name);
+	let first = File::from(shm_open(&name, true).unwrap());
+	first.set_len(4).unwrap();
+	Map::shared(first.as_fd(), 4)
+		.unwrap()
+		.bytes_mut()
+		.unwrap()
+		.copy_from_slice(b"kept");
+	let again = File::from(shm_open(&name, true).unwrap());
+	shm_unlink(&name).unwrap();
+	assert_eq!(again.metadata().unwrap().len(), 4, "not truncated");
+	assert_eq!(Map::read(again.as_fd(), 4, true).unwrap().bytes(), b"kept");
+}
+
+#[test]
+fn a_named_object_opened_to_read_cannot_be_resized() {
+	let name = shm_name("resize");
+	let _ = shm_unlink(&name);
+	drop(shm_open(&name, true).unwrap());
+	let reader = File::from(shm_open(&name, false).unwrap());
+	shm_unlink(&name).unwrap();
+	assert!(reader.set_len(4096).is_err());
+	assert_eq!(reader.metadata().unwrap().len(), 0);
+}
