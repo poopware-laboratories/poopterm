@@ -72,7 +72,8 @@ deadlock, so debug builds track held locks and panic instead.
   `TermGuard::drop` issues one `sfence` before unlocking, so the next lock
   holder sees them whole.
 - Runs of cells are filled with 32-byte AVX2 stores when the CPU has them
-  (`term/fill.rs`, checked once at runtime), and with `u64x2` otherwise.
+  (`term/fill.rs`, checked once at runtime), and with `slice::fill`
+  (16-byte stores) otherwise.
 - `Cell` is 16 bytes: character, foreground, background, attribute bits
   (`term::attr`), width (1 normal, 2 wide, 0 wide-character spacer) and an
   `extra` id. Combining marks, OSC 8 hyperlinks and OSC 66 blocks are interned in

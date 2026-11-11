@@ -78,7 +78,9 @@ targets (`aarch64-apple-darwin`, `x86_64-unknown-freebsd`); see
 
 [`docs/architecture.md`](docs/architecture.md) is the map of the code;
 [`docs/unsafe.md`](docs/unsafe.md) lists every `unsafe` block and why it is
-sound.
+sound. Write safe code: `unsafe` is only for calls into C and the kernel
+that `std` cannot make safely, never for speed. If safe code is slower,
+make the safe code faster.
 
 ## Commits and pull request titles
 

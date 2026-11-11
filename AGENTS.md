@@ -162,14 +162,31 @@ Details: [`docs/architecture.md`](docs/architecture.md).
   programs. Keep explicit limits (Sixel size, OSC 52 size, hyperlink count,
   titles) and never answer requests that leak data (OSC 52 reads are ignored
   on purpose).
-- **`unsafe` only where no safe API exists** (SIMD intrinsics, `libc`
-  calls, proven-valid conversions on hot paths), in the smallest block that
-  needs it, behind a safe function. Every block starts with a
-  `// SAFETY:` comment saying why it is sound; clippy's
-  `undocumented_unsafe_blocks` and rustc's `unsafe_op_in_unsafe_fn` are
-  denied in `Cargo.toml`, so CI rejects one without it. Every block is
-  listed, with its reasoning, in [`docs/unsafe.md`](docs/unsafe.md); update
-  it in the same pull request.
+- **Safe code first; `unsafe` only for what is truly unsafe.** Write
+  safe Rust, and make it fast as safe Rust: `std::simd`, slice methods
+  (`fill`, `copy_from_slice`, `rotate_left`, `chunks_exact`), iterator
+  shapes the compiler vectorizes, `#[target_feature]` functions (safe to
+  define), checked conversions the optimizer can prove away. `unsafe` is
+  for what safe Rust cannot express at all: calls into C and the kernel
+  (Vulkan, Metal and Objective-C, Wayland and X11 libraries, `libc`) that
+  have no safe `std` equivalent, and the one call per CPU dispatch into a
+  copy compiled for features checked at runtime.
+  - **Never `unsafe` for speed.** Unchecked conversions, pointer casts,
+    `transmute` and raw-pointer loops are not a way to win throughput. If
+    the safe version measures slower, optimize the safe version (see
+    `docs/performance.md`); do not fall back to `unsafe`.
+  - **Replacing `unsafe` with safe code is always welcome**, even when it
+    measures slightly slower at first: the safe version stays, and the
+    follow-up work is to make it fast.
+  - **New `unsafe` needs a reason no safe formulation exists**, written in
+    the pull request and in [`docs/unsafe.md`](docs/unsafe.md). Wrap each
+    call into C or the kernel in one small safe function, so callers stay
+    safe and the `unsafe` stays in one place.
+  - Every block is as small as it can be, starts with a `// SAFETY:`
+    comment saying why it is sound (clippy's `undocumented_unsafe_blocks`
+    and rustc's `unsafe_op_in_unsafe_fn` are denied in `Cargo.toml`, so CI
+    rejects one without it), and is listed in `docs/unsafe.md`, updated in
+    the same pull request.
 - **Config compatibility.** `config.toml` keys are user-facing; keep old
   names working (see `ThemeKind::parse`) and preserve unknown keys on save.
 - Match surrounding style: comment density, naming, and the existing `pub(crate)`

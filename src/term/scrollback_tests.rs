@@ -393,3 +393,60 @@ fn streamed_copies_from_every_source_offset_land_whole() {
 		}
 	}
 }
+
+/// `trimmed_len` one cell at a time: the oracle for the four-cell scan.
+fn trimmed_slowly(row: &[Cell], pad: Cell) -> usize {
+	row
+		.iter()
+		.rposition(|&cell| cell != pad)
+		.map_or(0, |last| last + 1)
+}
+
+#[test]
+fn trimming_matches_a_cell_by_cell_scan_at_every_length_and_edge() {
+	// Cells equal to the pad but for one field must never be trimmed.
+	let near = [
+		Cell { ch: 'x', ..PAD },
+		Cell { fg: 8, ..PAD },
+		Cell { bg: 1, ..PAD },
+		Cell { attrs: 1, ..PAD },
+		Cell { width: 2, ..PAD },
+		Cell { extra: 1, ..PAD },
+	];
+	for len in 0..=13 {
+		for at in 0..len {
+			for &odd in &near {
+				let mut cells = vec![PAD; len];
+				cells[at] = odd;
+				assert_eq!(
+					trimmed_len(&cells, PAD),
+					trimmed_slowly(&cells, PAD),
+					"{len} {at} {odd:?}"
+				);
+				assert_eq!(trimmed_len(&cells, PAD), at + 1);
+			}
+		}
+	}
+}
+
+#[test]
+fn trimming_random_rows_matches_the_slow_scan() {
+	let mut rng = crate::bench::corpus::Rng::new(41);
+	for _ in 0..2000 {
+		let len = rng.below(40);
+		let cells: Vec<Cell> = (0..len)
+			.map(|_| {
+				if rng.below(3) == 0 {
+					Cell { ch: 'a', ..PAD }
+				} else {
+					PAD
+				}
+			})
+			.collect();
+		assert_eq!(
+			trimmed_len(&cells, PAD),
+			trimmed_slowly(&cells, PAD),
+			"{cells:?}"
+		);
+	}
+}

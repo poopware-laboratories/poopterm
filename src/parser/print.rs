@@ -143,22 +143,16 @@ impl Term {
 			// text with wide characters rarely pays for misses.
 			let mut narrow_run = 0;
 			let (mut c, mut width) = (c, width);
-			// Cells are built in vector registers and stored whole: `spacer`
-			// is the template with width 0, the right half of wide characters.
+			// Whole cells, built once: `spacer` is the template with width 0,
+			// the right half of wide characters.
 			let spacer = Cell {
 				width: 0,
 				..template
-			}
-			.words();
-			let base = Cell::without_char(spacer);
-			// Built once, so the lane holding the width is not rebuilt per character.
-			let (narrow, wide) = (Cell::with_width(base, 1), Cell::with_width(base, 2));
-			// SAFETY: every store below is `spacer`, a whole cell, or
-			// `with_char` of a `char`; `narrow::print_chunk` stores decoded
-			// characters only.
-			let cells = unsafe { Cell::words_mut(row) };
+			};
+			let (narrow, wide) = (Cell { width: 1, ..spacer }, Cell { width: 2, ..spacer });
+			let cells = &mut *row;
 			loop {
-				cells[x] = Cell::with_char(if width == 2 { wide } else { narrow }, c as u32);
+				Cell::put(&mut cells[x], if width == 2 { wide } else { narrow }, c);
 				if width == 2 {
 					cells[x + 1] = spacer;
 				}

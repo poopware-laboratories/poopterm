@@ -1,5 +1,5 @@
-//! Tests of joining marks to the cell just written, word by word.
-use std::{simd::u32x4, sync::Arc};
+//! Tests of joining marks to the cell just written.
+use std::sync::Arc;
 
 use super::join_marks;
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// A linked, styled cell, so tests can check that only the extra changes.
-fn linked() -> (Arc<Extras>, u32x4) {
+fn linked() -> (Arc<Extras>, Cell) {
 	let mut extras = Arc::new(Extras::default());
 	let link = Arc::make_mut(&mut extras)
 		.with_hyperlink(NO_EXTRA, 7)
@@ -21,14 +21,12 @@ fn linked() -> (Arc<Extras>, u32x4) {
 		width: 1,
 		extra: link,
 	};
-	(extras, cell.words())
+	(extras, cell)
 }
 
 /// The cell with its extra replaced by `extra`.
-fn with_extra(cell: u32x4, extra: u16) -> u32x4 {
-	let mut words = cell;
-	words[3] = words[3] & 0xffff | u32::from(extra) << 16;
-	words
+fn with_extra(cell: Cell, extra: u16) -> Cell {
+	Cell { extra, ..cell }
 }
 
 #[test]
@@ -40,7 +38,7 @@ fn leading_marks_join_and_the_next_character_is_taken() {
 		join_marks(&mut extras, &mut cell, rest, 3),
 		(5, Some(('x', 1)))
 	);
-	let extra = (cell[3] >> 16) as u16;
+	let extra = cell.extra;
 	assert_eq!(extras.marks(extra), ['\u{301}', '\u{302}']);
 	assert_eq!(extras.hyperlink(extra), 7);
 	assert_eq!(cell, with_extra(before, extra));
@@ -57,7 +55,7 @@ fn a_character_without_room_is_left_for_the_caller() {
 		join_marks(&mut extras, &mut cell, "猫", 2),
 		(3, Some(('猫', 2)))
 	);
-	assert_eq!(extras.marks((cell[3] >> 16) as u16), ['\u{301}']);
+	assert_eq!(extras.marks(cell.extra), ['\u{301}']);
 }
 
 #[test]
@@ -72,12 +70,12 @@ fn characters_after_a_joiner_join_without_room() {
 	let (mut extras, mut cell) = linked();
 	let rest = "\u{200d}👩\u{200d}👧z";
 	assert_eq!(join_marks(&mut extras, &mut cell, rest, 0), (14, None));
-	let extra = (cell[3] >> 16) as u16;
+	let extra = cell.extra;
 	assert_eq!(extras.marks(extra), ['\u{200d}', '👩', '\u{200d}', '👧']);
 	// A trailing joiner is consumed; the next write continues the cluster.
 	let (mut extras, mut cell) = linked();
 	assert_eq!(join_marks(&mut extras, &mut cell, "\u{200d}", 0), (3, None));
-	assert_eq!(extras.marks((cell[3] >> 16) as u16), ['\u{200d}']);
+	assert_eq!(extras.marks(cell.extra), ['\u{200d}']);
 }
 
 #[test]

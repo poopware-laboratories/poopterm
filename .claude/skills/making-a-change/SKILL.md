@@ -83,4 +83,5 @@ code are what count.)
 | Growing a file past ~400 lines | New module, with a `//!` line saying what it is for. |
 | Inline `mod tests` that is not at the end of the file | pr_check only counts the `#[cfg(test)] mod` that closes the file. |
 | Adding a crate | Never. Write it; see replacing-a-dependency. |
+| Reaching for `unsafe` (casts, `_unchecked`, raw pointers, intrinsics) | Write it safe and make the safe code fast. `unsafe` is only for calls into C and the kernel; see AGENTS.md. |
 | Renaming a `config.toml` key | Keep the old name parsing (see `ThemeKind::parse`). |

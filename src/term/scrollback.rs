@@ -3,11 +3,7 @@
 //! Rows lose their trailing default blanks, so typical output takes a
 //! fraction of a full row, and new rows are copied into recently written
 //! memory instead of recycling the coldest row in the history.
-use std::{
-	collections::VecDeque,
-	ops::Index,
-	simd::{Simd, cmp::SimdPartialEq},
-};
+use std::{collections::VecDeque, ops::Index};
 
 use super::Cell;
 
@@ -221,19 +217,12 @@ pub(super) fn publish_streamed() {
 /// Length of `row` without its trailing `pad` cells, scanning four cells
 /// per step.
 pub(super) fn trimmed_len(row: &[Cell], pad: Cell) -> usize {
-	let [lo, hi] = [pad.bits() as u64, (pad.bits() >> 64) as u64];
-	let pattern = Simd::from_array([lo, hi, lo, hi, lo, hi, lo, hi]);
-	// SAFETY: a `Cell` is 16 initialized bytes aligned at least like `u64`.
-	let words = unsafe { std::slice::from_raw_parts(row.as_ptr().cast::<u64>(), row.len() * 2) };
+	let pad = pad.bits();
 	let mut end = row.len();
-	while end >= 4 {
-		let chunk = Simd::<u64, 8>::from_slice(&words[(end - 4) * 2..end * 2]);
-		if chunk.simd_ne(pattern).any() {
-			break;
-		}
+	// Four cells at a time, which compiles to wide compares.
+	while end >= 4 && row[end - 4..end].iter().all(|cell| cell.bits() == pad) {
 		end -= 4;
 	}
-	let pad = pad.bits();
 	while end > 0 && row[end - 1].bits() == pad {
 		end -= 1;
 	}

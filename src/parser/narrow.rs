@@ -8,8 +8,6 @@ use std::simd::{
 	simd_swizzle,
 };
 
-use std::simd::u32x4;
-
 use crate::term::Cell;
 
 /// Bytes examined per step.
@@ -47,8 +45,8 @@ fn in_narrow_block(c: u16) -> bool {
 }
 
 /// Writes the characters in `bytes`, valid UTF-8 starting at a character,
-/// to the start of `row`, one cell each like `cell` (a narrow cell from
-/// [`Cell::words`] without its character), when all of
+/// to the start of `row`, one cell each like `cell` (a narrow cell), when
+/// all of
 /// them are one cell wide and below U+10000. A character cut by the end of
 /// the chunk is left for the next call. Returns the bytes and cells used and
 /// the last character, or `None` (writing nothing) when a character needs
@@ -56,8 +54,8 @@ fn in_narrow_block(c: u16) -> bool {
 #[inline(always)]
 pub(super) fn print_chunk(
 	bytes: &[u8; CHUNK],
-	row: &mut [u32x4],
-	cell: u32x4,
+	row: &mut [Cell],
+	cell: Cell,
 ) -> Option<(usize, usize, char)> {
 	let b = Simd::from_array(*bytes);
 	// Lead bytes from `WIDE_LEAD` start U+3000 and up: CJK, Hangul and emoji, which
@@ -103,11 +101,7 @@ pub(super) fn print_chunk(
 	let mut multibyte = ends & at_least(b, 0x80).to_bitmask();
 	while multibyte != 0 {
 		let c = chars[multibyte.trailing_zeros() as usize];
-		if !in_narrow_block(c)
-			// SAFETY: lanes ending a character hold it, and valid UTF-8
-			// never encodes a surrogate.
-			&& crate::width::width(unsafe { char::from_u32_unchecked(c.into()) }) != 1
-		{
+		if !in_narrow_block(c) && char::from_u32(c.into()).is_none_or(|c| crate::width::width(c) != 1) {
 			return None;
 		}
 		multibyte &= multibyte - 1;
@@ -115,15 +109,14 @@ pub(super) fn print_chunk(
 	let row = &mut row[..cells];
 	let (mut x, mut ends) = (0, ends);
 	while ends != 0 {
-		row[x] = Cell::with_char(cell, chars[ends.trailing_zeros() as usize] as u32);
+		// Every lane ending a character was checked above: ASCII, or a
+		// multibyte character `from_u32` accepted.
+		let ch = char::from_u32(chars[ends.trailing_zeros() as usize].into());
+		Cell::put(&mut row[x], cell, ch.unwrap_or(char::REPLACEMENT_CHARACTER));
 		(x, ends) = (x + 1, ends & (ends - 1));
 	}
 	debug_assert_eq!(x, cells);
-	// SAFETY: lanes ending a character hold it, and valid UTF-8 never
-	// encodes a surrogate.
-	Some((len, cells, unsafe {
-		char::from_u32_unchecked(row[cells - 1][0])
-	}))
+	Some((len, cells, row[cells - 1].ch))
 }
 
 #[cfg(test)]

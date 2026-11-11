@@ -27,6 +27,7 @@ Delete what does not apply:
 - [ ] `cargo test`, `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` pass.
 - [ ] Platform-gated code is checked with clippy for the other targets (macOS, FreeBSD), or there is none.
 - [ ] No new crates. Replacements of existing ones are tested against the crate they replace.
+- [ ] No new `unsafe`, or the pull request explains why no safe formulation exists (never for speed) and `docs/unsafe.md` lists it.
 - [ ] Input from programs stays bounded, and nothing answers a query that leaks data.
 - [ ] Existing `config.toml` keys still work, and unknown keys survive a save.
 - [ ] README, docs and `TODO.md` are updated where this changes what they say.
