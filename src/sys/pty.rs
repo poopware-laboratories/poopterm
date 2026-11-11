@@ -57,8 +57,14 @@ pub(crate) fn check(result: libc::c_int) -> io::Result<libc::c_int> {
 		.ok_or_else(io::Error::last_os_error)
 }
 
-/// A new PTY pair of `size`.
+/// A new PTY pair of `size`, waiting a little for one to be free when the
+/// system has none (see `retry`).
 pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
+	super::retry::when_free(super::retry::TRIES, super::retry::PAUSE, || open_once(size))
+}
+
+/// A new PTY pair of `size`, or why not.
+fn open_once(size: WindowSize) -> io::Result<Pair> {
 	// macOS fails allocations made from several threads at once (errno -6,
 	// seen in CI), so it makes them one at a time.
 	#[cfg(target_os = "macos")]
