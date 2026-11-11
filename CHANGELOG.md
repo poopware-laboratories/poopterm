@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.82 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Map memory and open shared memory through sys::mem (#316) (sys).
+
 ## 26.11.81 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
