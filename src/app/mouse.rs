@@ -284,6 +284,7 @@ impl App {
 			alternate,
 			term.alternate_scroll,
 		) {
+			// pr-check: window glue: carries out what wheel_action chose for a real wheel turn
 			WheelAction::Report | WheelAction::Nothing => {}
 			WheelAction::Keys => {
 				let bytes = alternate_scroll_bytes(lines, term.application_cursor);
@@ -294,7 +295,7 @@ impl App {
 				term.scroll_view(lines);
 				drop(term);
 				self.request_redraw();
-			}
+			} // pr-check: end window glue
 		}
 	}
 

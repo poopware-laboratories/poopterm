@@ -50,3 +50,29 @@ fn switching_screens_keeps_alternate_scroll() {
 	send(&mut t, "\x1b[?1049l");
 	assert!(!t.alternate_scroll);
 }
+
+#[test]
+fn alternate_scroll_can_change_with_other_modes_at_once() {
+	let mut t = terminal();
+	send(&mut t, "\x1b[?1049;1007l");
+	assert!(!t.alternate_scroll);
+	send(&mut t, "\x1b[?1007;1049h");
+	assert!(t.alternate_scroll && t.primary_screen.is_some());
+}
+
+#[test]
+fn alternate_scroll_and_mouse_tracking_are_independent() {
+	let mut t = terminal();
+	send(&mut t, "\x1b[?1000h\x1b[?1007l");
+	assert_eq!((t.mouse_tracking, t.alternate_scroll), (1000, false));
+	send(&mut t, "\x1b[?1000l\x1b[?1007h");
+	assert_eq!((t.mouse_tracking, t.alternate_scroll), (0, true));
+}
+
+#[test]
+fn neighbouring_unknown_modes_leave_alternate_scroll_alone() {
+	let mut t = terminal();
+	send(&mut t, "\x1b[?1008l\x1b[?1006l\x1b[?1008$p");
+	assert!(t.alternate_scroll);
+	assert_eq!(replies(&mut t), ["\x1b[?1008;0$y"]);
+}

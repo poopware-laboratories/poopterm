@@ -127,6 +127,23 @@ mod tests {
 	}
 
 	#[test]
+	fn each_line_is_one_key_in_the_form_the_cursor_keys_use() {
+		let cases: [(isize, bool, &[u8]); 4] = [
+			(3, false, b"\x1b[A"),
+			(3, true, b"\x1bOA"),
+			(-3, false, b"\x1b[B"),
+			(-3, true, b"\x1bOB"),
+		];
+		for (lines, application, key) in cases {
+			assert_eq!(
+				alternate_scroll_bytes(lines, application),
+				key.repeat(3),
+				"{lines} {application}"
+			);
+		}
+	}
+
+	#[test]
 	fn alternate_screen_scrolling_sends_cursor_keys() {
 		assert_eq!(alternate_scroll_bytes(2, false), b"\x1b[A\x1b[A");
 		assert_eq!(alternate_scroll_bytes(-1, true), b"\x1bOB");
