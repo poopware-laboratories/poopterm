@@ -295,8 +295,9 @@ impl App {
 				term.scroll_view(lines);
 				drop(term);
 				self.request_redraw();
-			} // pr-check: end window glue
+			}
 		}
+		// pr-check: end window glue
 	}
 
 	pub(super) fn handle_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
