@@ -67,10 +67,7 @@ deadlock, so debug builds track held locks and panic instead.
   row as used, so code that does not know about extents stays correct.
 - `term::scrollback::Scrollback` is one ring buffer of cells holding rows
   without their trailing default blanks, so typical output takes a fraction
-  of a full row; a row never wraps around the ring's end. On x86-64 rows are
-  copied in with non-temporal stores, since nothing reads them soon;
-  `TermGuard::drop` issues one `sfence` before unlocking, so the next lock
-  holder sees them whole.
+  of a full row; a row never wraps around the ring's end.
 - Runs of cells are filled with 32-byte AVX2 stores when the CPU has them
   (`term/fill.rs`, checked once at runtime), and with `slice::fill`
   (16-byte stores) otherwise.

@@ -38,10 +38,6 @@ softbuffer, mimalloc, `image`); replacing them (see
   x86-64-v3 features is safe to define, but calling it is `unsafe` unless
   the caller has the same features; each call sits right after the runtime
   check.
-- **Being phased out:** the remaining x86 intrinsics (non-temporal stores
-  into history, AVX2 cell fills) and unchecked conversions of text already
-  validated as UTF-8 predate the safe-first rule. They are being replaced
-  with `std::simd` and checked types, and the safe versions optimized.
 - **The operating system.** A few calls have no safe wrapper in `std`:
   `getuid`, `gethostname`, POSIX shared memory, `mmap`, `madvise`, and one
   Objective-C message on macOS. Since we write our own code instead of
@@ -81,17 +77,16 @@ the features is undefined behavior.
   glyph blending); a v3 base64 decoder measured slower and was dropped
   (#36).
 
-### Intrinsics with raw pointers
+### Cell stores (no `unsafe`)
 
-| Where | What | Why it is sound |
-|-------|------|-----------------|
-| `term/fill.rs` | `_mm256_storeu_si256` (two cells) and `_mm_store_si128` (the last one) | The pointers come from `&mut [Cell]` chunks of exactly 32 and 16 bytes; `Cell` is 16-byte aligned. |
-| `term/scrollback.rs` `stream_copy` | `_mm_stream_si128` copies rows into history without pulling them into the cache | Cells are 16 bytes and 16-byte aligned; SSE2 is part of every x86-64 CPU. |
-| `term/scrollback.rs` `publish_streamed` | `_mm_sfence` after the streamed stores | Streaming stores are weakly ordered. The fence orders them before the unlock that publishes the rows to the render thread; without it the renderer could read stale cells. SSE is part of x86-64. |
-
-There is no safe intrinsic for non-temporal stores, and the history copy
-is the largest `memmove` in text floods (see
-[`performance.md`](performance.md#where-the-time-goes-now)).
+`term/fill.rs` fills runs of cells in safe code compiled with AVX2:
+`as_chunks_mut::<2>()` and `fill([cell; 2])` become one 32-byte store per
+pair, the instructions the intrinsics gave; only the call into that copy is
+`unsafe`, after the runtime check. History rows are copied into the ring with
+`copy_from_slice`. The non-temporal stores and the `sfence` that published
+them are gone: Rust has no safe non-temporal store, and they existed only
+for speed (log −19%, ls −17% without them; compact history rows in
+`TODO.md` are the safe way back).
 
 ### Cells (no `unsafe`)
 
