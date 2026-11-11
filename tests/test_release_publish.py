@@ -113,7 +113,7 @@ if sys.argv[1:3] == ['release', 'edit'] and '--draft=false' in sys.argv:
 echo "pgo $* $(sed -n 's/^version = "\\(.*\\)"/\\1/p' Cargo.toml)" >> "$FAKE_GH_ROOT/build.log"
 [ ! -e "$FAKE_GH_ROOT/fail-build" ]
 ''')
-        self.env = dict(os.environ, GITHUB_SHA=self.sha, GH_REPO='test/poopterm',
+        self.env = dict(os.environ, GITHUB_SHA=self.sha, GITHUB_EVENT_NAME='schedule', GH_REPO='test/poopterm',
                         GH_TOKEN='fake-local-test-token', FAKE_GH_ROOT=str(self.root),
                         PATH=str(fakebin) + os.pathsep + os.environ['PATH'])
 
@@ -204,6 +204,72 @@ echo "pgo $* $(sed -n 's/^version = "\\(.*\\)"/\\1/p' Cargo.toml)" >> "$FAKE_GH_
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('main moved', result.stdout)
         self.assertFalse((self.root / 'api.log').exists())
+
+    def commit_on_main(self, subject, date=None):
+        """Commits and pushes `subject` to main as CI would check it, dated `date` days ago."""
+        env = dict(os.environ)
+        if date is not None:
+            when = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=date)
+            env['GIT_COMMITTER_DATE'] = env['GIT_AUTHOR_DATE'] = when.isoformat()
+        subprocess.check_output(['git', 'commit', '-q', '--allow-empty', '-m', subject], cwd=self.repo, env=env)
+        self.git('push', '-q', 'origin', 'main')
+        self.env['GITHUB_SHA'] = self.git('rev-parse', 'HEAD').strip()
+
+    def released_after(self, days, subject):
+        """A release `days` ago, then `subject` pushed today."""
+        self.commit_on_main('chore(release): earlier release', date=days)
+        self.git('tag', f'v{self.version}')
+        self.git('push', '-q', 'origin', f'v{self.version}')
+        self.commit_on_main(subject)
+
+    def test_a_week_without_changes_releases_nothing(self):
+        self.assertEqual(self.publish().returncode, 0)
+        tags = self.git('ls-remote', '--tags', str(self.remote))
+        self.env['GITHUB_SHA'] = self.git('rev-parse', 'origin/main').strip()
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('nothing to release', result.stdout)
+        self.assertEqual(self.git('ls-remote', '--tags', str(self.remote)), tags)
+
+    def test_a_push_does_not_release_before_the_week_is_up(self):
+        self.released_after(3, 'feat: add a thing')
+        self.env['GITHUB_EVENT_NAME'] = 'push'
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('not due', result.stdout)
+        self.assertEqual(self.git('rev-parse', 'origin/main').strip(), self.env['GITHUB_SHA'])
+        self.assertFalse((self.root / 'api.log').exists())
+
+    def test_a_push_releases_a_security_fix_at_once(self):
+        self.released_after(1, 'fix(security): bound OSC 52 payloads')
+        self.env['GITHUB_EVENT_NAME'] = 'push'
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        notes = self.git('show', f'v{self.next_version()}:CHANGELOG.md')
+        self.assertIn('### Security\n\n- Bound OSC 52 payloads.\n', notes)
+
+    def test_a_push_catches_up_when_the_weekly_run_was_missed(self):
+        self.released_after(10, 'feat: add a thing')
+        self.env['GITHUB_EVENT_NAME'] = 'push'
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'v{self.next_version()}', self.git('ls-remote', '--tags', str(self.remote)))
+
+    def test_a_run_without_its_event_fails_before_any_push(self):
+        del self.env['GITHUB_EVENT_NAME']
+        self.assertNotEqual(self.publish().returncode, 0)
+        self.assertEqual(self.git('ls-remote', '--tags', str(self.remote)), '')
+
+    def test_an_empty_event_fails_before_any_push(self):
+        self.env['GITHUB_EVENT_NAME'] = ''
+        self.assertNotEqual(self.publish().returncode, 0)
+        self.assertEqual(self.git('ls-remote', '--tags', str(self.remote)), '')
+
+    def test_asking_with_an_empty_event_never_releases(self):
+        due = subprocess.run(['python3', 'scripts/release.py', '--due', ''], cwd=self.repo,
+                             capture_output=True, text=True)
+        self.assertEqual(due.returncode, 1, due.stdout + due.stderr)
+        self.assertEqual(self.git('status', '--porcelain', '--untracked-files=no'), '')
 
     def next_version(self):
         return self.version.rsplit('.', 1)[0] + '.1'

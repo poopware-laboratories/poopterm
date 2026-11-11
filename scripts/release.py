@@ -12,6 +12,32 @@ import tomllib
 SECTIONS = {'feat': 'Added', 'fix': 'Fixed', 'perf': 'Performance'}
 BOOKKEEPING = {('chore', 'release'), ('chore', 'homebrew')}
 HEADER = re.compile(r'(?P<type>\w+)(?:\((?P<scope>[^)]*)\))?(?P<breaking>!)?: (?P<summary>.+)')
+# Releases are weekly. A push releases at once only for a security fix, or
+# when the weekly run was missed (lost a race to a merge, or CI was red).
+SCHEDULED = {'schedule', 'workflow_dispatch'}
+CATCH_UP = datetime.timedelta(days=8)
+
+
+def parse_header(message):
+    return HEADER.fullmatch(message.strip().split('\n', 1)[0].strip())
+
+
+def security_fix(parsed):
+    return parsed is not None and (parsed['type'], parsed['scope']) == ('fix', 'security')
+
+
+def due(messages, event, last_release, today):
+    """Whether a CI run for `event` releases the commits since `last_release`."""
+    changes = [parsed for parsed in map(parse_header, messages)
+               if not (parsed and (parsed['type'], parsed['scope']) in BOOKKEEPING)]
+    if not changes:
+        return False
+    if event in SCHEDULED:
+        return True
+    if event != 'push':
+        return False
+    return (any(map(security_fix, changes)) or last_release is None
+            or today - last_release >= CATCH_UP)
 
 
 def next_version(current, today):
@@ -24,7 +50,7 @@ def next_version(current, today):
 
 def notes(messages):
     """Changelog notes for the commit messages since the last release."""
-    sections = {'Breaking changes': [], **{name: [] for name in SECTIONS.values()}, 'Maintenance': []}
+    sections = {'Breaking changes': [], 'Security': [], **{name: [] for name in SECTIONS.values()}, 'Maintenance': []}
     for message in messages:
         subject = message.strip().split('\n', 1)[0].strip()
         header = HEADER.fullmatch(subject)
@@ -40,6 +66,8 @@ def notes(messages):
         if header['breaking'] or footer:
             explanation = ' '.join(footer[1].split()).rstrip('.') + '.' if footer else ''
             sections['Breaking changes'].append(f'{entry} {explanation}'.rstrip())
+        elif security_fix(header):
+            sections['Security'].append(sentence(header['summary']))
         else:
             sections[SECTIONS.get(kind, 'Maintenance')].append(entry)
     text = '\n'.join(f'### {name}\n\n' + ''.join(f'- {entry}\n' for entry in entries)
@@ -53,11 +81,26 @@ def sentence(text, scope=None):
     return f'{text} ({scope}).' if scope else f'{text}.'
 
 
-def commits_since_last_release(root):
-    """Messages of the commits after the newest release tag, oldest first."""
+def last_release_tag(root):
     described = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v*'],
                                cwd=root, capture_output=True, text=True)
-    revisions = f'{described.stdout.strip()}..HEAD' if described.returncode == 0 else 'HEAD'
+    return described.stdout.strip() if described.returncode == 0 else None
+
+
+def last_release_date(root):
+    """The day the newest release tag's commit was made, or None before the first."""
+    tag = last_release_tag(root)
+    if tag is None:
+        return None
+    day = subprocess.run(['git', 'log', '-1', '--format=%cs', tag], cwd=root, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    return datetime.date.fromisoformat(day)
+
+
+def commits_since_last_release(root):
+    """Messages of the commits after the newest release tag, oldest first."""
+    tag = last_release_tag(root)
+    revisions = f'{tag}..HEAD' if tag else 'HEAD'
     log = subprocess.run(['git', 'log', '--reverse', '--format=%B%x00', revisions],
                          cwd=root, check=True, capture_output=True, text=True).stdout
     return [message for message in log.split('\0') if message.strip()]
@@ -118,13 +161,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--formula', metavar='VERSION')
     parser.add_argument('--pkgbuild', metavar='VERSION')
+    parser.add_argument('--due', metavar='EVENT', help='exit 0 if a run for EVENT releases now')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    if args.due is not None:
+        raise SystemExit(0 if due(commits_since_last_release(root), args.due,
+                                  last_release_date(root), today) else 1)
     if args.formula:
         update_formula(root, args.formula)
     elif args.pkgbuild:
         update_pkgbuild(root, args.pkgbuild)
     else:
-        today = datetime.datetime.now(datetime.timezone.utc).date()
         version, codename = prepare(root, today, commits_since_last_release(root))
         print(f'{version}\n{codename}')

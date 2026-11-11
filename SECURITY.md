@@ -7,8 +7,10 @@ so we take reports about it seriously.
 
 ## Supported versions
 
-Poopterm ships rolling releases (`YEAR.MONTH.PATCH`, for example `26.10.10`).
-Security fixes go into the next release on `main`; older releases are not
+Poopterm ships rolling releases (`YEAR.MONTH.PATCH`, for example `26.10.10`)
+once a week. Security fixes do not wait for the weekly release: merging a
+`fix(security)` commit publishes a release as soon as CI passes, with the
+fix listed under *Security* in the changelog. Older releases are not
 patched. Please check that a problem still exists in the
 [latest release](https://github.com/poopware-laboratories/poopterm/releases/latest)
 or on `main` before reporting it.
@@ -34,8 +36,8 @@ What to expect:
 
 - We aim to acknowledge your report within **7 days** and to keep
   you updated while we work on a fix.
-- We fix the problem in a test-first commit, publish a release, and then
-  publish the advisory, crediting you unless you ask us not to.
+- We fix the problem in a test-first `fix(security)` commit, which
+  releases as soon as CI passes, and then publish the advisory, crediting you unless you ask us not to.
 - Please give us a reasonable chance to release a fix before disclosing the
   problem publicly.
 

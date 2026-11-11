@@ -248,7 +248,7 @@ class Speed(unittest.TestCase):
         self.assertIn('Build release binary', check)
 
     def test_a_new_push_to_a_pull_request_cancels_its_older_run(self):
-        self.assertIn("concurrency:\n  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}\n", WORKFLOW)
+        self.assertIn("concurrency:\n  group: ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}\n", WORKFLOW)
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", WORKFLOW)
 
     def test_runs_on_main_are_never_cancelled(self):
@@ -260,6 +260,42 @@ class Speed(unittest.TestCase):
         release = job('release')
         self.assertIn('group: poopterm-release', release)
         self.assertIn('cancel-in-progress: false', release)
+
+    def test_the_weekly_run_and_its_commits_push_run_do_not_share_a_group(self):
+        # One pending run per group: a manual run would drop a pending weekly one.
+        self.assertIn('group: ci-${{ github.event_name }}-', WORKFLOW)
+
+
+def trigger(name):
+    """The lines under the workflow trigger `name`."""
+    triggers = WORKFLOW.split('\non:\n', 1)[1].split('\n\n', 1)[0]
+    match = re.search(rf'(?m)^  {name}:\n((?:    .*\n)*)', triggers + '\n')
+    if not match:
+        raise AssertionError(f'no trigger {name!r}')
+    return match[1]
+
+
+class WeeklyRelease(unittest.TestCase):
+    def test_ci_runs_every_monday_morning(self):
+        self.assertEqual(trigger('schedule').strip(), '- cron: "0 6 * * 1"')
+
+    def test_a_release_can_be_started_by_hand(self):
+        self.assertIsNotNone(trigger('workflow_dispatch'))
+
+    def test_pushes_and_pull_requests_still_run_ci(self):
+        self.assertIn('branches: [main]', trigger('push'))
+        self.assertIsNotNone(trigger('pull_request'))
+
+    def test_the_trigger_lookup_rejects_unknown_triggers(self):
+        with self.assertRaises(AssertionError):
+            trigger('release')
+
+    def test_only_main_releases_and_never_from_a_pull_request(self):
+        self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'\n", job('release'))
+
+    def test_the_release_script_knows_what_started_the_run(self):
+        # release.sh reads GITHUB_EVENT_NAME, which Actions sets for every run.
+        self.assertIn('"${GITHUB_EVENT_NAME:?}"', (Path(__file__).parents[1] / 'scripts/release.sh').read_text())
 
 
 SHADERS_SCRIPT = (Path(__file__).parents[1] / 'scripts/shaders.sh').read_text()

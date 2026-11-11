@@ -4,14 +4,22 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The weekly release: CI checks main's head, then the release job publishes
+  # it. Pushes release at once only for a security fix (`fix(security): …`)
+  # or to catch up a missed week; see due() in scripts/release.py.
+  schedule:
+    - cron: "0 6 * * 1"
+  # A release by hand, e.g. when the weekly run lost a race to a merge.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # A new push to a pull request cancels its older run. Each push to main gets
-# its own group, so main's runs neither queue nor get cancelled.
+# its own group, so main's runs neither queue nor get cancelled; the event
+# keeps the weekly run apart from its commit's push run.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -303,7 +311,9 @@ jobs:
 
   release:
     needs: [ci-passed]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # release.sh decides whether this run releases: weekly, or a push with a
+    # security fix or after a missed week.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     # Builds the Debian and RPM packages after the version bump, on the same
     # old glibc as the debian-package job.
     runs-on: ubuntu-22.04
