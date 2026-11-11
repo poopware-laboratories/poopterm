@@ -406,3 +406,41 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	// `errno` still says EBADF here; a success must not read it.
 	assert_eq!(check(3).unwrap(), 3);
 }
+
+/// Probe, never merged: the pattern of the test that fails on macOS, 40
+/// pairs opened in a row, each running `exit 0` while we keep the pair,
+/// repeated. Any failure names its step (see `open`).
+#[cfg(target_os = "macos")]
+#[test]
+fn probe_macos_forty_short_sessions_in_a_row() {
+	use crate::sys::spawn::{Command as Program, spawn};
+	let mut failures = Vec::new();
+	let mut opened = 0;
+	for round in 0..20 {
+		let mut held = Vec::new();
+		for index in 0..40 {
+			match open(cells(80, 24)) {
+				Ok(pair) => {
+					opened += 1;
+					match spawn(&Program::new("sh").arg("-c").arg("exit 0"), &pair.slave) {
+						Ok(child) => held.push((child, pair)),
+						Err(e) => failures.push(format!("round {round} #{index} spawn: {e}")),
+					}
+				}
+				Err(e) => failures.push(format!(
+					"round {round} #{index} open: {e} (held {})",
+					held.len()
+				)),
+			}
+		}
+		thread::sleep(Duration::from_millis(100));
+		for (mut child, _pair) in held {
+			let _ = child.wait();
+		}
+	}
+	panic!(
+		"PROBE opened={opened} failures={}\n{}",
+		failures.len(),
+		failures.join("\n")
+	);
+}
