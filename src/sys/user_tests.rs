@@ -96,8 +96,9 @@ fn root_has_an_absolute_login_shell() {
 
 #[test]
 fn an_unknown_user_has_no_shell() {
-	// Far above any user a system hands out, and not `nobody` (often 65534).
-	for unknown in [3_999_999_999, u32::MAX - 1] {
+	// Far above any user a system hands out, and not `nobody` (65534, or -2
+	// on macOS).
+	for unknown in [2_000_000_123, 3_999_999_999] {
 		assert_eq!(shell(unknown), None, "{unknown}");
 	}
 }
