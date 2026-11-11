@@ -128,6 +128,38 @@ mod tests {
 	}
 
 	#[test]
+	fn another_thread_sees_every_history_row_whole_after_the_unlock() {
+		let term = shared();
+		let writer = {
+			let term = term.clone();
+			thread::spawn(move || {
+				for n in 0..3000 {
+					let line = format!("\r\n{n:04}");
+					crate::parser::Parser::new().advance(&mut term.lock(), line.as_bytes());
+				}
+			})
+		};
+		// Rows are numbered in order, so a stale or torn row breaks the count.
+		// Checks at least once more after the writer is done.
+		loop {
+			let done = writer.is_finished();
+			let t = term.lock();
+			let newest = t.scrollback.len().saturating_sub(64);
+			let rows: Vec<String> = (newest..t.scrollback.len())
+				.map(|i| t.scrollback[i].iter().map(|c| c.ch).collect())
+				.collect();
+			for pair in rows.windows(2).filter(|pair| !pair[0].is_empty()) {
+				let number = |row: &String| row.parse::<u32>().unwrap();
+				assert_eq!(number(&pair[1]), number(&pair[0]) + 1, "{pair:?}");
+			}
+			if done {
+				break;
+			}
+		}
+		writer.join().unwrap();
+	}
+
+	#[test]
 	fn other_threads_see_updates() {
 		let term = shared();
 		let writer = term.clone();
