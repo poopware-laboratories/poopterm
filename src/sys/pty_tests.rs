@@ -407,31 +407,46 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	assert_eq!(check(3).unwrap(), 3);
 }
 
-/// Probe, never merged: does macOS reuse a PTY number while a slave of the
-/// old pair is still open, and what do the stale slave and the new pair do?
+/// Probe, never merged: when a session leader outlives its closed PTY, can
+/// its number go to a new pair before the leader's exit revokes it?
 #[cfg(target_os = "macos")]
 #[test]
-fn probe_macos_pty_number_reuse() {
+fn probe_macos_revoke_after_reuse() {
+	use crate::sys::spawn::{Command as Program, spawn};
+	use std::time::Instant;
 	let mut report = Vec::new();
-	for _ in 0..50 {
+	for _ in 0..20 {
 		let old = open(cells(80, 24)).unwrap();
 		let old_path = old.path.clone();
-		let mut stale = File::from(old.slave);
-		drop(old.master);
-		let new = open(cells(80, 24)).unwrap();
-		let reused = new.path == old_path;
-		let stale_write = stale.write_all(b"x").map_err(|e| e.raw_os_error());
-		drop(stale);
-		let mut slave = File::from(new.slave);
-		let new_write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
-		// SAFETY: asks about a descriptor we hold.
-		let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
-		report.push(format!(
-			"reused={reused} stale_write={stale_write:?} new_write={new_write:?} isatty={tty}"
-		));
-		drop(new.master);
+		let mut child = spawn(&Program::new("sh").arg("-c").arg("sleep 0.3"), &old.slave).unwrap();
+		drop(old);
+		let begun = Instant::now();
+		let mut opens = 0;
+		let mut hit = None;
+		while begun.elapsed() < Duration::from_secs(2) {
+			let pair = open(cells(80, 24)).unwrap();
+			opens += 1;
+			if pair.path == old_path {
+				hit = Some(pair);
+				break;
+			}
+		}
+		let exit = child.wait();
+		thread::sleep(Duration::from_millis(50));
+		let line = match hit {
+			None => format!("reused=false opens={opens} exit={exit:?}"),
+			Some(pair) => {
+				let mut slave = File::from(pair.slave.try_clone().unwrap());
+				let write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
+				// SAFETY: asks about a descriptor we hold.
+				let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
+				let started = spawn(&Program::new("sh").arg("-c").arg("true"), &pair.slave)
+					.map(|mut c| c.wait().is_ok())
+					.map_err(|e| e.raw_os_error());
+				format!("reused=true opens={opens} write={write:?} isatty={tty} spawn={started:?}")
+			}
+		};
+		report.push(line);
 	}
-	report.sort();
-	report.dedup();
 	panic!("PROBE\n{}", report.join("\n"));
 }
