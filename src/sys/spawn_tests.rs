@@ -592,14 +592,10 @@ fn our_children() -> Vec<String> {
 /// Expects `command` to fail with `errno` after the fork, its child reaped.
 #[cfg(target_os = "linux")]
 fn fails_and_is_reaped(command: Command, terminal: &OwnedFd, errno: libc::c_int) {
-	assert_eq!(our_children(), [] as [String; 0], "a child from before");
+	let before = our_children();
 	let error = spawn(&command, terminal).err().unwrap();
 	assert_eq!(error.raw_os_error(), Some(errno), "{error}");
-	assert_eq!(
-		our_children(),
-		[] as [String; 0],
-		"the failed child is left"
-	);
+	assert_eq!(our_children(), before, "the failed child is left");
 }
 
 #[cfg(target_os = "linux")]
@@ -633,6 +629,18 @@ fn a_child_whose_exec_fails_is_reaped() {
 	// A path with a slash is not searched, so only execve can refuse it.
 	let pair = device::open(WindowSize::default()).unwrap();
 	fails_and_is_reaped(Command::new("/"), &pair.slave, libc::EACCES);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn reaping_a_failed_child_leaves_our_other_children_alone() {
+	// The terminal is taken, so the second program fails after the fork.
+	let pair = pty();
+	let mut first = waiting(&pair);
+	fails_and_is_reaped(sh("true"), &pair.slave, libc::EPERM);
+	assert_eq!(our_children(), [first.id().to_string()]);
+	first.hang_up().unwrap();
+	first.wait().unwrap();
 }
 
 #[cfg(target_os = "linux")]
