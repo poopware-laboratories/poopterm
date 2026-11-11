@@ -518,3 +518,27 @@ fn no_pidfd_is_kept_once_its_program_is_reported() {
 	);
 	child.wait().unwrap();
 }
+
+#[test]
+fn a_child_killed_by_a_signal_is_reported_like_one_that_exited() {
+	let exits = Exits::new().unwrap();
+	let (mut child, _pair) = start("sleep 30");
+	assert!(exits.add(pid(&child)).unwrap());
+	crate::sys::process::hang_up(pid(&child)).unwrap();
+	assert_eq!(exits.wait().unwrap(), Some(vec![pid(&child)]));
+	assert_eq!(child.wait().unwrap(), Exit::Signal(libc::SIGHUP));
+}
+
+#[test]
+fn a_child_reaped_elsewhere_before_the_wait_is_still_reported() {
+	// A watched child that some other code waited for first: its end must
+	// not be lost, or a waiter would block for it forever.
+	let exits = Exits::new().unwrap();
+	let (child, _pair) = start("sleep 0.2; exit 5");
+	assert!(exits.add(pid(&child)).unwrap());
+	assert_eq!(
+		crate::sys::process::wait(pid(&child)).unwrap(),
+		Exit::Code(5)
+	);
+	assert_eq!(collect(&exits, &[pid(&child)]), [pid(&child)]);
+}
