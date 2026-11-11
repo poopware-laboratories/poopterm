@@ -3,7 +3,7 @@
 //! time.
 #![expect(
 	clippy::multiple_unsafe_ops_per_block,
-	reason = "libxcb calls give way to our own X11 protocol code, which removes this"
+	reason = "safe wrappers per call come next"
 )]
 pub(crate) mod client;
 #[cfg(test)]

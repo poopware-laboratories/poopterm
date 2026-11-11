@@ -3,7 +3,7 @@
 //! renderer uses, laid out as the specification declares them.
 #![expect(
 	clippy::multiple_unsafe_ops_per_block,
-	reason = "driver calls get one safe wrapper each in the safe-Vulkan step, which removes this"
+	reason = "safe wrappers per call come next"
 )]
 pub(crate) mod allocation;
 #[cfg(test)]

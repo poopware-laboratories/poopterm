@@ -2,7 +2,7 @@
 //! libwayland-client opened at run time.
 #![expect(
 	clippy::multiple_unsafe_ops_per_block,
-	reason = "libwayland calls give way to our own wire protocol code, which removes this"
+	reason = "safe wrappers per call come next"
 )]
 pub(crate) mod client;
 #[cfg(test)]
