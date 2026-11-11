@@ -1,5 +1,13 @@
 # Changelog
 
+## 26.11.84 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Move PTY pairs and terminal settings into sys (#319) (sys).
+- Resend the resize until the program reports it (#320) (pty).
+- Move watching for program exits into sys (#321) (sys).
+
 ## 26.11.83 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
