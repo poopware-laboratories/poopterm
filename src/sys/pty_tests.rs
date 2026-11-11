@@ -406,3 +406,32 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	// `errno` still says EBADF here; a success must not read it.
 	assert_eq!(check(3).unwrap(), 3);
 }
+
+/// Probe, never merged: does macOS reuse a PTY number while a slave of the
+/// old pair is still open, and what do the stale slave and the new pair do?
+#[cfg(target_os = "macos")]
+#[test]
+fn probe_macos_pty_number_reuse() {
+	let mut report = Vec::new();
+	for _ in 0..50 {
+		let old = open(cells(80, 24)).unwrap();
+		let old_path = old.path.clone();
+		let mut stale = File::from(old.slave);
+		drop(old.master);
+		let new = open(cells(80, 24)).unwrap();
+		let reused = new.path == old_path;
+		let stale_write = stale.write_all(b"x").map_err(|e| e.raw_os_error());
+		drop(stale);
+		let mut slave = File::from(new.slave);
+		let new_write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
+		// SAFETY: asks about a descriptor we hold.
+		let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
+		report.push(format!(
+			"reused={reused} stale_write={stale_write:?} new_write={new_write:?} isatty={tty}"
+		));
+		drop(new.master);
+	}
+	report.sort();
+	report.dedup();
+	panic!("PROBE\n{}", report.join("\n"));
+}
