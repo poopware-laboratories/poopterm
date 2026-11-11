@@ -46,6 +46,9 @@ mod header_target_tests;
 mod header_tests;
 #[cfg(test)]
 mod header_window_tests;
+pub(crate) mod hover;
+#[cfg(test)]
+mod hover_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
 pub(crate) mod metrics;
