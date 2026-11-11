@@ -37,11 +37,11 @@ get one safe wrapper each in the steps that follow.
 - **Module trees that are calls into C:** `gpu::vk` (Vulkan), `gpu::mtl`
   (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb)
   and `sys` (safe wrappers over the kernel calls the standard library
-  lacks: PTY pairs, terminal settings, fork and exec among them). Each has one
+  lacks: PTY pairs, terminal settings, fork and exec, and shared libraries
+  opened at run time among them). Each has one
   `#[allow(unsafe_code)]` on its `mod` line.
 - **Files with operating-system or library calls:** `allocator`,
-  `app/gpu`, `app/wayland`, `library`, `objc`, `about_menu` and
-  `platform`. Each starts with `#![allow(unsafe_code)]` and a comment.
+  `app/gpu`, `app/wayland`, `objc`, `about_menu` and `platform`. Each starts with `#![allow(unsafe_code)]` and a comment.
 - **CPU dispatch:** `parser/print`, `render/painter` and `vt/utf8`, and in
   `mod.rs` files, where a file-wide allow would cover the whole tree, only
   the one function: `Cell::fill` and `vt::Parser::advance`.
@@ -149,7 +149,7 @@ differential tests feed random and malformed bytes against vte.
 | `sys/user.rs` `hostname` | `libc::gethostname` | Writes into a 256-byte buffer, writable for the length passed. The result is checked, and the name is cut at the first NUL. `term/iterm.rs` caches it. Tested against `uname -n` and the kernel's. |
 | `allocator.rs` (Linux) | `prctl(PR_SET_THP_DISABLE, 1)`, and `#[unsafe(link_section = ".init_array.00100")]` on the function pointer that calls it | Takes plain integers and sets one flag of this process; no memory is passed. The pointer is a plain `extern "C" fn()` the loader calls once, single-threaded, before `main` and before mimalloc's own constructor (priority 101), so nothing else runs yet. The flag is inherited through `fork` and kept across `execve`, so the shell's child clears it (`pty/spawn.rs`). Tested in `allocator_tests.rs` and `spawn_tests.rs`, each in a process of its own, and on the built binary in `tests/huge_pages.rs`. |
 | `allocator.rs` | `mi_option_set` (and `mi_option_get` in tests), declared `safe` in an `unsafe extern` block | mimalloc's public C API, linked in by the `mimalloc` crate. Both take plain integers, accept any option index and are thread-safe, so no call can be unsound. The option's index comes from the vendored `mimalloc.h`; a test pins it by the option's default. |
-| `library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when its owner drops: the Vulkan `Entry`, after the instance made from it is destroyed, or the Wayland `Client`, after every proxy made through it. |
+| `sys/dl.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when its owner drops: the Vulkan `Entry`, after the instance made from it is destroyed, or the Wayland `Client`, after every proxy made through it. |
 | `sys/pty.rs` | `posix_openpt`, `OwnedFd::from_raw_fd`, `grantpt`, `unlockpt`, `fcntl(F_SETFD)` (macOS) | Each takes flags or the master descriptor we just opened and own, and the results are checked. A non-negative `posix_openpt` result is a new descriptor that the `OwnedFd` owns from then on, so an early error closes it. macOS refuses `O_CLOEXEC` in `posix_openpt`, so the flag is set on the next line. The slave is opened with `OpenOptions` and `O_NOCTTY`, with no `unsafe`. Tested against portable-pty in `sys/pty_tests.rs`, and so is the closing on exec. |
 | `sys/pty.rs` | `ptsname_r` (declared by us on macOS, where the libc crate lacks it) | Writes at most the buffer's length, NUL included, into a stack buffer, and the name ends at the first NUL. Never plain `ptsname`, whose one buffer per process other threads (portable-pty's `openpty` on FreeBSD, #250) overwrite. The macOS declaration matches libSystem's, present since macOS 10.13.4, below our minimum of 11. |
 | `sys/pty.rs` | `ioctl(TIOCSWINSZ)`, `ioctl(TIOCGWINSZ)` | Each reads or writes exactly one `libc::winsize`, which lives on the stack through the call, on a descriptor borrowed through `AsFd`. A descriptor that is not a terminal fails with `ENOTTY` (tested). |

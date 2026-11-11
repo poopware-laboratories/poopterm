@@ -37,7 +37,7 @@ fn a_library_lacking_any_symbol_is_refused_by_name() {
 
 #[test]
 fn the_systems_library_has_every_symbol_when_installed() {
-	let installed = crate::library::Library::open(super::client::LIBRARY).is_ok();
+	let installed = crate::sys::dl::Library::open(super::client::LIBRARY).is_ok();
 	if installed || std::env::var_os("POOPTERM_REQUIRE_WAYLAND").is_some() {
 		Client::load().expect("every symbol");
 	}

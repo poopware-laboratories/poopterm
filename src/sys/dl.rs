@@ -1,6 +1,4 @@
 //! A shared library opened at run time: the Vulkan loader, libwayland-client.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 use std::{
 	ffi::{CStr, c_void},
 	ptr::NonNull,
@@ -49,3 +47,7 @@ fn last_error() -> String {
 		.to_string_lossy()
 		.into_owned()
 }
+
+#[cfg(test)]
+#[path = "dl_tests.rs"]
+mod tests;

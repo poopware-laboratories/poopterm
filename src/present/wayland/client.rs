@@ -2,7 +2,7 @@
 //! and dispatch events for proxies on our own event queue, and the
 //! interfaces of the core objects it exports. Requests and events use the
 //! array forms, which are not variadic.
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	ffi::{CStr, c_char, c_int, c_void},
 	mem::transmute_copy,

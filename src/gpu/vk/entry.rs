@@ -8,7 +8,7 @@ use super::{
 	types::*,
 	version::{api_version, requested},
 };
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	ffi::CStr,
 	mem::{size_of, transmute_copy},
