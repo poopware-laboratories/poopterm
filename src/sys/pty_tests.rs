@@ -381,3 +381,26 @@ fn a_grid_size_reaches_programs_with_its_pixels() {
 fn writing_nothing_gives_nothing() {
 	assert_eq!(output(b""), b"");
 }
+
+#[test]
+fn check_passes_results_and_turns_negatives_into_errno() {
+	for result in [0, 7, i32::MAX] {
+		assert_eq!(check(result).unwrap(), result);
+	}
+	// SAFETY: closing a descriptor that is never open only sets errno.
+	let failed = unsafe { libc::close(-1) };
+	assert_eq!(failed, -1);
+	assert_eq!(
+		check(failed).err().unwrap().raw_os_error(),
+		Some(libc::EBADF)
+	);
+	// Any negative result is a failure, not only -1, and reports `errno`
+	// as the call left it.
+	// SAFETY: as above.
+	let failed = unsafe { libc::close(-1) };
+	assert_eq!(
+		check(failed - 1).err().unwrap().raw_os_error(),
+		Some(libc::EBADF)
+	);
+	assert!(check(i32::MIN).is_err());
+}

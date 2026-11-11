@@ -460,18 +460,6 @@ fn waiting_for_a_process_that_is_not_ours_fails() {
 }
 
 #[test]
-fn check_passes_results_and_turns_minus_one_into_errno() {
-	assert_eq!(check(0).unwrap(), 0);
-	assert_eq!(check(7).unwrap(), 7);
-	// SAFETY: closing a descriptor that is never open only sets errno.
-	let failed = unsafe { libc::close(-1) };
-	assert_eq!(
-		check(failed).err().unwrap().raw_os_error(),
-		Some(libc::EBADF)
-	);
-}
-
-#[test]
 fn c_strings_refuse_only_nul() {
 	assert_eq!(c_string(b"").unwrap().as_bytes(), b"");
 	assert_eq!(c_string(b"\xff=").unwrap().as_bytes(), b"\xff=");
