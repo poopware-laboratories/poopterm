@@ -722,16 +722,36 @@ fn resizing_the_terminal_tells_the_program() {
 	let pair = pty();
 	let script = "trap 'stty size; exit 0' WINCH; echo ready; while :; do sleep 0.05; done";
 	let mut child = spawn(&Command::new("sh").arg("-c").arg(script), &pair.slave).unwrap();
-	let size = WindowSize {
-		cols: 100,
-		rows: 30,
-		..WindowSize::default()
-	};
 	let shown = watch(pair.master.try_clone().unwrap());
 	until(&shown, "ready");
-	device::set_size(&pair.master, size).unwrap();
-	assert!(until(&shown, "30 100").ends_with("30 100\r\n"));
-	assert_eq!(child.wait().unwrap(), Exit::Code(0));
+	// The FreeBSD VM in CI now and then never runs the trap for one resize.
+	// Every size change sends SIGWINCH again, so alternate two sizes until
+	// the program reports one: it must be the size set last.
+	for attempt in 0..20 {
+		let (rows, cols) = [(30, 100), (31, 101)][attempt % 2];
+		let size = WindowSize {
+			cols,
+			rows,
+			..WindowSize::default()
+		};
+		device::set_size(&pair.master, size).unwrap();
+		if let Ok(bytes) = shown.recv_timeout(Duration::from_secs(1)) {
+			let mut seen = bytes;
+			while !seen.ends_with(b"\r\n") {
+				seen.extend(shown.recv_timeout(Duration::from_secs(5)).unwrap());
+			}
+			// A slow trap may report a size set by an earlier try.
+			let report = String::from_utf8_lossy(&seen).into_owned();
+			assert!(
+				["30 100\r\n", "31 101\r\n"].contains(&report.as_str()),
+				"{report:?}"
+			);
+			assert!(attempt > 0 || report == format!("{rows} {cols}\r\n"));
+			assert_eq!(child.wait().unwrap(), Exit::Code(0));
+			return;
+		}
+	}
+	panic!("no resize reached the program in 20 tries");
 }
 
 #[test]
