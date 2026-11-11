@@ -66,6 +66,23 @@ fn an_empty_mapping_is_refused() {
 }
 
 #[test]
+fn no_bytes_of_a_file_that_has_some_is_refused_too() {
+	let (_temp, file) = temp("zero-of-some", b"data");
+	let refused = Map::read(file.as_fd(), 0, true)
+		.err()
+		.map(|error| error.kind());
+	assert_eq!(refused, Some(ErrorKind::InvalidInput));
+}
+
+#[test]
+fn a_mapping_shorter_than_a_word_has_no_words() {
+	let (_temp, file) = temp("short", b"abc");
+	let mut map = Map::shared(file.as_fd(), 3).unwrap();
+	assert_eq!(map.words_mut().unwrap(), []);
+	assert_eq!(map.bytes(), b"abc");
+}
+
+#[test]
 fn a_directory_cannot_be_mapped() {
 	let dir = File::open(std::env::temp_dir()).unwrap();
 	assert!(Map::read(dir.as_fd(), 4096, false).is_err());
