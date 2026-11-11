@@ -448,7 +448,7 @@ the `main` it was based on; gains are for the workloads it targeted.
 | Line feeds rotate row headers in one move (#51) | log, compiler, cjk +1–2% | `term/grid.rs` |
 | Narrow multibyte runs printed sixteen bytes at a time (#52) | unicode +10% | `parser/narrow.rs` |
 | Narrow and wide cell words built once per segment (#53) | cjk −3.5% instructions | `parser/print.rs` |
-| History rows written with non-temporal stores, one `sfence` per unlock (#54) | log +10%, ls +4% | `term/scrollback.rs` |
+| History rows written with non-temporal stores, one `sfence` per unlock (#54); replaced by safe `copy_from_slice` in 26.11, which costs log −19%, ls −17% until history rows are compact | log +10%, ls +4% | `term/scrollback.rs` |
 | Marks joined to clusters without ending the print segment (#55) | emoji +12%, tui +6% | `parser/cluster.rs` |
 | Sixel decoded into one flat buffer with alpha resolved up front (#56) | sixel +90% | `src/sixel.rs` |
 | Our own inflate for kitty `o=z` (#57) | kitty-zlib +5% | `src/inflate` |

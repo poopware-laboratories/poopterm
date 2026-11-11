@@ -18,29 +18,38 @@ each scrolled line copied into history; see
 that device's goal: `parse` should reach the lower of 500 MB/s and
 `ceiling`, in safe code, with output identical to the slower path.
 
-On the i3-N305 laptop (26.11.76, 120x40, median of 5, MB/s):
+On the i3-N305 laptop (26.11.77 with history copied in safe code, 120x40,
+median of 5, MB/s):
 
 | workload | ceiling | parse | goal | parse / goal |
 |---|---|---|---|---|
-| log | 359 | 419 | 359* | met |
-| compiler | 724 | 256 | 500 | 51% |
-| ls | 431 | 316 | 431 | 73% |
-| source | 942 | 222 | 500 | 44% |
-| unicode | 497 | 199 | 497 | 40% |
-| cjk | 750 | 233 | 500 | 47% |
-| emoji | 830 | 179 | 500 | 36% |
-| tui | 397 | 337 | 397 | 85% |
-| editor | 588 | 345 | 500 | 69% |
-| progress | 2720 | 460 | 500 | 92% |
-| truecolor | 6088 | 321 | 500 | 64% |
-| cursor | 1713 | 240 | 500 | 48% |
-| shell | 843 | 207 | 500 | 41% |
+| log | 358 | 328 | 358* | 92% |
+| compiler | 722 | 246 | 500 | 49% |
+| ls | 431 | 283 | 431 | 66% |
+| source | 939 | 212 | 500 | 42% |
+| unicode | 493 | 175 | 493 | 35% |
+| cjk | 749 | 198 | 500 | 40% |
+| emoji | 837 | 168 | 500 | 34% |
+| tui | 434 | 338 | 434 | 78% |
+| editor | 574 | 344 | 500 | 69% |
+| progress | 2709 | 416 | 500 | 83% |
+| truecolor | 6162 | 319 | 500 | 64% |
+| cursor | 1759 | 232 | 500 | 46% |
+| shell | 824 | 202 | 500 | 40% |
 
 \* On log the ceiling is memory bandwidth: one 16-byte history cell per
-input byte. The parser beats it there only through the non-temporal history
-stores, which are `unsafe` and being replaced with safe code; the goal is
-then to stay at the ceiling. Emoji, Unicode, shell, source, CJK and cursor
-are furthest from their goals.
+input byte. Plain stores into the history ring read each cache line from
+memory before overwriting it, so history copies run at about 6.6 GB/s here
+however they are batched below glibc's ~4 MiB non-temporal threshold. The
+safe way past it is fewer bytes per history cell (see below). Emoji,
+Unicode, shell, source, CJK and cursor are furthest from their goals.
+
+- **Compact history rows.** Rows scrolled into history are copied as
+  16-byte cells, which costs log, ls and every flood that scrolls (log
+  −19%, ls −17% when the non-temporal stores went). Store history rows
+  in a smaller format (characters plus runs of one style) and expand
+  them when read, so the copy moves a fraction of the bytes; the
+  `ceiling` model then needs the same format.
 
 End to end in a window, the kernel's cooked PTY caps text at 67–118 MB/s
 on this laptop, and Poopterm comes within 10% of that ceiling on 13 of 17

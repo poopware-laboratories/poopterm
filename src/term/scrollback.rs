@@ -119,7 +119,7 @@ impl Scrollback {
 		debug_assert!(!self.overwrites(len), "scrollback ring overflow");
 		let (start, cap) = (self.place(len), self.cells.len() as u64);
 		let offset = (start % cap) as usize;
-		stream_copy(&mut self.cells[offset..offset + len], &row[..len]);
+		self.cells[offset..offset + len].copy_from_slice(&row[..len]);
 		self.lines.push_back(Line {
 			start,
 			len: len as u32,
@@ -165,52 +165,6 @@ impl Scrollback {
 		cells.resize(cap, Cell::default());
 		self.cells = cells;
 		self.write = write;
-	}
-}
-
-/// Copies `from` into `to` without fetching `to` into the cache first: the
-/// ring is written far ahead of anything that reads it, so a plain copy would
-/// read each line from memory only to overwrite it, and evict hotter data.
-/// Other threads see the cells only after [`publish_streamed`].
-#[inline]
-pub(super) fn stream_copy(to: &mut [Cell], from: &[Cell]) {
-	assert_eq!(to.len(), from.len());
-	#[cfg(target_arch = "x86_64")]
-	{
-		use std::arch::x86_64::{_mm_load_si128, _mm_stream_si128};
-		let stream = |to: &mut Cell, from: &Cell| {
-			// SAFETY: cells are 16 bytes and 16-byte aligned, and SSE2 is
-			// part of x86-64.
-			unsafe {
-				_mm_stream_si128(
-					std::ptr::from_mut(to).cast(),
-					_mm_load_si128(std::ptr::from_ref(from).cast()),
-				);
-			}
-		};
-		// A cache line per step.
-		let ((to, to_rest), (from, from_rest)) = (to.as_chunks_mut::<4>(), from.as_chunks::<4>());
-		for (to, from) in to.iter_mut().zip(from) {
-			for (to, from) in to.iter_mut().zip(from) {
-				stream(to, from);
-			}
-		}
-		for (to, from) in to_rest.iter_mut().zip(from_rest) {
-			stream(to, from);
-		}
-	}
-	#[cfg(not(target_arch = "x86_64"))]
-	to.copy_from_slice(from);
-}
-
-/// Orders the stores of [`stream_copy`], which are weakly ordered, before
-/// later ones, so the unlock that follows publishes them to other threads.
-#[inline]
-pub(super) fn publish_streamed() {
-	#[cfg(target_arch = "x86_64")]
-	// SAFETY: SSE is part of x86-64.
-	unsafe {
-		std::arch::x86_64::_mm_sfence();
 	}
 }
 
