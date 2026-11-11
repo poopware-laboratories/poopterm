@@ -1,17 +1,22 @@
 # Unsafe code
 
-Poopterm is written in safe Rust except for a few small places where no safe
-API exists or where the safe one costs measurable throughput on a hot path.
-This file lists every one of them: what it does, why it is sound, why it is
-not safe code, and what tests it. Update it in the same pull request that
+Poopterm is written in safe Rust. `unsafe` is kept only for what is truly
+unsafe: calls into C and the kernel that have no safe `std` equivalent, and
+the call into a copy of a function compiled for CPU features checked at
+runtime. It is never used for speed; when safe code is slower, the safe code
+is optimized. This file lists every remaining block: what it does, why it is
+sound, why it is not safe code yet, and what tests it. Update it in the same pull request that
 adds, moves or removes an `unsafe` block.
 
 ## The rules
 
 From [`AGENTS.md`](../AGENTS.md):
 
-- `unsafe` is allowed only where no safe API exists: SIMD intrinsics, `libc`
-  calls, and conversions proven valid on hot paths.
+- Safe code first. `unsafe` only where safe Rust cannot express the
+  operation at all: FFI and system calls without a safe `std` wrapper, and
+  runtime CPU dispatch.
+- Never `unsafe` for speed: optimize the safe version instead. Replacing
+  `unsafe` with safe code is welcome even if it starts slightly slower.
 - Keep it in the smallest block that needs it, behind a safe function.
 - Every block starts with a `// SAFETY:` comment that says why it is sound.
 
@@ -29,17 +34,14 @@ softbuffer, mimalloc, `image`); replacing them (see
 
 ## Why there is any at all
 
-- **SIMD on the hot paths.** Throughput is a goal of the project (at least
-  200 MB/s on every payload). Portable SIMD (`std::simd`) is safe and is
-  used wherever it is fast enough. Where an x86 instruction has no portable
-  equivalent (non-temporal stores, `vpshufb` lookups in UTF-8 validation)
-  or the AVX2 build of a function is measurably faster, we call intrinsics
-  or compile a second copy of the function for the CPU's features. Both are
-  `unsafe` by language rule.
-- **Not checking twice.** Some data is already proven valid by an earlier
-  check on the same path: bytes validated as UTF-8, a character decoded by
-  SIMD from valid UTF-8. Checking again costs throughput for nothing, so
-  those few conversions skip the check.
+- **Runtime CPU dispatch.** A function compiled for AVX2 and the other
+  x86-64-v3 features is safe to define, but calling it is `unsafe` unless
+  the caller has the same features; each call sits right after the runtime
+  check.
+- **Being phased out:** the remaining x86 intrinsics (non-temporal stores
+  into history, AVX2 cell fills) and unchecked conversions of text already
+  validated as UTF-8 predate the safe-first rule. They are being replaced
+  with `std::simd` and checked types, and the safe versions optimized.
 - **The operating system.** A few calls have no safe wrapper in `std`:
   `getuid`, `gethostname`, POSIX shared memory, `mmap`, `madvise`, and one
   Objective-C message on macOS. Since we write our own code instead of
@@ -91,37 +93,16 @@ There is no safe intrinsic for non-temporal stores, and the history copy
 is the largest `memmove` in text floods (see
 [`performance.md`](performance.md#where-the-time-goes-now)).
 
-### Reinterpreting cells
+### Cells (no `unsafe`)
 
 `Cell` is `#[repr(C, align(16))]`: `ch` (4 bytes), `fg` (4), `bg` (4),
-`attrs` (1), `width` (1), `extra` (2). That is exactly 16 bytes with no
-padding, so every byte is initialized and the cell can be viewed as vector
-words.
-
-| Where | View |
-|-------|------|
-| `term/mod.rs` `Cell::words_mut` | `&mut [Cell]` as `&mut [u32x4]`, to store whole cells with one vector store. |
-| `parser/ascii.rs` `write` | Calls `Cell::words_mut` to store byte-derived characters and the template fields as whole cells. |
-| `term/mod.rs` `Cell::fill` (portable path) | `&mut [Cell]` as `&mut [u64x2]`. |
-| `term/scrollback.rs` `trimmed_len` | `&[Cell]` as `&[u64]`, to find trailing blank cells four at a time. |
-
-The read-only views, `Cell::bits` (one `u128`) and `Cell::words` (`u32x4`),
-need no `unsafe`: they assemble the fields with shifts, which compile to one
-16-byte load (`term/cell_tests.rs` checks them against the bytes in
-memory). The mutable views can write any bits, but a `char` has invalid values
-(surrogates, above U+10FFFF), so writers must keep lane 0 a valid `char`:
-
-- `Cell::fill` writes copies of a real `Cell`, so this holds.
-- `Cell::words_mut` is an `unsafe fn`: its `# Safety` section makes each
-  caller keep lane 0 a valid `char`. `parser/print.rs` stores `spacer`
-  (a whole cell), `with_char` of a `char`, or characters decoded from
-  validated UTF-8. `parser/ascii.rs` stores a byte converted to `u32` in
-  lane 0 (always a scalar, at most U+00FF) and preserves all other template
-  fields. Its safe wrapper checks equal slice lengths before any store;
-  differential tests cover every byte, styles, subslices and length errors.
-
-The layout these views rely on (16 bytes, 16-byte alignment, no padding) is
-checked at compile time by a `const` assert next to `Cell`.
+`attrs` (1), `width` (1), `extra` (2), exactly 16 bytes with no padding. No
+code reinterprets its memory any more. `Cell::bits` assembles the fields
+with shifts, which compiles to one 16-byte load. Printed cells are stored
+with `Cell::put` (the whole template cell in one 16-byte store, then the
+character; `Cell { ch, ..template }` compiles to a store per field), runs
+with `slice::fill`, and `trimmed_len` compares `bits`. A `const` assert next to `Cell`
+keeps the layout these compile to.
 
 ### Conversions proven valid earlier
 
@@ -129,7 +110,6 @@ checked at compile time by a `const` assert next to `Cell`.
 |-------|-----------|-----------|
 | `vt/mod.rs` `Handler::print_ascii` | `str::from_utf8_unchecked` | The tokenizer only passes `0x20..=0x7e` here, which is ASCII and so UTF-8. |
 | `vt/mod.rs` `text` | `str::from_utf8_unchecked` | The SIMD validator (`vt/utf8.rs`) accepted the whole run just before. Runs it rejects go through `<[u8]>::utf8_chunks`, which is safe. |
-| `parser/narrow.rs` (2 blocks) | `char::from_u32_unchecked` | The SIMD decoder only reads lanes that end a character of input already validated as UTF-8, and valid UTF-8 never encodes a surrogate or anything above U+10FFFF. |
 
 The vt differential tests feed random and malformed bytes against vte, and
 `batched_printing_matches_per_character_printing` checks the narrow path

@@ -143,8 +143,8 @@ pub(crate) struct Cell {
 	pub(crate) extra: u16,
 }
 
-// The vector views of cells (`bits`, `words`, `words_mut`, `fill`) rely on
-// this layout.
+// `bits` compiles to one 16-byte load, and whole-cell stores to one
+// 16-byte store, because of this layout.
 const _: () = assert!(size_of::<Cell>() == 16 && align_of::<Cell>() == 16);
 
 impl Cell {
@@ -161,47 +161,13 @@ impl Cell {
 			| u128::from(self.extra) << 112
 	}
 
-	/// The cell as four 32-bit lanes, the character first, for building cells
-	/// in vector registers.
+	/// Writes `template` holding `ch` to `slot`: one 16-byte store of the
+	/// whole cell, then the character. `Cell { ch, ..template }` compiles to
+	/// a store per field, which costs text floods up to 10%.
 	#[inline(always)]
-	pub(crate) fn words(self) -> std::simd::u32x4 {
-		let last = u32::from(self.attrs) | u32::from(self.width) << 8 | u32::from(self.extra) << 16;
-		std::simd::u32x4::from_array([u32::from(self.ch), self.fg, self.bg, last])
-	}
-
-	/// `words` from [`Cell::words`], with width 0, given `width` instead.
-	#[inline(always)]
-	pub(crate) fn with_width(mut words: std::simd::u32x4, width: usize) -> std::simd::u32x4 {
-		// `width` is byte 13: the second byte of the last lane, as every
-		// target we build for is little-endian.
-		words[3] |= (width as u32) << 8;
-		words
-	}
-
-	/// `words` from [`Cell::words`] with the character cleared.
-	#[inline(always)]
-	pub(crate) fn without_char(words: std::simd::u32x4) -> std::simd::u32x4 {
-		words & std::simd::u32x4::from_array([0, !0, !0, !0])
-	}
-
-	/// `words` from [`Cell::without_char`] holding `ch`, which must be a
-	/// valid `char`; an OR, where replacing the lane would shuffle.
-	#[inline(always)]
-	pub(crate) fn with_char(words: std::simd::u32x4, ch: u32) -> std::simd::u32x4 {
-		words | std::simd::u32x4::from_array([ch, 0, 0, 0])
-	}
-
-	/// `cells` as words, to store whole cells with one vector store each.
-	///
-	/// # Safety
-	///
-	/// Every word stored through the result must hold a valid `char` in lane
-	/// 0 (no surrogate, nothing above U+10FFFF), such as words built with
-	/// [`Cell::words`] or [`Cell::with_char`] from a `char`.
-	#[inline(always)]
-	pub(crate) unsafe fn words_mut(cells: &mut [Cell]) -> &mut [std::simd::u32x4] {
-		// SAFETY: as in `fill`; the caller keeps lane 0 a valid `char`.
-		unsafe { std::slice::from_raw_parts_mut(cells.as_mut_ptr().cast(), cells.len()) }
+	pub(crate) fn put(slot: &mut Cell, template: Cell, ch: char) {
+		*slot = template;
+		slot.ch = ch;
 	}
 
 	/// Sets every cell of `cells` to `cell` with whole-cell vector stores;
@@ -213,13 +179,7 @@ impl Cell {
 			// SAFETY: the CPU supports AVX2.
 			return unsafe { fill::fill(cells, cell) };
 		}
-		use std::simd::u64x2;
-		// SAFETY: `Cell` is 16 bytes with no padding and 16-byte alignment, so
-		// the same memory is a valid `[u64x2]`.
-		let words =
-			unsafe { std::slice::from_raw_parts_mut(cells.as_mut_ptr().cast::<u64x2>(), cells.len()) };
-		let bits = cell.bits();
-		words.fill(u64x2::from_array([bits as u64, (bits >> 64) as u64]));
+		cells.fill(cell);
 	}
 }
 

@@ -35,7 +35,15 @@ gain is dropped, however clever. Full details: `docs/performance.md`.
    ./target/profiling/poopterm --benchmark --only emoji && perf report --sort sym`
    (callgrind when perf is unavailable).
 
-## Correctness comes first
+## Safety and correctness come first
+
+Never buy speed with `unsafe`: no unchecked conversions, pointer casts,
+`transmute` or intrinsics to win throughput. When safe code is slower, make
+the safe code faster: `std::simd`, slice methods, iterator shapes the
+compiler vectorizes, `#[target_feature]` copies chosen at runtime, checks
+the optimizer can remove. A change that replaces `unsafe` with safe code
+stays even if it measures slower; the benchmark then shows where to
+optimize.
 
 A fast path must produce output identical to the slow path. Test it
 differentially: SIMD against the portable kernel, batched printing against
@@ -56,4 +64,5 @@ throughput numbers are updated if the change moves them.
 | Comparing a debug or `debugging` build | `--release` (or `profiling` for profiles only). |
 | Measuring only the workload you targeted | Run all; show all. |
 | Keeping a change that "should" help but measures flat | Drop it. Give the numbers in the PR or issue, and delete the idea from TODO.md: it lists only work still wanted. |
+| Using `unsafe` to make something faster | Don't. Optimize the safe code; safe replacements of `unsafe` stay even if slower. |
 | Comparing terminals at different window sizes | Same size, same session. |

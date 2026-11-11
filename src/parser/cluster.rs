@@ -1,12 +1,14 @@
 //! Grapheme clusters built while printing a run: marks and joined characters
 //! appended to the cell just written.
-use std::{simd::u32x4, sync::Arc};
+use std::sync::Arc;
 
-use crate::{graphics::kitty::PLACEHOLDER, term::Extras};
+use crate::{
+	graphics::kitty::PLACEHOLDER,
+	term::{Cell, Extras},
+};
 
 /// Joins the marks at the start of `rest`, and after a joiner the characters
-/// they join, to the cluster of `cell`, a cell as `Cell::words` lays it out,
-/// as printing them one at a time would. Then takes the next character if it
+/// they join, to the cluster of `cell`, as printing them one at a time would. Then takes the next character if it
 /// fits in `room` columns and is not a placeholder. Returns the bytes of
 /// `rest` used and the character taken, with its width.
 ///
@@ -15,12 +17,11 @@ use crate::{graphics::kitty::PLACEHOLDER, term::Extras};
 #[inline(never)]
 pub(super) fn join_marks(
 	extras: &mut Arc<Extras>,
-	cell: &mut u32x4,
+	cell: &mut Cell,
 	rest: &str,
 	room: usize,
 ) -> (usize, Option<(char, usize)>) {
-	// `extra` is the high half of the last lane.
-	let mut extra = (cell[3] >> 16) as u16;
+	let mut extra = cell.extra;
 	let (mut chars, mut joining) = (rest.chars(), false);
 	let mut used = 0;
 	let taken = loop {
@@ -40,7 +41,7 @@ pub(super) fn join_marks(
 		joining = extras.marks(extra).last() == Some(&'\u{200d}');
 		used = rest.len() - chars.as_str().len();
 	};
-	cell[3] = cell[3] & 0xffff | u32::from(extra) << 16;
+	cell.extra = extra;
 	match taken {
 		Some((c, _)) => (used + c.len_utf8(), taken),
 		None => (used, None),

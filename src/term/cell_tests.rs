@@ -1,5 +1,4 @@
-//! The vector views of a cell (`bits`, `words` and the helpers that edit
-//! words) against the cell's bytes in memory, which is what they replaced.
+//! A cell's 128-bit view, `bits`, against the cell's bytes in memory.
 use super::Cell;
 use crate::bench::corpus::Rng;
 
@@ -92,19 +91,6 @@ fn bits_are_the_bytes_of_the_cell_in_memory() {
 }
 
 #[test]
-fn words_are_the_bytes_of_the_cell_in_four_lanes() {
-	for cell in cells() {
-		let lanes = memory(cell).to_le_bytes();
-		let expected: Vec<u32> = lanes
-			.chunks(4)
-			.map(|lane| u32::from_le_bytes(lane.try_into().unwrap()))
-			.collect();
-		assert_eq!(cell.words().to_array().as_slice(), expected, "{cell:?}");
-		assert_eq!(cell.words().to_array()[0], u32::from(cell.ch));
-	}
-}
-
-#[test]
 fn bits_are_equal_exactly_when_the_cells_are() {
 	let cells = cells();
 	for pair in cells.windows(2) {
@@ -145,87 +131,56 @@ fn bits_are_equal_exactly_when_the_cells_are() {
 }
 
 #[test]
-fn words_edited_by_width_and_char_are_the_words_of_the_edited_cell() {
-	let mut rng = Rng::new(7);
-	for cell in cells() {
-		let template = Cell { width: 0, ..cell };
-		for width in [0, 1, 2, 255] {
-			let edited = Cell::with_width(template.words(), width);
-			assert_eq!(
-				edited,
-				Cell {
-					width: width as u8,
-					..template
-				}
-				.words()
-			);
-		}
-		let other = random(&mut rng).ch;
-		let blank = Cell::without_char(cell.words());
-		assert_eq!(blank.to_array()[0], 0);
-		assert_eq!(&blank.to_array()[1..], &cell.words().to_array()[1..]);
-		let swapped = Cell::with_char(blank, u32::from(other));
+fn put_writes_the_template_with_the_character_over_any_cell() {
+	let mut rng = Rng::new(0x9e7);
+	let cells = cells();
+	for pair in cells.windows(2) {
+		let (old, template) = (pair[0], pair[1]);
+		let ch = random(&mut rng).ch;
+		let mut slot = old;
+		Cell::put(&mut slot, template, ch);
 		assert_eq!(
-			swapped,
-			Cell { ch: other, ..cell }.words(),
-			"{cell:?} with {other:?}"
+			slot,
+			Cell { ch, ..template },
+			"{old:?} <- {template:?} {ch:?}"
+		);
+		assert_eq!(
+			slot.bits() >> 32,
+			template.bits() >> 32,
+			"fields after the character"
 		);
 	}
 }
 
 #[test]
-fn words_stored_through_words_mut_read_back_as_those_cells() {
-	let cells = cells();
-	let mut grid = vec![Cell::default(); cells.len()];
-	// SAFETY: every word stored comes from `Cell::words` of a valid cell.
-	let words = unsafe { Cell::words_mut(&mut grid) };
-	assert_eq!(words.len(), cells.len());
-	for (word, cell) in words.iter_mut().zip(&cells) {
-		*word = cell.words();
-	}
-	assert_eq!(grid, cells);
-}
-
-#[test]
-fn words_mut_views_exactly_the_cells_it_was_given() {
-	let mut grid: Vec<Cell> = (0..8)
-		.map(|i| Cell {
-			fg: i,
-			..Cell::default()
-		})
-		.collect();
-	let marked = Cell {
-		ch: 'x',
+fn put_touches_only_its_own_slot() {
+	let fence = Cell {
+		ch: '#',
+		fg: 1,
+		bg: 2,
+		attrs: 3,
+		width: 1,
+		extra: 4,
+	};
+	let template = Cell {
+		ch: '\0',
 		width: 2,
+		extra: 0xbeef,
 		..Cell::default()
 	};
-	// SAFETY: the word stored comes from `Cell::words` of a valid cell.
-	let words = unsafe { Cell::words_mut(&mut grid[2..5]) };
-	assert_eq!(words.len(), 3);
-	assert_eq!(
-		words[0],
-		Cell {
-			fg: 2,
-			..Cell::default()
+	for at in 0..5 {
+		let mut row = [fence; 5];
+		Cell::put(&mut row[at], template, '猫');
+		for (i, cell) in row.iter().enumerate() {
+			let expected = if i == at {
+				Cell {
+					ch: '猫',
+					..template
+				}
+			} else {
+				fence
+			};
+			assert_eq!(*cell, expected, "put at {at}, cell {i}");
 		}
-		.words()
-	);
-	*words.last_mut().unwrap() = marked.words();
-	assert_eq!(grid[4], marked);
-	assert_eq!(
-		grid[5],
-		Cell {
-			fg: 5,
-			..Cell::default()
-		}
-	);
-	assert_eq!(
-		grid[1],
-		Cell {
-			fg: 1,
-			..Cell::default()
-		}
-	);
-	// SAFETY: nothing is stored.
-	assert!(unsafe { Cell::words_mut(&mut []) }.is_empty());
+	}
 }

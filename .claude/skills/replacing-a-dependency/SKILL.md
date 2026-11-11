@@ -48,6 +48,9 @@ Each needs:
 - Remove the crate from `[dependencies]` only when nothing but tests uses
   it; move it to `[dev-dependencies]` to keep the oracle.
 - Update `THIRD_PARTY_NOTICES`, `TODO.md` and `docs/architecture.md`.
+- Write the replacement in safe Rust. Where it must call C or the kernel,
+  wrap each call in one small safe function and list it in
+  `docs/unsafe.md`; never use `unsafe` to make the replacement faster.
 
 ## Red flags
 

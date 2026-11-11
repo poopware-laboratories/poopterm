@@ -1,7 +1,5 @@
 //! Tests of the narrow-character fast path: chunks alone, and whole streams
 //! against per-character printing.
-use std::simd::u32x4;
-
 use super::{CHUNK, NARROW_BLOCKS, in_narrow_block, print_chunk};
 use crate::{
 	parser::{Parser, PerCharacter},
@@ -21,8 +19,11 @@ fn style() -> Cell {
 }
 
 /// The narrow cell `print_chunk` takes: `style` with width 1 and no character.
-fn narrow() -> u32x4 {
-	Cell::with_width(Cell::without_char(style().words()), 1)
+fn narrow() -> Cell {
+	Cell {
+		width: 1,
+		..style()
+	}
 }
 
 fn chunk(text: &str) -> [u8; CHUNK] {
@@ -30,19 +31,15 @@ fn chunk(text: &str) -> [u8; CHUNK] {
 }
 
 /// A row of `len` cells that no chunk writes, as words.
-fn row(len: usize) -> Vec<u32x4> {
-	vec![Cell::default().words(); len]
+fn row(len: usize) -> Vec<Cell> {
+	vec![Cell::default(); len]
 }
 
-fn cells(row: &[u32x4]) -> Vec<Cell> {
-	// SAFETY: every word in these rows holds a valid cell.
-	row
-		.iter()
-		.map(|w| unsafe { std::mem::transmute(*w) })
-		.collect()
+fn cells(row: &[Cell]) -> Vec<Cell> {
+	row.to_vec()
 }
 
-fn text(row: &[u32x4]) -> String {
+fn text(row: &[Cell]) -> String {
 	cells(row).iter().map(|c| c.ch).collect()
 }
 
@@ -182,34 +179,6 @@ fn narrow_blocks_are_exactly_the_blocks_of_narrow_characters() {
 		[0; 26],
 		"nothing from U+3000 on is decoded"
 	);
-}
-
-#[test]
-fn cell_words_hold_each_field_in_place() {
-	let words = style().words();
-	assert_eq!(words.to_array(), [0, 0x112233, 0x445566, 0x1234_005a]);
-	assert_eq!(
-		Cell::without_char(Cell { ch: 'x', ..style() }.words()),
-		words
-	);
-	for width in 0..=2 {
-		let built = Cell::with_char(Cell::with_width(words, width), 'é' as u32);
-		let expected = Cell {
-			ch: 'é',
-			width: width as u8,
-			..style()
-		};
-		assert_eq!(
-			// SAFETY: lane 0 holds a valid char.
-			unsafe { std::mem::transmute::<u32x4, Cell>(built) },
-			expected
-		);
-	}
-	let mut row = [Cell::default(); 2];
-	// SAFETY: `words` comes from a whole cell.
-	let cells = unsafe { Cell::words_mut(&mut row) };
-	cells[1] = words;
-	assert_eq!(row, [Cell::default(), style()]);
 }
 
 /// Feeds `stream` whole and through vte one character at a time and asserts
