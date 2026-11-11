@@ -411,8 +411,6 @@ All encoders are pure functions with unit tests:
 - `mapped.rs`: read-only mappings of whole files. Font files are mapped
   instead of read onto the heap (`fonts::data`), so they cost shared,
   evictable page cache, and only the pages in use are resident.
-- `hugepages.rs`: transparent huge page hints for large, long-lived buffers
-  (Linux only), for buffers that adopt them after measuring.
 - `terminfo.rs`: the bundled `xterm-poopterm` entry, and choosing `TERM`
   for spawned shells by whether that entry is installed.
 - `platform.rs`: per-platform window tweaks, such as window opacity on macOS.

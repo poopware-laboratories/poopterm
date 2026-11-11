@@ -166,11 +166,12 @@ issue before starting a piece.
 ## Resource management and memory
 
 - **Memory footprint.** Reported at about 400 MB on macOS, staying near
-  140 MB afterwards. Measured on Linux (26.10.55, one tab, 20,000 lines of
-  scrollback): 58 MB idle, 130–230 MB after a flood that fills the history,
-  depending on window width. Repeated floods and clears do not raise it
-  further, so no leak has been found; the memory is retained, not lost.
-  Where it goes, worst first:
+  140 MB afterwards. On Linux (one tab, 20,000 lines of scrollback, 900×600)
+  it went from 58 MB idle and 130–230 MB after a flood (26.10.55) to
+  20.7 MiB idle, 43 MiB after a flood filling the history and 23 MiB after
+  `ESC [3J` in software, and 61, 83 and 63 MiB on the GPU, whose driver
+  maps most of the difference (`docs/performance.md`). Still to check: the
+  macOS figure. Where the rest goes, worst first:
   - *Fonts are mapped, not copied (done).* The main font, configured
     fallbacks and installed fallbacks are mapped read-only (`mapped.rs`),
     so they cost shared, evictable page cache instead of private memory,
@@ -184,12 +185,12 @@ issue before starting a piece.
     fixed-size segments without copying (fits #40). `ESC [3J` and a lower
     line limit already give the ring's memory back. It costs about 16 bytes per cell of history
     per tab.
-  - *Freed memory after a clear.* mimalloc now purges at once
-    (`allocator.rs`), so `ESC [3J` after a 64 MiB flood drops the terminal
-    from about 136 to 106 MiB. It still ends some 30 MiB over its start:
-    find what stays live (glyph caches, the PTY queue, frame buffers).
-  - *Idle baseline.* 35 MB of heap before any output: audit it (fonts, font
-    database, glyph caches, per-tab buffers sized for the largest window).
+  - *Freed memory after a clear (done).* mimalloc purges at once and
+    transparent huge pages are off (`allocator.rs`): after `ESC [3J` the
+    terminal is back within 2 MiB of idle, cycle after cycle.
+  - *Idle baseline.* 15 MiB private before any output in software: audit
+    it (fonts, font database, glyph caches, per-tab buffers sized for the
+    largest window).
   - General Rust techniques to apply where profiles point: `shrink_to_fit`
     or dropping buffers after spikes (PTY queue, OSC/DCS payloads, kitty
     transfers), `Box<[T]>` over `Vec<T>` for fixed data, smaller
@@ -211,16 +212,6 @@ issue before starting a piece.
   happens after it starts, so anything it forks in its first milliseconds
   stays behind; `clone3(CLONE_INTO_CGROUP)` can close that gap now that we
   spawn shells ourselves (`src/pty/spawn.rs`).
-- **Transparent huge pages for large buffers.** Large, long-lived
-  allocations (scrollback rows, image bitmaps, the frame buffer, PTY
-  queues) could cause fewer TLB misses on huge pages. Check once at
-  startup by reading `/sys/kernel/mm/transparent_hugepage/enabled`
-  (`always` or `madvise`, cached). Then `madvise(MADV_HUGEPAGE)` only
-  allocations of at least 2 MiB, aligned so they can actually use huge
-  pages. FreeBSD promotes superpages by itself, and macOS has no
-  equivalent, so it is Linux-only and does nothing elsewhere. Measure RSS
-  and throughput before and after, and keep it only for buffers where it
-  helps reproducibly.
 
 ## Replacing dependencies with our own code
 

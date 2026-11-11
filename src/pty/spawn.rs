@@ -317,6 +317,10 @@ impl Prepared {
 			{
 				return failed();
 			}
+			// The terminal turned huge pages off for itself; programs run
+			// in it keep the system's choice. A plain flag of this process.
+			#[cfg(target_os = "linux")]
+			libc::prctl(libc::PR_SET_THP_DISABLE, 0, 0, 0, 0);
 			libc::execve(self.path.as_ptr(), self.argv.as_ptr(), self.envp.as_ptr());
 			failed()
 		}

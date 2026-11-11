@@ -38,7 +38,6 @@ mod fonts;
 )]
 mod gpu;
 mod graphics;
-mod hugepages;
 mod inflate;
 mod input;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]

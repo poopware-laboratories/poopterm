@@ -798,3 +798,38 @@ fn spawns_on_many_threads_at_once_each_get_their_own_result() {
 		thread.join().unwrap();
 	}
 }
+
+/// Run in its own process by the test below: turns huge pages off for this
+/// process, as the terminal does, and prints what a shell it starts says
+/// of its own.
+#[test]
+#[ignore = "run by a_shell_gets_the_systems_huge_pages_though_the_terminal_has_none"]
+#[cfg(target_os = "linux")]
+fn report_shells_huge_pages() {
+	crate::allocator::no_huge_pages();
+	let (output, exit) = run(sh("grep THP_enabled /proc/self/status"));
+	assert_eq!(exit, Exit::Code(0), "{output}");
+	println!("shell {}", output.trim());
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn a_shell_gets_the_systems_huge_pages_though_the_terminal_has_none() {
+	// The flag is inherited through fork and execve: without clearing it,
+	// every program run in the terminal would lose huge pages too.
+	let output = std::process::Command::new(std::env::current_exe().unwrap())
+		.args([
+			"--exact",
+			"pty::spawn::tests::report_shells_huge_pages",
+			"--ignored",
+			"--nocapture",
+		])
+		.output()
+		.unwrap();
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	assert!(output.status.success(), "{stdout}");
+	let shell = stdout.lines().find_map(|line| line.strip_prefix("shell "));
+	let shell = shell.unwrap_or_else(|| panic!("no report in {stdout}"));
+	let fields: Vec<&str> = shell.split_whitespace().collect();
+	assert_eq!(fields, ["THP_enabled:", "1"]);
+}
