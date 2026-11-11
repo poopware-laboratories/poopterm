@@ -4,6 +4,7 @@ use super::*;
 use std::{process::Command, thread, time::Duration};
 
 /// Starts `sh -c script` and returns its pid, for this module to wait for.
+#[expect(clippy::zombie_processes, reason = "the tests reap it by pid")]
 fn start(script: &str) -> i32 {
 	let child = Command::new("sh").arg("-c").arg(script).spawn().unwrap();
 	child.id() as i32
