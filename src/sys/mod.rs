@@ -6,3 +6,4 @@
 	expect(dead_code, reason = "no window buffers")
 )]
 pub(crate) mod mem;
+pub(crate) mod user;
