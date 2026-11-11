@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.80 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Fail pull requests that grow unsafe without docs/unsafe.md (#313).
+
 ## 26.11.79 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
