@@ -1,9 +1,8 @@
 //! Frames shown on a Wayland window through `wl_shm`, with
 //! libwayland-client opened at run time.
-#![expect(
-	clippy::multiple_unsafe_ops_per_block,
-	reason = "safe wrappers per call come next"
-)]
+// libwayland calls still share blocks; our own wire protocol code replaces
+// them and removes this.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 pub(crate) mod client;
 #[cfg(test)]
 mod client_tests;

@@ -264,10 +264,8 @@ impl Prepared {
 	/// # Safety
 	///
 	/// Only in the child of a fork, where it must be the only thing run.
-	#[expect(
-		clippy::multiple_unsafe_ops_per_block,
-		reason = "the sys layer wraps each call next"
-	)]
+	// The calls share a block until the sys layer step wraps each.
+	#[expect(clippy::multiple_unsafe_ops_per_block)]
 	unsafe fn start(&self, terminal: RawFd, report: RawFd) -> ! {
 		// SAFETY: every call below is async-signal-safe and uses only
 		// descriptors we hold and memory `self` owns.
@@ -284,10 +282,8 @@ impl Prepared {
 	/// # Safety
 	///
 	/// As [`Self::start`].
-	#[expect(
-		clippy::multiple_unsafe_ops_per_block,
-		reason = "the sys layer wraps each call next"
-	)]
+	// The calls share a block until the sys layer step wraps each.
+	#[expect(clippy::multiple_unsafe_ops_per_block)]
 	unsafe fn become_program(&self, terminal: RawFd) -> libc::c_int {
 		let failed = || {
 			io::Error::last_os_error()
