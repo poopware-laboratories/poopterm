@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.77 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Store cells safely and put safe code first (#308) (term).
+- Measure each workload's ceiling and aim text at 500 MB/s (#309).
+
 ## 26.11.76 "Lunar Moth" — 2026-11-11
 
 ### Performance
