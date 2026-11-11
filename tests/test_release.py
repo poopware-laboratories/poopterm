@@ -75,6 +75,69 @@ class Release(unittest.TestCase):
         self.assertEqual(release.notes(['chore(release): 26.10.3 after green CI']),
                          '- No changes besides release bookkeeping.\n')
 
+    def test_security_fixes_come_right_after_breaking_changes(self):
+        commits = ['feat: add a thing', 'fix(security): bound OSC 52 payloads',
+                   'fix(security)!: refuse unsigned updates\n\nBREAKING CHANGE: Sign them.']
+        self.assertEqual(release.notes(commits), '''### Breaking changes
+
+- Refuse unsigned updates (security). Sign them.
+
+### Security
+
+- Bound OSC 52 payloads.
+
+### Added
+
+- Add a thing.
+''')
+
+
+MONDAY = datetime.date(2026, 11, 16)
+WEEK_AGO = MONDAY - datetime.timedelta(days=7)
+
+
+class Due(unittest.TestCase):
+    """Releases are weekly; a security fix or a missed week releases on a push."""
+
+    def due(self, messages, event, last=WEEK_AGO, today=MONDAY):
+        return release.due(messages, event, last, today)
+
+    def test_the_weekly_schedule_releases_what_changed(self):
+        self.assertTrue(self.due(['fix: keep images'], 'schedule'))
+
+    def test_the_schedule_skips_a_week_without_changes(self):
+        self.assertFalse(self.due([], 'schedule'))
+        self.assertFalse(self.due(['chore(release): 26.11.3 after green CI\n\n[skip ci]'], 'schedule'))
+
+    def test_a_manual_run_releases_at_once(self):
+        self.assertTrue(self.due(['docs: fix a typo'], 'workflow_dispatch', last=MONDAY))
+        self.assertFalse(self.due([], 'workflow_dispatch'))
+
+    def test_pushes_wait_for_the_schedule(self):
+        self.assertFalse(self.due(['feat: add a thing'], 'push', last=MONDAY))
+        self.assertFalse(self.due(['feat: add a thing'], 'push'))
+
+    def test_a_push_catches_up_a_missed_week_after_eight_days(self):
+        # Seven days is the schedule's own turn; one more means it was missed.
+        last = MONDAY - datetime.timedelta(days=8)
+        self.assertTrue(self.due(['feat: add a thing'], 'push', last=last))
+        self.assertFalse(self.due(['feat: add a thing'], 'push', last=last + datetime.timedelta(days=1)))
+
+    def test_a_push_releases_the_first_version(self):
+        self.assertTrue(self.due(['feat: add a thing'], 'push', last=None))
+
+    def test_a_security_fix_releases_on_its_push(self):
+        for fix in ['fix(security): bound OSC 52 payloads', 'fix(security)!: refuse it\n\nBREAKING CHANGE: x.']:
+            self.assertTrue(self.due(['docs: a', fix], 'push', last=MONDAY), fix)
+
+    def test_only_fixes_scoped_security_are_urgent(self):
+        for other in ['feat(security): add a sandbox', 'fix(osc): mention security', 'fix: security of OSC 52']:
+            self.assertFalse(self.due([other], 'push', last=MONDAY), other)
+
+    def test_an_unknown_event_never_releases(self):
+        # A pull request's run must not publish whatever it built.
+        self.assertFalse(self.due(['fix(security): x'], 'pull_request', last=None))
+
 
 if __name__ == '__main__':
     unittest.main()

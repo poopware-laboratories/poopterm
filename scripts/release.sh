@@ -2,12 +2,17 @@
 # Publish only the main commit that passed every required CI job.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-: "${GITHUB_SHA:?}" "${GH_REPO:?}" "${GH_TOKEN:?}"
+: "${GITHUB_SHA:?}" "${GITHUB_EVENT_NAME:?}" "${GH_REPO:?}" "${GH_TOKEN:?}"
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git fetch origin main --tags
 remote=$(git rev-parse origin/main)
 if [[ "$remote" == "$GITHUB_SHA" ]]; then
+  # Weekly, or at once for a security fix; see due() in release.py.
+  if ! python3 scripts/release.py --due "$GITHUB_EVENT_NAME"; then
+    echo "${GITHUB_EVENT_NAME}: no release due (nothing to release, or not due before the weekly run)."
+    exit 0
+  fi
   release=$(python3 scripts/release.py)
   version=${release%%$'\n'*}
   codename=${release#*$'\n'}

@@ -235,8 +235,8 @@ change, however small, goes through a branch and a pull request.
    commit per pull request.
 
 CI runs only for pull requests and for `main`; pushes to other branches run
-nothing until they have a pull request. Releases run only on `main`, after
-a merge.
+nothing until they have a pull request. Releases run only on `main`: once
+a week, or at once for a security fix.
 
 - **Titles and commits follow [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/):**
   `type(scope)!: summary`, with the scope optional, and the summary in lower
@@ -244,7 +244,9 @@ a merge.
   `perf`, `refactor`, `docs`, `test`, `bench`, `build`, `ci`, `style`,
   `chore`, `revert`. Scopes name the area touched, usually a module
   (`parser`, `vt`, `kitty`, `render`, `pty`, `input`, `bench`, `release`).
-  Breaking changes get `!` and a `BREAKING CHANGE:` footer. The body explains
+  Breaking changes get `!` and a `BREAKING CHANGE:` footer. Fixes for
+  vulnerabilities use the scope `security` (`fix(security): bound OSC 52
+  payloads`), which releases them on merge. The body explains
   *why*. Add no session links or other tool trailers; a `Co-Authored-By:`
   footer is fine. CI checks pull request titles; branch commits should
   follow the same form.
@@ -253,17 +255,27 @@ a merge.
   `[package.metadata.poopterm] codename` in `Cargo.toml` and in the
   changelog heading (`## 26.10.0 "Giga Fly" — date`); CI uses it in the
   release title. Patch releases keep their release's codename.
-- After fully green CI on `main`, CI increments the patch or starts a new
+- **Releases are weekly.** Every Monday at 06:00 UTC CI checks `main`'s
+  head and, if it is fully green and anything besides release bookkeeping
+  changed since the last tag, releases it. A push to `main` releases on its
+  own green CI only when it brings a `fix(security)` commit, or to catch up
+  when the last release is eight or more days old (the weekly run lost a
+  race to a merge, or `main` was red). Run the workflow by hand ("Run
+  workflow" on *Build, test and release*) to release at once. The decision
+  is `due()` in `scripts/release.py`.
+- A release increments the patch or starts a new
   month at `YY.M.0` with a new random codename. It commits `Cargo.toml`,
   `Cargo.lock`, `CHANGELOG.md` and `Formula/poopterm.rb` together and
   atomically pushes the commit and tag only if `main` still matches the
   checked revision: one push per release, so merges cannot race it. If `main`
-  moved, the run skips and the newer commit's run releases. Then it builds
+  moved, the run skips; the newer commit's push catches up once eight days
+  have passed, or run the workflow by hand. Then it builds
   the Debian and RPM packages from the tag, attaches them to a draft release and only
   then publishes it, so releases can be immutable; a rerun resumes without
   pushing again. The changelog entry is built from
   the Conventional Commits since the last tag (`feat` → Added, `fix` → Fixed,
-  `perf` → Performance, breaking changes first, the rest under Maintenance),
+  `perf` → Performance, breaking changes first, then `fix(security)` under
+  Security, the rest under Maintenance),
   so write pull request titles that read well there. The release job pushes
   with a write deploy key (secret `RELEASE_DEPLOY_KEY`), the only actor that
   may bypass the protection of `main`; its commits carry `[skip ci]` so they
