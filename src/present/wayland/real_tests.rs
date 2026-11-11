@@ -5,7 +5,7 @@
 //! (headless weston).
 use super::client::{Argument, Client, LIBRARY, Proxy};
 use super::presenter::{Presented, Presenter};
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	ffi::{CStr, c_char, c_int, c_void},
 	ptr::{self, NonNull},

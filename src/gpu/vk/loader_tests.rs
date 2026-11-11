@@ -22,7 +22,7 @@ use super::{
 	timeline::Timeline,
 	version::major_minor,
 };
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	env,
 	io::Read,

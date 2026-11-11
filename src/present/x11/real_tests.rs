@@ -4,7 +4,7 @@
 //! `DISPLAY`, unless `POOPTERM_REQUIRE_X11` is set, as in CI (Xvfb).
 use super::client::{Client, Connection, Cookie, Extension, ExtensionReply};
 use super::presenter::{Presented, Presenter};
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	ffi::{CStr, c_char, c_int, c_void},
 	ptr::{self, NonNull},

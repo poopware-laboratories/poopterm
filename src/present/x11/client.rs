@@ -1,7 +1,7 @@
 //! libxcb and its MIT-SHM extension, opened at run time, with the one
 //! function of libX11-xcb that gives an Xlib display's XCB connection:
 //! the requests the presenter sends and the replies it polls for.
-use crate::library::Library;
+use crate::sys::dl::Library;
 use std::{
 	ffi::{CStr, c_int, c_uint, c_void},
 	mem::transmute_copy,
