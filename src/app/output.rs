@@ -1,6 +1,9 @@
 //! Parsing PTY output and deciding when the screen needs a new frame.
 use super::*;
-use crate::term::iterm::{Attention, WindowRequest};
+use crate::{
+	term::iterm::{Attention, WindowRequest},
+	ui::hover::hover,
+};
 use std::time::Instant;
 
 impl App {
@@ -10,6 +13,10 @@ impl App {
 	pub(super) fn process_output(&mut self, id: u64) {
 		// Every pane of the active tab is on screen.
 		let is_active = self.tab_of(id) == Some(self.active);
+		// What the pointer is over is read under the lock taken below, for
+		// the focused pane, the only one it can be over.
+		let hovered = (is_active && self.sessions[self.active].id == id)
+			.then(|| (self.grid_place(), self.cursor_pos));
 		let others = self
 			.splits
 			.iter_mut()
@@ -19,7 +26,15 @@ impl App {
 		};
 		session.acknowledge_output();
 		let unseen = !is_active || !self.focused;
-		let (clipboard, notifications, window_requests, long_command_finished, now, synchronized) = {
+		let (
+			clipboard,
+			notifications,
+			window_requests,
+			long_command_finished,
+			now,
+			synchronized,
+			hover,
+		) = {
 			let mut term = session.term();
 			let clipboard = std::mem::take(&mut term.clipboard_writes);
 			let window_requests = std::mem::take(&mut term.window_requests);
@@ -37,6 +52,7 @@ impl App {
 				long_command_finished,
 				Seen::of(&term),
 				term.synchronized.is_some(),
+				hovered.map(|(place, pointer)| hover(&term, place, pointer)),
 			)
 		};
 		for write in clipboard {
@@ -67,7 +83,9 @@ impl App {
 			if let Some(recorder) = &mut self.frame_stats {
 				recorder.stats.output();
 			}
-			self.update_hovered_link();
+			if let Some(hover) = hover {
+				self.show_hover(hover);
+			}
 			self.search_dirty |= self.search_active;
 		}
 		if visible || tab_changed {

@@ -6,25 +6,29 @@ use crate::ui::{
 	copy::selection_text,
 	drag::drag_after_move,
 	header_target::{HeaderTarget, header_target},
+	hover::{GridPlace, Hover, hover},
 	links::{LinkAction, link_action},
 	window_pointer::pointer_icon,
 };
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
 impl App {
-	/// Where the active terminal's grid sits in the window.
-	pub(super) fn grid_geometry(&self) -> GridGeometry {
+	/// Where the active terminal's grid sits in the window, without the
+	/// terminal's own size and scrolling, so it is found without its lock.
+	pub(super) fn grid_place(&self) -> GridPlace {
 		let area = self.focused_rect();
-		let term = self.active_term();
-		GridGeometry {
+		GridPlace {
 			left: area.x,
 			top: area.y,
 			bottom: area.y + area.height,
 			cell: (self.cw, self.ch),
-			cols: term.cols,
-			rows: term.rows,
-			first_row: term.scrollback.len().saturating_sub(term.scroll_offset),
 		}
+	}
+
+	/// Where the active terminal's grid sits in the window.
+	pub(super) fn grid_geometry(&self) -> GridGeometry {
+		let place = self.grid_place();
+		place.geometry(&self.active_term())
 	}
 
 	pub(super) fn point_at(&self, x: f64, y: f64) -> Option<CellPoint> {
@@ -107,16 +111,18 @@ impl App {
 	/// The OSC 8 target under the pointer, shown in the status bar so a link's
 	/// real destination is visible before it is clicked.
 	pub(super) fn update_hovered_link(&mut self) {
-		let (x, y) = self.cursor_pos;
-		let link = self.point_at(x, y).and_then(|point| {
-			let term = self.active_term();
-			let cell = term.row_cells(point.row)?.get(point.col)?;
-			term.hyperlink_uri(cell).map(str::to_owned)
-		});
+		let place = self.grid_place();
+		let found = hover(&self.active_term(), place, self.cursor_pos);
+		self.show_hover(found);
+	}
+
+	/// Shows what the pointer is over: its shape, and the link target in the
+	/// status bar.
+	pub(super) fn show_hover(&mut self, Hover { link, shape }: Hover) {
 		// Edges show where they resize, links a hand; otherwise the
 		// program's OSC 22 shape, if any.
 		let edge = self.hovered_edge();
-		let icon = pointer_icon(edge, link.is_some(), self.active_term().pointer_shape());
+		let icon = pointer_icon(edge, link.is_some(), shape);
 		if icon != self.pointer_icon
 			&& let Some(window) = &self.window
 		{
