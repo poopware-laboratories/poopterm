@@ -355,10 +355,13 @@ fn reopening_a_named_object_to_create_keeps_its_contents() {
 		.copy_from_slice(b"kept");
 	let again = File::from(shm_open(&name, true).unwrap());
 	shm_unlink(&name).unwrap();
-	assert_eq!(again.metadata().unwrap().len(), 4, "not truncated");
+	// Not truncated: macOS rounds the size up to a page, others keep 4.
+	assert!(again.metadata().unwrap().len() >= 4);
 	assert_eq!(Map::read(again.as_fd(), 4, true).unwrap().bytes(), b"kept");
 }
 
+/// macOS lets any descriptor size a shared memory object once.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn a_named_object_opened_to_read_cannot_be_resized() {
 	let name = shm_name("resize");
