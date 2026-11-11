@@ -613,6 +613,41 @@ fn signals_are_neither_ignored_nor_blocked() {
 	assert_eq!(output.lines().count(), 2, "{output:?}");
 }
 
+/// Runs `script` with `signal` ignored in this process, then restores it.
+fn with_ignored(signal: libc::c_int, script: &str) -> (String, Exit) {
+	// SAFETY: all zeroes is a valid `sigaction`; its handler is then set
+	// to `SIG_IGN`.
+	let mut ignore = unsafe { std::mem::zeroed::<libc::sigaction>() };
+	ignore.sa_sigaction = libc::SIG_IGN;
+	let mut old = ignore;
+	// SAFETY: sets this signal's disposition from the struct above and
+	// saves the old one in `old`.
+	assert_eq!(unsafe { libc::sigaction(signal, &ignore, &mut old) }, 0);
+	let result = run(sh(script));
+	// SAFETY: restores the disposition saved above.
+	unsafe { libc::sigaction(signal, &old, std::ptr::null_mut()) };
+	result
+}
+
+#[test]
+fn the_first_signal_gets_its_default_action_back() {
+	// SIGHUP is 1, where the loop resetting every signal starts.
+	let (_, exit) = with_ignored(libc::SIGHUP, "kill -HUP $$; exit 0");
+	assert_eq!(exit, Exit::Signal(libc::SIGHUP));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_last_real_time_signal_gets_its_default_action_back() {
+	// Where the loop ends: an ignored SIGRTMAX would stay ignored after
+	// exec, as the shell's own SigIgn mask shows.
+	let last = libc::SIGRTMAX();
+	assert_eq!(last, 64);
+	let (output, _) = with_ignored(last, "grep '^SigIgn' /proc/self/status");
+	let mask = output.split_whitespace().nth(1).unwrap();
+	assert!(mask.chars().all(|digit| digit == '0'), "{output:?}");
+}
+
 #[test]
 fn none_of_our_descriptors_reach_the_program() {
 	// One we would leak if nothing closed it: inheritable, unlike std's.
