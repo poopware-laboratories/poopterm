@@ -407,40 +407,26 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	assert_eq!(check(3).unwrap(), 3);
 }
 
-/// Probe, never merged: the pattern of the test that fails on macOS, 40
-/// pairs opened in a row, each running `exit 0` while we keep the pair,
-/// repeated. Any failure names its step (see `open`).
+/// Probe, never merged: the system's PTY limit, and how opening fails once
+/// every PTY is taken.
 #[cfg(target_os = "macos")]
 #[test]
-fn probe_macos_forty_short_sessions_in_a_row() {
-	use crate::sys::spawn::{Command as Program, spawn};
-	let mut failures = Vec::new();
-	let mut opened = 0;
-	for round in 0..20 {
-		let mut held = Vec::new();
-		for index in 0..40 {
-			match open(cells(80, 24)) {
-				Ok(pair) => {
-					opened += 1;
-					match spawn(&Program::new("sh").arg("-c").arg("exit 0"), &pair.slave) {
-						Ok(child) => held.push((child, pair)),
-						Err(e) => failures.push(format!("round {round} #{index} spawn: {e}")),
-					}
-				}
-				Err(e) => failures.push(format!(
-					"round {round} #{index} open: {e} (held {})",
-					held.len()
-				)),
-			}
+fn probe_macos_pty_limit() {
+	let limit = std::process::Command::new("sysctl")
+		.args(["-n", "kern.tty.ptmx_max"])
+		.output()
+		.map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned());
+	let mut held = Vec::new();
+	let failure = loop {
+		match open(cells(80, 24)) {
+			Ok(pair) => held.push(pair),
+			Err(e) => break e.to_string(),
 		}
-		thread::sleep(Duration::from_millis(100));
-		for (mut child, _pair) in held {
-			let _ = child.wait();
+		if held.len() == 2000 {
+			break "none within 2000".into();
 		}
-	}
-	panic!(
-		"PROBE opened={opened} failures={}\n{}",
-		failures.len(),
-		failures.join("\n")
-	);
+	};
+	let opened = held.len();
+	drop(held);
+	panic!("PROBE ptmx_max={limit:?} opened={opened} then: {failure}");
 }
