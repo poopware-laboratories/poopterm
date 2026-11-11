@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.79 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Fill cells and copy history rows in safe code (#311) (term).
+- One unsafe operation per block (#312).
+
 ## 26.11.78 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
