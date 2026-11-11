@@ -380,6 +380,96 @@ class Glue(unittest.TestCase):
         self.assertEqual([p.split(':')[0] for p in problems], ['src/c.rs'])
 
 
+def rust_diff(path, *lines):
+    """A `git diff` of `path` with each line as given (+ added, - removed)."""
+    return f'diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n' + '\n'.join(lines)
+
+
+class Unsafe(unittest.TestCase):
+    def test_blocks_functions_impls_externs_and_attributes_are_counted(self):
+        diff = rust_diff(
+            'src/a.rs',
+            '+\tlet x = unsafe { f() };',
+            '+unsafe fn g() {}',
+            '+unsafe impl Send for X {}',
+            '+#[unsafe(no_mangle)]',
+            '+unsafe extern "C" {',
+        )
+        self.assertEqual(pr_check.unsafe_changes(diff), (5, 0, 0))
+
+    def test_functions_with_an_abi_count_but_function_pointer_types_do_not(self):
+        diff = rust_diff(
+            'src/a.rs',
+            '+unsafe extern "system" fn requirements(device: RawDevice) {',
+            '+unsafe fn send<R>(self) -> R {',
+            '+type Create = unsafe extern "system" fn(RawDevice, *const Info) -> i32;',
+            '+\tdestroy: unsafe extern "C" fn(Proxy),',
+            '+\tcallback: Option<unsafe fn()>,',
+        )
+        self.assertEqual(pr_check.unsafe_changes(diff), (2, 0, 0))
+
+    def test_extern_blocks_count_with_or_without_an_abi(self):
+        diff = rust_diff('src/a.rs', '+unsafe extern "C" {', '+unsafe extern {', '+extern "C" {')
+        self.assertEqual(pr_check.unsafe_changes(diff), (2, 0, 0))
+
+    def test_a_renamed_file_counts_under_its_new_name(self):
+        diff = 'diff --git a/src/a.txt b/src/a.rs\nrename from src/a.txt\nrename to src/a.rs\n' \
+            '--- a/src/a.txt\n+++ b/src/a.rs\n@@ -1 +1 @@\n+unsafe { f() };'
+        self.assertEqual(pr_check.unsafe_changes(diff), (1, 0, 0))
+
+    def test_removed_lines_count_as_removed(self):
+        diff = rust_diff('src/a.rs', '-\tunsafe { f() };', '-unsafe fn g() {}', '+\tf();')
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 2, 0))
+
+    def test_two_blocks_on_one_line_count_twice(self):
+        diff = rust_diff('src/a.rs', '+\tlet (a, b) = (unsafe { f() }, unsafe { g() });')
+        self.assertEqual(pr_check.unsafe_changes(diff), (2, 0, 0))
+
+    def test_comments_and_longer_words_do_not_count(self):
+        diff = rust_diff(
+            'src/a.rs',
+            '+\t// unsafe { f() } is what this replaced',
+            '+\t/// Like `unsafe fn`, but checked.',
+            '+let unsafe_ish = not_unsafe_fn();',
+            '+unsafe_op_in_unsafe_fn = "deny"',
+        )
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 0, 0))
+
+    def test_only_rust_files_count(self):
+        diff = rust_diff('docs/unsafe.md', '+| `a.rs` | `unsafe { f() }` |', '-unsafe fn g()')
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 0, 0))
+
+    def test_a_deleted_file_counts_its_unsafe_as_removed(self):
+        diff = 'diff --git a/src/a.rs b/src/a.rs\ndeleted file mode 100644\n--- a/src/a.rs\n+++ /dev/null\n' \
+            '@@ -1,2 +0,0 @@\n-unsafe fn g() {}\n-\tunsafe { f() };'
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 2, 0))
+
+    def test_new_allow_list_entries_are_counted_but_removed_ones_are_not(self):
+        diff = rust_diff(
+            'src/a.rs',
+            '+#![allow(unsafe_code)]',
+            '+\t#[allow(unsafe_code, reason = "calls the AVX2 copy")]',
+            '-#![allow(unsafe_code)]',
+        )
+        self.assertEqual(pr_check.unsafe_changes(diff), (0, 0, 2))
+
+    def test_more_unsafe_needs_docs_unsafe_md(self):
+        problem = pr_check.unsafe_problem(3, 1, 0, docs=False)
+        self.assertIn('2 more unsafe', problem)
+        self.assertIn('docs/unsafe.md', problem)
+        self.assertIsNone(pr_check.unsafe_problem(3, 1, 0, docs=True))
+
+    def test_new_allow_list_entries_need_docs_unsafe_md(self):
+        problem = pr_check.unsafe_problem(0, 0, 1, docs=False)
+        self.assertIn('allow(unsafe_code)', problem)
+        self.assertIsNone(pr_check.unsafe_problem(0, 0, 1, docs=True))
+
+    def test_as_much_or_less_unsafe_needs_nothing(self):
+        self.assertIsNone(pr_check.unsafe_problem(2, 2, 0, docs=False))
+        self.assertIsNone(pr_check.unsafe_problem(0, 4, 0, docs=False))
+        self.assertIsNone(pr_check.unsafe_problem(0, 0, 0, docs=False))
+
+
 class Main(unittest.TestCase):
     def git(self, root, *args):
         subprocess.run(['git', *args], cwd=root, check=True, capture_output=True)
@@ -521,6 +611,38 @@ class Main(unittest.TestCase):
             self.git(root, 'commit', '-qm', 'fix: b')
             self.assertEqual(self.run_check(root, 'fix: b'), 1)
             self.assertIn('allowed only in src/app/', self.errors)
+
+
+    def test_unsafe_added_without_docs_fails_and_with_them_passes(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            tests = ''.join(f'\tfn t{n}() {{}}\n' for n in range(6))
+            (root / 'src/a.rs').write_text(
+                f'fn a() {{}}\nfn b() {{ unsafe {{ c() }} }}\n#[cfg(test)]\nmod tests {{\n{tests}}}\n')
+            self.git(root, 'commit', '-qam', 'feat: add b')
+            self.assertEqual(self.run_check(root, 'feat: add b'), 1)
+            self.assertIn('docs/unsafe.md', self.errors)
+            (root / 'docs').mkdir()
+            (root / 'docs/unsafe.md').write_text('| `a.rs` `b` | `c` | why |\n')
+            self.git(root, 'add', '.')
+            self.git(root, 'commit', '-qm', 'docs: list b')
+            self.assertEqual(self.run_check(root, 'feat: add b'), 0)
+
+    def test_the_summary_reports_the_unsafe_balance(self):
+        directory, root = self.repository()
+        with directory:
+            self.git(root, 'switch', '-q', '-c', 'work')
+            (root / 'src/a.rs').write_text('fn a() {}\n')
+            (root / 'src/b.rs').write_text('fn b() { unsafe { c() } }\n')
+            self.git(root, 'add', '.')
+            self.git(root, 'commit', '-qm', 'docs: nothing')
+            self.git(root, 'switch', '-q', 'main')
+            base = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+            self.git(root, 'switch', '-q', 'work')
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                pr_check.main(['--base', base, '--title', 'docs: nothing'], cwd=root)
+            self.assertIn('unsafe: +1 -0', out.getvalue())
 
     def test_the_workflow_compares_with_the_merge_commits_first_parent(self):
         workflow = (Path(__file__).parents[1] / '.github/workflows/pr.yml').read_text()
