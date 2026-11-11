@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.75 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Replace unsafe with safe code where it compiles the same (#306).
+
 ## 26.11.74 "Lunar Moth" — 2026-11-11
 
 ### Performance
