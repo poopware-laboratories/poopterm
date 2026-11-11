@@ -313,12 +313,12 @@ mod tests {
 	}
 
 	#[test]
-	fn shared_memory_is_read_from_an_offset_and_clamped_at_its_end() {
+	fn shared_memory_is_read_from_an_offset() {
 		let name = format!("/poopterm-kitty-offset-{}", std::process::id());
 		for (keys, expected) in [
 			("t=s,O=2,S=3", &b"are"[..]),
-			("t=s,O=4", b"ed"),
-			("t=s,O=5,S=9", b"d"),
+			("t=s,O=4,S=2", b"ed"),
+			("t=s,O=0,S=1", b"s"),
 		] {
 			shared_memory(&name, b"shared");
 			let read = load(&command(keys), name.clone().into_bytes()).unwrap();
@@ -331,8 +331,11 @@ mod tests {
 		}
 	}
 
+	/// macOS rounds shared memory up to whole pages, so only other systems
+	/// know where the client's data ends.
+	#[cfg(not(target_os = "macos"))]
 	#[test]
-	fn empty_shared_memory_and_offsets_at_its_end_read_nothing() {
+	fn shared_memory_reads_stop_at_its_end() {
 		let name = format!("/poopterm-kitty-empty-{}", std::process::id());
 		shared_memory(&name, b"");
 		assert_eq!(
@@ -340,7 +343,15 @@ mod tests {
 			b""
 		);
 		shared_memory(&name, b"shared");
-		assert_eq!(load(&command("t=s,O=6"), name.into_bytes()).unwrap(), b"");
+		assert_eq!(
+			load(&command("t=s,O=6"), name.clone().into_bytes()).unwrap(),
+			b""
+		);
+		shared_memory(&name, b"shared");
+		assert_eq!(
+			load(&command("t=s,O=5,S=9"), name.into_bytes()).unwrap(),
+			b"d"
+		);
 	}
 
 	#[test]
@@ -348,7 +359,10 @@ mod tests {
 		let name = format!("poopterm-kitty-bare-{}", std::process::id());
 		let slashed = format!("/{name}");
 		shared_memory(&slashed, b"bare");
-		assert_eq!(load(&command("t=s"), name.into_bytes()).unwrap(), b"bare");
+		assert_eq!(
+			load(&command("t=s,S=4"), name.into_bytes()).unwrap(),
+			b"bare"
+		);
 		// Both names are one object, unlinked by the read.
 		assert_eq!(code(load(&command("t=s"), slashed.into_bytes())), "ENOENT");
 		// 255 bytes with the slash is the most a name may have.
