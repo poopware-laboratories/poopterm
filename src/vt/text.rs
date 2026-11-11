@@ -30,13 +30,8 @@ impl<'a> Text<'a> {
 
 	/// The text before and after byte `at`, which must start a character.
 	pub(crate) fn split_at(self, at: usize) -> (Self, Self) {
-		debug_assert!(
-			self
-				.0
-				.get(at)
-				.is_none_or(|byte| !(0x80..0xc0).contains(byte))
-		);
 		let (before, after) = self.0.split_at(at);
+		debug_assert!(after.first().is_none_or(|&byte| byte & 0xc0 != 0x80));
 		(Self(before), Self(after))
 	}
 }

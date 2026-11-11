@@ -244,3 +244,19 @@ fn blocks_take_the_width_of_their_text() {
 	}
 	assert_eq!((t.cx, t.cy), (10, 0));
 }
+
+#[test]
+fn plain_sized_text_prints_wide_and_malformed_characters_as_text_does() {
+	let mut t = terminal(10, 2);
+	// A wide character, a stray byte and a control inside the payload.
+	Parser::new().advance(&mut t, b"\x1b]66;;\xe7\x8c\xab\xff\x01e\x07");
+	let cells: Vec<(char, u8)> = t.grid[0][..4]
+		.iter()
+		.map(|cell| (cell.ch, cell.width))
+		.collect();
+	assert_eq!(cells[0], ('\u{732b}', 2));
+	assert_eq!(cells[1].1, 0, "the wide character's right half");
+	assert_eq!(cells[2..], [('\u{fffd}', 1), ('e', 1)]);
+	assert_eq!((t.cx, t.cy), (4, 0));
+	assert_plain(&t);
+}

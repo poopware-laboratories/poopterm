@@ -325,3 +325,17 @@ fn characters_across_simd_block_edges_are_validated_like_std() {
 		}
 	}
 }
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn splitting_inside_a_character_is_a_bug_debug_builds_catch() {
+	let _ = Text::from("\u{732b}").split_at(1);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn advancing_into_a_character_is_a_bug_debug_builds_catch() {
+	Text::from("a\u{1f600}").chars().advance(3);
+}
