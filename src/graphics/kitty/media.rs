@@ -276,6 +276,11 @@ mod tests {
 			unsafe { libc::ftruncate(fd, bytes.len() as libc::off_t) },
 			0
 		);
+		if bytes.is_empty() {
+			// SAFETY: closes the descriptor above, used no more.
+			unsafe { libc::close(fd) };
+			return;
+		}
 		let protection = libc::PROT_READ | libc::PROT_WRITE;
 		// SAFETY: a new shared mapping of the bytes just sized.
 		let map = unsafe {
@@ -326,5 +331,27 @@ mod tests {
 				"ENOENT"
 			);
 		}
+	}
+
+	#[test]
+	fn empty_shared_memory_and_offsets_at_its_end_read_nothing() {
+		let name = format!("/poopterm-kitty-empty-{}", std::process::id());
+		shared_memory(&name, b"");
+		assert_eq!(
+			load(&command("t=s"), name.clone().into_bytes()).unwrap(),
+			b""
+		);
+		shared_memory(&name, b"shared");
+		assert_eq!(load(&command("t=s,O=6"), name.into_bytes()).unwrap(), b"");
+	}
+
+	#[test]
+	fn shared_memory_names_take_a_leading_slash_and_have_a_limit() {
+		let name = format!("poopterm-kitty-bare-{}", std::process::id());
+		shared_memory(&format!("/{name}"), b"bare");
+		assert_eq!(load(&command("t=s"), name.into_bytes()).unwrap(), b"bare");
+		// 255 bytes with the slash is the most a name may have.
+		let long = format!("/{}", "x".repeat(255));
+		assert_eq!(code(load(&command("t=s"), long.into_bytes())), "EINVAL");
 	}
 }
