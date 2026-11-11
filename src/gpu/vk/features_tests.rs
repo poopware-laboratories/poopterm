@@ -114,6 +114,8 @@ fn one_flag_structures_follow_the_1_3_features_in_order_and_survive_a_move() {
 	// `VkPhysicalDevicePresentModeFifoLatestReadyFeaturesKHR` and its like.
 	assert_eq!(size_of::<OneFeature>(), 24);
 	assert_eq!(offset_of!(OneFeature, enabled), 16);
+	// Room for a second flag, as `VkPhysicalDeviceFaultFeaturesEXT` has.
+	assert_eq!(offset_of!(OneFeature, unused), 20);
 	let features = Features::none_with(&[7, 9, 11]);
 	let moved = [features];
 	let features = &moved[0];

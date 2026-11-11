@@ -6,6 +6,7 @@ use super::{
 	choose::{choose, suits},
 	device::Device,
 	entry::Entry,
+	fault,
 	image::Format,
 	optional::{self, Optional},
 	pipeline::QuadPipeline,
@@ -143,7 +144,15 @@ impl GpuWindow {
 	/// drawn again. A frame the GPU cannot draw (lacking glyphs no atlas
 	/// it can make holds, or with images past its budget or its device) is
 	/// refused with `Error::Draw`. Either way the pen starts over.
+	/// A lost device says why, where its driver can.
 	pub(crate) fn draw(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
+		self.draw_frame(pen, size).map_err(|error| match error {
+			Error::Failed(fault::DEVICE_LOST) => fault::read(&self.device).map_or(error, Error::Lost),
+			error => error,
+		})
+	}
+
+	fn draw_frame(&mut self, pen: &mut QuadPen, size: [u32; 2]) -> Result<Drawn, Error> {
 		// For this attempt only: one drawn again is presented whole.
 		let changed = pen.changed.take();
 		if !pen.complete {

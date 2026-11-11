@@ -113,6 +113,8 @@ pub(super) struct Driver {
 	pub recorded: Vec<String>,
 	/// Query pools, and the timestamps reset, written and read, in order.
 	pub query_pools: super::stamps_tests::Pools,
+	/// What the driver says once a device is lost, and who asked.
+	pub faults: super::fault_tests::Faults,
 	pub stamped: Vec<String>,
 	/// The two timestamps results give, what `vkGetQueryPoolResults`
 	/// answers (success when `None`), the valid bits of every family's

@@ -51,6 +51,9 @@ mod driver_info_tests;
 #[cfg(test)]
 mod driver_tests;
 pub(crate) mod entry;
+pub(crate) mod fault;
+#[cfg(test)]
+mod fault_tests;
 pub(crate) mod features;
 #[cfg(test)]
 mod features_tests;

@@ -70,6 +70,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 			b"vkQueueSubmit2" => transmute::<QueueSubmit2, VoidFunction>(submit),
 			_ => {
 				let stamps = super::stamps_tests::function(name);
+				let stamps = stamps.or_else(|| super::fault_tests::function(name));
 				return stamps.or_else(|| super::recording_tests::function(name));
 			}
 		})

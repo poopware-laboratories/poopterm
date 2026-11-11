@@ -26,6 +26,12 @@ pub(crate) const FIFO_LATEST_READY_FEATURE: i32 = 1_000_361_000;
 /// atlas leaves room for others.
 pub(crate) const MEMORY_BUDGET: &CStr = c"VK_EXT_memory_budget";
 
+/// `VK_EXT_device_fault`: why a device was lost, for the log.
+pub(crate) const DEVICE_FAULT: &CStr = c"VK_EXT_device_fault";
+
+/// `VkPhysicalDeviceFaultFeaturesEXT`'s type.
+pub(crate) const DEVICE_FAULT_FEATURE: i32 = 1_000_341_000;
+
 /// Which optional extensions a device is made with: each by the name the
 /// device offered it under, or `None`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -33,6 +39,7 @@ pub(crate) struct Optional {
 	pub incremental_present: Option<&'static CStr>,
 	pub fifo_latest_ready: Option<&'static CStr>,
 	pub memory_budget: Option<&'static CStr>,
+	pub device_fault: Option<&'static CStr>,
 }
 
 /// Where an extension's name is.
@@ -51,7 +58,7 @@ struct Extension {
 }
 
 /// Every optional extension.
-const ALL: [Extension; 3] = [
+const ALL: [Extension; 4] = [
 	Extension {
 		names: &[INCREMENTAL_PRESENT],
 		short: "incremental_present",
@@ -69,6 +76,12 @@ const ALL: [Extension; 3] = [
 		short: "memory_budget",
 		field: |optional| &mut optional.memory_budget,
 		feature: None,
+	},
+	Extension {
+		names: &[DEVICE_FAULT],
+		short: "device_fault",
+		field: |optional| &mut optional.device_fault,
+		feature: Some(DEVICE_FAULT_FEATURE),
 	},
 ];
 

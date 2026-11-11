@@ -39,13 +39,19 @@ struct Link {
 
 /// The one-flag feature structures the fake knows, each with the
 /// extensions that define it.
-const ONE_FLAG: [(i32, [&str; 2]); 1] = [(
-	1_000_361_000,
-	[
-		"VK_KHR_present_mode_fifo_latest_ready",
-		"VK_EXT_present_mode_fifo_latest_ready",
-	],
-)];
+const ONE_FLAG: [(i32, [&str; 2]); 2] = [
+	(
+		1_000_361_000,
+		[
+			"VK_KHR_present_mode_fifo_latest_ready",
+			"VK_EXT_present_mode_fifo_latest_ready",
+		],
+	),
+	(
+		1_000_341_000,
+		["VK_EXT_device_fault", "VK_EXT_device_fault"],
+	),
+];
 
 /// The extensions defining the one-flag feature structure of type
 /// `s_type`, if the fake knows it.
@@ -76,6 +82,8 @@ fn length(s_type: i32) -> usize {
 		STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 => 55,
 		51 => 47,
 		53 => 15,
+		// `deviceFault` and `deviceFaultVendorBinary`.
+		1_000_341_000 => 2,
 		_ => 1,
 	}
 }
