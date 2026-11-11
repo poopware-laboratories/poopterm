@@ -102,6 +102,8 @@ fn an_unknown_user_has_no_shell() {
 	}
 }
 
+// macOS keeps accounts in its directory service, not `/etc/passwd`.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 /// The shell `/etc/passwd` lists for `uid`, where the file has a line for it.
 fn passwd_shell(uid: u32) -> Option<String> {
 	let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
@@ -111,6 +113,8 @@ fn passwd_shell(uid: u32) -> Option<String> {
 	})
 }
 
+// macOS keeps accounts in its directory service, not `/etc/passwd`.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 #[test]
 fn the_shell_is_what_etc_passwd_lists() {
 	// Root, and us: lookups by other users' IDs must not return ours.
@@ -131,4 +135,27 @@ fn lookups_from_many_threads_agree() {
 	for thread in found {
 		assert_eq!(thread.join().unwrap(), expected);
 	}
+}
+
+// macOS keeps accounts in its directory service, not `/etc/passwd`.
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[test]
+fn every_account_in_etc_passwd_has_the_shell_its_first_line_lists() {
+	// Several lines may share an ID (FreeBSD's `toor` is root again); the
+	// lookup returns the first.
+	let Ok(passwd) = std::fs::read_to_string("/etc/passwd") else {
+		return;
+	};
+	let ids = passwd
+		.lines()
+		.filter_map(|line| line.split(':').nth(2)?.parse().ok());
+	for uid in ids.collect::<std::collections::BTreeSet<u32>>() {
+		let listed = passwd_shell(uid).unwrap();
+		assert_eq!(shell(uid), Some(listed), "uid {uid}");
+	}
+}
+
+#[test]
+fn the_terminal_keeps_the_host_name_the_system_reports() {
+	assert_eq!(crate::term::iterm::hostname(), hostname().unwrap());
 }
