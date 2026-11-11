@@ -94,3 +94,110 @@ fn processes_that_are_not_our_children_cannot_be_waited_for() {
 		Some(libc::ECHILD)
 	);
 }
+
+/// Sends `signal` (a name `kill` takes) to `pid` from outside, as another
+/// program would.
+fn send(signal: &str, pid: i32) {
+	let status = Command::new("kill")
+		.arg(format!("-{signal}"))
+		.arg(pid.to_string())
+		.status();
+	assert!(status.unwrap().success());
+}
+
+#[test]
+fn exit_codes_are_taken_modulo_256_as_the_kernel_keeps_them() {
+	for (code, kept) in [(256, 0), (257, 1), (511, 255)] {
+		assert_eq!(
+			wait(start(&format!("exit {code}"))).unwrap(),
+			Exit::Code(kept),
+			"{code}"
+		);
+	}
+}
+
+#[test]
+fn each_wait_reaps_only_the_child_it_names() {
+	// Started together and waited for from threads in reverse order: a wait
+	// for any child would hand some thread another's code.
+	let pids: Vec<i32> = (0..6)
+		.map(|code| start(&format!("sleep 0.1; exit {code}")))
+		.collect();
+	let waits: Vec<_> = pids
+		.iter()
+		.rev()
+		.map(|&pid| thread::spawn(move || wait(pid)))
+		.collect();
+	for (code, waiter) in (0..6).rev().zip(waits) {
+		assert_eq!(waiter.join().unwrap().unwrap(), Exit::Code(code));
+	}
+}
+
+#[test]
+fn a_pid_that_was_never_handed_out_does_not_exist() {
+	// Far above any system's largest pid (Linux allows at most 2^22).
+	assert!(!exists(i32::MAX));
+	let gone = hang_up(i32::MAX)
+		.err()
+		.and_then(|error| error.raw_os_error());
+	assert_eq!(gone, Some(libc::ESRCH));
+}
+
+#[test]
+fn a_process_we_may_not_signal_does_not_count_as_existing() {
+	if crate::sys::user::uid() == 0 {
+		return; // root may signal init
+	}
+	assert!(!exists(1));
+	let refused = hang_up(1).err().and_then(|error| error.raw_os_error());
+	assert_eq!(refused, Some(libc::EPERM));
+}
+
+#[test]
+fn a_program_that_ignores_hang_ups_keeps_running() {
+	let pid = start("trap '' HUP; while :; do sleep 0.05; done");
+	thread::sleep(Duration::from_millis(200));
+	hang_up(pid).unwrap();
+	thread::sleep(Duration::from_millis(200));
+	assert_eq!(try_wait(pid).unwrap(), None, "SIGHUP, nothing stronger");
+	send("KILL", pid);
+	assert_eq!(wait(pid).unwrap(), Exit::Signal(libc::SIGKILL));
+}
+
+#[test]
+fn a_stopped_program_has_not_ended() {
+	let pid = start("kill -STOP $$; exit 4");
+	thread::sleep(Duration::from_millis(200));
+	assert_eq!(try_wait(pid).unwrap(), None);
+	send("CONT", pid);
+	assert_eq!(wait(pid).unwrap(), Exit::Code(4));
+}
+
+#[test]
+fn polling_reports_the_end_once() {
+	let pid = start("sleep 0.1; exit 9");
+	let exit = loop {
+		if let Some(exit) = try_wait(pid).unwrap() {
+			break exit;
+		}
+		thread::sleep(Duration::from_millis(10));
+	};
+	assert_eq!(exit, Exit::Code(9));
+	assert_eq!(
+		try_wait(pid).err().and_then(|error| error.raw_os_error()),
+		Some(libc::ECHILD)
+	);
+}
+
+#[test]
+fn a_program_that_ended_can_still_be_hung_up_until_it_is_reaped() {
+	// A tab closing just after its shell exited: not an error.
+	let pid = start("exit 2");
+	thread::sleep(Duration::from_millis(200));
+	hang_up(pid).unwrap();
+	assert_eq!(
+		wait(pid).unwrap(),
+		Exit::Code(2),
+		"the signal came too late to count"
+	);
+}
