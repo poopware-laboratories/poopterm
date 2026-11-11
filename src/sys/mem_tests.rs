@@ -72,6 +72,14 @@ fn a_directory_cannot_be_mapped() {
 }
 
 #[test]
+fn a_pipe_cannot_be_mapped() {
+	let (reader, writer) = std::io::pipe().unwrap();
+	assert!(Map::read(reader.as_fd(), 4096, false).is_err());
+	assert!(Map::read(reader.as_fd(), 4096, true).is_err());
+	assert!(Map::shared(writer.as_fd(), 4096).is_err());
+}
+
+#[test]
 fn a_file_open_only_to_write_cannot_be_mapped() {
 	let (temp, _file) = temp("write-only", b"data");
 	let file = OpenOptions::new().write(true).open(&temp.0).unwrap();
@@ -134,16 +142,11 @@ fn permissions(path: &std::path::Path) -> String {
 #[test]
 fn mappings_have_the_protection_and_sharing_asked_for() {
 	let (temp, file) = temp("permissions", b"data");
-	let cases: [(fn(BorrowedFd<'_>) -> io::Result<Map>, &str); 3] = [
-		(|fd| Map::read(fd, 4, false), "r--p"),
-		(|fd| Map::read(fd, 4, true), "r--s"),
-		(|fd| Map::shared(fd, 4), "rw-s"),
-	];
-	for (map, expected) in cases {
-		let map = map(file.as_fd()).unwrap();
-		assert_eq!(permissions(&temp.0), expected);
-		drop(map);
-	}
+	// Each mapping is dropped before the next, so it is the only one shown.
+	let shown = |map: io::Result<Map>| map.map(|_map| permissions(&temp.0)).unwrap();
+	assert_eq!(shown(Map::read(file.as_fd(), 4, false)), "r--p");
+	assert_eq!(shown(Map::read(file.as_fd(), 4, true)), "r--s");
+	assert_eq!(shown(Map::shared(file.as_fd(), 4)), "rw-s");
 }
 
 #[test]
