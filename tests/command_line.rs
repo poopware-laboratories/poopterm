@@ -263,7 +263,7 @@ fn every_pty_stage_has_its_column_and_an_overall_rate() {
 		"64",
 	];
 	let (_, report) = quick_benchmark(&stages);
-	let heading = "| workload | parse | pty | pty raw | +pipeline | +pipeline raw |";
+	let heading = "| workload | ceiling | parse | pty | pty raw | +pipeline | +pipeline raw |";
 	assert!(report.contains(heading), "{report}");
 	let overall = report
 		.lines()
@@ -274,7 +274,7 @@ fn every_pty_stage_has_its_column_and_an_overall_rate() {
 		.split(" | ")
 		.skip(1)
 		.collect();
-	assert_eq!(rates.len(), 5, "{overall}");
+	assert_eq!(rates.len(), 6, "{overall}");
 	assert!(
 		rates
 			.iter()
@@ -290,7 +290,7 @@ fn an_unknown_stage_fails_before_measuring_anything() {
 	assert!(run.stdout.is_empty(), "{}", text(&run.stdout));
 	let error = text(&run.stderr);
 	assert!(
-		error.contains("unknown stage: gpu; the stages are parse, render"),
+		error.contains("unknown stage: gpu; the stages are ceiling, parse, render"),
 		"{error}"
 	);
 }
