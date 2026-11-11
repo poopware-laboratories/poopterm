@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.74 "Lunar Moth" — 2026-11-11
+
+### Performance
+
+- Turn transparent huge pages off for the terminal (#305) (memory).
+
 ## 26.11.73 "Lunar Moth" — 2026-11-11
 
 ### Added
