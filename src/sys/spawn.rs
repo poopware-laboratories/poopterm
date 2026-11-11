@@ -7,8 +7,6 @@
 //! child makes only async-signal-safe calls, as POSIX requires of a child
 //! of a threaded process. A close-on-exec pipe carries `errno` back if any
 //! step fails, so reading nothing from it means `exec` succeeded.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 
 use std::{
 	ffi::{CString, OsStr, OsString},
@@ -21,14 +19,14 @@ use std::{
 	ptr,
 };
 
-use super::device::check;
+use super::pty::check;
 
 /// What to start: a program, its arguments, environment and directory.
 pub(crate) struct Command {
 	program: OsString,
 	arg0: OsString,
 	args: Vec<OsString>,
-	pub(super) env: Vec<(OsString, OsString)>,
+	pub(crate) env: Vec<(OsString, OsString)>,
 	cwd: Option<PathBuf>,
 }
 
