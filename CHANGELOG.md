@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.11.81 "Lunar Moth" — 2026-11-11
+
+### Maintenance
+
+- Deny unsafe code outside an allow-list (#314).
+- Drop the compact history rows item (#315) (todo).
+
 ## 26.11.80 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
