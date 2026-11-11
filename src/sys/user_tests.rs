@@ -1,6 +1,7 @@
 //! Tests of user and host lookups against what other parts of the system
 //! report for them.
 use super::*;
+use std::os::unix::fs::MetadataExt;
 
 /// What `uname -n` prints, the host name by another route, if it can run.
 fn uname_n() -> Option<String> {
@@ -39,12 +40,51 @@ fn the_host_name_has_no_terminator_and_fits_posix() {
 
 #[test]
 fn files_we_create_are_owned_by_our_uid() {
-	use std::os::unix::fs::MetadataExt;
-	let file = std::env::temp_dir().join(format!("poopterm-sys-uid-{}", std::process::id()));
+	let dir = std::env::temp_dir().join(format!("poopterm-uid-{}", std::process::id()));
+	std::fs::create_dir_all(&dir).unwrap();
+	let file = dir.join("owned");
 	std::fs::write(&file, b"x").unwrap();
-	let owner = std::fs::metadata(&file).unwrap().uid();
-	std::fs::remove_file(&file).unwrap();
-	assert_eq!(owner, uid());
+	let (dir_owner, file_owner) = (
+		std::fs::metadata(&dir).unwrap().uid(),
+		std::fs::metadata(&file).unwrap().uid(),
+	);
+	std::fs::remove_dir_all(&dir).unwrap();
+	assert_eq!(file_owner, uid());
+	assert_eq!(dir_owner, uid());
+}
+
+#[test]
+fn the_uid_is_what_id_reports() {
+	let Ok(output) = std::process::Command::new("id").arg("-ru").output() else {
+		return; // No `id` to ask.
+	};
+	assert!(output.status.success());
+	let reported: u32 = String::from_utf8(output.stdout)
+		.unwrap()
+		.trim()
+		.parse()
+		.unwrap();
+	assert_eq!(reported, uid());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_uid_is_the_real_one_the_kernel_lists_for_this_process() {
+	let status = std::fs::read_to_string("/proc/self/status").unwrap();
+	let ids = status
+		.lines()
+		.find_map(|line| line.strip_prefix("Uid:"))
+		.unwrap();
+	// Real, effective, saved and file system user IDs; ours is the real one.
+	let real: u32 = ids.split_whitespace().next().unwrap().parse().unwrap();
+	assert_eq!(real, uid());
+}
+
+#[test]
+fn the_uid_does_not_change_between_calls_or_threads() {
+	let here = uid();
+	let there = std::thread::spawn(uid).join().unwrap();
+	assert_eq!((here, there), (uid(), uid()));
 }
 
 #[test]
