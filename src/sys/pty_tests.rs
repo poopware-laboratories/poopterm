@@ -408,45 +408,69 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 }
 
 /// Probe, never merged: when a session leader outlives its closed PTY, can
-/// its number go to a new pair before the leader's exit revokes it?
+/// its number go to a new pair, and does its exit then break that pair?
+/// Each trial runs on a thread under a watchdog that names the stuck step.
 #[cfg(target_os = "macos")]
 #[test]
 fn probe_macos_revoke_after_reuse() {
 	use crate::sys::spawn::{Command as Program, spawn};
+	use std::sync::{Arc, Mutex};
 	use std::time::Instant;
 	let mut report = Vec::new();
-	for _ in 0..20 {
-		let old = open(cells(80, 24)).unwrap();
-		let old_path = old.path.clone();
-		let mut child = spawn(&Program::new("sh").arg("-c").arg("sleep 0.3"), &old.slave).unwrap();
-		drop(old);
-		let begun = Instant::now();
-		let mut opens = 0;
-		let mut hit = None;
-		while begun.elapsed() < Duration::from_secs(2) {
-			let pair = open(cells(80, 24)).unwrap();
-			opens += 1;
-			if pair.path == old_path {
-				hit = Some(pair);
+	for trial in 0..10 {
+		let step = Arc::new(Mutex::new(String::from("start")));
+		let at = |step: &Arc<Mutex<String>>, name: &str| *step.lock().unwrap() = name.to_owned();
+		let (done, finished) = mpsc::channel();
+		let shared = Arc::clone(&step);
+		thread::spawn(move || {
+			let step = shared;
+			at(&step, "open old");
+			let old = open(cells(80, 24)).unwrap();
+			let old_path = old.path.clone();
+			at(&step, "spawn sleeper");
+			let mut child = spawn(&Program::new("sh").arg("-c").arg("sleep 0.3"), &old.slave).unwrap();
+			at(&step, "drop old pair");
+			drop(old);
+			let begun = Instant::now();
+			let mut opens = 0;
+			let mut hit = None;
+			while begun.elapsed() < Duration::from_secs(2) {
+				at(&step, &format!("open new #{opens}"));
+				let pair = open(cells(80, 24)).unwrap();
+				opens += 1;
+				if pair.path == old_path {
+					hit = Some(pair);
+					break;
+				}
+			}
+			at(&step, "wait sleeper");
+			let exit = child.wait();
+			thread::sleep(Duration::from_millis(50));
+			let line = match hit {
+				None => format!("reused=false opens={opens} exit={exit:?}"),
+				Some(pair) => {
+					at(&step, "write reused slave");
+					let mut slave = File::from(pair.slave.try_clone().unwrap());
+					let write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
+					// SAFETY: asks about a descriptor we hold.
+					let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
+					at(&step, "spawn on reused pair");
+					let started = spawn(&Program::new("sh").arg("-c").arg("true"), &pair.slave)
+						.map_err(|e| e.raw_os_error());
+					at(&step, "wait on reused pair");
+					let ended = started.map(|mut c| c.wait().is_ok());
+					format!("reused=true opens={opens} write={write:?} isatty={tty} spawn={ended:?}")
+				}
+			};
+			done.send(line).unwrap();
+		});
+		match finished.recv_timeout(Duration::from_secs(10)) {
+			Ok(line) => report.push(line),
+			Err(_) => {
+				report.push(format!("trial {trial} STUCK at: {}", step.lock().unwrap()));
 				break;
 			}
 		}
-		let exit = child.wait();
-		thread::sleep(Duration::from_millis(50));
-		let line = match hit {
-			None => format!("reused=false opens={opens} exit={exit:?}"),
-			Some(pair) => {
-				let mut slave = File::from(pair.slave.try_clone().unwrap());
-				let write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
-				// SAFETY: asks about a descriptor we hold.
-				let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
-				let started = spawn(&Program::new("sh").arg("-c").arg("true"), &pair.slave)
-					.map(|mut c| c.wait().is_ok())
-					.map_err(|e| e.raw_os_error());
-				format!("reused=true opens={opens} write={write:?} isatty={tty} spawn={started:?}")
-			}
-		};
-		report.push(line);
 	}
 	panic!("PROBE\n{}", report.join("\n"));
 }
