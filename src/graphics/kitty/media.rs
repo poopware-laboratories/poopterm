@@ -346,8 +346,11 @@ mod tests {
 	#[test]
 	fn shared_memory_names_take_a_leading_slash_and_have_a_limit() {
 		let name = format!("poopterm-kitty-bare-{}", std::process::id());
-		shared_memory(&format!("/{name}"), b"bare");
+		let slashed = format!("/{name}");
+		shared_memory(&slashed, b"bare");
 		assert_eq!(load(&command("t=s"), name.into_bytes()).unwrap(), b"bare");
+		// Both names are one object, unlinked by the read.
+		assert_eq!(code(load(&command("t=s"), slashed.into_bytes())), "ENOENT");
 		// 255 bytes with the slash is the most a name may have.
 		let long = format!("/{}", "x".repeat(255));
 		assert_eq!(code(load(&command("t=s"), long.into_bytes())), "EINVAL");
