@@ -13,6 +13,10 @@ use std::{
 /// the end of an object that shrank while mapped faults (`SIGBUS`), as in
 /// any program that maps files; callers map what they trust not to shrink,
 /// or copy out at once.
+#[cfg_attr(
+	all(target_os = "macos", not(test)),
+	expect(dead_code, reason = "only window buffers write, and macOS has none")
+)]
 pub(crate) struct Map {
 	ptr: NonNull<u8>,
 	len: usize,
@@ -40,6 +44,10 @@ impl Map {
 
 	/// Maps the first `len` bytes of `fd` to read and write, shared, so
 	/// writes reach the object and whoever else maps it.
+	#[cfg_attr(
+		all(target_os = "macos", not(test)),
+		expect(dead_code, reason = "only window buffers write, and macOS has none")
+	)]
 	pub(crate) fn shared(fd: BorrowedFd<'_>, len: usize) -> io::Result<Self> {
 		Self::new(
 			fd,
@@ -81,6 +89,10 @@ impl Map {
 	/// The whole 32-bit words of the mapping to write, or None when it was
 	/// mapped to read only. Mappings start on a page, so they are aligned
 	/// for any word.
+	#[cfg_attr(
+		all(target_os = "macos", not(test)),
+		expect(dead_code, reason = "only window buffers write, and macOS has none")
+	)]
 	pub(crate) fn words_mut(&mut self) -> Option<&mut [u32]> {
 		// SAFETY: as in `bytes_mut`, over the whole words of `len` bytes,
 		// which the page alignment of the start aligns.
