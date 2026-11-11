@@ -877,3 +877,60 @@ The parser still bounds floods, so both renderers stay within a few
 percent; the GPU path holds 40–50 MiB more, mostly the Vulkan driver's.
 Headless (`poopterm --benchmark`, 120×40, five runs) is unchanged by the
 renderer: 253 (251–254) MB/s overall.
+
+## Transparent huge pages off (2026-11-10)
+
+mimalloc 3 asks for transparent huge pages on its arenas (`allow_thp`,
+on by default: `madvise(MADV_HUGEPAGE)`), and where the system's mode is
+`always` the kernel gives them anyway. A terminal touches little of each
+2 MiB page, and purging cannot give back a page still partly in use, so
+huge pages kept 15–30 MiB more resident and made memory creep up after
+each clear. `allocator.rs` turns them off with `PR_SET_THP_DISABLE` and
+mimalloc's option, from a constructor that runs before the Rust runtime
+allocates; the shell's child clears the flag again, so programs run in
+the terminal keep the system's choice.
+
+Linux, Intel N-series (ADL-N), sway, THP `[always]`, release builds of
+`main` (26.11.72) and the change, alternated. Window at 900×600 with
+`scrollback_lines = 20000`, flooded with `seq` (400 000 lines), then
+`ESC [3J`, twice; `/proc/<pid>/smaps_rollup`, two runs each, MiB:
+
+| | main, software | change, software | main, GPU | change, GPU |
+|---|--:|--:|--:|--:|
+| idle RSS | 31.5–32.6 | 20.7 | 68.9–73.7 | 60.9 |
+| after a flood | 59.1–63.2 | 42.5–43.1 | 102.1–104.8 | 82.8–83.8 |
+| after `ESC [3J` | 40.1–43.2 | 22.5–23.1 | 82.1–84.8 | 62.8–63.8 |
+| private after `ESC [3J` | 34.1–37.3 | 16.7–17.2 | 42.7–45.5 | 23.5–24.5 |
+| anonymous huge pages | 12–44 | 0 | 12–44 | 0 |
+
+Headless, `poopterm --benchmark --repeat 5` (120×40, 16 MiB a workload),
+three runs each alternated, medians across runs with min–max, MB/s. Peak
+RSS 56 MiB on `main`, 45 MiB with the change, in every run:
+
+| Workload | main, parse | change, parse | main, +render | change, +render |
+|---|--:|--:|--:|--:|
+| log | 426.7 (390.2–429.1) | 425.4 (414.6–428.1) | 324.6 (323.8–328.0) | 316.2 (313.5–322.9) |
+| compiler | 258.5 (256.5–259.3) | 257.8 (250.5–258.7) | 232.0 (231.2–235.6) | 229.9 (224.7–230.3) |
+| ls | 314.1 (314.0–318.3) | 317.0 (307.4–318.1) | 269.6 (264.8–273.6) | 271.6 (262.9–271.6) |
+| source | 218.0 (217.5–222.6) | 218.6 (214.3–220.7) | 198.4 (195.2–200.8) | 198.3 (195.3–202.9) |
+| unicode | 194.9 (194.1–195.8) | 194.0 (191.1–195.3) | 172.5 (171.6–176.0) | 171.5 (169.8–172.2) |
+| cjk | 228.0 (224.8–228.3) | 226.6 (224.6–228.0) | 207.1 (203.0–210.7) | 206.1 (202.1–207.9) |
+| emoji | 177.2 (175.9–178.1) | 176.6 (175.6–177.7) | 166.8 (166.1–167.4) | 164.1 (163.3–165.2) |
+| tui | 335.5 (330.8–336.6) | 329.2 (328.8–329.6) | 280.0 (276.8–281.0) | 277.9 (269.6–280.6) |
+| editor | 345.7 (345.6–351.4) | 347.0 (342.9–350.3) | 296.4 (295.8–296.8) | 294.1 (291.7–298.6) |
+| progress | 454.8 (449.8–457.2) | 457.4 (440.9–458.5) | 367.1 (367.1–376.3) | 372.9 (365.6–373.4) |
+| truecolor | 309.9 (299.6–311.3) | 293.6 (289.3–295.8) | 246.7 (236.3–249.1) | 238.9 (238.7–242.1) |
+| cursor | 232.5 (231.1–234.2) | 231.9 (229.3–233.5) | 215.3 (213.6–218.4) | 215.6 (212.1–217.1) |
+| shell | 206.9 (206.6–207.6) | 206.1 (204.5–208.0) | 189.8 (189.3–190.0) | 187.9 (185.1–188.3) |
+| sixel | 182.3 (181.6–182.5) | 183.5 (181.6–183.6) | 143.9 (142.5–144.7) | 144.6 (143.1–145.3) |
+| kitty-rgba | 1192.8 (1191.2–1197.8) | 1175.3 (1164.0–1185.5) | 582.2 (575.6–584.4) | 590.4 (584.4–596.2) |
+| kitty-png | 138.8 (138.8–140.4) | 139.7 (139.5–139.9) | 121.3 (121.2–122.2) | 122.4 (121.9–122.5) |
+| kitty-zlib | 296.5 (296.3–298.2) | 301.2 (296.2–302.6) | 234.3 (234.1–235.1) | 236.4 (235.3–236.8) |
+| overall | 256.0 (253.6–257.0) | 255.4 (252.2–255.6) | 219.6 (218.1–219.9) | 218.3 (215.9–219.7) |
+
+The cost is about 1% overall and 3–5% on truecolor, whose full-width
+colour rows touch the most memory: `perf stat` on truecolor and editor
+(five runs each) shows instructions unchanged, dTLB load misses 15.8k →
+32.4k, store misses 69.6k → 210.6k and cycles up 1.0%. Huge pages through
+`madvise` alone (the Debian, Ubuntu and Fedora default) and mimalloc's
+large OS pages measured the same as `always`: no gain to keep them for.

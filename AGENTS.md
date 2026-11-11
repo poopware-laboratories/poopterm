@@ -133,7 +133,7 @@ input events ──► App (UI thread) ──► input::{keys,mouse,paste} ─�
 | `src/gpu/` | Data for the GPU renderers (glyph outlines, quads, atlas), kept free of GPU calls, and the Vulkan renderer that draws the grid. |
 | `src/dbus/`, `src/notifier/`, `cgroup*.rs` | Desktop integration: our own D-Bus client, notifications, and per-tab cgroups on Linux. |
 | `src/bench/` | `poopterm --benchmark`: the headless benchmark and its corpus of real-world workloads. |
-| Top level | `cli` (arguments, help and their errors), `config`, `theme`, `fonts`, `width` (generated width table), `clipboard`, `session_store`, `shell_integration`, `sixel`, `wallpaper`, `platform`, `terminfo`, `allocator` (mimalloc options), `cpu` (runtime CPU dispatch), `library` (run-time `dlopen`), `mapped` (read-only file mappings), `hugepages`. |
+| Top level | `cli` (arguments, help and their errors), `config`, `theme`, `fonts`, `width` (generated width table), `clipboard`, `session_store`, `shell_integration`, `sixel`, `wallpaper`, `platform`, `terminfo`, `allocator` (mimalloc options), `cpu` (runtime CPU dispatch), `library` (run-time `dlopen`), `mapped` (read-only file mappings). |
 
 Details: [`docs/architecture.md`](docs/architecture.md).
 
