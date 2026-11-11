@@ -1,6 +1,8 @@
 //! The macOS app menu's About item, pointed at our own About page instead
 //! of AppKit's generic panel, so both show the same name, version,
 //! codename, notices and links.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 // Messages still share blocks until the Metal renderer work wraps each.
 #![expect(clippy::multiple_unsafe_ops_per_block)]
 use crate::objc::{self, Object, Raw, Sel, sel};

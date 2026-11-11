@@ -20,6 +20,8 @@ pub(crate) mod facts;
 #[cfg(test)]
 mod facts_tests;
 #[cfg(target_os = "macos")]
+// Metal through the Objective-C runtime: every message is C.
+#[allow(unsafe_code)]
 pub(crate) mod mtl;
 pub(crate) mod quads;
 #[cfg(test)]
@@ -49,4 +51,6 @@ mod textures_model_tests;
 #[cfg(test)]
 mod textures_tests;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+// Our Vulkan bindings: every driver call is C.
+#[allow(unsafe_code)]
 pub(crate) mod vk;

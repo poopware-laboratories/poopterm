@@ -2,6 +2,8 @@
 //! on macOS: the backend's view of a window from its handles, the renderer
 //! and its pen, frames of the main window and scenes of the Settings
 //! window, and what each frame's outcome means for the next.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use super::{Arc, Window};
 #[cfg(target_os = "macos")]
 use crate::gpu::mtl::{

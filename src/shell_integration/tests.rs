@@ -1,4 +1,6 @@
 //! Runs the shipped hooks in real shells (skipped when a shell is missing).
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use std::process::{Command, Stdio};
 
 /// A shell command in its own session, without a controlling terminal: an

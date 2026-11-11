@@ -182,6 +182,9 @@ Details: [`docs/architecture.md`](docs/architecture.md).
     the pull request and in [`docs/unsafe.md`](docs/unsafe.md). Wrap each
     call into C or the kernel in one small safe function, so callers stay
     safe and the `unsafe` stays in one place.
+  - `unsafe_code` is denied outside the allow-list in `docs/unsafe.md`,
+    and `scripts/pr_check.py` fails a pull request that adds `unsafe` or
+    an allow-list entry without updating that file.
   - Every block holds one unsafe operation, starts with a `// SAFETY:`
     comment saying why it is sound (clippy's `undocumented_unsafe_blocks`
     and `multiple_unsafe_ops_per_block` and rustc's

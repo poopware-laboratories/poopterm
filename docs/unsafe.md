@@ -30,6 +30,31 @@ several operations per block, each with its reason: `gpu::vk`,
 `present::x11` and `present::wayland`, whose driver and library calls
 get one safe wrapper each in the steps that follow.
 
+### Where it is allowed
+
+`Cargo.toml` denies `unsafe_code` everywhere else. The allow-list:
+
+- **Module trees that are calls into C:** `gpu::vk` (Vulkan), `gpu::mtl`
+  (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb)
+  and `pty` (fork, exec, termios, descriptors). Each has one
+  `#[allow(unsafe_code)]` on its `mod` line.
+- **Files with operating-system or library calls:** `allocator`,
+  `app/gpu`, `app/wayland`, `bench/pty`, `graphics/kitty/media`, `library`,
+  `mapped`, `objc`, `about_menu`, `platform`, `present/memory` and
+  `term/iterm`. Each starts with `#![allow(unsafe_code)]` and a comment.
+- **CPU dispatch:** `parser/print`, `render/painter` and `vt/utf8`, and in
+  `mod.rs` files, where a file-wide allow would cover the whole tree, only
+  the one function: `Cell::fill` and `vt::Parser::advance`.
+- **Tests** that call C or a dispatched copy directly, under otherwise
+  safe modules: `cgroup_tree_tests`, `fonts/data_tests`,
+  `parser/dispatch_tests`, `present/memory_tests`,
+  `shell_integration/tests`, `term/cell_tests`, `term/fill_tests`,
+  `vt/tests` and `vt/utf8_tests`.
+
+`scripts/pr_check.py` prints how many `unsafe` blocks, functions and impls
+a pull request adds and removes, and fails one that adds more than it
+removes, or adds to this list, without changing this file.
+
 These have no `unsafe`: the escape-sequence state machine's logic, the
 terminal model apart from the cell layout below, the font engine
 (`src/fonts`), our inflate (`src/inflate`), the kitty and Sixel decoders,

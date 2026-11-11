@@ -1,6 +1,8 @@
 //! The windows' software frames on Wayland, shown through our own
 //! presenter rather than softbuffer: which windows it shows frames in,
 //! opening it, and what each frame shown leads to.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use super::{Window, renderer::Shown};
 use crate::present::wayland::{
 	client::{Client, Proxy},

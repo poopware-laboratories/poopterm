@@ -8,6 +8,8 @@
 //! lookups only when `core` itself was built with SSSE3, so the kernels use
 //! `core::arch` directly on x86. Aarch64 uses safe portable SIMD, where
 //! dynamic swizzles lower to NEON table lookups.
+// Calls copies compiled for CPU features checked at run time.
+#![allow(unsafe_code)]
 #![cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 
 #[cfg(any(target_arch = "aarch64", test))]

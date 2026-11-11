@@ -7,6 +7,8 @@
 //! processing every program gets (OPOST, ONLCR turning `\n` into `\r\n`),
 //! which costs the kernel time per line; raw mode turns it off, so the
 //! terminal's own speed shows.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 
 use std::{
 	error::Error,
