@@ -20,7 +20,7 @@ pub(super) fn choose(
 
 /// The login shell the account database lists for the current user.
 pub(super) fn account_shell() -> Option<String> {
-	crate::sys::user::shell(crate::sys::user::uid())
+	crate::sys::user::shell(crate::platform::uid())
 }
 
 /// The shell for a new tab.
