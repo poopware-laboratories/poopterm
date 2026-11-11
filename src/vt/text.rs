@@ -20,18 +20,15 @@ impl<'a> Text<'a> {
 		utf8::is_valid(bytes).then_some(Self(bytes))
 	}
 
-	#[inline]
 	pub(crate) fn as_bytes(self) -> &'a [u8] {
 		self.0
 	}
 
-	#[inline]
 	pub(crate) fn chars(self) -> Chars<'a> {
 		Chars(self.0)
 	}
 
 	/// The text before and after byte `at`, which must start a character.
-	#[inline]
 	pub(crate) fn split_at(self, at: usize) -> (Self, Self) {
 		debug_assert!(
 			self
@@ -45,7 +42,6 @@ impl<'a> Text<'a> {
 }
 
 impl<'a> From<&'a str> for Text<'a> {
-	#[inline]
 	fn from(text: &'a str) -> Self {
 		Self(text.as_bytes())
 	}
@@ -57,19 +53,16 @@ pub(crate) struct Chars<'a>(&'a [u8]);
 
 impl<'a> Chars<'a> {
 	/// The bytes not yet decoded.
-	#[inline]
 	pub(crate) fn as_bytes(&self) -> &'a [u8] {
 		self.0
 	}
 
 	/// The text not yet decoded.
-	#[inline]
 	pub(crate) fn as_text(&self) -> Text<'a> {
 		Text(self.0)
 	}
 
 	/// Skips `len` bytes, which must end on a character boundary.
-	#[inline]
 	pub(crate) fn advance(&mut self, len: usize) {
 		self.0 = self.as_text().split_at(len).1.0;
 	}

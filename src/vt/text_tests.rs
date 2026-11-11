@@ -198,16 +198,22 @@ fn advancing_past_a_chunk_resumes_where_decoding_all_would() {
 	assert!(chars.eq(text.chars().skip(8)));
 }
 
-/// Collects printed text; ASCII takes the default `print_ascii`.
+/// Collects printed text, and executed controls as `<xx>`; ASCII takes the
+/// default `print_ascii`.
 #[derive(Default)]
 struct Printed(String);
 
 impl Handler for Printed {
 	fn print(&mut self, text: Text<'_>) {
+		assert!(
+			!text.as_bytes().is_empty(),
+			"empty print after {:?}",
+			self.0
+		);
 		self.0.extend(text.chars());
 	}
 	fn execute(&mut self, byte: u8) {
-		self.0.push(char::from(byte));
+		self.0 += &format!("<{byte:02x}>");
 	}
 	fn csi_dispatch(&mut self, _: &Params, _: &[u8], _: bool, _: u8) {}
 	fn esc_dispatch(&mut self, _: &[u8], _: bool, _: u8) {}
@@ -221,7 +227,7 @@ impl Handler for Printed {
 fn handlers_without_an_ascii_path_get_ascii_as_text() {
 	let mut printed = Printed::default();
 	Parser::new().advance(&mut printed, "hi\x1b[1m th\u{e9}re\r".as_bytes());
-	assert_eq!(printed.0, "hi th\u{e9}re\r");
+	assert_eq!(printed.0, "hi th\u{e9}re<0d>");
 }
 
 #[test]
@@ -229,7 +235,7 @@ fn malformed_runs_print_replacements_and_c1_controls_execute() {
 	let mut printed = Printed::default();
 	Parser::new().advance(&mut printed, b"a\xffb\xc2\x85c\xe2\x82");
 	// The cut-off character at the end waits for the next read.
-	assert_eq!(printed.0, "a\u{fffd}b\u{85}c");
+	assert_eq!(printed.0, "a\u{fffd}b<85>c");
 }
 
 #[test]
@@ -257,5 +263,65 @@ fn malformed_bytes_stay_bounded_and_the_valid_prefix_decodes_like_std() {
 				.eq(prefix.chars()),
 			"{bytes:x?}"
 		);
+	}
+}
+
+/// What `reads`, fed to one parser in turn, print.
+fn printed(reads: &[&[u8]]) -> String {
+	let (mut parser, mut printed) = (Parser::new(), Printed::default());
+	for read in reads {
+		parser.advance(&mut printed, read);
+	}
+	printed.0
+}
+
+#[test]
+fn c1_controls_in_text_execute_at_the_start_the_end_and_back_to_back() {
+	for (bytes, expected) in [
+		(&b"\xc2\x85\xc3\xa9"[..], "<85>\u{e9}"),
+		(b"\xc3\xa9\xc2\x9b", "\u{e9}<9b>"),
+		(b"\xc3\xa9\xc2\x80\xc2\x9f\xc3\xa9", "\u{e9}<80><9f>\u{e9}"),
+		(b"\xc2\x85", "<85>"),
+		// U+00A0 and the characters around C1 are text.
+		(b"\xc2\xa0\xc2\x7f", "\u{a0}\u{fffd}\x7f"),
+		(b"\xc3\x85\xe2\x80\x85", "\u{c5}\u{2005}"),
+	] {
+		assert_eq!(printed(&[bytes]), expected, "{bytes:x?}");
+	}
+}
+
+#[test]
+fn a_character_cut_at_every_byte_prints_once_across_reads() {
+	for c in EDGES
+		.into_iter()
+		.filter(|c| c.len_utf8() > 1 && *c > '\u{9f}')
+	{
+		let text = format!("a{c}b");
+		let bytes = text.as_bytes();
+		for cut in 2..1 + c.len_utf8() {
+			let whole = printed(&[&bytes[..cut], &bytes[cut..]]);
+			assert_eq!(whole, text, "{:x} cut at {cut}", u32::from(c));
+			// A control before the rest makes the start malformed.
+			let broken = printed(&[&bytes[..cut], b"\x07"]);
+			assert_eq!(broken, "a\u{fffd}<07>", "{:x} cut at {cut}", u32::from(c));
+		}
+	}
+}
+
+#[test]
+fn characters_across_simd_block_edges_are_validated_like_std() {
+	for edge in [15, 16, 17, 31, 32, 33, 63, 64, 65] {
+		for c in ['\u{e9}', '\u{732b}', '\u{1f600}'] {
+			for shift in 0..c.len_utf8() {
+				let mut bytes = vec![b'x'; edge - shift];
+				bytes.extend(c.to_string().bytes());
+				bytes.extend([b'y'; 20]);
+				assert_eq!(Text::new(&bytes).map(Text::as_bytes), Some(&bytes[..]));
+				// Cutting the character's last byte breaks it at the same place.
+				let last = edge - shift + c.len_utf8() - 1;
+				bytes[last] = b'z';
+				assert_eq!(Text::new(&bytes), None, "{c} {edge} {shift}");
+			}
+		}
 	}
 }
