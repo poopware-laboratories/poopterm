@@ -23,7 +23,7 @@ impl Term {
 			.filter(|c| !c.is_control())
 			.collect();
 		if size == Size::default() {
-			self.print_text(&text);
+			self.print_text(text.as_str().into());
 		} else if size.width > 0 {
 			self.print_multicell(&text, size);
 		} else {

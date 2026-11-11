@@ -1,6 +1,6 @@
 //! Differential tests: the parser must produce the same events as vte 0.15
 //! for any byte stream, however it is split into reads.
-use super::{Handler, Params, Parser};
+use super::{Handler, Params, Parser, Text};
 use crate::bench::corpus::Rng;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +118,8 @@ impl Handler for Recorder {
 		);
 		self.text(std::str::from_utf8(text).unwrap());
 	}
-	fn print(&mut self, text: &str) {
+	fn print(&mut self, text: Text<'_>) {
+		let text = std::str::from_utf8(text.as_bytes()).expect("printed text is UTF-8");
 		assert!(!text.is_empty());
 		assert!(
 			!text

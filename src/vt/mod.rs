@@ -12,21 +12,24 @@ mod simd;
 mod strings;
 #[cfg(test)]
 mod tests;
+mod text;
 mod utf8;
 #[cfg(test)]
 mod utf8_tests;
 
 pub(crate) use params::Params;
+pub(crate) use text::Text;
 
 /// What a tokenized stream does. Text arrives in runs; a run never contains
 /// C0 controls, and [`Handler::print_ascii`] runs are `0x20..=0x7e` only.
 pub(crate) trait Handler {
 	fn print_ascii(&mut self, text: &[u8]) {
-		// SAFETY: printable ASCII is valid UTF-8.
-		self.print(unsafe { std::str::from_utf8_unchecked(text) });
+		if let Some(text) = Text::new(text) {
+			self.print(text);
+		}
 	}
 	/// Text that may contain DEL and any character except C0 and C1 controls.
-	fn print(&mut self, text: &str);
+	fn print(&mut self, text: Text<'_>);
 	/// A C0 control, or a C1 control (`0x80..=0x9f`) from ground state.
 	fn execute(&mut self, byte: u8);
 	fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: u8);
@@ -201,15 +204,14 @@ impl Parser {
 	/// malformed.
 	#[inline(always)]
 	fn text<H: Handler>(&mut self, handler: &mut H, run: &[u8], at_end: bool, c1: bool) {
-		if utf8::is_valid(run) {
-			// SAFETY: just validated.
-			return print_valid(handler, unsafe { std::str::from_utf8_unchecked(run) }, c1);
+		if let Some(text) = Text::new(run) {
+			return print_valid(handler, text, c1);
 		}
 		// Each chunk is valid text, then at most one malformed sequence: the
 		// longest prefix of a character, or a byte no character starts with.
 		let mut chunks = run.utf8_chunks().peekable();
 		while let Some(chunk) = chunks.next() {
-			print_valid(handler, chunk.valid(), c1);
+			print_valid(handler, chunk.valid().into(), c1);
 			let invalid = chunk.invalid();
 			let incomplete = || std::str::from_utf8(invalid).is_err_and(|e| e.error_len().is_none());
 			if invalid.is_empty() {
@@ -220,12 +222,12 @@ impl Parser {
 					self.partial[..invalid.len()].copy_from_slice(invalid);
 					self.partial_len = invalid.len();
 				} else {
-					handler.print("\u{fffd}");
+					handler.print(Text::REPLACEMENT);
 				}
 			} else if let [byte @ 0x80..=0x9f] = invalid {
 				handler.execute(*byte);
 			} else {
-				handler.print("\u{fffd}");
+				handler.print(Text::REPLACEMENT);
 			}
 		}
 	}
@@ -251,13 +253,13 @@ impl Parser {
 				}
 				// The held bytes were a valid prefix, so the error is in this read.
 				Some(error_len) => {
-					handler.print("\u{fffd}");
+					handler.print(Text::REPLACEMENT);
 					&bytes[error_len - held..]
 				}
 			},
 			_ => {
 				// `from_utf8` found at least this character valid.
-				let text = std::str::from_utf8(&joined[..len]).unwrap_or("\u{fffd}");
+				let text = Text::new(&joined[..len]).unwrap_or(Text::REPLACEMENT);
 				print_valid(handler, text, true);
 				&bytes[len - held..]
 			}
@@ -284,13 +286,14 @@ fn utf8_len(lead: u8) -> usize {
 /// Prints valid text, executing the C1 controls U+0080..=U+009F in it
 /// unless `c1` says there are none.
 #[inline(always)]
-fn print_valid<H: Handler>(handler: &mut H, mut text: &str, c1: bool) {
+fn print_valid<H: Handler>(handler: &mut H, mut text: Text<'_>, c1: bool) {
 	while let Some(at) = c1.then(|| c1_position(text.as_bytes())).flatten() {
-		if at > 0 {
-			handler.print(&text[..at]);
+		let (before, control) = text.split_at(at);
+		if !before.is_empty() {
+			handler.print(before);
 		}
-		handler.execute(text.as_bytes()[at + 1]);
-		text = &text[at + 2..];
+		handler.execute(control.as_bytes()[1]);
+		text = control.split_at(2).1;
 	}
 	if !text.is_empty() {
 		handler.print(text);

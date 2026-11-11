@@ -95,11 +95,12 @@ state machine, written from the specifications, with SIMD scans
 
 - **Text in runs.** Ground state scans to the next C0 control in one pass.
   Pure printable ASCII goes to `print_ascii(&[u8])`; anything else is
-  validated once and goes to `print(&str)`, with C1 controls
+  validated once and goes to `print(Text)`, with C1 controls
   (U+0080–U+009F) split out and executed. `vt/utf8.rs` validates with the
   Keiser–Lemire nibble-table algorithm in AVX2 when the CPU has it, and
   `str::from_utf8` elsewhere; only an invalid run takes the per-defect path
-  that inserts U+FFFD.
+  that inserts U+FFFD. `vt::Text` keeps the validated bytes, and its `Chars`
+  decodes them without checking them again.
 - **Payloads in slices.** OSC fields, DCS payloads (`put(&[u8])`, Sixel) and
   APC strings (`apc_start` / `apc_put` / `apc_end`, the kitty graphics
   protocol) are scanned in bulk, not byte by byte. OSC strings over 4 MiB

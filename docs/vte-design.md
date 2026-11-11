@@ -245,7 +245,7 @@ Width choice and dispatch:
 - **UTF-8**: done. Whole runs are validated with a SIMD validator (the
   lookup-table approach of Keiser–Lemire, about 3 shuffles per 16 bytes,
   AVX2 chosen at runtime), stopping at controls; unicode gained about 30%.
-  Valid runs go to `print(&str)`; an invalid run falls back to the scalar
+  Valid runs go to `print(Text)`; an invalid run falls back to the scalar
   path, which emits U+FFFD exactly as vte does.
 - **Width lookup**: done. `src/width.rs` reads a two-level table
   (`[u8; 0x110000 >> 7]` block numbers to 128-entry blocks of 2-bit widths,
