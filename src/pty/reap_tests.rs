@@ -184,11 +184,10 @@ fn dropping_the_reaper_frees_the_code_it_still_held() {
 		1,
 		"the code outlived its reaper"
 	);
-	// SAFETY: kills and reaps the child we started, which nothing reaps now.
-	unsafe {
-		libc::kill(pid, libc::SIGKILL);
-		libc::waitpid(pid, std::ptr::null_mut(), 0);
-	}
+	// SAFETY: kills the child we started, which nothing reaps now.
+	unsafe { libc::kill(pid, libc::SIGKILL) };
+	// SAFETY: reaps it; no status is written.
+	unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 	drop(pair);
 }
 
@@ -228,11 +227,10 @@ fn a_child_someone_else_reaped_reports_the_error() {
 	let (child, _pair) = start("read line");
 	let pid = child.id() as libc::pid_t;
 	let (send, ended) = mpsc::channel();
-	// SAFETY: kills and reaps our own child behind the reaper's back.
-	unsafe {
-		libc::kill(pid, libc::SIGKILL);
-		libc::waitpid(pid, std::ptr::null_mut(), 0);
-	}
+	// SAFETY: kills our own child behind the reaper's back.
+	unsafe { libc::kill(pid, libc::SIGKILL) };
+	// SAFETY: reaps it; no status is written.
+	unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 	reaper.watch(child, move |exit| {
 		let _ = send.send(exit);
 	});

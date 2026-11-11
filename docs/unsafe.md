@@ -18,12 +18,17 @@ From [`AGENTS.md`](../AGENTS.md):
 - Never `unsafe` for speed: optimize the safe version instead. Replacing
   `unsafe` with safe code is welcome even if it starts slightly slower.
 - Keep it in the smallest block that needs it, behind a safe function.
-- Every block starts with a `// SAFETY:` comment that says why it is sound.
+- Every block holds one unsafe operation and starts with a `// SAFETY:`
+  comment that says why that operation is sound.
 
-The compiler enforces the comments: `Cargo.toml` denies clippy's
-`undocumented_unsafe_blocks` and rustc's `unsafe_op_in_unsafe_fn`. An
-`unsafe fn` must still wrap each unsafe operation inside it in its own
-commented block, and documents what callers must ensure under `# Safety`.
+The compiler enforces both: `Cargo.toml` denies clippy's
+`undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block`, and
+rustc's `unsafe_op_in_unsafe_fn`. An `unsafe fn` must still wrap each
+unsafe operation inside it in its own commented block, and documents what
+callers must ensure under `# Safety`. Three module trees still expect
+several operations per block, each with its reason: `gpu::vk`,
+`present::x11` and `present::wayland`, whose driver and library calls
+get one safe wrapper each in the steps that follow.
 
 These have no `unsafe`: the escape-sequence state machine's logic, the
 terminal model apart from the cell layout below, the font engine
@@ -110,19 +115,6 @@ bounds. `str::from_utf8` instead would validate every run twice; the first
 safe version did, and cost CJK and emoji text over 20%. The tests decode
 every code point and compare mixed text with `str::chars`; the vt
 differential tests feed random and malformed bytes against vte.
-
-### Moving rows
-
-`term/grid.rs` `rotate_left_one` rotates the row headers by one on every
-line feed in a full-screen scroll region. `slice::rotate_left(1)` copies
-through a buffer in three calls; this does one `ptr::read`, one
-`ptr::copy` and one `ptr::write`.
-
-- **Sound because** the first row is read out, the rest shift down inside
-  the slice, and the first is written into the slot that frees up. Every
-  row is owned exactly once again, and nothing in between can panic, so
-  no row is dropped twice or leaked.
-- **Called** only for non-empty slices.
 
 ### Operating-system calls
 

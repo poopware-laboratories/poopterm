@@ -330,3 +330,17 @@ fn a_wrapped_wide_character_uses_both_cells_of_the_next_row() {
 	assert_eq!((term.grid.used(0), term.grid.used(1)), (0, 2));
 	assert_eq!(term.grid[1][1].width, 0);
 }
+
+#[test]
+fn single_line_scrolls_inside_a_region_keep_its_rows_in_order() {
+	// A region narrower than the screen rotates its rows instead of moving
+	// the ring's first row.
+	let mut t = Term::new(4, 4, Theme::from_kind(ThemeKind::Poop), "/".into());
+	Parser::new().advance(&mut t, b"top\x1b[4;1Hbot\x1b[2;3r\x1b[3;1H");
+	for n in 0..200 {
+		Parser::new().advance(&mut t, format!("\r\n{n:03}").as_bytes());
+	}
+	let screen: Vec<String> = (0..4).map(|y| text(&t.grid, y)).collect();
+	assert_eq!(screen, ["top ", "198 ", "199 ", "bot "]);
+	assert_eq!(used(&t.grid, 4), [3, 3, 3, 3]);
+}

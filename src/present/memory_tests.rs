@@ -6,12 +6,11 @@ use std::io::ErrorKind;
 
 /// The size of the file behind `memory`.
 fn file_size(memory: &Memory) -> i64 {
-	// SAFETY: a zeroed `stat` is valid, and the descriptor is open.
-	unsafe {
-		let mut stat = std::mem::zeroed::<libc::stat>();
-		assert_eq!(libc::fstat(memory.fd(), &mut stat), 0);
-		stat.st_size as i64
-	}
+	// SAFETY: a zeroed `stat` is valid.
+	let mut stat = unsafe { std::mem::zeroed::<libc::stat>() };
+	// SAFETY: the descriptor is open, and `stat` is ours to fill.
+	assert_eq!(unsafe { libc::fstat(memory.fd(), &mut stat) }, 0);
+	stat.st_size as i64
 }
 
 #[test]

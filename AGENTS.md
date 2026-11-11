@@ -182,11 +182,12 @@ Details: [`docs/architecture.md`](docs/architecture.md).
     the pull request and in [`docs/unsafe.md`](docs/unsafe.md). Wrap each
     call into C or the kernel in one small safe function, so callers stay
     safe and the `unsafe` stays in one place.
-  - Every block is as small as it can be, starts with a `// SAFETY:`
+  - Every block holds one unsafe operation, starts with a `// SAFETY:`
     comment saying why it is sound (clippy's `undocumented_unsafe_blocks`
-    and rustc's `unsafe_op_in_unsafe_fn` are denied in `Cargo.toml`, so CI
-    rejects one without it), and is listed in `docs/unsafe.md`, updated in
-    the same pull request.
+    and `multiple_unsafe_ops_per_block` and rustc's
+    `unsafe_op_in_unsafe_fn` are denied in `Cargo.toml`, so CI rejects one
+    without it), and is listed in `docs/unsafe.md`, updated in the same
+    pull request.
 - **Config compatibility.** `config.toml` keys are user-facing; keep old
   names working (see `ThemeKind::parse`) and preserve unknown keys on save.
 - Match surrounding style: comment density, naming, and the existing `pub(crate)`

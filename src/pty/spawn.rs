@@ -235,14 +235,10 @@ impl Prepared {
 				.chain(std::iter::once(ptr::null()))
 				.collect()
 		};
-		// SAFETY: both are plain C structs for which all zeroes is valid,
-		// and all zeroes in `sa_sigaction` is `SIG_DFL`.
-		let (mut no_signals, default_action) = unsafe {
-			(
-				std::mem::zeroed::<libc::sigset_t>(),
-				std::mem::zeroed::<libc::sigaction>(),
-			)
-		};
+		// SAFETY: a plain C struct for which all zeroes is valid.
+		let mut no_signals = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+		// SAFETY: as above, and all zeroes in `sa_sigaction` is `SIG_DFL`.
+		let default_action = unsafe { std::mem::zeroed::<libc::sigaction>() };
 		// SAFETY: initializes the set we own.
 		unsafe { libc::sigemptyset(&mut no_signals) };
 		// SAFETY: takes only a constant name.
@@ -268,6 +264,8 @@ impl Prepared {
 	/// # Safety
 	///
 	/// Only in the child of a fork, where it must be the only thing run.
+	// The calls share a block until the sys layer step wraps each.
+	#[expect(clippy::multiple_unsafe_ops_per_block)]
 	unsafe fn start(&self, terminal: RawFd, report: RawFd) -> ! {
 		// SAFETY: every call below is async-signal-safe and uses only
 		// descriptors we hold and memory `self` owns.
@@ -284,6 +282,8 @@ impl Prepared {
 	/// # Safety
 	///
 	/// As [`Self::start`].
+	// The calls share a block until the sys layer step wraps each.
+	#[expect(clippy::multiple_unsafe_ops_per_block)]
 	unsafe fn become_program(&self, terminal: RawFd) -> libc::c_int {
 		let failed = || {
 			io::Error::last_os_error()

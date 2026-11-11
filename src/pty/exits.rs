@@ -144,8 +144,10 @@ impl Exits {
 
 #[cfg(not(target_os = "linux"))]
 fn new_set() -> io::Result<OwnedFd> {
-	// SAFETY: takes nothing; a non-negative result is a new descriptor.
-	let set = unsafe { OwnedFd::from_raw_fd(check(libc::kqueue())?) };
+	// SAFETY: takes nothing.
+	let raw = check(unsafe { libc::kqueue() })?;
+	// SAFETY: a non-negative result is a new descriptor, ours alone.
+	let set = unsafe { OwnedFd::from_raw_fd(raw) };
 	// SAFETY: sets a descriptor flag on a descriptor we own.
 	check(unsafe { libc::fcntl(set.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) })?;
 	Ok(set)

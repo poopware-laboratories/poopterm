@@ -294,16 +294,13 @@ extern "C" fn ignore(_: libc::c_int) {}
 #[test]
 fn a_signal_that_interrupts_the_wait_does_not_end_it() {
 	// A handler without SA_RESTART makes the blocking call fail with EINTR.
+	// SAFETY: all zeroes is a valid `sigaction` (no flags, empty mask).
+	let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
+	action.sa_sigaction = ignore as extern "C" fn(libc::c_int) as libc::sighandler_t;
 	// SAFETY: installs a handler that does nothing for SIGURG, which no
 	// other test uses and which is ignored by default.
-	unsafe {
-		let mut action: libc::sigaction = std::mem::zeroed();
-		action.sa_sigaction = ignore as extern "C" fn(libc::c_int) as libc::sighandler_t;
-		assert_eq!(
-			libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut()),
-			0
-		);
-	}
+	let installed = unsafe { libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut()) };
+	assert_eq!(installed, 0);
 	let exits = Arc::new(Exits::new().unwrap());
 	let (mut child, _pair) = start("read line");
 	assert!(exits.add(pid(&child)).unwrap());

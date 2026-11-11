@@ -176,25 +176,30 @@ fn read_shared(file: File, len: usize, command: &Command) -> Result<Vec<u8>, Err
 	if size == 0 {
 		return Ok(Vec::new());
 	}
-	// SAFETY: a fresh read-only shared mapping of `offset + size <= len`
-	// bytes of an open descriptor; it is unmapped before returning, and the
-	// bytes are copied out while it is mapped.
-	unsafe {
-		let map = libc::mmap(
+	let fd = std::os::fd::AsRawFd::as_raw_fd(&file);
+	let len = offset + size;
+	// SAFETY: a fresh read-only shared mapping of `len` bytes, no more than
+	// the open descriptor holds.
+	let map = unsafe {
+		libc::mmap(
 			std::ptr::null_mut(),
-			offset + size,
+			len,
 			libc::PROT_READ,
 			libc::MAP_SHARED,
-			std::os::fd::AsRawFd::as_raw_fd(&file),
+			fd,
 			0,
-		);
-		if map == libc::MAP_FAILED {
-			return Err(io_error(&io::Error::last_os_error()));
-		}
-		let bytes = std::slice::from_raw_parts(map.cast::<u8>().add(offset), size).to_vec();
-		libc::munmap(map, offset + size);
-		Ok(bytes)
+		)
+	};
+	if map == libc::MAP_FAILED {
+		return Err(io_error(&io::Error::last_os_error()));
 	}
+	// SAFETY: the mapping is `len` readable bytes, and stays mapped until
+	// the copy below is made.
+	let mapped = unsafe { std::slice::from_raw_parts(map.cast::<u8>(), len) };
+	let bytes = mapped[offset..].to_vec();
+	// SAFETY: unmaps the mapping above; `mapped` is not used again.
+	unsafe { libc::munmap(map, len) };
+	Ok(bytes)
 }
 
 #[cfg(test)]
@@ -258,36 +263,110 @@ mod tests {
 		std::fs::remove_file(unmarked).unwrap();
 	}
 
-	#[test]
-	fn shared_memory_is_read_and_unlinked() {
-		let name = format!("/poopterm-kitty-{}", std::process::id());
-		let c_name = std::ffi::CString::new(name.clone()).unwrap();
-		// macOS cannot `write` shared memory, so it is sized and mapped, as
-		// clients do.
-		// SAFETY: plain POSIX calls on a descriptor and a 6-byte mapping this
-		// test owns.
-		unsafe {
-			let fd = libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
-			assert!(fd >= 0);
-			assert_eq!(libc::ftruncate(fd, 6), 0);
-			let map = libc::mmap(
+	/// A shared memory object named `name` holding `bytes`, made the way
+	/// clients do: macOS cannot `write` shared memory, so it is sized and
+	/// mapped.
+	fn shared_memory(name: &str, bytes: &[u8]) {
+		let c_name = std::ffi::CString::new(name).unwrap();
+		// SAFETY: a C string this test owns.
+		let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
+		assert!(fd >= 0);
+		let len = bytes.len() as libc::off_t;
+		// SAFETY: a descriptor this test owns.
+		assert_eq!(unsafe { libc::ftruncate(fd, len) }, 0);
+		if bytes.is_empty() {
+			// SAFETY: closes the descriptor above, used no more.
+			unsafe { libc::close(fd) };
+			return;
+		}
+		let protection = libc::PROT_READ | libc::PROT_WRITE;
+		// SAFETY: a new shared mapping of the bytes just sized.
+		let map = unsafe {
+			libc::mmap(
 				std::ptr::null_mut(),
-				6,
-				libc::PROT_READ | libc::PROT_WRITE,
+				bytes.len(),
+				protection,
 				libc::MAP_SHARED,
 				fd,
 				0,
-			);
-			assert_ne!(map, libc::MAP_FAILED);
-			std::ptr::copy_nonoverlapping(b"shared".as_ptr(), map.cast(), 6);
-			libc::munmap(map, 6);
-			libc::close(fd);
-		}
+			)
+		};
+		assert_ne!(map, libc::MAP_FAILED);
+		// SAFETY: the mapping is `bytes.len()` writable bytes and overlaps nothing.
+		unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), map.cast(), bytes.len()) };
+		// SAFETY: unmaps the mapping above, used no more.
+		unsafe { libc::munmap(map, bytes.len()) };
+		// SAFETY: closes the descriptor above, used no more.
+		unsafe { libc::close(fd) };
+	}
+
+	#[test]
+	fn shared_memory_is_read_and_unlinked() {
+		let name = format!("/poopterm-kitty-{}", std::process::id());
+		shared_memory(&name, b"shared");
 		assert_eq!(
 			load(&command("t=s,S=4"), name.clone().into_bytes()).unwrap(),
 			b"shar"
 		);
 		assert_eq!(code(load(&command("t=s"), name.into_bytes())), "ENOENT");
 		assert_eq!(code(load(&command("t=s"), b"/a/b".to_vec())), "EINVAL");
+	}
+
+	#[test]
+	fn shared_memory_is_read_from_an_offset() {
+		let name = format!("/poopterm-kitty-offset-{}", std::process::id());
+		for (keys, expected) in [
+			("t=s,O=2,S=3", &b"are"[..]),
+			("t=s,O=4,S=2", b"ed"),
+			("t=s,O=0,S=1", b"s"),
+		] {
+			shared_memory(&name, b"shared");
+			let read = load(&command(keys), name.clone().into_bytes()).unwrap();
+			assert_eq!(read, expected, "{keys}");
+			// Each read consumes the object.
+			assert_eq!(
+				code(load(&command("t=s"), name.clone().into_bytes())),
+				"ENOENT"
+			);
+		}
+	}
+
+	/// macOS rounds shared memory up to whole pages, so only other systems
+	/// know where the client's data ends.
+	#[cfg(not(target_os = "macos"))]
+	#[test]
+	fn shared_memory_reads_stop_at_its_end() {
+		let name = format!("/poopterm-kitty-empty-{}", std::process::id());
+		shared_memory(&name, b"");
+		assert_eq!(
+			load(&command("t=s"), name.clone().into_bytes()).unwrap(),
+			b""
+		);
+		shared_memory(&name, b"shared");
+		assert_eq!(
+			load(&command("t=s,O=6"), name.clone().into_bytes()).unwrap(),
+			b""
+		);
+		shared_memory(&name, b"shared");
+		assert_eq!(
+			load(&command("t=s,O=5,S=9"), name.into_bytes()).unwrap(),
+			b"d"
+		);
+	}
+
+	#[test]
+	fn shared_memory_names_take_a_leading_slash_and_have_a_limit() {
+		let name = format!("poopterm-kitty-bare-{}", std::process::id());
+		let slashed = format!("/{name}");
+		shared_memory(&slashed, b"bare");
+		assert_eq!(
+			load(&command("t=s,S=4"), name.into_bytes()).unwrap(),
+			b"bare"
+		);
+		// Both names are one object, unlinked by the read.
+		assert_eq!(code(load(&command("t=s"), slashed.into_bytes())), "ENOENT");
+		// 255 bytes with the slash is the most a name may have.
+		let long = format!("/{}", "x".repeat(255));
+		assert_eq!(code(load(&command("t=s"), long.into_bytes())), "EINVAL");
 	}
 }
