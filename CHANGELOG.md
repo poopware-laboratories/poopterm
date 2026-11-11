@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.11.76 "Lunar Moth" — 2026-11-11
+
+### Performance
+
+- Read the hovered link under the output handler's lock (#307) (app).
+
 ## 26.11.75 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
