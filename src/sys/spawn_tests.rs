@@ -582,6 +582,79 @@ fn a_directory_that_does_not_exist_is_an_error() {
 	assert_eq!(error.raw_os_error(), Some(libc::ENOENT));
 }
 
+/// The children of this thread that still exist, zombies included.
+#[cfg(target_os = "linux")]
+fn our_children() -> Vec<String> {
+	let list = std::fs::read_to_string("/proc/thread-self/children").unwrap();
+	list.split_whitespace().map(str::to_owned).collect()
+}
+
+/// Expects `command` to fail with `errno` after the fork, its child reaped.
+#[cfg(target_os = "linux")]
+fn fails_and_is_reaped(command: Command, terminal: &OwnedFd, errno: libc::c_int) {
+	assert_eq!(our_children(), [] as [String; 0], "a child from before");
+	let error = spawn(&command, terminal).err().unwrap();
+	assert_eq!(error.raw_os_error(), Some(errno), "{error}");
+	assert_eq!(
+		our_children(),
+		[] as [String; 0],
+		"the failed child is left"
+	);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_started_program_is_our_child_until_waited_for() {
+	// Shows `our_children` sees children, so the tests below can fail.
+	let pair = device::open(WindowSize::default()).unwrap();
+	let mut child = spawn(&sh("exit 3"), &pair.slave).unwrap();
+	assert_eq!(our_children(), [child.id().to_string()]);
+	assert_eq!(child.wait().unwrap(), Exit::Code(3));
+	assert_eq!(our_children(), [] as [String; 0]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_that_cannot_enter_its_directory_is_reaped() {
+	let pair = device::open(WindowSize::default()).unwrap();
+	fails_and_is_reaped(sh("true").cwd("Cargo.toml"), &pair.slave, libc::ENOTDIR);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_refused_its_terminal_is_reaped() {
+	let file = OwnedFd::from(File::open("Cargo.toml").unwrap());
+	fails_and_is_reaped(sh("true"), &file, libc::ENOTTY);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_whose_exec_fails_is_reaped() {
+	// A path with a slash is not searched, so only execve can refuse it.
+	let pair = device::open(WindowSize::default()).unwrap();
+	fails_and_is_reaped(Command::new("/"), &pair.slave, libc::EACCES);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_real_time_signal_we_block_is_not_blocked_in_the_program() {
+	// Past the first 32 signals, in the mask's upper half.
+	// SAFETY: all zeroes is a valid `sigset_t`.
+	let mut block = unsafe { std::mem::zeroed::<libc::sigset_t>() };
+	let mut old = block;
+	// SAFETY: initializes a set on our stack.
+	unsafe { libc::sigemptyset(&mut block) };
+	// SAFETY: adds to the set just initialized.
+	unsafe { libc::sigaddset(&mut block, libc::SIGRTMAX()) };
+	// SAFETY: changes only this thread's mask, saving the old one in `old`.
+	unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &block, &mut old) };
+	let (output, _) = run(sh("grep '^SigBlk' /proc/self/status"));
+	// SAFETY: restores this thread's mask from the copy above.
+	unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &old, std::ptr::null_mut()) };
+	let mask = output.split_whitespace().nth(1).unwrap();
+	assert!(mask.chars().all(|digit| digit == '0'), "{output:?}");
+}
+
 #[test]
 fn hanging_up_ends_a_shell_waiting_for_input() {
 	let pair = device::open(WindowSize::default()).unwrap();
