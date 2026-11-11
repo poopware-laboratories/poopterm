@@ -407,77 +407,56 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	assert_eq!(check(3).unwrap(), 3);
 }
 
-/// Probe, never merged: when a session leader outlives its closed PTY, can
-/// its number go to a new pair while the leader lives, and does a program on
-/// the new pair still work after the old leader exits? Nothing is left
-/// unread, so no close waits for output to drain.
+/// Probe, never merged: many threads opening PTYs, starting a program on
+/// each and closing them. Which stage fails, with which errno, and does
+/// closing under a lock (as opening already is) stop it?
 #[cfg(target_os = "macos")]
 #[test]
-fn probe_macos_revoke_after_reuse() {
+fn probe_macos_concurrent_pty_churn() {
 	use crate::sys::spawn::{Command as Program, spawn};
+	use std::collections::BTreeMap;
 	use std::sync::{Arc, Mutex};
-	use std::time::Instant;
+	static CLOSING: Mutex<()> = Mutex::new(());
 	let mut report = Vec::new();
-	for trial in 0..10 {
-		let step = Arc::new(Mutex::new(String::from("start")));
-		let at = |step: &Arc<Mutex<String>>, name: &str| *step.lock().unwrap() = name.to_owned();
-		let (done, finished) = mpsc::channel();
-		let shared = Arc::clone(&step);
-		thread::spawn(move || {
-			let step = shared;
-			let old = open(cells(80, 24)).unwrap();
-			let old_path = old.path.clone();
-			let mut sleeper = spawn(&Program::new("sh").arg("-c").arg("sleep 0.5"), &old.slave).unwrap();
-			drop(old);
-			let begun = Instant::now();
-			let mut opens = 0;
-			let mut hit = None;
-			while begun.elapsed() < Duration::from_secs(2) {
-				let pair = open(cells(80, 24)).unwrap();
-				opens += 1;
-				if pair.path == old_path {
-					hit = Some(pair);
-					break;
-				}
-			}
-			let reused_after = begun.elapsed().as_millis();
-			let sleeper_alive = sleeper.try_wait().map(|exit| exit.is_none());
-			at(&step, "wait sleeper");
-			let exit = sleeper.wait();
-			let line = match hit {
-				None => format!("reused=false opens={opens} sleeper={exit:?}"),
-				Some(pair) => {
-					thread::sleep(Duration::from_millis(100));
-					// SAFETY: asks about a descriptor we hold.
-					let tty = unsafe { libc::isatty(pair.slave.as_raw_fd()) };
-					at(&step, "spawn on reused pair");
-					let started = spawn(
-						&Program::new("sh").arg("-c").arg("printf ok; exit 7"),
-						&pair.slave,
-					)
-					.map_err(|e| e.raw_os_error());
-					at(&step, "read reused master");
-					let mut master = File::from(pair.master);
-					let mut shown = [0; 16];
-					let read = master
-						.read(&mut shown)
-						.map(|n| String::from_utf8_lossy(&shown[..n]).into_owned());
-					at(&step, "wait on reused pair");
-					let ended = started.map(|mut child| child.wait().map_err(|e| e.raw_os_error()));
-					format!(
-						"reused=true after={reused_after}ms opens={opens} leader_alive_then={sleeper_alive:?} isatty={tty} read={read:?} program={ended:?}"
-					)
-				}
-			};
-			done.send(line).unwrap();
-		});
-		match finished.recv_timeout(Duration::from_secs(10)) {
-			Ok(line) => report.push(line),
-			Err(_) => {
-				report.push(format!("trial {trial} STUCK at: {}", step.lock().unwrap()));
-				break;
-			}
+	for locked_close in [false, true, false, true] {
+		let errors = Arc::new(Mutex::new(BTreeMap::<String, usize>::new()));
+		let threads: Vec<_> = (0..8)
+			.map(|_| {
+				let errors = Arc::clone(&errors);
+				thread::spawn(move || {
+					let count = |what: String| *errors.lock().unwrap().entry(what).or_default() += 1;
+					for _ in 0..40 {
+						let pair = match open(cells(80, 24)) {
+							Ok(pair) => pair,
+							Err(e) => {
+								count(format!("open {:?}", e.raw_os_error()));
+								continue;
+							}
+						};
+						match spawn(&Program::new("/usr/bin/true"), &pair.slave) {
+							Ok(mut child) => match child.wait() {
+								Ok(_) => count("ok".into()),
+								Err(e) => count(format!("wait {:?}", e.raw_os_error())),
+							},
+							Err(e) => count(format!("spawn {:?}", e.raw_os_error())),
+						}
+						if locked_close {
+							let _turn = CLOSING.lock().unwrap();
+							drop(pair);
+						} else {
+							drop(pair);
+						}
+					}
+				})
+			})
+			.collect();
+		for thread in threads {
+			thread.join().unwrap();
 		}
+		report.push(format!(
+			"locked_close={locked_close} {:?}",
+			errors.lock().unwrap()
+		));
 	}
 	panic!("PROBE\n{}", report.join("\n"));
 }
