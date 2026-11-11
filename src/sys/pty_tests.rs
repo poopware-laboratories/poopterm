@@ -403,4 +403,6 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 		Some(libc::EBADF)
 	);
 	assert!(check(i32::MIN).is_err());
+	// `errno` still says EBADF here; a success must not read it.
+	assert_eq!(check(3).unwrap(), 3);
 }
