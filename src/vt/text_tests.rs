@@ -1,4 +1,8 @@
 use super::{Chars, Text};
+use crate::{
+	bench::corpus::Rng,
+	vt::{Handler, Params, Parser},
+};
 
 /// Code points at the edges of each encoded length and of the surrogates.
 const EDGES: [char; 12] = [
@@ -38,13 +42,17 @@ fn valid_bytes_make_text_and_malformed_ones_do_not() {
 }
 
 #[test]
-fn every_character_decodes_to_itself() {
-	let mut buffer = [0; 4];
-	for c in (0..=0x10ffff).filter_map(char::from_u32) {
-		let text = Text::from(&*c.encode_utf8(&mut buffer));
-		let mut chars = text.chars();
-		assert_eq!(chars.next(), Some(c), "{:x}", u32::from(c));
-		assert_eq!(chars.next(), None, "{:x}", u32::from(c));
+fn every_character_decodes_to_itself_before_any_tail() {
+	// Up to three bytes after a character pick each of the decoder's length
+	// checks: the end of the text, and room for a whole four-byte character.
+	for tail in ["", "z", "zy", "zyx"] {
+		for c in (0..=0x10ffff).filter_map(char::from_u32) {
+			let text = format!("{c}{tail}");
+			let mut chars = Text::from(text.as_str()).chars();
+			assert_eq!(chars.next(), Some(c), "{:x} before {tail:?}", u32::from(c));
+			assert_eq!(chars.as_bytes(), tail.as_bytes(), "{:x}", u32::from(c));
+			assert!(chars.eq(tail.chars()), "{:x} before {tail:?}", u32::from(c));
+		}
 	}
 }
 
@@ -129,20 +137,97 @@ fn malformed_bytes_decode_to_replacements_without_panicking() {
 	}
 }
 
+/// Random text over every encoded length, the edges, and marks.
+fn random_text(rng: &mut Rng) -> String {
+	(0..rng.below(40))
+		.map(|_| match rng.below(4) {
+			0 => *rng.pick(&EDGES),
+			1 => char::from_u32(rng.below(0x110000) as u32).unwrap_or('\u{fffd}'),
+			2 => char::from(b' ' + rng.below(95) as u8),
+			_ => *rng.pick(&['\u{301}', '\u{200d}', '猫', '\u{1f600}', '\u{e9}']),
+		})
+		.collect()
+}
+
 #[test]
-fn the_size_hint_bounds_the_count() {
-	for text in [
-		"",
-		"a",
-		"abcd",
-		"\u{1f600}",
-		"\u{1f600}a",
-		"\u{e9}\u{e9}\u{e9}",
-	] {
-		let chars = Text::from(text).chars();
-		let (low, high) = chars.size_hint();
-		let count = chars.count();
-		assert!(low <= count, "{text}");
-		assert!(high.is_some_and(|high| count <= high), "{text}");
+fn random_text_decodes_like_std_with_the_same_bytes_left() {
+	let mut rng = Rng::new(0x7e47);
+	for _ in 0..2000 {
+		let text = random_text(&mut rng);
+		let mut chars = Text::from(text.as_str()).chars();
+		for (at, c) in text.char_indices() {
+			assert_eq!(chars.as_bytes().len(), text.len() - at, "{text:?}");
+			assert_eq!(chars.next(), Some(c), "{text:?} at {at}");
+		}
+		assert_eq!(chars.next(), None, "{text:?}");
 	}
+}
+
+#[test]
+fn every_cut_of_random_text_is_text_exactly_when_std_accepts_it() {
+	let mut rng = Rng::new(0xc07);
+	for _ in 0..300 {
+		let text = random_text(&mut rng);
+		let bytes = text.as_bytes();
+		for at in 0..=bytes.len() {
+			for part in [&bytes[..at], &bytes[at..]] {
+				let std = std::str::from_utf8(part).ok();
+				assert_eq!(Text::new(part), std.map(Text::from), "{part:x?}");
+			}
+		}
+	}
+}
+
+#[test]
+fn a_clone_peeks_without_moving_the_original() {
+	let mut chars = Text::from("\u{732b}a").chars();
+	let mut peek = chars.clone();
+	assert_eq!(peek.next(), Some('\u{732b}'));
+	assert_eq!(peek.as_bytes(), b"a");
+	assert_eq!(chars.as_bytes(), "\u{732b}a".as_bytes());
+	assert_eq!(chars.next(), Some('\u{732b}'));
+	assert_eq!(chars.as_text(), peek.as_text());
+}
+
+#[test]
+fn advancing_past_a_chunk_resumes_where_decoding_all_would() {
+	// The narrow fast path consumes whole ASCII chunks, then decodes on.
+	let text = "abcdefgh\u{732b}\u{301}ij";
+	let mut chars = Text::from(text).chars();
+	chars.advance(8);
+	assert!(chars.eq(text.chars().skip(8)));
+}
+
+/// Collects printed text; ASCII takes the default `print_ascii`.
+#[derive(Default)]
+struct Printed(String);
+
+impl Handler for Printed {
+	fn print(&mut self, text: Text<'_>) {
+		self.0.extend(text.chars());
+	}
+	fn execute(&mut self, byte: u8) {
+		self.0.push(char::from(byte));
+	}
+	fn csi_dispatch(&mut self, _: &Params, _: &[u8], _: bool, _: u8) {}
+	fn esc_dispatch(&mut self, _: &[u8], _: bool, _: u8) {}
+	fn osc_dispatch(&mut self, _: &[&[u8]], _: bool) {}
+	fn hook(&mut self, _: &Params, _: &[u8], _: bool, _: u8) {}
+	fn put(&mut self, _: &[u8]) {}
+	fn unhook(&mut self) {}
+}
+
+#[test]
+fn handlers_without_an_ascii_path_get_ascii_as_text() {
+	let mut printed = Printed::default();
+	Parser::new().advance(&mut printed, "hi\x1b[1m th\u{e9}re\r".as_bytes());
+	assert_eq!(printed.0, "hi th\u{e9}re\r");
+}
+
+#[test]
+fn malformed_runs_print_replacements_and_c1_controls_execute() {
+	let mut printed = Printed::default();
+	Parser::new().advance(&mut printed, b"a\xffb\xc2\x85c\xe2\x82");
+	// The cut-off character at the end waits for the next read.
+	assert_eq!(printed.0, "a\u{fffd}b\u{85}c");
 }

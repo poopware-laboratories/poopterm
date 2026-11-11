@@ -87,9 +87,7 @@ impl<'a> Chars<'a> {
 	pub(crate) fn advance(&mut self, len: usize) {
 		self.0 = self.as_text().split_at(len).1.0;
 	}
-}
 
-impl Chars<'_> {
 	/// Decodes the character that `lead`, a byte `0x80..`, starts.
 	#[inline(always)]
 	fn multibyte(&mut self, lead: u8) -> char {
@@ -137,10 +135,6 @@ impl Iterator for Chars<'_> {
 			return Some(char::from(lead));
 		}
 		Some(self.multibyte(lead))
-	}
-
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		(self.0.len().div_ceil(4), Some(self.0.len()))
 	}
 }
 
