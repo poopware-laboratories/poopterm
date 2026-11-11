@@ -1,7 +1,7 @@
 //! Tests for the trimmed scrollback ring.
 use super::{
 	Cell,
-	scrollback::{Scrollback, publish_streamed, stream_copy, trimmed_len},
+	scrollback::{Scrollback, trimmed_len},
 };
 
 const PAD: Cell = Cell {
@@ -314,37 +314,6 @@ fn indexing_past_the_newest_row_panics() {
 }
 
 #[test]
-fn streamed_copies_match_plain_copies_at_every_length_and_alignment() {
-	let source: Vec<Cell> = (0..23u32)
-		.map(|i| Cell {
-			ch: char::from_u32(0x41 + i).unwrap(),
-			fg: i,
-			bg: !i,
-			attrs: i as u8,
-			width: (i % 3) as u8,
-			extra: i as u16,
-		})
-		.collect();
-	// Four offsets cover every position of a row within a 64-byte line.
-	for offset in 0..4 {
-		for len in 0..=source.len() {
-			let mut copied = vec![PAD; source.len() + 8];
-			stream_copy(&mut copied[offset..offset + len], &source[..len]);
-			publish_streamed();
-			let mut expected = vec![PAD; source.len() + 8];
-			expected[offset..offset + len].copy_from_slice(&source[..len]);
-			assert_eq!(copied, expected, "{len} cells at {offset}");
-		}
-	}
-}
-
-#[test]
-#[should_panic]
-fn streamed_copies_of_different_lengths_panic() {
-	stream_copy(&mut [PAD; 3], &[PAD; 2]);
-}
-
-#[test]
 fn pushed_rows_keep_every_field_through_wraps() {
 	let mut s = Scrollback::default();
 	for n in 0..300u32 {
@@ -365,33 +334,6 @@ fn pushed_rows_keep_every_field_through_wraps() {
 		assert_eq!(&s[s.len() - 1], &styled[..len.min(12)], "row {n}");
 	}
 	assert_eq!(s.len(), 40);
-}
-
-#[test]
-fn streamed_copies_from_every_source_offset_land_whole() {
-	let source: Vec<Cell> = ('a'..='z').map(|ch| Cell { ch, ..PAD }).collect();
-	// Source and target chunks fall out of step unless both offsets match.
-	for from in 0..4 {
-		for to in 0..4 {
-			let len = source.len() - from;
-			let mut target = vec![PAD; len + to + 3];
-			stream_copy(&mut target[to..to + len], &source[from..]);
-			publish_streamed();
-			assert_eq!(
-				text(&target[to..to + len]),
-				text(&source[from..]),
-				"{from} to {to}"
-			);
-			assert!(
-				target[..to].iter().all(|&cell| cell == PAD),
-				"{from} to {to}"
-			);
-			assert!(
-				target[to + len..].iter().all(|&cell| cell == PAD),
-				"{from} to {to}"
-			);
-		}
-	}
 }
 
 /// `trimmed_len` one cell at a time: the oracle for the four-cell scan.

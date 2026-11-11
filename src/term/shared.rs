@@ -81,8 +81,6 @@ impl DerefMut for TermGuard<'_> {
 
 impl Drop for TermGuard<'_> {
 	fn drop(&mut self) {
-		// Runs before the mutex unlocks, which drops with the fields.
-		super::scrollback::publish_streamed();
 		#[cfg(debug_assertions)]
 		held::release(self.owner);
 	}
