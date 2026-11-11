@@ -314,4 +314,42 @@ mod tests {
 		let long = format!("/{}", "x".repeat(255));
 		assert_eq!(code(load(&command("t=s"), long.into_bytes())), "EINVAL");
 	}
+
+	#[test]
+	fn shared_memory_names_with_a_nul_or_not_utf8_are_refused() {
+		for name in [&b"/poopterm\0kitty"[..], b"/poopterm-\xff"] {
+			assert_eq!(
+				code(load(&command("t=s"), name.to_vec())),
+				"EINVAL",
+				"{name:?}"
+			);
+		}
+	}
+
+	/// A shared memory object of `len` bytes that are never written, so it
+	/// takes no memory however large.
+	fn sparse_shared_memory(name: &str, len: usize) {
+		let c_name = std::ffi::CString::new(name).unwrap();
+		let file = File::from(mem::shm_open(&c_name, true).unwrap());
+		file.set_len(len as u64).unwrap();
+	}
+
+	#[test]
+	fn shared_memory_too_large_to_transfer_is_refused_and_still_unlinked() {
+		let name = format!("/poopterm-kitty-large-{}", std::process::id());
+		sparse_shared_memory(&name, MAX_TRANSFER + 1);
+		assert_eq!(
+			code(load(&command("t=s"), name.clone().into_bytes())),
+			"EFBIG"
+		);
+		// The client handed the object over: it is gone even though refused.
+		assert_eq!(
+			code(load(&command("t=s"), name.clone().into_bytes())),
+			"ENOENT"
+		);
+		// A part of it within the limit is read.
+		sparse_shared_memory(&name, MAX_TRANSFER + 1);
+		let part = load(&command("t=s,O=4096,S=8"), name.into_bytes()).unwrap();
+		assert_eq!(part, [0; 8]);
+	}
 }
