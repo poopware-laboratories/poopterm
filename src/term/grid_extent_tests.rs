@@ -330,3 +330,23 @@ fn a_wrapped_wide_character_uses_both_cells_of_the_next_row() {
 	assert_eq!((term.grid.used(0), term.grid.used(1)), (0, 2));
 	assert_eq!(term.grid[1][1].width, 0);
 }
+
+#[test]
+fn single_line_scrolls_keep_every_row_in_order() {
+	// Each line feed at the bottom rotates the region's rows by one.
+	let mut t = Term::new(4, 3, Theme::from_kind(ThemeKind::Poop), "/".into());
+	for n in 0..200 {
+		Parser::new().advance(&mut t, format!("\r\n{n:03}").as_bytes());
+	}
+	let screen: Vec<String> = (0..3).map(|y| text(&t.grid, y)).collect();
+	assert_eq!(screen, ["197 ", "198 ", "199 "]);
+	assert_eq!(used(&t.grid, 3), [3, 3, 3]);
+	let history: Vec<String> = (0..t.scrollback.len())
+		.map(|i| t.scrollback[i].iter().map(|cell| cell.ch).collect())
+		.collect();
+	// The first screen row was blank; then every number but the last three.
+	let expected: Vec<String> = std::iter::once(String::new())
+		.chain((0..197).map(|n| format!("{n:03}")))
+		.collect();
+	assert_eq!(history, expected);
+}
