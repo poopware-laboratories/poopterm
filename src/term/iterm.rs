@@ -1,6 +1,8 @@
 //! State behind iTerm2's OSC 1337 commands: user variables, the remote
 //! host, the cursor guide, text being copied to the clipboard, and requests
 //! for the window.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use crate::graphics::iterm::Upload;
 
 /// Most user variables kept; new names beyond it are ignored.

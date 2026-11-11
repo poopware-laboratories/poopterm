@@ -1,4 +1,6 @@
 //! A cell's 128-bit view, `bits`, against the cell's bytes in memory.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::Cell;
 use crate::bench::corpus::Rng;
 

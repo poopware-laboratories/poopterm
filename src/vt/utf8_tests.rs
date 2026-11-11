@@ -1,5 +1,7 @@
 //! Tests for the UTF-8 validator: its lookup tables against a scalar model
 //! of the encoding, and every variant against `std::str::from_utf8`.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::utf8::{self, HIGH, INCOMPLETE, PREV_HIGH, PREV_LOW, TWO_CONTS};
 use crate::bench::corpus::Rng;
 

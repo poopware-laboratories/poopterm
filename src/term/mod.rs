@@ -173,6 +173,7 @@ impl Cell {
 	/// Sets every cell of `cells` to `cell` with whole-cell vector stores;
 	/// `slice::fill` writes cells field by field.
 	#[inline(always)]
+	#[allow(unsafe_code, reason = "calls the AVX2 copy after checking the CPU")]
 	pub(crate) fn fill(cells: &mut [Cell], cell: Cell) {
 		#[cfg(target_arch = "x86_64")]
 		if cells.len() >= 4 && std::arch::is_x86_feature_detected!("avx2") {

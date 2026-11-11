@@ -1,4 +1,6 @@
 //! Rectangle, button and text rasterization into a 0RGB pixel buffer.
+// Calls copies compiled for CPU features checked at run time.
+#![allow(unsafe_code)]
 use super::{
 	blend::{blend, blend_coverage_row},
 	glyphs::Glyph,

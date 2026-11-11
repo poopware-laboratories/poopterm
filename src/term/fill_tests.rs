@@ -1,5 +1,7 @@
 //! Cell fills against `slice::fill`, at every short length and alignment,
 //! through every kernel the CPU can run.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::Cell;
 
 type Filler = (&'static str, fn(&mut [Cell], Cell));

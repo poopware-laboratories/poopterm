@@ -8,6 +8,8 @@
 //! mimalloc also asks for transparent huge pages, which on Linux kept
 //! 15 to 30 MiB more resident, half used, for about 1% of throughput:
 //! they are turned off for the terminal (`docs/performance.md`).
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 
 use std::ffi::{c_int, c_long};
 

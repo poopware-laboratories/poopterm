@@ -6,6 +6,8 @@
 //! mapped would make reads past its new end fault (`SIGBUS`), as it would in
 //! any program that maps fonts; we accept that for files under the system's
 //! and user's font directories.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use std::{
 	fs::OpenOptions,
 	io,

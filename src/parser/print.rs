@@ -1,4 +1,6 @@
 //! Printable characters and C0/C1 control execution.
+// Calls copies compiled for CPU features checked at run time.
+#![allow(unsafe_code)]
 use std::sync::Arc;
 
 use super::{cluster::join_marks, narrow};

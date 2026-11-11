@@ -1,5 +1,7 @@
 //! The x86-64-v3 variants of the parse loop and of `print_text` must leave a
 //! terminal exactly as the baseline variants do.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use crate::{
 	bench::corpus::Rng,
 	parser::Parser,

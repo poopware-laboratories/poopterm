@@ -1,5 +1,7 @@
 //! Differential tests: the parser must produce the same events as vte 0.15
 //! for any byte stream, however it is split into reads.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::{Handler, Params, Parser, Text};
 use crate::bench::corpus::Rng;
 

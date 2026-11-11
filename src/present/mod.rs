@@ -12,6 +12,10 @@ pub(crate) mod pool;
 #[cfg(test)]
 mod pool_tests;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+// libwayland-client, opened at run time.
+#[allow(unsafe_code)]
 pub(crate) mod wayland;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+// libxcb, opened at run time.
+#[allow(unsafe_code)]
 pub(crate) mod x11;

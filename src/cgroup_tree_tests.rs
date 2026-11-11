@@ -1,5 +1,7 @@
 //! The delegated subtree on a fake cgroupfs: a temporary directory whose
 //! control files are plain files, so the tests see what was written.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use crate::scratch_tests::Scratch;
 use std::{fs, path::Path};
 

@@ -92,3 +92,6 @@ multiple_unsafe_ops_per_block = "deny"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
+# Only the modules that call C, the kernel or a CPU-dispatched copy allow it;
+# docs/unsafe.md lists them.
+unsafe_code = "deny"

@@ -1,6 +1,8 @@
 //! Tests of a window buffer's shared memory: its bounds, and that what is
 //! written through the mapping is what the compositor reads through the
 //! file descriptor.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::memory::{MAX_BYTES, Memory};
 use std::io::ErrorKind;
 

@@ -4,6 +4,8 @@
 //! Files are read only when they are regular files outside `/proc`, `/sys`
 //! and `/dev`, without blocking (FIFOs) and up to [`MAX_TRANSFER`] bytes.
 //! Only marked files in temporary directories are deleted.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use std::{
 	fs::{File, OpenOptions},
 	io::{self, Read, Seek, SeekFrom},

@@ -1,6 +1,8 @@
 //! Anonymous shared memory for one window buffer, which the window system
 //! maps through the file descriptor sent to it (`wl_shm.create_pool`,
 //! MIT-SHM `AttachFd`): unmapped and closed when dropped.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 use std::{
 	io,
 	os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},

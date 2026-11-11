@@ -1,4 +1,6 @@
 //! Platform-specific window tweaks.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 #[cfg(target_os = "macos")]
 use winit::window::Window;
 use winit::window::WindowAttributes;
