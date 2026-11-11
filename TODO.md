@@ -351,7 +351,11 @@ least as fast.
   opened at run time, `wl_shm` on our own event queue), which shows both
   windows' software frames on Wayland, and `present::x11` (libxcb opened at
   run time, MIT-SHM by descriptor, else `PutImage`). Next: show X11 windows
-  through it, then macOS CALayer, and drop the crate.
+  through it, then macOS CALayer, and drop the crate. Dropping it also
+  unblocks Miri: softbuffer's `tiny-xlib` registers a constructor that
+  `dlopen`s libX11 at startup, which Miri cannot run, so no test runs under
+  it yet. Then run the pure modules (`term`, `parser`, `vt`, `inflate`,
+  `graphics`) under `cargo miri test` in CI.
 
 Kept for now: `winit` (windowing, IME and DPI are too much risk for the
 gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rfd`.
