@@ -468,6 +468,12 @@ class Unsafe(unittest.TestCase):
         self.assertIn('allow(unsafe_code)', problem)
         self.assertIsNone(pr_check.unsafe_problem(0, 0, 1, docs=True))
 
+    def test_growth_is_reported_before_new_allow_list_entries(self):
+        problem = pr_check.unsafe_problem(2, 0, 3, docs=False)
+        self.assertIn('2 more unsafe', problem)
+        self.assertNotIn('allow(unsafe_code)', problem)
+        self.assertIsNone(pr_check.unsafe_problem(2, 0, 3, docs=True))
+
     def test_as_much_or_less_unsafe_needs_nothing(self):
         self.assertIsNone(pr_check.unsafe_problem(2, 2, 0, docs=False))
         self.assertIsNone(pr_check.unsafe_problem(0, 4, 0, docs=False))
