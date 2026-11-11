@@ -2,6 +2,9 @@
 //! reached: classes and selectors looked up by name, messages sent through
 //! `objc_msgSend` cast to each method's own type, objects owned by one
 //! reference that is released when dropped, strings, and autorelease pools.
+// Messages still share blocks; the Metal renderer work wraps each in its
+// own safe method and removes this.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use std::{
 	ffi::{CStr, c_char, c_void},
 	fmt,

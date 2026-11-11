@@ -176,25 +176,30 @@ fn read_shared(file: File, len: usize, command: &Command) -> Result<Vec<u8>, Err
 	if size == 0 {
 		return Ok(Vec::new());
 	}
-	// SAFETY: a fresh read-only shared mapping of `offset + size <= len`
-	// bytes of an open descriptor; it is unmapped before returning, and the
-	// bytes are copied out while it is mapped.
-	unsafe {
-		let map = libc::mmap(
+	let fd = std::os::fd::AsRawFd::as_raw_fd(&file);
+	let len = offset + size;
+	// SAFETY: a fresh read-only shared mapping of `len` bytes, no more than
+	// the open descriptor holds.
+	let map = unsafe {
+		libc::mmap(
 			std::ptr::null_mut(),
-			offset + size,
+			len,
 			libc::PROT_READ,
 			libc::MAP_SHARED,
-			std::os::fd::AsRawFd::as_raw_fd(&file),
+			fd,
 			0,
-		);
-		if map == libc::MAP_FAILED {
-			return Err(io_error(&io::Error::last_os_error()));
-		}
-		let bytes = std::slice::from_raw_parts(map.cast::<u8>().add(offset), size).to_vec();
-		libc::munmap(map, offset + size);
-		Ok(bytes)
+		)
+	};
+	if map == libc::MAP_FAILED {
+		return Err(io_error(&io::Error::last_os_error()));
 	}
+	// SAFETY: the mapping is `len` readable bytes, and stays mapped until
+	// the copy below is made.
+	let mapped = unsafe { std::slice::from_raw_parts(map.cast::<u8>(), len) };
+	let bytes = mapped[offset..].to_vec();
+	// SAFETY: unmaps the mapping above; `mapped` is not used again.
+	unsafe { libc::munmap(map, len) };
+	Ok(bytes)
 }
 
 #[cfg(test)]

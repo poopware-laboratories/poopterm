@@ -42,14 +42,13 @@ pub(crate) fn set_window_opacity(window: &Window, opacity: usize) {
 		return;
 	};
 	let view = handle.ns_view.as_ptr().cast::<objc2::runtime::AnyObject>();
-	// SAFETY: `view` is the live NSView winit gave for this window; `window`
-	// returns its NSWindow or nil, checked before `setAlphaValue:`, and both
-	// selectors take and return the types written here.
-	unsafe {
-		let native_window: *mut objc2::runtime::AnyObject = objc2::msg_send![view, window];
-		if !native_window.is_null() {
-			let _: () = objc2::msg_send![native_window, setAlphaValue: opacity as f64 / 100.0];
-		}
+	// SAFETY: `view` is the live NSView winit gave for this window, and
+	// `window` takes nothing and returns its NSWindow or nil.
+	let native_window: *mut objc2::runtime::AnyObject = unsafe { objc2::msg_send![view, window] };
+	if !native_window.is_null() {
+		// SAFETY: a live NSWindow, checked above; `setAlphaValue:` takes a
+		// CGFloat and returns nothing.
+		let _: () = unsafe { objc2::msg_send![native_window, setAlphaValue: opacity as f64 / 100.0] };
 	}
 }
 
