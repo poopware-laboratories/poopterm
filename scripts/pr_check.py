@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Checks a pull request: a Conventional Commits title (it becomes the squashed
 commit on main, and the changelog line) and at least three added lines of
-tests for every added line of production code."""
+tests for every added line of production code, and docs/unsafe.md updated
+when `unsafe` or its allow-list grows."""
 import argparse
 from pathlib import Path
 import re
@@ -19,6 +20,11 @@ INLINE_TESTS = re.compile(r'\s*(pub(\([a-z]+\))? )?mod \w+ \{')
 GLUE_START = re.compile(r'\s*// pr-check: window glue:(.*)')
 GLUE_END = re.compile(r'\s*// pr-check: end window glue\s*$')
 GLUE_LIMIT = 12
+# Unsafe blocks, functions, impls, extern blocks and attributes, and the
+# entries that let a module use them.
+UNSAFE = re.compile(r'\bunsafe\s*(\{|fn\b|impl\b|extern\b)|#!?\[unsafe\(')
+ALLOW_UNSAFE = re.compile(r'\ballow\(unsafe_code\b')
+DIFF_FILE = re.compile(r'diff --git a/(\S+) b/(\S+)')
 
 
 def title_problem(title):
@@ -121,6 +127,40 @@ def count(added, read):
     return tests, code, glue, problems
 
 
+def unsafe_changes(diff):
+    """(unsafe added, unsafe removed, allow-list entries added) in the Rust
+    lines of a full `git diff`, comments skipped."""
+    added = removed = allows = 0
+    rust = False
+    for line in diff.splitlines():
+        if file := DIFF_FILE.match(line):
+            rust = file[2].endswith('.rs')
+            continue
+        if not rust or line.startswith(('+++', '---')) or line[:1] not in '+-':
+            continue
+        content = line[1:]
+        if content.strip().startswith('//'):
+            continue
+        found = len(UNSAFE.findall(content))
+        if line[0] == '+':
+            added += found
+            allows += len(ALLOW_UNSAFE.findall(content))
+        else:
+            removed += found
+    return added, removed, allows
+
+
+def unsafe_problem(added, removed, allows, docs):
+    if docs:
+        return None
+    if added > removed:
+        return f'{added - removed} more unsafe blocks, functions or impls; list each in ' \
+            'docs/unsafe.md with why no safe formulation exists'
+    if allows:
+        return 'new allow(unsafe_code) entries; add the module to the list in docs/unsafe.md'
+    return None
+
+
 def ratio_problem(tests, code):
     if tests >= RATIO * code:
         return None
@@ -139,7 +179,13 @@ def main(argv, cwd=None):
     tests, code, glue, glue_problems = count(added_lines(diff), lambda path: (root / path).read_text(errors='replace'))
     exempted = f', {glue} window glue line{"" if glue == 1 else "s"}' if glue else ''
     print(f'{tests} test lines, {code} code lines{exempted}')
-    problems = [p for p in [title_problem(args.title), ratio_problem(tests, code)] if p] + glue_problems
+    full = git('diff', '--no-color', f'{args.base}...HEAD')
+    added, removed, allows = unsafe_changes(full)
+    if added or removed or allows:
+        print(f'unsafe: +{added} -{removed}' + (f', {allows} allow-list entries added' if allows else ''))
+    docs = '+++ b/docs/unsafe.md' in full
+    problems = [title_problem(args.title), ratio_problem(tests, code), unsafe_problem(added, removed, allows, docs)]
+    problems = [p for p in problems if p] + glue_problems
     for problem in problems:
         print(f'error: {problem}', file=sys.stderr)
     return 1 if problems else 0
