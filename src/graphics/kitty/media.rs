@@ -271,11 +271,9 @@ mod tests {
 		// SAFETY: a C string this test owns.
 		let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
 		assert!(fd >= 0);
+		let len = bytes.len() as libc::off_t;
 		// SAFETY: a descriptor this test owns.
-		assert_eq!(
-			unsafe { libc::ftruncate(fd, bytes.len() as libc::off_t) },
-			0
-		);
+		assert_eq!(unsafe { libc::ftruncate(fd, len) }, 0);
 		if bytes.is_empty() {
 			// SAFETY: closes the descriptor above, used no more.
 			unsafe { libc::close(fd) };
