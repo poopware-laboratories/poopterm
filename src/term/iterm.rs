@@ -1,8 +1,6 @@
 //! State behind iTerm2's OSC 1337 commands: user variables, the remote
 //! host, the cursor guide, text being copied to the clipboard, and requests
 //! for the window.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 use crate::graphics::iterm::Upload;
 
 /// Most user variables kept; new names beyond it are ignored.
@@ -17,20 +15,7 @@ pub(crate) const MAX_CAPTURE: usize = 1024 * 1024;
 /// This machine's host name, looked up once.
 pub(crate) fn hostname() -> &'static str {
 	static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-	NAME.get_or_init(|| {
-		let mut buffer = [0u8; 256];
-		// SAFETY: the buffer is writable for its whole length.
-		let result = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
-		let end = buffer
-			.iter()
-			.position(|&byte| byte == 0)
-			.unwrap_or(buffer.len());
-		if result == 0 {
-			String::from_utf8_lossy(&buffer[..end]).into_owned()
-		} else {
-			String::new()
-		}
-	})
+	NAME.get_or_init(|| crate::sys::user::hostname().unwrap_or_default())
 }
 
 /// Whether host names `a` and `b` name one machine: equal, ignoring case,

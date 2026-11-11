@@ -55,8 +55,6 @@ mod notifier;
 mod objc;
 mod parser;
 mod platform;
-#[cfg(test)]
-mod platform_tests;
 #[cfg(not(target_os = "macos"))]
 mod portal;
 #[cfg(all(test, not(target_os = "macos")))]
