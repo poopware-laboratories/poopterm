@@ -408,8 +408,9 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 }
 
 /// Probe, never merged: when a session leader outlives its closed PTY, can
-/// its number go to a new pair, and does its exit then break that pair?
-/// Each trial runs on a thread under a watchdog that names the stuck step.
+/// its number go to a new pair while the leader lives, and does a program on
+/// the new pair still work after the old leader exits? Nothing is left
+/// unread, so no close waits for output to drain.
 #[cfg(target_os = "macos")]
 #[test]
 fn probe_macos_revoke_after_reuse() {
@@ -424,18 +425,14 @@ fn probe_macos_revoke_after_reuse() {
 		let shared = Arc::clone(&step);
 		thread::spawn(move || {
 			let step = shared;
-			at(&step, "open old");
 			let old = open(cells(80, 24)).unwrap();
 			let old_path = old.path.clone();
-			at(&step, "spawn sleeper");
-			let mut child = spawn(&Program::new("sh").arg("-c").arg("sleep 0.3"), &old.slave).unwrap();
-			at(&step, "drop old pair");
+			let mut sleeper = spawn(&Program::new("sh").arg("-c").arg("sleep 0.5"), &old.slave).unwrap();
 			drop(old);
 			let begun = Instant::now();
 			let mut opens = 0;
 			let mut hit = None;
 			while begun.elapsed() < Duration::from_secs(2) {
-				at(&step, &format!("open new #{opens}"));
 				let pair = open(cells(80, 24)).unwrap();
 				opens += 1;
 				if pair.path == old_path {
@@ -443,23 +440,33 @@ fn probe_macos_revoke_after_reuse() {
 					break;
 				}
 			}
+			let reused_after = begun.elapsed().as_millis();
+			let sleeper_alive = sleeper.try_wait().map(|exit| exit.is_none());
 			at(&step, "wait sleeper");
-			let exit = child.wait();
-			thread::sleep(Duration::from_millis(50));
+			let exit = sleeper.wait();
 			let line = match hit {
-				None => format!("reused=false opens={opens} exit={exit:?}"),
+				None => format!("reused=false opens={opens} sleeper={exit:?}"),
 				Some(pair) => {
-					at(&step, "write reused slave");
-					let mut slave = File::from(pair.slave.try_clone().unwrap());
-					let write = slave.write_all(b"y").map_err(|e| e.raw_os_error());
+					thread::sleep(Duration::from_millis(100));
 					// SAFETY: asks about a descriptor we hold.
-					let tty = unsafe { libc::isatty(slave.as_raw_fd()) };
+					let tty = unsafe { libc::isatty(pair.slave.as_raw_fd()) };
 					at(&step, "spawn on reused pair");
-					let started = spawn(&Program::new("sh").arg("-c").arg("true"), &pair.slave)
-						.map_err(|e| e.raw_os_error());
+					let started = spawn(
+						&Program::new("sh").arg("-c").arg("printf ok; exit 7"),
+						&pair.slave,
+					)
+					.map_err(|e| e.raw_os_error());
+					at(&step, "read reused master");
+					let mut master = File::from(pair.master);
+					let mut shown = [0; 16];
+					let read = master
+						.read(&mut shown)
+						.map(|n| String::from_utf8_lossy(&shown[..n]).into_owned());
 					at(&step, "wait on reused pair");
-					let ended = started.map(|mut c| c.wait().is_ok());
-					format!("reused=true opens={opens} write={write:?} isatty={tty} spawn={ended:?}")
+					let ended = started.map(|mut child| child.wait().map_err(|e| e.raw_os_error()));
+					format!(
+						"reused=true after={reused_after}ms opens={opens} leader_alive_then={sleeper_alive:?} isatty={tty} read={read:?} program={ended:?}"
+					)
 				}
 			};
 			done.send(line).unwrap();
