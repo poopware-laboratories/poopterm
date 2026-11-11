@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
 	term::Cell,
-	vt::{Handler, Params, Parser},
+	vt::{Handler, Params, Parser, Text},
 };
 
 /// The model written the slow way: a grid of characters, one at a time,
@@ -74,7 +74,7 @@ impl Reference {
 }
 
 impl Handler for Reference {
-	fn print(&mut self, text: &str) {
+	fn print(&mut self, text: Text<'_>) {
 		text.chars().for_each(|ch| self.put_char(ch));
 	}
 	fn execute(&mut self, byte: u8) {

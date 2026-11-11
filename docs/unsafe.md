@@ -104,16 +104,17 @@ character; `Cell { ch, ..template }` compiles to a store per field), runs
 with `slice::fill`, and `trimmed_len` compares `bits`. A `const` assert next to `Cell`
 keeps the layout these compile to.
 
-### Conversions proven valid earlier
+### Validated text (no `unsafe`)
 
-| Where | Conversion | Proven by |
-|-------|-----------|-----------|
-| `vt/mod.rs` `Handler::print_ascii` | `str::from_utf8_unchecked` | The tokenizer only passes `0x20..=0x7e` here, which is ASCII and so UTF-8. |
-| `vt/mod.rs` `text` | `str::from_utf8_unchecked` | The SIMD validator (`vt/utf8.rs`) accepted the whole run just before. Runs it rejects go through `<[u8]>::utf8_chunks`, which is safe. |
-
-The vt differential tests feed random and malformed bytes against vte, and
-`batched_printing_matches_per_character_printing` checks the narrow path
-against per-character printing, so a wrong proof shows up as a mismatch.
+Printed text reaches `Handler::print` as a `vt::Text`: bytes the SIMD
+validator (`vt/utf8.rs`) accepted, never turned into a `&str` with
+`from_utf8_unchecked`. `vt::text::Chars` decodes them with slice patterns
+(one length check covers a whole character away from the end) and a checked
+`char::from_u32`, so a broken invariant would print U+FFFD, not read out of
+bounds. `str::from_utf8` instead would validate every run twice; the first
+safe version did, and cost CJK and emoji text over 20%. The tests decode
+every code point and compare mixed text with `str::chars`; the vt
+differential tests feed random and malformed bytes against vte.
 
 ### Moving rows
 

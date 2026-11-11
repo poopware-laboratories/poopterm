@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::{
 	graphics::kitty::PLACEHOLDER,
 	term::{Cell, Extras},
+	vt::Text,
 };
 
 /// Joins the marks at the start of `rest`, and after a joiner the characters
@@ -18,7 +19,7 @@ use crate::{
 pub(super) fn join_marks(
 	extras: &mut Arc<Extras>,
 	cell: &mut Cell,
-	rest: &str,
+	rest: Text<'_>,
 	room: usize,
 ) -> (usize, Option<(char, usize)>) {
 	let mut extra = cell.extra;
@@ -39,7 +40,7 @@ pub(super) fn join_marks(
 		};
 		extra = id.unwrap_or(extra);
 		joining = extras.marks(extra).last() == Some(&'\u{200d}');
-		used = rest.len() - chars.as_str().len();
+		used = rest.as_bytes().len() - chars.as_bytes().len();
 	};
 	cell.extra = extra;
 	match taken {

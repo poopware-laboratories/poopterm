@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use super::{cluster::join_marks, narrow};
+use crate::vt::Text;
 use crate::{
 	graphics::kitty::PLACEHOLDER,
 	term::{Cell, NO_EXTRA, Term, attr},
@@ -86,7 +87,7 @@ impl Term {
 
 	/// Prints text without C0 or C1 controls with one style lookup. Equivalent
 	/// to calling [`Term::apply_print`] per character.
-	pub(super) fn print_text(&mut self, text: &str) {
+	pub(super) fn print_text(&mut self, text: Text<'_>) {
 		#[cfg(target_arch = "x86_64")]
 		if crate::cpu::has_v3() {
 			// SAFETY: the CPU supports the features.
@@ -99,13 +100,13 @@ impl Term {
 	/// checks.
 	#[cfg(target_arch = "x86_64")]
 	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	pub(super) fn print_text_v3(&mut self, text: &str) {
+	pub(super) fn print_text_v3(&mut self, text: Text<'_>) {
 		self.print_text_with(text);
 	}
 
 	/// The body of [`Term::print_text`], compiled into each variant.
 	#[inline(always)]
-	pub(super) fn print_text_with(&mut self, text: &str) {
+	pub(super) fn print_text_with(&mut self, text: Text<'_>) {
 		let template = self.styled_cell();
 		let blank = self.blank();
 		let general = self.charsets[self.active_charset]
@@ -159,13 +160,13 @@ impl Term {
 				x += width;
 				narrow_run = if width == 1 { narrow_run + 1 } else { 0 };
 				while narrow_run >= narrow::RUN
-					&& let Some(chunk) = chars.as_str().as_bytes().first_chunk()
+					&& let Some(chunk) = chars.as_bytes().first_chunk()
 				{
 					let Some((len, used, last)) = narrow::print_chunk(chunk, &mut cells[x..], narrow) else {
 						narrow_run = 0;
 						break;
 					};
-					chars = chars.as_str()[len..].chars();
+					chars.advance(len);
 					(x, c) = (x + used, last);
 				}
 				// Peek: a character that does not fit goes to the general path.
@@ -177,9 +178,9 @@ impl Term {
 				if next_width == 0 || x + next_width > cols || next == PLACEHOLDER {
 					// Marks join the character just written, and the run goes on
 					// after them without setting up the segment again.
-					let rest = before.as_str();
+					let rest = before.as_text();
 					let (used, resumed) = join_marks(&mut self.extras, &mut cells[x - width], rest, cols - x);
-					chars = rest[used..].chars();
+					chars = rest.split_at(used).1.chars();
 					let Some(resumed) = resumed else {
 						break;
 					};

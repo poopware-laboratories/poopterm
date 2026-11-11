@@ -175,9 +175,9 @@ fn v3_printing_matches_the_baseline_in_every_mode_and_width() {
 				let mut baseline = terminal(cols);
 				Parser::new().advance(&mut baseline, setup);
 				let mut v3 = baseline.clone();
-				baseline.print_text_with(&text);
+				baseline.print_text_with(text.as_str().into());
 				// SAFETY: checked above.
-				unsafe { v3.print_text_v3(&text) };
+				unsafe { v3.print_text_v3(text.as_str().into()) };
 				assert_eq!(
 					state(&v3),
 					state(&baseline),

@@ -34,7 +34,7 @@ mod window_ops;
 
 use crate::{
 	term::Term,
-	vt::{self, Handler},
+	vt::{self, Handler, Text},
 };
 #[cfg(test)]
 pub(crate) use color_spec::encode as encode_color;
@@ -69,9 +69,11 @@ impl Handler for Term {
 		self.print_ascii(text);
 	}
 	#[inline(always)]
-	fn print(&mut self, text: &str) {
+	fn print(&mut self, text: Text<'_>) {
 		if self.iterm.capture.is_some() {
-			self.iterm.capture(text);
+			self
+				.iterm
+				.capture(std::str::from_utf8(text.as_bytes()).unwrap_or_default());
 		}
 		self.print_text(text);
 	}
