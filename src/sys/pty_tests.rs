@@ -293,11 +293,13 @@ fn the_master_ends_once_the_slave_closes() {
 	let mut slave = File::from(ours.slave);
 	slave.write_all(b"last\n").unwrap();
 	// Read before the close: macOS and FreeBSD drop what the master has not
-	// read once the slave closes, Linux keeps it.
-	let mut buf = [0; 16];
-	let n = out.read(&mut buf).unwrap();
-	assert_eq!(&buf[..n], b"last\r\n");
+	// read once the slave closes, Linux keeps it. One read may return part
+	// of the line (`last` before `\r\n` was seen in CI), so read it whole.
+	let mut line = [0; 6];
+	out.read_exact(&mut line).unwrap();
+	assert_eq!(&line, b"last\r\n");
 	drop(slave);
+	let mut buf = [0; 16];
 	// Then Linux answers EIO and the BSDs end of file; a reader must stop at
 	// either.
 	match out.read(&mut buf) {
