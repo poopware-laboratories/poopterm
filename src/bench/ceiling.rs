@@ -13,7 +13,7 @@ use std::{
 use super::corpus::Size;
 use crate::{
 	term::Cell,
-	vt::{Handler, Params, Parser},
+	vt::{Handler, Params, Parser, Text},
 };
 
 /// Lines of history the timed copy writes into, as a full history would.
@@ -76,8 +76,10 @@ impl Handler for Model {
 	fn print_ascii(&mut self, text: &[u8]) {
 		self.text(text.len());
 	}
-	fn print(&mut self, text: &str) {
-		self.text(text.chars().count());
+	fn print(&mut self, text: Text<'_>) {
+		// Every byte but a continuation byte starts a character.
+		let chars = text.as_bytes().iter().filter(|&&byte| byte & 0xc0 != 0x80);
+		self.text(chars.count());
 	}
 	fn execute(&mut self, byte: u8) {
 		match byte {
