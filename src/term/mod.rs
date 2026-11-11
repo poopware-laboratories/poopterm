@@ -1,5 +1,7 @@
 //! Terminal grid, scrollback, cursor and screen state.
 #[cfg(test)]
+mod alternate_scroll_tests;
+#[cfg(test)]
 mod bright_tests;
 #[cfg(test)]
 mod cell_tests;
@@ -281,6 +283,9 @@ pub(crate) struct Term {
 	pub(crate) bracketed_paste: bool,
 	pub(crate) mouse_tracking: u16,
 	pub(crate) mouse_sgr: bool,
+	/// `?1007`: the wheel sends cursor keys on the alternate screen when
+	/// the program does not track the mouse. On by default.
+	pub(crate) alternate_scroll: bool,
 	pub(crate) application_cursor: bool,
 	/// DECKPAM / DECNKM: the numeric keypad sends application sequences.
 	pub(crate) application_keypad: bool,
@@ -498,6 +503,7 @@ impl Term {
 			bracketed_paste: false,
 			mouse_tracking: 0,
 			mouse_sgr: false,
+			alternate_scroll: true,
 			application_cursor: false,
 			application_keypad: false,
 			origin_mode: false,

@@ -25,6 +25,37 @@ impl ScrollAccumulator {
 	}
 }
 
+/// What a turn of the wheel does in the terminal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WheelAction {
+	/// Already sent to the program as mouse reports.
+	Report,
+	/// Cursor keys for the program on the alternate screen.
+	Keys,
+	/// Scrolls the history in view.
+	ScrollView,
+	/// Nothing: the alternate screen has no history, and the program
+	/// turned alternate scroll (`?1007`) off.
+	Nothing,
+}
+
+/// Chooses what the wheel does: reports when the program tracks the mouse
+/// over its grid, cursor keys on the alternate screen when alternate scroll
+/// is on, and otherwise scrolling the history in view.
+pub(crate) fn wheel_action(
+	tracking: bool,
+	over_grid: bool,
+	alternate_screen: bool,
+	alternate_scroll: bool,
+) -> WheelAction {
+	match (tracking && over_grid, alternate_screen, alternate_scroll) {
+		(true, _, _) => WheelAction::Report,
+		(false, true, true) => WheelAction::Keys,
+		(false, true, false) => WheelAction::Nothing,
+		(false, false, _) => WheelAction::ScrollView,
+	}
+}
+
 /// Cursor-key presses that emulate scrolling in alternate-screen programs
 /// without mouse tracking (xterm's `alternateScroll`), e.g. `less` or `man`.
 pub(crate) fn alternate_scroll_bytes(lines: isize, application_cursor: bool) -> Vec<u8> {
@@ -55,6 +86,44 @@ mod tests {
 		let mut scroll = ScrollAccumulator::default();
 		assert_eq!(scroll.lines(3.0), 3);
 		assert_eq!(scroll.lines(-1.0), -1);
+	}
+
+	#[test]
+	fn a_tracking_program_gets_the_wheel_over_its_grid() {
+		for alternate in [false, true] {
+			for keys in [false, true] {
+				assert_eq!(
+					wheel_action(true, true, alternate, keys),
+					WheelAction::Report
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn the_alternate_screen_gets_cursor_keys_only_with_alternate_scroll() {
+		for (tracking, over_grid) in [(false, true), (false, false), (true, false)] {
+			assert_eq!(
+				wheel_action(tracking, over_grid, true, true),
+				WheelAction::Keys
+			);
+			assert_eq!(
+				wheel_action(tracking, over_grid, true, false),
+				WheelAction::Nothing
+			);
+		}
+	}
+
+	#[test]
+	fn the_main_screen_scrolls_its_history_whatever_alternate_scroll_says() {
+		for (tracking, over_grid) in [(false, true), (false, false), (true, false)] {
+			for keys in [false, true] {
+				assert_eq!(
+					wheel_action(tracking, over_grid, false, keys),
+					WheelAction::ScrollView
+				);
+			}
+		}
 	}
 
 	#[test]
