@@ -165,12 +165,8 @@ fn kevent(ident: usize, filter: i16, flags: u16, fflags: u32) -> libc::kevent {
 	event
 }
 
-/// Whether a process `pid`, above 0, exists, a zombie included.
 #[cfg(not(target_os = "linux"))]
-fn exists(pid: libc::pid_t) -> bool {
-	// SAFETY: signal 0 sends nothing; it only checks the pid.
-	unsafe { libc::kill(pid, 0) == 0 }
-}
+use crate::sys::process::exists;
 
 #[cfg(not(target_os = "linux"))]
 impl Exits {

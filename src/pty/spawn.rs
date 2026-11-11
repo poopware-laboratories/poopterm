@@ -84,14 +84,8 @@ impl Command {
 	}
 }
 
-/// How a program ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Exit {
-	/// It exited with this status.
-	Code(i32),
-	/// A signal killed it.
-	Signal(i32),
-}
+pub(crate) use crate::sys::process::Exit;
+use crate::sys::process::{self, wait as wait_for};
 
 /// A started program, not yet waited for.
 pub(crate) struct Child {
@@ -114,16 +108,12 @@ impl Child {
 		expect(dead_code, reason = "exit status in the app comes next")
 	)]
 	pub(crate) fn try_wait(&mut self) -> io::Result<Option<Exit>> {
-		let mut status = 0;
-		// SAFETY: writes the status into the integer we own; never blocks.
-		let reaped = check(unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) })?;
-		Ok(if reaped == 0 { None } else { exit_of(status) })
+		process::try_wait(self.pid)
 	}
 
 	/// Sends `SIGHUP`, as a terminal does when it closes.
 	pub(crate) fn hang_up(&self) -> io::Result<()> {
-		// SAFETY: sends a signal to the process we started; takes no memory.
-		check(unsafe { libc::kill(self.pid, libc::SIGHUP) }).map(drop)
+		process::hang_up(self.pid)
 	}
 }
 
@@ -406,35 +396,6 @@ fn read_report(mut pipe: &io::PipeReader) -> io::Result<()> {
 			Err(error) => return Err(error),
 			Ok(_) => return Err(io::Error::from(io::ErrorKind::InvalidData)),
 		}
-	}
-}
-
-/// Waits for `pid` to end and says how.
-fn wait_for(pid: libc::pid_t) -> io::Result<Exit> {
-	let mut status = 0;
-	loop {
-		// SAFETY: writes the status into the integer we own.
-		if unsafe { libc::waitpid(pid, &mut status, 0) } < 0 {
-			let error = io::Error::last_os_error();
-			if error.kind() == io::ErrorKind::Interrupted {
-				continue;
-			}
-			return Err(error);
-		}
-		if let Some(exit) = exit_of(status) {
-			return Ok(exit);
-		}
-	}
-}
-
-/// How a `waitpid` status says the program ended, if it did.
-fn exit_of(status: libc::c_int) -> Option<Exit> {
-	if libc::WIFEXITED(status) {
-		Some(Exit::Code(libc::WEXITSTATUS(status)))
-	} else if libc::WIFSIGNALED(status) {
-		Some(Exit::Signal(libc::WTERMSIG(status)))
-	} else {
-		None
 	}
 }
 

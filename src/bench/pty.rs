@@ -7,8 +7,6 @@
 //! processing every program gets (OPOST, ONLCR turning `\n` into `\r\n`),
 //! which costs the kernel time per line; raw mode turns it off, so the
 //! terminal's own speed shows.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 
 use std::{
 	error::Error,
@@ -354,8 +352,8 @@ mod tests {
 		// until it is hung up and reaped.
 		let seen = output(&["sh", "-c", "echo $PPID"], SMALL, Mode::Raw);
 		let wrapper: libc::pid_t = String::from_utf8(seen).unwrap().trim().parse().unwrap();
-		// SAFETY: signal 0 sends nothing; a reaped pid no longer exists.
-		let alive = unsafe { libc::kill(wrapper, 0) } == 0;
+		// A reaped pid no longer exists.
+		let alive = crate::sys::process::exists(wrapper);
 		assert!(!alive, "the shell {wrapper} outlived its run");
 	}
 
