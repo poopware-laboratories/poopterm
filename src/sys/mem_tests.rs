@@ -118,6 +118,34 @@ fn a_shared_mapping_sees_later_writes_to_the_file_and_other_mappings() {
 	assert_eq!(shared.bytes(), b"After!");
 }
 
+/// The permissions `/proc/self/maps` shows for the one mapping of `path`.
+#[cfg(target_os = "linux")]
+fn permissions(path: &std::path::Path) -> String {
+	let maps = std::fs::read_to_string("/proc/self/maps").unwrap();
+	let lines: Vec<_> = maps
+		.lines()
+		.filter(|line| line.ends_with(path.to_str().unwrap()))
+		.collect();
+	assert_eq!(lines.len(), 1, "{lines:?}");
+	lines[0].split_whitespace().nth(1).unwrap().to_owned()
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn mappings_have_the_protection_and_sharing_asked_for() {
+	let (temp, file) = temp("permissions", b"data");
+	let cases: [(fn(BorrowedFd<'_>) -> io::Result<Map>, &str); 3] = [
+		(|fd| Map::read(fd, 4, false), "r--p"),
+		(|fd| Map::read(fd, 4, true), "r--s"),
+		(|fd| Map::shared(fd, 4), "rw-s"),
+	];
+	for (map, expected) in cases {
+		let map = map(file.as_fd()).unwrap();
+		assert_eq!(permissions(&temp.0), expected);
+		drop(map);
+	}
+}
+
 #[test]
 fn words_are_the_whole_words_of_the_mapping() {
 	let (_temp, file) = temp("words", &[0; 10]);

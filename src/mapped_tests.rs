@@ -1,3 +1,5 @@
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use crate::scratch_tests::Scratch;
 use std::{fs, io::ErrorKind, path::Path, thread};
 
