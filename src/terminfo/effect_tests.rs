@@ -75,7 +75,7 @@ fn state(t: &Term) -> String {
 	let modes = (
 		t.bracketed_paste,
 		t.mouse_tracking,
-		t.mouse_sgr,
+		t.mouse_encoding,
 		t.application_cursor,
 		t.application_keypad,
 		t.auto_wrap,
@@ -315,7 +315,9 @@ fn line_drawing_and_paste_brackets_match_what_poopterm_does() {
 	feed(&mut term, &flash[back..]);
 	assert!(!term.reverse_screen);
 	// xm describes SGR mouse reports from 0-based y and x, button, pressed.
-	use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse};
+	use crate::input::mouse::{
+		MouseAction, MouseButtonCode, MouseEncoding, MouseReport, encode_mouse,
+	};
 	for (kind, pressed) in [(MouseAction::Press, "1"), (MouseAction::Release, "0")] {
 		let report = MouseReport {
 			button: MouseButtonCode::Right,
@@ -325,7 +327,7 @@ fn line_drawing_and_paste_brackets_match_what_poopterm_does() {
 			mods: Default::default(),
 		};
 		let xm = entry.tput("xm", &["2", "3", "2", pressed]);
-		assert_eq!(encode_mouse(report, true), Some(xm));
+		assert_eq!(encode_mouse(report, MouseEncoding::Sgr, 1000), Some(xm));
 	}
 	let pasted = crate::input::paste::paste_bytes("x", true);
 	let mut expected = entry.tput("PS", &[]);

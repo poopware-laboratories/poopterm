@@ -1,5 +1,6 @@
 //! Control Sequence Introducer (`CSI`) dispatch: cursor, erase, scroll and modes.
 use super::params::ParamList;
+use crate::input::mouse::MouseEncoding;
 use crate::term::{CursorShape, Term};
 
 impl Term {
@@ -127,10 +128,17 @@ impl Term {
 						}
 					}
 					1049 | 47 | 1047 => self.alternate_screen(enabled),
-					1000 | 1002 | 1003 => self.mouse_tracking = if enabled { p } else { 0 },
+					9 | 1000 | 1002 | 1003 => self.mouse_tracking = if enabled { p } else { 0 },
 					1004 => self.focus_reporting = enabled,
 					1007 => self.alternate_scroll = enabled,
-					1006 => self.mouse_sgr = enabled,
+					1005 | 1006 | 1015 => {
+						let encoding = MouseEncoding::from_mode(p).unwrap_or_default();
+						if enabled {
+							self.mouse_encoding = encoding;
+						} else if self.mouse_encoding == encoding {
+							self.mouse_encoding = MouseEncoding::X10;
+						}
+					}
 					2004 => self.bracketed_paste = enabled,
 					_ => self
 						.keyboard
@@ -359,10 +367,10 @@ impl Term {
 			25 => self.cursor_visible,
 			47 | 1047 | 1049 => self.primary_screen.is_some(),
 			80 => self.sixel_scrolling,
-			1000 | 1002 | 1003 => self.mouse_tracking == mode,
+			9 | 1000 | 1002 | 1003 => self.mouse_tracking == mode,
 			1004 => self.focus_reporting,
 			1007 => self.alternate_scroll,
-			1006 => self.mouse_sgr,
+			1005 | 1006 | 1015 => self.mouse_encoding.mode() == Some(mode),
 			2004 => self.bracketed_paste,
 			_ => return self.keyboard.clone().mode(mode).copied(),
 		})

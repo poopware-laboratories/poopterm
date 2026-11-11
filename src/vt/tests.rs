@@ -253,6 +253,9 @@ fn check(stream: &[u8], splits: &[usize]) {
 fn fragment(rng: &mut Rng, out: &mut Vec<u8>) {
 	const PIECES: &[&[u8]] = &[
 		b"hello world ",
+		b"\x1b[?9h",
+		b"\x1b[?1005;1015h",
+		b"\x1b[?1015$p",
 		b"\x1b[",
 		b"\x1b]",
 		b"\x1bP",

@@ -58,6 +58,8 @@ mod memory_lock_tests;
 #[cfg(test)]
 mod mode_tests;
 #[cfg(test)]
+mod mouse_mode_tests;
+#[cfg(test)]
 mod movement_tests;
 pub(crate) mod multicell;
 #[cfg(test)]
@@ -282,7 +284,7 @@ pub(crate) struct Term {
 	pub(crate) saved_cursor: Option<SavedCursor>,
 	pub(crate) bracketed_paste: bool,
 	pub(crate) mouse_tracking: u16,
-	pub(crate) mouse_sgr: bool,
+	pub(crate) mouse_encoding: crate::input::mouse::MouseEncoding,
 	/// `?1007`: the wheel sends cursor keys on the alternate screen when
 	/// the program does not track the mouse. On by default.
 	pub(crate) alternate_scroll: bool,
@@ -502,7 +504,7 @@ impl Term {
 			saved_cursor: None,
 			bracketed_paste: false,
 			mouse_tracking: 0,
-			mouse_sgr: false,
+			mouse_encoding: Default::default(),
 			alternate_scroll: true,
 			application_cursor: false,
 			application_keypad: false,
