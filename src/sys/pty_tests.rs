@@ -407,54 +407,71 @@ fn check_passes_results_and_turns_negatives_into_errno() {
 	assert_eq!(check(3).unwrap(), 3);
 }
 
-/// Probe, never merged: many threads opening PTYs, starting a program on
-/// each and closing them. Which stage fails, with which errno, and does
-/// closing under a lock (as opening already is) stop it?
+/// Probe, never merged: does a child taking its terminal fail with ENXIO
+/// while another thread grows the process's PTY count to a new high, and
+/// does a lock shared by spawning and opening stop it?
 #[cfg(target_os = "macos")]
 #[test]
-fn probe_macos_concurrent_pty_churn() {
+fn probe_macos_spawn_during_pty_growth() {
 	use crate::sys::spawn::{Command as Program, spawn};
 	use std::collections::BTreeMap;
+	use std::sync::atomic::{AtomicBool, Ordering};
 	use std::sync::{Arc, Mutex};
-	static CLOSING: Mutex<()> = Mutex::new(());
+	static SHARED: Mutex<()> = Mutex::new(());
 	let mut report = Vec::new();
-	for locked_close in [false, true, false, true] {
+	for (round, locked) in [false, true, false, true].into_iter().enumerate() {
 		let errors = Arc::new(Mutex::new(BTreeMap::<String, usize>::new()));
-		let threads: Vec<_> = (0..8)
+		let growing = Arc::new(AtomicBool::new(true));
+		let spawners: Vec<_> = (0..8)
 			.map(|_| {
 				let errors = Arc::clone(&errors);
+				let growing = Arc::clone(&growing);
 				thread::spawn(move || {
 					let count = |what: String| *errors.lock().unwrap().entry(what).or_default() += 1;
-					for _ in 0..40 {
-						let pair = match open(cells(80, 24)) {
-							Ok(pair) => pair,
-							Err(e) => {
-								count(format!("open {:?}", e.raw_os_error()));
-								continue;
-							}
+					while growing.load(Ordering::Relaxed) {
+						let Ok(pair) = open(cells(80, 24)) else {
+							count("open".into());
+							continue;
 						};
-						match spawn(&Program::new("/usr/bin/true"), &pair.slave) {
-							Ok(mut child) => match child.wait() {
-								Ok(_) => count("ok".into()),
-								Err(e) => count(format!("wait {:?}", e.raw_os_error())),
-							},
+						let started = {
+							let _turn = locked.then(|| SHARED.lock().unwrap());
+							spawn(&Program::new("/usr/bin/true"), &pair.slave)
+						};
+						match started {
+							Ok(mut child) => {
+								let _ = child.wait();
+								count("ok".into());
+							}
 							Err(e) => count(format!("spawn {:?}", e.raw_os_error())),
-						}
-						if locked_close {
-							let _turn = CLOSING.lock().unwrap();
-							drop(pair);
-						} else {
-							drop(pair);
 						}
 					}
 				})
 			})
 			.collect();
-		for thread in threads {
-			thread.join().unwrap();
+		// Each round reaches a new high: 100, 200, 300, 400 pairs at once.
+		let mut held = Vec::new();
+		for _ in 0..100 * (round + 1) {
+			let _turn = locked.then(|| SHARED.lock().unwrap());
+			match open(cells(80, 24)) {
+				Ok(pair) => held.push(pair),
+				Err(e) => {
+					*errors
+						.lock()
+						.unwrap()
+						.entry(format!("grow {:?}", e.raw_os_error()))
+						.or_default() += 1;
+					break;
+				}
+			}
+		}
+		let peak = held.len();
+		drop(held);
+		growing.store(false, Ordering::Relaxed);
+		for spawner in spawners {
+			spawner.join().unwrap();
 		}
 		report.push(format!(
-			"locked_close={locked_close} {:?}",
+			"locked={locked} peak={peak} {:?}",
 			errors.lock().unwrap()
 		));
 	}
