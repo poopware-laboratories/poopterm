@@ -73,24 +73,69 @@ pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
 	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 	let flags = libc::O_RDWR | libc::O_NOCTTY;
 	// SAFETY: takes only flags; a non-negative result is a new descriptor.
-	let fd = check(unsafe { libc::posix_openpt(flags) })?;
+	let fd = check(unsafe { libc::posix_openpt(flags) }).map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step posix_openpt: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
 	// SAFETY: `fd` was just opened and nothing else owns it.
 	let master = unsafe { OwnedFd::from_raw_fd(fd) };
 	#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 	// SAFETY: sets a descriptor flag on a descriptor we own.
 	check(unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) })?;
 	// SAFETY: `fd` is a PTY master we own; these take nothing else.
-	check(unsafe { libc::grantpt(fd) })?;
+	check(unsafe { libc::grantpt(fd) }).map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step grantpt: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
 	// SAFETY: as above.
-	check(unsafe { libc::unlockpt(fd) })?;
-	let path = slave_path(&master)?;
+	check(unsafe { libc::unlockpt(fd) }).map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step unlockpt: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
+	let path = slave_path(&master).map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step ptsname_r: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
 	let slave = OpenOptions::new()
 		.read(true)
 		.write(true)
 		.custom_flags(libc::O_NOCTTY)
-		.open(&path)?;
-	super::termios::set(&slave, &super::termios::sane(super::termios::get(&slave)?))?;
-	set_size(&master, size)?;
+		.open(&path)
+		.map_err(|e| {
+			io::Error::new(
+				e.kind(),
+				format!("PROBE step open slave: {e} ({:?})", e.raw_os_error()),
+			)
+		})?;
+	super::termios::set(
+		&slave,
+		&super::termios::sane(super::termios::get(&slave).map_err(|e| {
+			io::Error::new(
+				e.kind(),
+				format!("PROBE step tcgetattr: {e} ({:?})", e.raw_os_error()),
+			)
+		})?),
+	)
+	.map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step tcsetattr: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
+	set_size(&master, size).map_err(|e| {
+		io::Error::new(
+			e.kind(),
+			format!("PROBE step set_size: {e} ({:?})", e.raw_os_error()),
+		)
+	})?;
 	Ok(Pair {
 		master,
 		slave: slave.into(),
