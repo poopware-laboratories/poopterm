@@ -64,8 +64,6 @@ mod portal_tests;
 	expect(dead_code, reason = "the Wayland present path uses it next")
 )]
 mod present;
-// Our PTY layer: fork, exec, termios and descriptors are the kernel's.
-#[allow(unsafe_code)]
 mod pty;
 mod render;
 #[cfg(test)]

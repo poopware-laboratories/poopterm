@@ -7,6 +7,8 @@
 //! child makes only async-signal-safe calls, as POSIX requires of a child
 //! of a threaded process. A close-on-exec pipe carries `errno` back if any
 //! step fails, so reading nothing from it means `exec` succeeded.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 
 use std::{
 	ffi::{CString, OsStr, OsString},

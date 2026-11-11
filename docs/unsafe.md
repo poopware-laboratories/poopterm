@@ -35,20 +35,21 @@ get one safe wrapper each in the steps that follow.
 `Cargo.toml` denies `unsafe_code` everywhere else. The allow-list:
 
 - **Module trees that are calls into C:** `gpu::vk` (Vulkan), `gpu::mtl`
-  (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb),
-  `pty` (fork, exec, termios, descriptors) and `sys` (safe wrappers over
-  the kernel calls the standard library lacks). Each has one
+  (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb)
+  and `sys` (safe wrappers over the kernel calls the standard library
+  lacks, PTY pairs and terminal settings among them). Each has one
   `#[allow(unsafe_code)]` on its `mod` line.
 - **Files with operating-system or library calls:** `allocator`,
-  `app/gpu`, `app/wayland`, `library`, `objc`, `about_menu` and
-  `platform`. Each starts with `#![allow(unsafe_code)]` and a comment.
+  `app/gpu`, `app/wayland`, `library`, `objc`, `about_menu`, `platform`,
+  `pty/exits` (process exits through epoll or kqueue) and `pty/spawn`
+  (fork and exec). Each starts with `#![allow(unsafe_code)]` and a comment.
 - **CPU dispatch:** `parser/print`, `render/painter` and `vt/utf8`, and in
   `mod.rs` files, where a file-wide allow would cover the whole tree, only
   the one function: `Cell::fill` and `vt::Parser::advance`.
 - **Tests** that call C or a dispatched copy directly, under otherwise
   safe modules: `cgroup_tree_tests`, `fonts/data_tests`, `mapped_tests`,
-  `parser/dispatch_tests`, `present/memory_tests`,
-  `shell_integration/tests`, `term/cell_tests`, `term/fill_tests`,
+  `parser/dispatch_tests`, `present/memory_tests`, `pty/reap_tests`,
+  `pty/session_tests`, `shell_integration/tests`, `term/cell_tests`, `term/fill_tests`,
   `vt/tests` and `vt/utf8_tests`.
 
 `scripts/pr_check.py` prints how many `unsafe` blocks, functions and impls
@@ -150,10 +151,10 @@ differential tests feed random and malformed bytes against vte.
 | `allocator.rs` (Linux) | `prctl(PR_SET_THP_DISABLE, 1)`, and `#[unsafe(link_section = ".init_array.00100")]` on the function pointer that calls it | Takes plain integers and sets one flag of this process; no memory is passed. The pointer is a plain `extern "C" fn()` the loader calls once, single-threaded, before `main` and before mimalloc's own constructor (priority 101), so nothing else runs yet. The flag is inherited through `fork` and kept across `execve`, so the shell's child clears it (`pty/spawn.rs`). Tested in `allocator_tests.rs` and `spawn_tests.rs`, each in a process of its own, and on the built binary in `tests/huge_pages.rs`. |
 | `allocator.rs` | `mi_option_set` (and `mi_option_get` in tests), declared `safe` in an `unsafe extern` block | mimalloc's public C API, linked in by the `mimalloc` crate. Both take plain integers, accept any option index and are thread-safe, so no call can be unsound. The option's index comes from the vendored `mimalloc.h`; a test pins it by the option's default. |
 | `library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when its owner drops: the Vulkan `Entry`, after the instance made from it is destroyed, or the Wayland `Client`, after every proxy made through it. |
-| `pty/device.rs` | `posix_openpt`, `OwnedFd::from_raw_fd`, `grantpt`, `unlockpt`, `fcntl(F_SETFD)` (macOS) | Each takes flags or the master descriptor we just opened and own, and the results are checked. A non-negative `posix_openpt` result is a new descriptor that the `OwnedFd` owns from then on, so an early error closes it. macOS refuses `O_CLOEXEC` in `posix_openpt`, so the flag is set on the next line. The slave is opened with `OpenOptions` and `O_NOCTTY`, with no `unsafe`. Tested against portable-pty in `device_tests.rs`, and so is the closing on exec. |
-| `pty/device.rs` | `ptsname_r` (declared by us on macOS, where the libc crate lacks it) | Writes at most the buffer's length, NUL included, into a stack buffer, and the name ends at the first NUL. Never plain `ptsname`, whose one buffer per process other threads (portable-pty's `openpty` on FreeBSD, #250) overwrite. The macOS declaration matches libSystem's, present since macOS 10.13.4, below our minimum of 11. |
-| `pty/device.rs` | `ioctl(TIOCSWINSZ)`, `ioctl(TIOCGWINSZ)` | Each reads or writes exactly one `libc::winsize`, which lives on the stack through the call, on a descriptor borrowed through `AsFd`. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
-| `pty/termios.rs` | `tcgetattr` (with `MaybeUninit::assume_init`), `tcsetattr`, `cfsetispeed`, `cfsetospeed` | `tcgetattr` fills the whole `termios` on success, and only then is it read; on failure the error is returned and the memory dropped unread. `tcsetattr` reads one `termios` that outlives the call. The speed setters write a field of a `termios` we own, with a speed the platform defines. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
+| `sys/pty.rs` | `posix_openpt`, `OwnedFd::from_raw_fd`, `grantpt`, `unlockpt`, `fcntl(F_SETFD)` (macOS) | Each takes flags or the master descriptor we just opened and own, and the results are checked. A non-negative `posix_openpt` result is a new descriptor that the `OwnedFd` owns from then on, so an early error closes it. macOS refuses `O_CLOEXEC` in `posix_openpt`, so the flag is set on the next line. The slave is opened with `OpenOptions` and `O_NOCTTY`, with no `unsafe`. Tested against portable-pty in `sys/pty_tests.rs`, and so is the closing on exec. |
+| `sys/pty.rs` | `ptsname_r` (declared by us on macOS, where the libc crate lacks it) | Writes at most the buffer's length, NUL included, into a stack buffer, and the name ends at the first NUL. Never plain `ptsname`, whose one buffer per process other threads (portable-pty's `openpty` on FreeBSD, #250) overwrite. The macOS declaration matches libSystem's, present since macOS 10.13.4, below our minimum of 11. |
+| `sys/pty.rs` | `ioctl(TIOCSWINSZ)`, `ioctl(TIOCGWINSZ)` | Each reads or writes exactly one `libc::winsize`, which lives on the stack through the call, on a descriptor borrowed through `AsFd`. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
+| `sys/termios.rs` | `tcgetattr` (with `MaybeUninit::assume_init`), `tcsetattr`, `cfsetispeed`, `cfsetospeed` | `tcgetattr` fills the whole `termios` on success, and only then is it read; on failure the error is returned and the memory dropped unread. `tcsetattr` reads one `termios` that outlives the call. The speed setters write a field of a `termios` we own, with a speed the platform defines. A descriptor that is not a terminal fails with `ENOTTY` (tested). |
 | `pty/spawn.rs` | `fork`, then in the child `setsid`, `ioctl(TIOCSCTTY)`, ``dup2`, `close_range`/`syscall(SYS_close_range)` or `fcntl(F_SETFD)` per descriptor, `sigprocmask`, `sigaction`, `chdir`, `prctl(PR_SET_THP_DISABLE, 0)` (Linux), `execve`, `write`, `_exit` | The child of a threaded process may make only async-signal-safe calls, and every call after `fork` is one; none allocates, locks or unwinds. The path, `argv`, `envp` (NUL-terminated pointer arrays), working directory, empty signal set and default `sigaction` are all built before the fork and owned by a `Prepared` that outlives `execve`. `errno` goes back as four bytes on a pipe whose ends are close-on-exec, so a successful `execve` closes it and the parent reads nothing; on failure the child `_exit`s, running no destructors or `atexit` handlers. macOS's `TIOCSCTTY` (`_IO('t', 97)`, missing from the libc crate there) is copied from `<sys/ttycom.h>`. Tested from inside the program in `spawn_tests.rs`: controlling terminal, session, signals, leaked descriptors, `exec` errors. |
 | `pty/spawn.rs` | `sysconf`, `sigemptyset`, `mem::zeroed` for `sigset_t` and `sigaction` | In the parent: each writes only into a buffer or struct we own and checks its result. The pipe that reports `exec` errors is `std::io::pipe`, closed on exec, read safely. All zeroes is a valid `sigset_t` and `sigaction`, and zero in `sa_sigaction` is `SIG_DFL`. |
 | `sys/process.rs` | `kill(pid, 0)`, `kill(pid, SIGHUP)`, `waitpid` (blocking, or with `WNOHANG`) | Each takes plain integers, and `waitpid` writes the status into an integer we own; results are checked, and a blocking wait retries on `EINTR`. IDs of 0 or below, which `kill` takes as process groups (0 is our own), are refused: `exists` says false and `hang_up` fails with `InvalidInput`. `pty/spawn.rs` hangs up and waits only for the child it started, and `pty/exits.rs` checks pids it was given (macOS, FreeBSD). Tested in `sys/process_tests.rs` and through `spawn_tests.rs`. |
