@@ -35,18 +35,19 @@ get one safe wrapper each in the steps that follow.
 `Cargo.toml` denies `unsafe_code` everywhere else. The allow-list:
 
 - **Module trees that are calls into C:** `gpu::vk` (Vulkan), `gpu::mtl`
-  (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb)
-  and `pty` (fork, exec, termios, descriptors). Each has one
+  (Metal), `present::wayland` (libwayland-client), `present::x11` (libxcb),
+  `pty` (fork, exec, termios, descriptors) and `sys` (safe wrappers over
+  the kernel calls the standard library lacks). Each has one
   `#[allow(unsafe_code)]` on its `mod` line.
 - **Files with operating-system or library calls:** `allocator`,
-  `app/gpu`, `app/wayland`, `bench/pty`, `graphics/kitty/media`, `library`,
-  `mapped`, `objc`, `about_menu`, `platform`, `present/memory` and
-  `term/iterm`. Each starts with `#![allow(unsafe_code)]` and a comment.
+  `app/gpu`, `app/wayland`, `bench/pty`, `library`, `objc`, `about_menu`,
+  `platform` and `term/iterm`. Each starts with `#![allow(unsafe_code)]`
+  and a comment.
 - **CPU dispatch:** `parser/print`, `render/painter` and `vt/utf8`, and in
   `mod.rs` files, where a file-wide allow would cover the whole tree, only
   the one function: `Cell::fill` and `vt::Parser::advance`.
 - **Tests** that call C or a dispatched copy directly, under otherwise
-  safe modules: `cgroup_tree_tests`, `fonts/data_tests`,
+  safe modules: `cgroup_tree_tests`, `fonts/data_tests`, `mapped_tests`,
   `parser/dispatch_tests`, `present/memory_tests`,
   `shell_integration/tests`, `term/cell_tests`, `term/fill_tests`,
   `vt/tests` and `vt/utf8_tests`.
@@ -147,11 +148,8 @@ differential tests feed random and malformed bytes against vte.
 |-------|------|-----------------|
 | `platform.rs` `uid` | `libc::getuid` | Takes no arguments, touches no memory and cannot fail. The one safe wrapper, used for D-Bus `EXTERNAL` authentication, for a per-user icon directory (used only if it is ours and not group- or world-writable) and to look up the login shell. |
 | `term/iterm.rs` | `libc::gethostname` | Writes into a buffer that is writable for the length passed. The result is checked, and the name is cut at the first NUL. |
-| `graphics/kitty/media.rs` | `shm_open`, `OwnedFd::from_raw_fd`, `shm_unlink` | The name is a valid C string. A non-negative result is a new descriptor that the `OwnedFd` then owns and closes. The object is unlinked straight away, as the kitty protocol requires, whatever happens next. |
-| `graphics/kitty/media.rs` (macOS) | `mmap`, `munmap` | macOS cannot `read` shared memory. The mapping is fresh, read-only and `offset + size` bytes, within the size the descriptor reports; the bytes are copied out and the mapping is removed before returning. |
 | `allocator.rs` (Linux) | `prctl(PR_SET_THP_DISABLE, 1)`, and `#[unsafe(link_section = ".init_array.00100")]` on the function pointer that calls it | Takes plain integers and sets one flag of this process; no memory is passed. The pointer is a plain `extern "C" fn()` the loader calls once, single-threaded, before `main` and before mimalloc's own constructor (priority 101), so nothing else runs yet. The flag is inherited through `fork` and kept across `execve`, so the shell's child clears it (`pty/spawn.rs`). Tested in `allocator_tests.rs` and `spawn_tests.rs`, each in a process of its own, and on the built binary in `tests/huge_pages.rs`. |
 | `allocator.rs` | `mi_option_set` (and `mi_option_get` in tests), declared `safe` in an `unsafe extern` block | mimalloc's public C API, linked in by the `mimalloc` crate. Both take plain integers, accept any option index and are thread-safe, so no call can be unsound. The option's index comes from the vendored `mimalloc.h`; a test pins it by the option's default. |
-| `mapped.rs` | `mmap` (read only, private) and `munmap` on drop; slicing the mapping, and `Send`/`Sync` for it | Maps a regular, non-empty file, whole, at an address the kernel picks; the result is checked. The slice covers exactly the mapped length and lives no longer than the mapping, which is unmapped only on drop. Nothing in the process writes through it (`PROT_READ`), so sharing it between threads is like sharing a `&'static [u8]`. Another process could still change the file in place: package managers rename a new file over the old one, which leaves the mapping intact, but a font truncated in place while mapped would fault (`SIGBUS`) when its lost pages are read, as in any program that maps fonts. Fonts are parsed with bounds checks on every read, so changed contents cannot send a read out of bounds. Tested in `mapped_tests.rs`, including `/proc/self/maps` for the permissions and the unmapping. |
 | `library.rs` (Linux, FreeBSD) | `dlopen`, `dlsym`, `dlclose`, `dlerror` | Names are C strings. A null handle or symbol is an error, never used. `dlerror`'s message is copied before any other `dl` call. The library is closed only when its owner drops: the Vulkan `Entry`, after the instance made from it is destroyed, or the Wayland `Client`, after every proxy made through it. |
 | `pty/device.rs` | `posix_openpt`, `OwnedFd::from_raw_fd`, `grantpt`, `unlockpt`, `fcntl(F_SETFD)` (macOS) | Each takes flags or the master descriptor we just opened and own, and the results are checked. A non-negative `posix_openpt` result is a new descriptor that the `OwnedFd` owns from then on, so an early error closes it. macOS refuses `O_CLOEXEC` in `posix_openpt`, so the flag is set on the next line. The slave is opened with `OpenOptions` and `O_NOCTTY`, with no `unsafe`. Tested against portable-pty in `device_tests.rs`, and so is the closing on exec. |
 | `pty/device.rs` | `ptsname_r` (declared by us on macOS, where the libc crate lacks it) | Writes at most the buffer's length, NUL included, into a stack buffer, and the name ends at the first NUL. Never plain `ptsname`, whose one buffer per process other threads (portable-pty's `openpty` on FreeBSD, #250) overwrite. The macOS declaration matches libSystem's, present since macOS 10.13.4, below our minimum of 11. |
@@ -265,11 +263,16 @@ in `PutImage` requests.
 | `client.rs` | `cast` of each `dlsym` result | Each name is a function xcb.h, xproto.h, shm.h or Xlib-xcb.h declares with the type of the field it goes to, or `xcb_shm_id`, only ever passed back by address; `cast` checks at compile time that the target is pointer-sized. Reply and cookie structures are `#[repr(C)]` as xproto.h and shm.h lay them out. |
 | `presenter.rs` | Requests, replies and the setup | `Presenter::new` is an `unsafe fn`: its caller vouches that the Xlib display and window outlive the presenter and are used from its thread. The setup is read only as long as its own length field says. Each request passes what its xproto.h declaration takes: a `PutImage` holds exactly its rows' pixels and fits the server's maximum request length (`put_rows`); a `ShmPutImage` names a segment the server attached, holding the whole frame. Replies and errors come from `malloc` and are freed once read. A buffer is written only once the round trip sent after its last put is answered, as the server has read it by then; the descriptor given to `AttachFd` is a duplicate, which libxcb closes. `Drop` detaches every segment, discarding unanswered round trips, and frees the GC. |
 
-### Shared memory
+### Memory mappings and shared memory
+
+`sys/mem.rs` is the one place that maps memory or opens shared memory
+objects. `mapped.rs` (fonts), `present/memory.rs` (window buffers) and
+`graphics/kitty/media.rs` (kitty `t=s` transfers) use it from safe code.
 
 | Where | What | Why it is sound |
 |-------|------|-----------------|
-| `present/memory.rs` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD), `mmap`, `munmap` | The descriptor is new and owned by an `OwnedFd`, closed on exec. The file is sized (safely, with `File::set_len`) before it is mapped, the size is at most `i32::MAX` bytes (what `wl_shm.create_pool` can say) and checked for overflow, and the shared mapping is checked against `MAP_FAILED` and unmapped with its length on drop. `pixels` borrows `&mut self`, so it is the mapping's only view in this process; the compositor or X server reads it only between a commit or put and its release, and the pool never draws into a held buffer. |
+| `sys/mem.rs` `Map` | `mmap`, `munmap` on drop; slicing the mapping, and `Send`/`Sync` for it | Maps an open descriptor at an address the kernel picks, over no memory of ours; the result is checked against `MAP_FAILED`, and an empty mapping is refused as `mmap` refuses it. `bytes` covers exactly the mapped length and lives no longer than the `Map`, which unmaps it, with that length, only on drop. `bytes_mut` and `words_mut` exist only for mappings made writable and borrow `&mut self`, so they are its only view in this process; words cover the whole words only, and the page-aligned start aligns them. A `Map` owns its mapping as a `Box<[u8]>` owns its memory, and shared access only reads, so it may move and be shared between threads. Another process may still change or shrink what is mapped: fonts are parsed with bounds checks on every read, the kitty transfer is copied out at once, and the compositor or X server reads a window buffer only between a commit or put and its release. Reading past the end of an object shrunk in place faults (`SIGBUS`), as in any program that maps files. Tested in `sys/mem_tests.rs`, `mapped_tests.rs` (including `/proc/self/maps` for the permissions and the unmapping) and `present/memory_tests.rs`. |
+| `sys/mem.rs` `anonymous`, `shm_open`, `shm_unlink` | `memfd_create` (Linux) or `shm_open(SHM_ANON)` (FreeBSD); `shm_open`, `shm_unlink`; `OwnedFd::from_raw_fd` | Names are C strings. A non-negative result is a new descriptor that an `OwnedFd` owns at once, closed on exec (`MFD_CLOEXEC`, `O_CLOEXEC`, and POSIX for named objects); a negative one is returned as the error. Unlinking only removes a name; open descriptors and mappings stay valid (tested). |
 
 
 ### Test-only
@@ -302,8 +305,6 @@ in `PutImage` requests.
   are an `NSMutableData` it holds as an associated object;
   `buffer_tests.rs` and `texture_tests.rs` read a buffer's `contents` and
   a texture's texels (`getBytes:…`) within their sizes.
-- `graphics/kitty/media.rs` tests (macOS): create, size and map a shared
-  memory object the test owns, as a kitty client would.
 - `present/wayland/fake_tests.rs`, `fake_rules_tests.rs`: the fake
   libwayland's functions are `extern "C"`, called through the presenter's
   function pointers; they read requests' arguments by each request's
@@ -313,8 +314,10 @@ in `PutImage` requests.
   `app/wayland_tests.rs` uses through `outside_tests.rs`): connects to the
   compositor, binds `wl_compositor`, makes a surface for the presenter and
   destroys it before disconnecting.
-- `present/memory_tests.rs`: `fstat`, `pread` and `fcntl` on the
-  memory's own descriptor.
+- `present/memory_tests.rs`, `sys/mem_tests.rs`: `fcntl(F_GETFD)` on a
+  descriptor the test owns, to check it closes on exec.
+- `mapped_tests.rs`: `sysconf(_SC_PAGESIZE)`, `mkfifo` on a C string
+  naming a path in the test's scratch directory, and `geteuid`.
 - `present/x11/fake_tests.rs`: the fake libxcb's functions are
   `extern "C"`, called through the presenter's function pointers; they read
   `PutImage` pixels by the length given, take ownership of the descriptor

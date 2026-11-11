@@ -4,19 +4,15 @@
 //! Files are read only when they are regular files outside `/proc`, `/sys`
 //! and `/dev`, without blocking (FIFOs) and up to [`MAX_TRANSFER`] bytes.
 //! Only marked files in temporary directories are deleted.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 use std::{
 	fs::{File, OpenOptions},
 	io::{self, Read, Seek, SeekFrom},
-	os::{
-		fd::{FromRawFd, OwnedFd},
-		unix::fs::OpenOptionsExt,
-	},
+	os::unix::fs::OpenOptionsExt,
 	path::{Path, PathBuf},
 };
 
 use super::{Command, Error, MAX_TRANSFER};
+use crate::sys::mem;
 
 /// Temporary files must contain this in their name to be read and deleted.
 const TEMP_MARKER: &str = "tty-graphics-protocol";
@@ -149,17 +145,9 @@ fn read_shared_memory(payload: &[u8], command: &Command) -> Result<Vec<u8>, Erro
 		return Err(invalid("bad shared memory name"));
 	}
 	let c_name = std::ffi::CString::new(name).map_err(|_| invalid("bad shared memory name"))?;
-	// SAFETY: `c_name` is a valid C string; a non-negative result is a new
-	// descriptor that the `OwnedFd` closes.
-	let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_RDONLY, 0) };
-	if fd < 0 {
-		return Err(io_error(&io::Error::last_os_error()));
-	}
-	// SAFETY: as above, `fd` is open and owned by nothing else.
-	let file = File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+	let file = File::from(mem::shm_open(&c_name, false).map_err(|error| io_error(&error))?);
 	// The object is consumed: unlink it whatever happens next.
-	// SAFETY: `c_name` is a valid C string.
-	unsafe { libc::shm_unlink(c_name.as_ptr()) };
+	let _ = mem::shm_unlink(&c_name);
 	let len = file.metadata().map_err(|error| io_error(&error))?.len() as usize;
 	read_shared(file, len, command)
 }
@@ -178,30 +166,9 @@ fn read_shared(file: File, len: usize, command: &Command) -> Result<Vec<u8>, Err
 	if size == 0 {
 		return Ok(Vec::new());
 	}
-	let fd = std::os::fd::AsRawFd::as_raw_fd(&file);
-	let len = offset + size;
-	// SAFETY: a fresh read-only shared mapping of `len` bytes, no more than
-	// the open descriptor holds.
-	let map = unsafe {
-		libc::mmap(
-			std::ptr::null_mut(),
-			len,
-			libc::PROT_READ,
-			libc::MAP_SHARED,
-			fd,
-			0,
-		)
-	};
-	if map == libc::MAP_FAILED {
-		return Err(io_error(&io::Error::last_os_error()));
-	}
-	// SAFETY: the mapping is `len` readable bytes, and stays mapped until
-	// the copy below is made.
-	let mapped = unsafe { std::slice::from_raw_parts(map.cast::<u8>(), len) };
-	let bytes = mapped[offset..].to_vec();
-	// SAFETY: unmaps the mapping above; `mapped` is not used again.
-	unsafe { libc::munmap(map, len) };
-	Ok(bytes)
+	let fd = std::os::fd::AsFd::as_fd(&file);
+	let map = mem::Map::read(fd, offset + size, true).map_err(|error| io_error(&error))?;
+	Ok(map.bytes()[offset..].to_vec())
 }
 
 #[cfg(test)]
@@ -270,36 +237,12 @@ mod tests {
 	/// mapped.
 	fn shared_memory(name: &str, bytes: &[u8]) {
 		let c_name = std::ffi::CString::new(name).unwrap();
-		// SAFETY: a C string this test owns.
-		let fd = unsafe { libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600) };
-		assert!(fd >= 0);
-		let len = bytes.len() as libc::off_t;
-		// SAFETY: a descriptor this test owns.
-		assert_eq!(unsafe { libc::ftruncate(fd, len) }, 0);
-		if bytes.is_empty() {
-			// SAFETY: closes the descriptor above, used no more.
-			unsafe { libc::close(fd) };
-			return;
+		let file = File::from(mem::shm_open(&c_name, true).unwrap());
+		file.set_len(bytes.len() as u64).unwrap();
+		if !bytes.is_empty() {
+			let mut map = mem::Map::shared(std::os::fd::AsFd::as_fd(&file), bytes.len()).unwrap();
+			map.bytes_mut().unwrap().copy_from_slice(bytes);
 		}
-		let protection = libc::PROT_READ | libc::PROT_WRITE;
-		// SAFETY: a new shared mapping of the bytes just sized.
-		let map = unsafe {
-			libc::mmap(
-				std::ptr::null_mut(),
-				bytes.len(),
-				protection,
-				libc::MAP_SHARED,
-				fd,
-				0,
-			)
-		};
-		assert_ne!(map, libc::MAP_FAILED);
-		// SAFETY: the mapping is `bytes.len()` writable bytes and overlaps nothing.
-		unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), map.cast(), bytes.len()) };
-		// SAFETY: unmaps the mapping above, used no more.
-		unsafe { libc::munmap(map, bytes.len()) };
-		// SAFETY: closes the descriptor above, used no more.
-		unsafe { libc::close(fd) };
 	}
 
 	#[test]
@@ -370,5 +313,43 @@ mod tests {
 		// 255 bytes with the slash is the most a name may have.
 		let long = format!("/{}", "x".repeat(255));
 		assert_eq!(code(load(&command("t=s"), long.into_bytes())), "EINVAL");
+	}
+
+	#[test]
+	fn shared_memory_names_with_a_nul_or_not_utf8_are_refused() {
+		for name in [&b"/poopterm\0kitty"[..], b"/poopterm-\xff"] {
+			assert_eq!(
+				code(load(&command("t=s"), name.to_vec())),
+				"EINVAL",
+				"{name:?}"
+			);
+		}
+	}
+
+	/// A shared memory object of `len` bytes that are never written, so it
+	/// takes no memory however large.
+	fn sparse_shared_memory(name: &str, len: usize) {
+		let c_name = std::ffi::CString::new(name).unwrap();
+		let file = File::from(mem::shm_open(&c_name, true).unwrap());
+		file.set_len(len as u64).unwrap();
+	}
+
+	#[test]
+	fn shared_memory_too_large_to_transfer_is_refused_and_still_unlinked() {
+		let name = format!("/poopterm-kitty-large-{}", std::process::id());
+		sparse_shared_memory(&name, MAX_TRANSFER + 1);
+		assert_eq!(
+			code(load(&command("t=s"), name.clone().into_bytes())),
+			"EFBIG"
+		);
+		// The client handed the object over: it is gone even though refused.
+		assert_eq!(
+			code(load(&command("t=s"), name.clone().into_bytes())),
+			"ENOENT"
+		);
+		// A part of it within the limit is read.
+		sparse_shared_memory(&name, MAX_TRANSFER + 1);
+		let part = load(&command("t=s,O=4096,S=8"), name.into_bytes()).unwrap();
+		assert_eq!(part, [0; 8]);
 	}
 }

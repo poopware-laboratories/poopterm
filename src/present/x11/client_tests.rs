@@ -161,12 +161,9 @@ fn mappings_of(inode: u64) -> Vec<String> {
 fn the_whole_mapping_is_unmapped_on_drop() {
 	// Several pages, so unmapping only the first would leave the rest.
 	let memory = Memory::new(4 * 4096).unwrap();
-	// SAFETY: a zeroed `stat` is valid, and the descriptor is open.
-	let inode = unsafe {
-		let mut stat = std::mem::zeroed::<libc::stat>();
-		assert_eq!(libc::fstat(memory.fd(), &mut stat), 0);
-		stat.st_ino
-	};
+	let file = std::fs::File::from(memory.fd().try_clone_to_owned().unwrap());
+	let inode = std::os::unix::fs::MetadataExt::ino(&file.metadata().unwrap());
+	drop(file);
 	assert_eq!(mappings_of(inode).len(), 1, "mapped once while alive");
 	drop(memory);
 	assert_eq!(mappings_of(inode), Vec::<String>::new());

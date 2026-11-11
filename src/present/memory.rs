@@ -1,21 +1,18 @@
 //! Anonymous shared memory for one window buffer, which the window system
 //! maps through the file descriptor sent to it (`wl_shm.create_pool`,
 //! MIT-SHM `AttachFd`): unmapped and closed when dropped.
-// Calls into C or the kernel; docs/unsafe.md lists each block.
-#![allow(unsafe_code)]
 use std::{
 	io,
-	os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
-	ptr::{self, NonNull},
-	slice,
+	os::fd::{AsFd, BorrowedFd, OwnedFd},
 };
+
+use crate::sys::mem::{self, Map};
 
 /// The most bytes one buffer may take: the protocol sends sizes as `int`.
 pub(crate) const MAX_BYTES: usize = i32::MAX as usize;
 
 pub(crate) struct Memory {
-	map: NonNull<u32>,
-	pixels: usize,
+	map: Map,
 	fd: OwnedFd,
 }
 
@@ -26,63 +23,20 @@ impl Memory {
 		let bytes = (pixels.checked_mul(4))
 			.filter(|&bytes| bytes <= MAX_BYTES)
 			.ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
-		let file = std::fs::File::from(anonymous()?);
+		let file = std::fs::File::from(mem::anonymous(c"poopterm-frame")?);
 		file.set_len(bytes as u64)?;
 		let fd = OwnedFd::from(file);
-		let protection = libc::PROT_READ | libc::PROT_WRITE;
-		// SAFETY: maps the whole object, which is `bytes` long, shared, at an
-		// address the kernel picks; the result is checked before use.
-		let map = unsafe {
-			libc::mmap(
-				ptr::null_mut(),
-				bytes,
-				protection,
-				libc::MAP_SHARED,
-				fd.as_raw_fd(),
-				0,
-			)
-		};
-		if map == libc::MAP_FAILED {
-			return Err(io::Error::last_os_error());
-		}
-		Ok(Self {
-			map: NonNull::new(map.cast()).expect("mmap never maps address 0"),
-			pixels,
-			fd,
-		})
+		let map = Map::shared(fd.as_fd(), bytes)?;
+		Ok(Self { map, fd })
 	}
 
-	pub(crate) fn fd(&self) -> RawFd {
-		self.fd.as_raw_fd()
+	pub(crate) fn fd(&self) -> BorrowedFd<'_> {
+		self.fd.as_fd()
 	}
 
+	/// The pixels, which the compositor only reads, between a commit and
+	/// the release.
 	pub(crate) fn pixels(&mut self) -> &mut [u32] {
-		// SAFETY: the mapping holds `pixels` pixels, is page aligned, lives
-		// until `self` drops, and `&mut self` keeps other borrows out. The
-		// compositor only reads it, between a commit and the release.
-		unsafe { slice::from_raw_parts_mut(self.map.as_ptr(), self.pixels) }
+		self.map.words_mut().expect("mapped to write")
 	}
-}
-
-impl Drop for Memory {
-	fn drop(&mut self) {
-		// SAFETY: the mapping is this one's, of this length, and no borrow of
-		// it outlives `self`.
-		unsafe { libc::munmap(self.map.as_ptr().cast(), self.pixels * 4) };
-	}
-}
-
-/// A new anonymous shared memory object, closed on exec.
-fn anonymous() -> io::Result<OwnedFd> {
-	#[cfg(target_os = "linux")]
-	// SAFETY: the name is a C string; the flags ask for nothing unusual.
-	let fd = unsafe { libc::memfd_create(c"poopterm-frame".as_ptr(), libc::MFD_CLOEXEC) };
-	#[cfg(target_os = "freebsd")]
-	// SAFETY: `SHM_ANON` asks for an object without a name.
-	let fd = unsafe { libc::shm_open(libc::SHM_ANON, libc::O_RDWR | libc::O_CLOEXEC, 0o600) };
-	if fd < 0 {
-		return Err(io::Error::last_os_error());
-	}
-	// SAFETY: `fd` was just opened and nothing else owns it.
-	Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }

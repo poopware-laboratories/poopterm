@@ -75,6 +75,9 @@ mod scratch_tests;
 mod session_store;
 mod shell_integration;
 mod sixel;
+// Safe wrappers over the kernel calls std lacks.
+#[allow(unsafe_code)]
+mod sys;
 mod term;
 mod terminfo;
 mod terminfo_caps;
