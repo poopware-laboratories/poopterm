@@ -1,5 +1,7 @@
 //! How a tab starts its shell, seen from the shell: a script stands in for
 //! it and prints what it was given.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::*;
 use crate::pty::{
 	device::{self, WindowSize},

@@ -1,7 +1,6 @@
 //! PTY sessions: shell spawning plus each session's reader and parser threads.
 #[cfg(any(target_os = "macos", test))]
 mod burst;
-pub(crate) mod device;
 mod exits;
 pub(crate) mod login_shell;
 pub(crate) mod pump;
@@ -9,7 +8,6 @@ mod queue;
 pub(crate) mod reader;
 pub(crate) mod reap;
 pub(crate) mod spawn;
-pub(crate) mod termios;
 mod writer;
 
 use std::{
@@ -34,6 +32,7 @@ use crate::{
 	theme::Theme,
 };
 
+pub(crate) use crate::sys::pty as device;
 pub(crate) use queue::OutputQueue;
 use writer::PtyWriter;
 

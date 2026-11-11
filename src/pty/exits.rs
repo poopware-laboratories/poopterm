@@ -3,6 +3,8 @@
 //! `epoll(7)`), `EVFILT_PROC` with `NOTE_EXIT` in a kqueue on macOS and
 //! FreeBSD (`kqueue(2)`). A pipe in the same set lets another thread stop
 //! the wait; it is never read, so a stopped set stays stopped.
+// Calls into C or the kernel; docs/unsafe.md lists each block.
+#![allow(unsafe_code)]
 
 use super::{device::check, spawn::report_pipe};
 use std::{

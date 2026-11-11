@@ -1,5 +1,7 @@
 //! One reaper for many children: each one's end reaches its own code, once,
 //! and nothing is left unreaped.
+// The tests call C, the kernel or CPU-dispatched copies directly.
+#![allow(unsafe_code)]
 use super::*;
 use crate::pty::{
 	device::{self, Pair, WindowSize},
