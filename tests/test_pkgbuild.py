@@ -43,7 +43,14 @@ class Contents(unittest.TestCase):
 
     def test_the_build_uses_the_locked_dependencies_offline(self):
         self.assertIn('cargo fetch --locked', PKGBUILD)
-        self.assertIn('cargo build --release --frozen', PKGBUILD)
+        self.assertIn('sh scripts/build.sh --release --frozen', PKGBUILD)
+
+    def test_the_build_keeps_the_x86_64_v2_level_despite_makepkg_rustflags(self):
+        # makepkg.conf exports RUSTFLAGS, which replaces .cargo/config.toml;
+        # scripts/build.sh adds the CPU level back, so cargo is not run bare.
+        build = PKGBUILD.split('build() {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('rustup run nightly sh scripts/build.sh', build)
+        self.assertNotIn('cargo build', build)
 
     def test_makepkg_lto_is_off_so_mimalloc_links(self):
         # makepkg's lto adds GCC's -flto to CFLAGS: mimalloc's C objects become

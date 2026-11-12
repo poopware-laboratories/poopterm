@@ -38,7 +38,10 @@ echo "instrumented note" >&2
 touch "$profiles/run\\$\\$.profraw"
 EOF
 	;;
-*-Cprofile-use=*) printf '#!/bin/sh\\necho optimized with %%s\\n' "${RUSTFLAGS##*-Cprofile-use=}" > "$dir/poopterm" ;;
+*-Cprofile-use=*)
+	used=${RUSTFLAGS##*-Cprofile-use=}
+	printf '#!/bin/sh\\necho optimized with %%s\\n' "${used%% *}" > "$dir/poopterm"
+	;;
 *) printf '#!/bin/sh\\necho plain\\n' > "$dir/poopterm" ;;
 esac
 chmod +x "$dir/poopterm"
@@ -196,6 +199,15 @@ class Pgo(unittest.TestCase):
         # Both training runs left a profile, and both were merged.
         self.assertIn('profdata merge -o 2', self.log())
         self.assertNotIn('cargo build --release --locked', self.log())
+
+    def test_x86_64_pgo_builds_keep_the_x86_64_v2_baseline(self):
+        # RUSTFLAGS carries the profile flags and replaces .cargo/config.toml,
+        # so build.sh must add the CPU level to both builds itself.
+        self.assertEqual(self.pgo('dist').returncode, 0)
+        builds = [line for line in self.log() if line.startswith('env ') and 'profile-' in line]
+        self.assertEqual(len(builds), 2, self.log())
+        for line in builds:
+            self.assertEqual(line.count('-Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b'), 1, line)
 
     def test_dist_passes_the_training_size_on(self):
         self.assertEqual(self.pgo('dist', '3').returncode, 0)

@@ -343,5 +343,42 @@ class Shaders(unittest.TestCase):
         self.assertIn('set -eu', SHADERS_SCRIPT)
 
 
+class CpuLevel(unittest.TestCase):
+    """x86-64 builds need x86-64-v2; Alpine, whose libraries are plain
+    x86-64, runs the binary on emulated CPUs on both sides of that line."""
+
+    def setUp(self):
+        self.check = step('Check the x86-64-v2 level on emulated CPUs')
+
+    def test_it_runs_in_the_alpine_job_after_the_binary_is_built(self):
+        alpine = job('alpine')
+        self.assertIn('- name: Check the x86-64-v2 level on emulated CPUs', alpine)
+        self.assertLess(alpine.index('cargo build --locked'),
+                        alpine.index('Check the x86-64-v2 level'))
+
+    def test_a_v2_cpu_runs_the_binary(self):
+        self.assertIn('apk add --no-cache qemu-x86_64', self.check)
+        self.assertIn('qemu-x86_64 -cpu Nehalem target/debug/poopterm --version\n', self.check)
+
+    def test_an_older_cpu_is_refused_with_exit_1_and_the_missing_features(self):
+        self.assertIn('qemu-x86_64 -cpu Penryn target/debug/poopterm --version 2> refused.txt || status=$?',
+                      self.check)
+        self.assertIn('test "$status" = 1', self.check)
+        self.assertIn("grep -q 'needs an x86-64-v2 CPU.*lacks SSE4.2, POPCNT' refused.txt", self.check)
+
+    def test_the_refusal_quoted_in_ci_is_the_one_the_program_prints(self):
+        source = (Path(__file__).parents[1] / 'src/cpu_baseline.rs').read_text()
+        self.assertIn('this build needs an x86-64-v2 CPU (from about 2009 on), and this one lacks ', source)
+        self.assertIn('write(if index == 0 { "" } else { ", " });', source)
+
+    def test_the_check_runs_before_every_other_constructor(self):
+        # Constructors run by priority, lower first; mimalloc's own is 101.
+        src = Path(__file__).parents[1] / 'src'
+        priority = lambda path: int(re.search(r'link_section = "\.init_array\.(\d+)"',
+                                              (src / path).read_text()).group(1))
+        self.assertLess(priority('cpu_baseline.rs'), priority('allocator.rs'))
+        self.assertLess(priority('allocator.rs'), 101)
+
+
 if __name__ == '__main__':
     unittest.main()

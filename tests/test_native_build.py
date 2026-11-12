@@ -10,7 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts/build.sh'
 
 
-class NativeBuildTests(unittest.TestCase):
+class BuildScript(unittest.TestCase):
+    """Runs scripts/build.sh with stand-ins for uname, rustc and cargo."""
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -47,6 +49,8 @@ sys.exit(int(os.environ.get('CARGO_EXIT', '0')))
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(self.log.read_text())
 
+
+class NativeBuildTests(BuildScript):
     def test_local_apple_silicon_build_adds_native_cpu_tuning(self):
         built = self.build('--release', '--locked')
         self.assertEqual(built['args'], ['build', '--release', '--locked'])
@@ -176,6 +180,76 @@ sys.exit(int(os.environ.get('CARGO_EXIT', '0')))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines(),
                          ['sh scripts/build.sh --release --locked', './target/release/poopterm'])
+
+
+class X86_64BaselineTests(BuildScript):
+    """RUSTFLAGS in the environment replaces .cargo/config.toml, whose
+    x86-64-v2 level build.sh must then add itself."""
+
+    def setUp(self):
+        super().setUp()
+        self.env.update(TEST_OS='Linux', TEST_HOST='x86_64-unknown-linux-gnu')
+
+    def test_without_rustflags_the_cargo_config_sets_the_level(self):
+        built = self.build('--release', '--locked')
+        self.assertIsNone(built['flags'])
+        self.assertIsNone(built['encoded'])
+
+    def test_rustflags_for_profiles_get_the_x86_64_v2_level(self):
+        flags = '-Cprofile-use=/tmp/profiles/merged.profdata'
+        built = self.build('--release', RUSTFLAGS=flags)
+        self.assertEqual(built['flags'], f'{flags} -Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b')
+
+    def test_empty_rustflags_still_replace_the_config(self):
+        built = self.build('--release', RUSTFLAGS='')
+        self.assertEqual(built['flags'], '-Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b')
+
+    def test_encoded_flags_get_the_level_as_their_own_argument(self):
+        flags = '-Cprofile-use=/tmp/my profiles/a.profdata'
+        built = self.build('--release', CARGO_ENCODED_RUSTFLAGS=flags)
+        self.assertEqual(built['encoded'].split('\x1f'), [flags, '-Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b'])
+        self.assertIsNone(built['flags'])
+
+    def test_an_explicit_cpu_wins_over_the_level(self):
+        for flags in ('-Ctarget-cpu=x86-64', '-C target-cpu=haswell'):
+            with self.subTest(flags=flags):
+                self.assertEqual(self.build('--release', RUSTFLAGS=flags)['flags'], flags)
+
+    def test_cross_builds_for_x86_64_get_the_level(self):
+        built = self.build('--target', 'x86_64-unknown-freebsd', RUSTFLAGS='-Cdebuginfo=1',
+                           TEST_HOST='aarch64-unknown-linux-gnu')
+        self.assertEqual(built['flags'], '-Cdebuginfo=1 -Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b')
+
+    def test_other_architectures_are_left_alone(self):
+        for host in ('aarch64-unknown-linux-gnu', 'riscv64gc-unknown-linux-gnu'):
+            with self.subTest(host=host):
+                built = self.build('--release', RUSTFLAGS='-Cdebuginfo=1', TEST_HOST=host)
+                self.assertEqual(built['flags'], '-Cdebuginfo=1')
+
+    def test_several_targets_get_no_single_level(self):
+        built = self.build('--target=x86_64-unknown-linux-gnu', '--target=aarch64-unknown-linux-gnu',
+                           RUSTFLAGS='-Cdebuginfo=1')
+        self.assertEqual(built['flags'], '-Cdebuginfo=1')
+
+    def test_the_script_and_the_cargo_config_enable_the_same_features(self):
+        config = (ROOT / '.cargo/config.toml').read_text()
+        table = config.split('''[target.'cfg(target_arch = "x86_64")']''', 1)[1]
+        features = table.split('"target-feature=', 1)[1].split('"', 1)[0]
+        self.assertEqual(features, '+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b')
+        self.assertIn(f'level=-Ctarget-feature={features} ;;', SCRIPT.read_text())
+
+    def test_neither_uses_the_x86_64_v2_cpu_model_and_its_sandy_bridge_tuning(self):
+        # Its `shld` rotates cost SipHash, and so the shell and compiler
+        # workloads, 8% more cycles on current cores than generic tuning.
+        for path in (ROOT / '.cargo/config.toml', SCRIPT):
+            text = path.read_text()
+            self.assertNotIn('"target-cpu=x86-64-v2"', text, path)
+            self.assertNotIn('-Ctarget-cpu=x86-64-v2', text, path)
+
+    def test_intel_macos_in_ci_gets_the_portable_level_not_the_host_cpu(self):
+        built = self.build('--release', RUSTFLAGS='', CI='true', TEST_OS='Darwin',
+                           TEST_HOST='x86_64-apple-darwin')
+        self.assertEqual(built['flags'], '-Ctarget-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b')
 
 
 if __name__ == '__main__':
