@@ -2,6 +2,9 @@
 //! each is given, mapping, what is undone when a step fails, and the order
 //! buffers, memory and devices go in. The fake's buffer and memory
 //! functions live here and check the specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer::Buffer,
 	call::Error,

@@ -2,6 +2,9 @@
 //! which instance they look each function up with, and how they fail when
 //! the loader is old, lacks a function or a call fails. The driver checks
 //! the specification's valid usage rules as it is called.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::Made as MadeBuffer,
 	call::{Error, INCOMPLETE},

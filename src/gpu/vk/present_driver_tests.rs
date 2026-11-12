@@ -2,6 +2,9 @@
 //! hands out: acquiring and presenting swapchain images and waiting for a
 //! queue, each checking the specification's valid usage rules, with tests
 //! that it reports each broken rule.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	driver_tests::{Driver, with},
 	present_regions::{PresentRegions, STRUCTURE_TYPE_PRESENT_REGIONS},

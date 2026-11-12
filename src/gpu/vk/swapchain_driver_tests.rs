@@ -1,6 +1,9 @@
 //! The fake driver's swapchain functions, for the tests of `driver_tests`:
 //! they check the specification's valid usage rules against what the
 //! surface reports, and hand out images the fake's views can be made of.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	device_tests::Made,
 	driver_tests::{Driver, answer, with},

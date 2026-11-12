@@ -2,6 +2,9 @@
 //! `descriptors_tests`: each checks the specification's valid usage rules,
 //! records the pools and sets made, runs out of room as a pool would, and
 //! frees a pool's sets with it.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	descriptor_types::*,
 	driver_tests::{Driver, with},

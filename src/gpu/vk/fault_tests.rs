@@ -3,6 +3,9 @@
 //! and only its first feature, the bounded two-call read, the text it
 //! makes, and a window's lost device saying why. The fake's function lives
 //! here and checks the specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	call::{Error, INCOMPLETE},
 	device::Device,

@@ -1,5 +1,8 @@
 //! Tests of calling Vulkan: which result codes are errors and how they
 //! read, and the two-call enumeration as drivers may answer it.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::call::{Error, INCOMPLETE, check, enumerate, fixed_string};
 use std::ffi::c_char;
 

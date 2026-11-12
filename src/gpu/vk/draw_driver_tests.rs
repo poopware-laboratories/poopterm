@@ -5,6 +5,9 @@
 //! view in the color attachment layout of the pipeline's format, and that
 //! a draw finds its atlas and image readable and its quads in the bound
 //! buffer, and records what it did.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	descriptor_driver_tests::{POOLS, SETS},
 	descriptor_types::RawDescriptorSet,

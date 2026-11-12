@@ -103,10 +103,9 @@ impl Stamps {
 	pub(super) fn start(&self, buffer: RawCommandBuffer) {
 		// SAFETY: the buffer is the device's and being recorded, and the
 		// pool holds two queries, which no submission in flight uses.
-		unsafe {
-			(self.functions.reset)(buffer, self.pool, 0, 2);
-			(self.functions.write)(buffer, TOP_OF_PIPE, self.pool, 0);
-		}
+		unsafe { (self.functions.reset)(buffer, self.pool, 0, 2) };
+		// SAFETY: as above, and query 0 was just reset.
+		unsafe { (self.functions.write)(buffer, TOP_OF_PIPE, self.pool, 0) };
 	}
 
 	/// Records, last in `buffer`, the second, once all before it is done.

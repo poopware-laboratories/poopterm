@@ -1,6 +1,9 @@
 //! Tests that the fake drawing functions of `draw_driver_tests` report
 //! each rule they check, broken one at a time; were they blind to them,
 //! the tests of `draw_tests` would prove nothing.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer::Buffer,
 	buffer_tests::{INTEL, device},

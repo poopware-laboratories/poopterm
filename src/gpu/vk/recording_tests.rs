@@ -4,6 +4,9 @@
 //! that take effect only once submitted, and what is held until the GPU is
 //! done. The fake's barrier and copy functions live here and check the
 //! specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer::Buffer,
 	buffer_tests::{INTEL, device},

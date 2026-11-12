@@ -134,33 +134,36 @@ impl Recording<'_> {
 		let size = [width as f32, height as f32];
 		let (buffer, functions) = (self.commands.buffer, &self.commands.device.functions);
 		let (layout, handle) = (pipeline.layout(), set.handle());
-		// SAFETY: the buffer is being recorded; the pipeline, its layout, the
-		// set and the target's view are the device's and held until the GPU
-		// is done; the target was moved to the layout rendering names, and
-		// the atlas and images to the one the sets do; every texture set is
-		// of the pipeline's layout; and every struct and array outlives its
+		// For every call below: the buffer is being recorded; the pipeline,
+		// its layout, the sets and the target's view are the device's and
+		// held until the GPU is done; and every struct and array outlives its
 		// call.
-		unsafe {
-			(functions.begin_rendering)(buffer, &info);
-			(functions.bind_pipeline)(buffer, GRAPHICS, pipeline.handle());
-			(functions.set_viewport)(buffer, 0, 1, &viewport);
-			(functions.set_scissor)(buffer, 0, 1, &area);
-			(functions.bind_sets)(buffer, GRAPHICS, layout, 0, 1, &handle, 0, ptr::null());
-			(functions.push)(
-				buffer,
-				layout,
-				VERTEX,
-				0,
-				size_of_val(&size) as u32,
-				size.as_ptr().cast(),
-			);
-			for (range, texture) in runs {
-				let image = texture.handle();
-				(functions.bind_sets)(buffer, GRAPHICS, layout, 1, 1, &image, 0, ptr::null());
-				(functions.draw)(buffer, VERTICES, range.len() as u32, 0, range.start);
-			}
-			(functions.end_rendering)(buffer);
+		// SAFETY: as above, and the target was moved to the layout `info`
+		// names.
+		unsafe { (functions.begin_rendering)(buffer, &info) };
+		// SAFETY: as above; rendering has begun.
+		unsafe { (functions.bind_pipeline)(buffer, GRAPHICS, pipeline.handle()) };
+		// SAFETY: as above; the pipeline sets the viewport dynamically.
+		unsafe { (functions.set_viewport)(buffer, 0, 1, &viewport) };
+		// SAFETY: as above; the pipeline sets the scissor dynamically.
+		unsafe { (functions.set_scissor)(buffer, 0, 1, &area) };
+		// SAFETY: as above; set 0 is of the pipeline's layout, and the atlas
+		// it names was moved to the layout the set does.
+		unsafe { (functions.bind_sets)(buffer, GRAPHICS, layout, 0, 1, &handle, 0, ptr::null()) };
+		let bytes = size_of_val(&size) as u32;
+		// SAFETY: as above; the layout's vertex push range holds `bytes`.
+		unsafe { (functions.push)(buffer, layout, VERTEX, 0, bytes, size.as_ptr().cast()) };
+		for (range, texture) in runs {
+			let image = texture.handle();
+			// SAFETY: as above; every texture set is of the pipeline's
+			// layout, and its image was moved to the layout the set names.
+			unsafe { (functions.bind_sets)(buffer, GRAPHICS, layout, 1, 1, &image, 0, ptr::null()) };
+			// SAFETY: as above; both sets are bound, and the range ends within
+			// the quad buffer (`fits` above).
+			unsafe { (functions.draw)(buffer, VERTICES, range.len() as u32, 0, range.start) };
 		}
+		// SAFETY: as above; rendering began in this buffer.
+		unsafe { (functions.end_rendering)(buffer) };
 		self.commands.held.push(set.clone());
 		self.commands.held.push(quads.clone());
 		self.commands.held.push(atlas.clone());

@@ -152,6 +152,31 @@ impl Entry {
 	}
 }
 
+/// `load!(function, c"vkName")`: the function `function` finds for the
+/// name, as the type the specification gives it, which must be the type of
+/// the field it fills. Returns early with the error when it is missing.
+macro_rules! load {
+	($function:expr, $name:literal) => {{
+		let found = $function($name)?;
+		// SAFETY: the function the loader returned for this name has the
+		// type the specification declares, and that is the field's type.
+		unsafe { $crate::gpu::vk::entry::cast(found) }
+	}};
+}
+pub(crate) use load;
+
+/// `load_optional!(function, c"vkName")`: like [`load!`], but `None` when
+/// the driver lacks the function.
+macro_rules! load_optional {
+	($function:expr, $name:literal) => {
+		$function($name).ok().map(|found| {
+			// SAFETY: as in `load!`.
+			unsafe { $crate::gpu::vk::entry::cast(found) }
+		})
+	};
+}
+pub(crate) use load_optional;
+
 /// `function` as the type `F` the specification gives it.
 ///
 /// # Safety

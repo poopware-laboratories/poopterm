@@ -4,6 +4,9 @@
 //! failures, and that the fake functions of `pipeline_driver_tests` report
 //! each rule they check. The real driver makes the pipeline too, under the
 //! validation layer.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,

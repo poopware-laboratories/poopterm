@@ -4,6 +4,9 @@
 //! failures, and the order things go in. The fake's command functions live
 //! here and check the specification's valid usage rules, among them that
 //! nothing pending is reset or destroyed.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{GARBAGE, INTEL, device},
 	call::Error,

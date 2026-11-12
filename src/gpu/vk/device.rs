@@ -1,8 +1,18 @@
 //! A Vulkan device: a GPU with the features the renderer needs turned on,
 //! the queue it draws with and its memory types, destroyed when dropped.
 use super::{
-	call::Error, descriptor_types::*, draw_types::*, entry::cast, fault, instance::Instance,
-	memory::MemoryType, optional::Optional, pipeline_types::*, stamps, submit_types::*, types::*,
+	call::Error,
+	descriptor_types::*,
+	draw_types::*,
+	entry::{cast, load},
+	fault,
+	instance::Instance,
+	memory::MemoryType,
+	optional::Optional,
+	pipeline_types::*,
+	stamps,
+	submit_types::*,
+	types::*,
 };
 use std::{ffi::CStr, ptr, rc::Rc};
 
@@ -65,62 +75,58 @@ pub(super) struct Functions {
 impl Functions {
 	fn load(instance: &Instance, device: RawDevice) -> Result<Self, Error> {
 		let function = |name: &'static CStr| instance.device_function(device, name);
-		// SAFETY: the functions the driver returned for these names have
-		// these types.
-		unsafe {
-			Ok(Self {
-				get_queue: cast(function(c"vkGetDeviceQueue")?),
-				create_buffer: cast(function(c"vkCreateBuffer")?),
-				destroy_buffer: cast(function(c"vkDestroyBuffer")?),
-				buffer_requirements: cast(function(c"vkGetBufferMemoryRequirements")?),
-				allocate: cast(function(c"vkAllocateMemory")?),
-				free: cast(function(c"vkFreeMemory")?),
-				bind_buffer: cast(function(c"vkBindBufferMemory")?),
-				map: cast(function(c"vkMapMemory")?),
-				create_image: cast(function(c"vkCreateImage")?),
-				destroy_image: cast(function(c"vkDestroyImage")?),
-				image_requirements: cast(function(c"vkGetImageMemoryRequirements")?),
-				bind_image: cast(function(c"vkBindImageMemory")?),
-				create_view: cast(function(c"vkCreateImageView")?),
-				destroy_view: cast(function(c"vkDestroyImageView")?),
-				create_semaphore: cast(function(c"vkCreateSemaphore")?),
-				destroy_semaphore: cast(function(c"vkDestroySemaphore")?),
-				semaphore_value: cast(function(c"vkGetSemaphoreCounterValue")?),
-				wait_semaphores: cast(function(c"vkWaitSemaphores")?),
-				create_pool: cast(function(c"vkCreateCommandPool")?),
-				destroy_pool: cast(function(c"vkDestroyCommandPool")?),
-				reset_pool: cast(function(c"vkResetCommandPool")?),
-				allocate_commands: cast(function(c"vkAllocateCommandBuffers")?),
-				begin: cast(function(c"vkBeginCommandBuffer")?),
-				end: cast(function(c"vkEndCommandBuffer")?),
-				submit: cast(function(c"vkQueueSubmit2")?),
-				barrier: cast(function(c"vkCmdPipelineBarrier2")?),
-				upload: cast(function(c"vkCmdCopyBufferToImage")?),
-				download: cast(function(c"vkCmdCopyImageToBuffer")?),
-				create_module: cast(function(c"vkCreateShaderModule")?),
-				destroy_module: cast(function(c"vkDestroyShaderModule")?),
-				create_sampler: cast(function(c"vkCreateSampler")?),
-				destroy_sampler: cast(function(c"vkDestroySampler")?),
-				create_set_layout: cast(function(c"vkCreateDescriptorSetLayout")?),
-				destroy_set_layout: cast(function(c"vkDestroyDescriptorSetLayout")?),
-				create_pipeline_layout: cast(function(c"vkCreatePipelineLayout")?),
-				destroy_pipeline_layout: cast(function(c"vkDestroyPipelineLayout")?),
-				create_pipelines: cast(function(c"vkCreateGraphicsPipelines")?),
-				destroy_pipeline: cast(function(c"vkDestroyPipeline")?),
-				create_descriptor_pool: cast(function(c"vkCreateDescriptorPool")?),
-				destroy_descriptor_pool: cast(function(c"vkDestroyDescriptorPool")?),
-				allocate_descriptor_sets: cast(function(c"vkAllocateDescriptorSets")?),
-				update_sets: cast(function(c"vkUpdateDescriptorSets")?),
-				begin_rendering: cast(function(c"vkCmdBeginRendering")?),
-				end_rendering: cast(function(c"vkCmdEndRendering")?),
-				bind_pipeline: cast(function(c"vkCmdBindPipeline")?),
-				set_viewport: cast(function(c"vkCmdSetViewport")?),
-				set_scissor: cast(function(c"vkCmdSetScissor")?),
-				bind_sets: cast(function(c"vkCmdBindDescriptorSets")?),
-				push: cast(function(c"vkCmdPushConstants")?),
-				draw: cast(function(c"vkCmdDraw")?),
-			})
-		}
+		Ok(Self {
+			get_queue: load!(function, c"vkGetDeviceQueue"),
+			create_buffer: load!(function, c"vkCreateBuffer"),
+			destroy_buffer: load!(function, c"vkDestroyBuffer"),
+			buffer_requirements: load!(function, c"vkGetBufferMemoryRequirements"),
+			allocate: load!(function, c"vkAllocateMemory"),
+			free: load!(function, c"vkFreeMemory"),
+			bind_buffer: load!(function, c"vkBindBufferMemory"),
+			map: load!(function, c"vkMapMemory"),
+			create_image: load!(function, c"vkCreateImage"),
+			destroy_image: load!(function, c"vkDestroyImage"),
+			image_requirements: load!(function, c"vkGetImageMemoryRequirements"),
+			bind_image: load!(function, c"vkBindImageMemory"),
+			create_view: load!(function, c"vkCreateImageView"),
+			destroy_view: load!(function, c"vkDestroyImageView"),
+			create_semaphore: load!(function, c"vkCreateSemaphore"),
+			destroy_semaphore: load!(function, c"vkDestroySemaphore"),
+			semaphore_value: load!(function, c"vkGetSemaphoreCounterValue"),
+			wait_semaphores: load!(function, c"vkWaitSemaphores"),
+			create_pool: load!(function, c"vkCreateCommandPool"),
+			destroy_pool: load!(function, c"vkDestroyCommandPool"),
+			reset_pool: load!(function, c"vkResetCommandPool"),
+			allocate_commands: load!(function, c"vkAllocateCommandBuffers"),
+			begin: load!(function, c"vkBeginCommandBuffer"),
+			end: load!(function, c"vkEndCommandBuffer"),
+			submit: load!(function, c"vkQueueSubmit2"),
+			barrier: load!(function, c"vkCmdPipelineBarrier2"),
+			upload: load!(function, c"vkCmdCopyBufferToImage"),
+			download: load!(function, c"vkCmdCopyImageToBuffer"),
+			create_module: load!(function, c"vkCreateShaderModule"),
+			destroy_module: load!(function, c"vkDestroyShaderModule"),
+			create_sampler: load!(function, c"vkCreateSampler"),
+			destroy_sampler: load!(function, c"vkDestroySampler"),
+			create_set_layout: load!(function, c"vkCreateDescriptorSetLayout"),
+			destroy_set_layout: load!(function, c"vkDestroyDescriptorSetLayout"),
+			create_pipeline_layout: load!(function, c"vkCreatePipelineLayout"),
+			destroy_pipeline_layout: load!(function, c"vkDestroyPipelineLayout"),
+			create_pipelines: load!(function, c"vkCreateGraphicsPipelines"),
+			destroy_pipeline: load!(function, c"vkDestroyPipeline"),
+			create_descriptor_pool: load!(function, c"vkCreateDescriptorPool"),
+			destroy_descriptor_pool: load!(function, c"vkDestroyDescriptorPool"),
+			allocate_descriptor_sets: load!(function, c"vkAllocateDescriptorSets"),
+			update_sets: load!(function, c"vkUpdateDescriptorSets"),
+			begin_rendering: load!(function, c"vkCmdBeginRendering"),
+			end_rendering: load!(function, c"vkCmdEndRendering"),
+			bind_pipeline: load!(function, c"vkCmdBindPipeline"),
+			set_viewport: load!(function, c"vkCmdSetViewport"),
+			set_scissor: load!(function, c"vkCmdSetScissor"),
+			bind_sets: load!(function, c"vkCmdBindDescriptorSets"),
+			push: load!(function, c"vkCmdPushConstants"),
+			draw: load!(function, c"vkCmdDraw"),
+		})
 	}
 }
 
@@ -233,15 +239,13 @@ impl Device {
 		unsafe { (functions.get_queue)(handle, family, 0, &mut queue) };
 		let limits = instance.properties(physical).limits.0;
 		let stamp = |name: &'static CStr| instance.device_function(handle, name).ok();
-		// SAFETY: the functions the driver returned for these names have
-		// these types.
-		let stamps = (|| unsafe {
+		let stamps = (|| {
 			Some(stamps::Functions {
-				create: cast(stamp(c"vkCreateQueryPool")?),
-				destroy: cast(stamp(c"vkDestroyQueryPool")?),
-				reset: cast(stamp(c"vkCmdResetQueryPool")?),
-				write: cast(stamp(c"vkCmdWriteTimestamp2")?),
-				results: cast(stamp(c"vkGetQueryPoolResults")?),
+				create: load!(stamp, c"vkCreateQueryPool"),
+				destroy: load!(stamp, c"vkDestroyQueryPool"),
+				reset: load!(stamp, c"vkCmdResetQueryPool"),
+				write: load!(stamp, c"vkCmdWriteTimestamp2"),
+				results: load!(stamp, c"vkGetQueryPoolResults"),
 			})
 		})();
 		Ok(Self {

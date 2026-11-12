@@ -3,6 +3,9 @@
 //! when the next is recorded, on devices that can write them and only
 //! those. The fake's query functions live here and check the
 //! specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{INTEL, device},
 	choose::{GRAPHICS, Kind},

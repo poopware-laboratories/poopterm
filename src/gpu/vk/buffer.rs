@@ -95,13 +95,12 @@ impl Buffer {
 impl Drop for Buffer {
 	fn drop(&mut self) {
 		let (device, functions) = (self.device.handle, &self.device.functions);
-		// SAFETY: the buffer and its memory are the device's and no longer
-		// used; freeing memory unmaps it.
-		unsafe {
-			(functions.destroy_buffer)(device, self.handle, ptr::null());
-			if self.memory != 0 {
-				(functions.free)(device, self.memory, ptr::null());
-			}
+		// SAFETY: the buffer is the device's and no longer used.
+		unsafe { (functions.destroy_buffer)(device, self.handle, ptr::null()) };
+		if self.memory != 0 {
+			// SAFETY: the memory is the device's, and the buffer bound to it
+			// is gone; freeing memory unmaps it.
+			unsafe { (functions.free)(device, self.memory, ptr::null()) };
 		}
 	}
 }

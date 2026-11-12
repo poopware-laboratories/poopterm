@@ -2,6 +2,9 @@
 //! made with, its memory and view, the device's size limits, what is undone
 //! when a step fails, and the order things go in. The fake's image
 //! functions live here and check the specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer::Buffer,
 	buffer_tests::{GARBAGE, INTEL, allocation, device},

@@ -2,6 +2,9 @@
 //! functions, for `pipeline_tests`: each checks the specification's valid
 //! usage rules for what the quad pipeline makes, records what was made and
 //! hands out handles, and destroys them.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::GARBAGE,
 	descriptor_types::{DescriptorPoolSize, RawDescriptorPool, RawDescriptorSet},

@@ -181,18 +181,20 @@ impl Image {
 impl Drop for Image {
 	fn drop(&mut self) {
 		let (device, functions) = (self.device.handle, &self.device.functions);
-		// SAFETY: the view, image and memory are the device's and no longer
-		// used, and each goes before what it was made from.
-		unsafe {
-			if self.view != 0 {
-				(functions.destroy_view)(device, self.view, ptr::null());
-			}
-			if self.swapchain.is_none() {
-				(functions.destroy_image)(device, self.handle, ptr::null());
-			}
-			if self.memory != 0 {
-				(functions.free)(device, self.memory, ptr::null());
-			}
+		// Each goes before what it was made from.
+		if self.view != 0 {
+			// SAFETY: the view is the device's and no longer used.
+			unsafe { (functions.destroy_view)(device, self.view, ptr::null()) };
+		}
+		if self.swapchain.is_none() {
+			// SAFETY: the image is the device's, not the swapchain's, no
+			// longer used, and its view is gone.
+			unsafe { (functions.destroy_image)(device, self.handle, ptr::null()) };
+		}
+		if self.memory != 0 {
+			// SAFETY: the memory is the device's, and the image bound to it
+			// is gone.
+			unsafe { (functions.free)(device, self.memory, ptr::null()) };
 		}
 	}
 }

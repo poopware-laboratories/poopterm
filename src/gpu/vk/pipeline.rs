@@ -327,23 +327,28 @@ impl QuadPipeline {
 impl Drop for QuadPipeline {
 	fn drop(&mut self) {
 		let (device, functions) = (self.device.handle, &self.device.functions);
-		// SAFETY: what was made is the device's and no longer used, and each
-		// goes before what it was made with.
-		unsafe {
-			if self.pipeline != 0 {
-				(functions.destroy_pipeline)(device, self.pipeline, ptr::null());
+		// Each goes before what it was made with; all are the device's and no
+		// longer used.
+		if self.pipeline != 0 {
+			// SAFETY: the pipeline is the device's and no longer used.
+			unsafe { (functions.destroy_pipeline)(device, self.pipeline, ptr::null()) };
+		}
+		if self.layout != 0 {
+			// SAFETY: the layout is the device's, and the pipeline made with
+			// it is gone.
+			unsafe { (functions.destroy_pipeline_layout)(device, self.layout, ptr::null()) };
+		}
+		for layout in [self.set_layout, self.texture_layout] {
+			if layout != 0 {
+				// SAFETY: the set layout is the device's, and the pipeline
+				// layout made with it is gone.
+				unsafe { (functions.destroy_set_layout)(device, layout, ptr::null()) };
 			}
-			if self.layout != 0 {
-				(functions.destroy_pipeline_layout)(device, self.layout, ptr::null());
-			}
-			for layout in [self.set_layout, self.texture_layout] {
-				if layout != 0 {
-					(functions.destroy_set_layout)(device, layout, ptr::null());
-				}
-			}
-			if self.sampler != 0 {
-				(functions.destroy_sampler)(device, self.sampler, ptr::null());
-			}
+		}
+		if self.sampler != 0 {
+			// SAFETY: the sampler is the device's, and the set layouts that
+			// named it are gone.
+			unsafe { (functions.destroy_sampler)(device, self.sampler, ptr::null()) };
 		}
 	}
 }

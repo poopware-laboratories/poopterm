@@ -3,6 +3,9 @@
 //! queue families show, and the order surfaces and instances are
 //! destroyed in. The fake's surface functions live here and check the
 //! specification's valid usage rules.
+// The fake driver's blocks still hold several operations each; a follow-up
+// splits them, as the bindings' own blocks already are.
+#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	call::Error,
 	choose::{Choice, Device, GRAPHICS, Kind, QueueFamily, choose},
