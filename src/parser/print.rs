@@ -31,11 +31,11 @@ impl Term {
 			return;
 		}
 		// Text wraps at the right margin, or at the screen's edge right of it.
-		let end = self.line_end() + 1;
+		let mut end = self.line_end() + 1;
 		if self.wrap_pending || self.cx + width > end {
 			if self.auto_wrap {
 				self.linefeed();
-				self.cx = self.left_margin;
+				(self.cx, end) = (self.left_margin, self.right_margin + 1);
 			} else {
 				self.cx = end.saturating_sub(width);
 			}
@@ -46,11 +46,11 @@ impl Term {
 			// erases the whole block.
 			self.skip_lower_rows(width);
 			self.erase_multicells_in_row(self.cy, self.cx, self.cx + width);
+			// Skipping can carry the cursor past the right margin; the line
+			// then ends where the character does.
+			end = (self.line_end() + 1).max(self.cx + width).min(self.cols);
 		}
 		let (x, y, cols) = (self.cx, self.cy, self.cols);
-		// Skipping scaled text's lower rows can carry the cursor past the
-		// right margin; the line then ends where the character does.
-		let end = (self.line_end() + 1).max(x + width).min(cols);
 		let i = self.idx(x, y);
 		if self.insert_mode {
 			// Cells pushed past the right margin are lost.
@@ -281,7 +281,7 @@ impl Term {
 
 	/// Appends zero-width marks (and anything after a ZWJ) to the previous
 	/// cell's cluster. Returns true when `c` was consumed that way.
-	#[inline]
+	#[inline(always)]
 	fn attach_to_previous(&mut self, c: char, width: usize) -> bool {
 		let mut x = if self.wrap_pending {
 			self.cx

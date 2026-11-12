@@ -19,6 +19,7 @@ impl Term {
 
 	/// The first column the cursor may reach moving left: the left margin
 	/// from at or right of it, else the screen's edge.
+	#[inline(always)]
 	pub(crate) fn line_start(&self) -> usize {
 		if self.cx >= self.left_margin {
 			self.left_margin
@@ -39,6 +40,7 @@ impl Term {
 	}
 
 	/// The column origin mode counts from.
+	#[inline(always)]
 	pub(crate) fn origin_column(&self) -> usize {
 		if self.origin_mode {
 			self.left_margin
@@ -49,6 +51,7 @@ impl Term {
 
 	/// CR: to the left margin from at or right of it (always in origin
 	/// mode), else to the first column.
+	#[inline(always)]
 	pub(crate) fn carriage_return(&mut self) {
 		self.cx = if self.origin_mode {
 			self.left_margin

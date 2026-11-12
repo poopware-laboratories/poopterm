@@ -435,6 +435,7 @@ impl Term {
 
 	/// The column CUP, HVP, CHA and HPA move to, counted from 1: from the
 	/// left margin in origin mode, and never past the right one there.
+	#[inline(always)]
 	fn column(&self, column: usize) -> usize {
 		let last = if self.origin_mode {
 			self.right_margin
