@@ -387,8 +387,8 @@ All encoders are pure functions with unit tests:
 - `keys::encode_key(key, modifiers, modes)`: legacy xterm and kitty
   (`CSI u`) encodings, Alt as ESC prefix, modified cursor and function keys,
   DECCKM application mode.
-- `mouse::encode_mouse`: X10, UTF-8 (`?1005`), SGR (`?1006`) and urxvt
-  (`?1015`) reports with modifier bits, none in X10 compatibility (`?9`);
+- `mouse::encode_mouse`: X10, UTF-8 (`?1005`), SGR (`?1006`), urxvt
+  (`?1015`) and SGR-Pixels (`?1016`) reports with modifier bits, none in X10 compatibility (`?9`);
   `mouse::tracked` says which events each tracking mode reports.
 - `paste::paste_bytes`: CR line endings; strips paste markers from pasted
   text when bracketed paste is on.

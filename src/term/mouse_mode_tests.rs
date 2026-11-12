@@ -50,6 +50,7 @@ fn each_encoding_turns_on_and_off() {
 		(1005, MouseEncoding::Utf8),
 		(1006, MouseEncoding::Sgr),
 		(1015, MouseEncoding::Urxvt),
+		(1016, MouseEncoding::SgrPixels),
 	] {
 		let mut t = terminal();
 		send(&mut t, &format!("\x1b[?{mode}h"));
@@ -113,4 +114,17 @@ fn an_encoding_does_not_turn_tracking_on() {
 	let mut t = terminal();
 	send(&mut t, "\x1b[?1005h\x1b[?1015h");
 	assert_eq!(t.mouse_tracking, 0);
+}
+
+#[test]
+fn sgr_pixels_and_sgr_replace_each_other() {
+	// Programs often set ?1006 then ?1016, falling back if the second is
+	// unknown; the last one set is used.
+	let mut t = terminal();
+	send(&mut t, "\x1b[?1006h\x1b[?1016h");
+	assert_eq!(t.mouse_encoding, MouseEncoding::SgrPixels);
+	send(&mut t, "\x1b[?1006$p\x1b[?1016$p");
+	assert_eq!(replies(&mut t), ["\x1b[?1006;2$y", "\x1b[?1016;1$y"]);
+	send(&mut t, "\x1b[?1016l");
+	assert_eq!(t.mouse_encoding, MouseEncoding::X10);
 }

@@ -20,13 +20,15 @@ pub(crate) enum MouseAction {
 	Motion,
 }
 
-/// One mouse event at a 1-based cell position.
+/// One mouse event at a 1-based cell position, and the 1-based pixel inside
+/// the grid that SGR-Pixels reports give instead.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MouseReport {
 	pub button: MouseButtonCode,
 	pub kind: MouseAction,
 	pub col: usize,
 	pub row: usize,
+	pub pixel: (usize, usize),
 	pub mods: Modifiers,
 }
 
@@ -44,6 +46,8 @@ pub(crate) enum MouseEncoding {
 	Sgr,
 	/// `?1015`: `CSI b ; x ; y M` in decimal, `b` as in the legacy form.
 	Urxvt,
+	/// `?1016`: the SGR form with the pixel inside the grid for `x ; y`.
+	SgrPixels,
 }
 
 impl MouseEncoding {
@@ -53,6 +57,7 @@ impl MouseEncoding {
 			1005 => Some(Self::Utf8),
 			1006 => Some(Self::Sgr),
 			1015 => Some(Self::Urxvt),
+			1016 => Some(Self::SgrPixels),
 			_ => None,
 		}
 	}
@@ -64,6 +69,7 @@ impl MouseEncoding {
 			Self::Utf8 => Some(1005),
 			Self::Sgr => Some(1006),
 			Self::Urxvt => Some(1015),
+			Self::SgrPixels => Some(1016),
 		}
 	}
 }
@@ -106,8 +112,11 @@ pub(crate) fn encode_mouse(
 		code += 32;
 	}
 	let release = report.kind == MouseAction::Release;
-	let (col, row) = (report.col, report.row);
-	if encoding == MouseEncoding::Sgr {
+	let (col, row) = match encoding {
+		MouseEncoding::SgrPixels => report.pixel,
+		_ => (report.col, report.row),
+	};
+	if matches!(encoding, MouseEncoding::Sgr | MouseEncoding::SgrPixels) {
 		let suffix = if release { 'm' } else { 'M' };
 		return Some(format!("\x1b[<{code};{col};{row}{suffix}").into_bytes());
 	}
@@ -148,6 +157,7 @@ mod tests {
 			kind,
 			col,
 			row,
+			pixel: (col * 10, row * 20),
 			mods: Modifiers::default(),
 		}
 	}
@@ -398,8 +408,77 @@ mod tests {
 	}
 
 	#[test]
+	fn sgr_pixel_reports_give_pixels_in_the_sgr_form() {
+		assert_eq!(
+			report(
+				MouseButtonCode::Right,
+				MouseAction::Press,
+				MouseEncoding::SgrPixels
+			)
+			.unwrap(),
+			b"\x1b[<2;10;40M"
+		);
+		assert_eq!(
+			report(
+				MouseButtonCode::Right,
+				MouseAction::Release,
+				MouseEncoding::SgrPixels
+			)
+			.unwrap(),
+			b"\x1b[<2;10;40m",
+			"the button is kept on release, as in SGR"
+		);
+		assert_eq!(
+			report(
+				MouseButtonCode::None,
+				MouseAction::Motion,
+				MouseEncoding::SgrPixels
+			)
+			.unwrap(),
+			b"\x1b[<35;10;40M"
+		);
+	}
+
+	#[test]
+	fn sgr_pixel_reports_have_no_distance_limit_and_keep_modifiers() {
+		let far = MouseReport {
+			pixel: (7680, 4320),
+			mods: Modifiers {
+				alt: true,
+				..Default::default()
+			},
+			..at(MouseButtonCode::WheelUp, MouseAction::Press, 3000, 2000)
+		};
+		assert_eq!(
+			encode_mouse(far, MouseEncoding::SgrPixels, 1000).unwrap(),
+			b"\x1b[<72;7680;4320M"
+		);
+	}
+
+	#[test]
+	fn only_sgr_pixel_reports_use_the_pixel() {
+		for encoding in [
+			MouseEncoding::X10,
+			MouseEncoding::Utf8,
+			MouseEncoding::Sgr,
+			MouseEncoding::Urxvt,
+		] {
+			let near = at(MouseButtonCode::Left, MouseAction::Press, 1, 2);
+			let moved = MouseReport {
+				pixel: (999, 999),
+				..near
+			};
+			assert_eq!(
+				encode_mouse(near, encoding, 1000),
+				encode_mouse(moved, encoding, 1000),
+				"{encoding:?}"
+			);
+		}
+	}
+
+	#[test]
 	fn encodings_name_their_modes_and_back() {
-		for mode in [1005, 1006, 1015] {
+		for mode in [1005, 1006, 1015, 1016] {
 			assert_eq!(
 				MouseEncoding::from_mode(mode).and_then(MouseEncoding::mode),
 				Some(mode)
@@ -407,7 +486,7 @@ mod tests {
 		}
 		assert_eq!(MouseEncoding::X10.mode(), None);
 		assert_eq!(MouseEncoding::default(), MouseEncoding::X10);
-		for other in [9, 1000, 1004, 1016, 0] {
+		for other in [9, 1000, 1004, 1007, 1017, 0] {
 			assert_eq!(MouseEncoding::from_mode(other), None, "?{other}");
 		}
 	}

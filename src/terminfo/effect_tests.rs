@@ -324,6 +324,7 @@ fn line_drawing_and_paste_brackets_match_what_poopterm_does() {
 			kind,
 			col: 4,
 			row: 3,
+			pixel: (25, 33),
 			mods: Default::default(),
 		};
 		let xm = entry.tput("xm", &["2", "3", "2", pressed]);
