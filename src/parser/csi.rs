@@ -44,6 +44,16 @@ impl Term {
 					};
 					self.cursor_blink = matches!(style, None | Some(0 | 1 | 3 | 5));
 				}
+				// DECIC and DECDC insert and delete columns; SL and SR shift
+				// the screen left and right.
+				(b"'", '}' | '~') | (b" ", '@' | 'A') => {
+					let count = params.get(0).and_then(|p| p.first().copied()).unwrap_or(0);
+					let count = usize::from(count.max(1));
+					match action {
+						'}' | '~' => self.edit_columns(count, action == '}'),
+						_ => self.shift_region(count, action == 'A'),
+					}
+				}
 				// DECRQCRA: a checksum of a screen rectangle. Blocked: asked
 				// over and over, it reads the screen back to any program.
 				(b"*", 'y') => {}
@@ -313,6 +323,7 @@ impl Term {
 				_ => {}
 			},
 			'K' => self.erase_line(raw0),
+			'@' | 'P' if self.has_lr_margins() => self.edit_characters(p(0, 1), action == '@'),
 			'@' => {
 				self.erase_images(self.cy * self.cols, (self.cy + 1) * self.cols);
 				let count = p(0, 1).min(self.cols - self.cx);
@@ -333,6 +344,7 @@ impl Term {
 				let count = p(0, 1).min(self.cols - self.cx);
 				self.clear_row(self.cy, self.cx, self.cx + count);
 			}
+			'L' | 'M' if self.has_lr_margins() => self.edit_lines(p(0, 1), action == 'L'),
 			'L' | 'M' if self.cy >= self.scroll_top && self.cy <= self.scroll_bottom => {
 				self.erase_images(self.cy * self.cols, (self.scroll_bottom + 1) * self.cols);
 				let bottom = self.scroll_bottom.max(self.cy).min(self.rows - 1);
