@@ -840,3 +840,157 @@ fn the_fake_driver_reports_broken_device_rules() {
 	unsafe { destroy_device(handle, ptr::null()) };
 	finish();
 }
+
+/// What the fake driver hands out for `name` on `device`, as an address.
+fn fake_function(device: RawDevice, name: &CStr) -> usize {
+	// SAFETY: the fake reads the name, a C string, and nothing else.
+	let found = unsafe { get_device_proc_addr(device, name.as_ptr()) };
+	found.map_or(0, |function| function as usize)
+}
+
+/// Each field of the device's table holds the function the driver gave for
+/// that field's own name: the type each field casts to is only right for
+/// that one, so a swapped name would call a function through the wrong type.
+#[test]
+fn every_device_function_is_the_one_its_name_looks_up() {
+	let (instance, physical) = open(with_devices(&[drawing(api_version(1, 3))]));
+	let device = Device::new(instance, physical, 1).unwrap();
+	let functions = &device.functions;
+	let fields: [(&CStr, usize); 50] = [
+		(c"vkGetDeviceQueue", functions.get_queue as usize),
+		(c"vkCreateBuffer", functions.create_buffer as usize),
+		(c"vkDestroyBuffer", functions.destroy_buffer as usize),
+		(
+			c"vkGetBufferMemoryRequirements",
+			functions.buffer_requirements as usize,
+		),
+		(c"vkAllocateMemory", functions.allocate as usize),
+		(c"vkFreeMemory", functions.free as usize),
+		(c"vkBindBufferMemory", functions.bind_buffer as usize),
+		(c"vkMapMemory", functions.map as usize),
+		(c"vkCreateImage", functions.create_image as usize),
+		(c"vkDestroyImage", functions.destroy_image as usize),
+		(
+			c"vkGetImageMemoryRequirements",
+			functions.image_requirements as usize,
+		),
+		(c"vkBindImageMemory", functions.bind_image as usize),
+		(c"vkCreateImageView", functions.create_view as usize),
+		(c"vkDestroyImageView", functions.destroy_view as usize),
+		(c"vkCreateSemaphore", functions.create_semaphore as usize),
+		(c"vkDestroySemaphore", functions.destroy_semaphore as usize),
+		(
+			c"vkGetSemaphoreCounterValue",
+			functions.semaphore_value as usize,
+		),
+		(c"vkWaitSemaphores", functions.wait_semaphores as usize),
+		(c"vkCreateCommandPool", functions.create_pool as usize),
+		(c"vkDestroyCommandPool", functions.destroy_pool as usize),
+		(c"vkResetCommandPool", functions.reset_pool as usize),
+		(
+			c"vkAllocateCommandBuffers",
+			functions.allocate_commands as usize,
+		),
+		(c"vkBeginCommandBuffer", functions.begin as usize),
+		(c"vkEndCommandBuffer", functions.end as usize),
+		(c"vkQueueSubmit2", functions.submit as usize),
+		(c"vkCmdPipelineBarrier2", functions.barrier as usize),
+		(c"vkCmdCopyBufferToImage", functions.upload as usize),
+		(c"vkCmdCopyImageToBuffer", functions.download as usize),
+		(c"vkCreateShaderModule", functions.create_module as usize),
+		(c"vkDestroyShaderModule", functions.destroy_module as usize),
+		(c"vkCreateSampler", functions.create_sampler as usize),
+		(c"vkDestroySampler", functions.destroy_sampler as usize),
+		(
+			c"vkCreateDescriptorSetLayout",
+			functions.create_set_layout as usize,
+		),
+		(
+			c"vkDestroyDescriptorSetLayout",
+			functions.destroy_set_layout as usize,
+		),
+		(
+			c"vkCreatePipelineLayout",
+			functions.create_pipeline_layout as usize,
+		),
+		(
+			c"vkDestroyPipelineLayout",
+			functions.destroy_pipeline_layout as usize,
+		),
+		(
+			c"vkCreateGraphicsPipelines",
+			functions.create_pipelines as usize,
+		),
+		(c"vkDestroyPipeline", functions.destroy_pipeline as usize),
+		(
+			c"vkCreateDescriptorPool",
+			functions.create_descriptor_pool as usize,
+		),
+		(
+			c"vkDestroyDescriptorPool",
+			functions.destroy_descriptor_pool as usize,
+		),
+		(
+			c"vkAllocateDescriptorSets",
+			functions.allocate_descriptor_sets as usize,
+		),
+		(c"vkUpdateDescriptorSets", functions.update_sets as usize),
+		(c"vkCmdBeginRendering", functions.begin_rendering as usize),
+		(c"vkCmdEndRendering", functions.end_rendering as usize),
+		(c"vkCmdBindPipeline", functions.bind_pipeline as usize),
+		(c"vkCmdSetViewport", functions.set_viewport as usize),
+		(c"vkCmdSetScissor", functions.set_scissor as usize),
+		(c"vkCmdBindDescriptorSets", functions.bind_sets as usize),
+		(c"vkCmdPushConstants", functions.push as usize),
+		(c"vkCmdDraw", functions.draw as usize),
+	];
+	let handle = device.handle;
+	for (name, field) in fields {
+		assert_ne!(field, 0, "{name:?}");
+		assert_eq!(
+			field,
+			fake_function(handle, name),
+			"{name:?} holds another function"
+		);
+	}
+	let distinct: std::collections::HashSet<usize> = fields.iter().map(|&(_, field)| field).collect();
+	assert_eq!(distinct.len(), fields.len(), "two fields hold one function");
+}
+
+/// The timestamp functions are loaded by their own names too.
+#[test]
+fn every_timestamp_function_is_the_one_its_name_looks_up() {
+	let (instance, physical) = open(with_devices(&[drawing(api_version(1, 3))]));
+	let device = Device::new(instance, physical, 1).unwrap();
+	let stamps = device.stamps.as_ref().expect("the fake has timestamps");
+	let fields: [(&CStr, usize); 5] = [
+		(c"vkCreateQueryPool", stamps.create as usize),
+		(c"vkDestroyQueryPool", stamps.destroy as usize),
+		(c"vkCmdResetQueryPool", stamps.reset as usize),
+		(c"vkCmdWriteTimestamp2", stamps.write as usize),
+		(c"vkGetQueryPoolResults", stamps.results as usize),
+	];
+	for (name, field) in fields {
+		assert_eq!(
+			field,
+			fake_function(device.handle, name),
+			"{name:?} holds another function"
+		);
+	}
+}
+
+/// All five are there or none: a device lacking one times nothing.
+#[test]
+fn a_device_lacking_one_timestamp_function_has_none() {
+	for lacking in [
+		c"vkCreateQueryPool",
+		c"vkCmdWriteTimestamp2",
+		c"vkGetQueryPoolResults",
+	] {
+		let mut driver = with_devices(&[drawing(api_version(1, 3))]);
+		driver.lacks.push(lacking);
+		let (instance, physical) = open(driver);
+		let device = Device::new(instance, physical, 1).unwrap();
+		assert!(device.stamps.is_none(), "{lacking:?}");
+	}
+}

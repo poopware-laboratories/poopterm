@@ -232,3 +232,7 @@ impl Drop for Surface {
 		unsafe { (self.functions.destroy)(self.instance.handle(), self.handle, ptr::null()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "surface_table_tests.rs"]
+mod table_tests;

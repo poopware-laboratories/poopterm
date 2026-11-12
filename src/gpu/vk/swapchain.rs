@@ -176,3 +176,7 @@ impl Drop for Swapchain {
 		let _ = unsafe { (self.functions.wait_idle)(device.queue()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "swapchain_table_tests.rs"]
+mod table_tests;

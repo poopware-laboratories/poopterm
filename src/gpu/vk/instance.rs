@@ -311,3 +311,7 @@ impl Drop for Instance {
 		unsafe { (self.destroy)(self.handle, ptr::null()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "instance_table_tests.rs"]
+mod table_tests;
