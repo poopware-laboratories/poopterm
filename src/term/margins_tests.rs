@@ -491,3 +491,91 @@ fn repeat_wraps_inside_the_margins() {
 	feed(&mut t, "\x1b[?69h\x1b[3;5s\x1b[1;3Hx\x1b[5b");
 	assert_eq!(screen(&t)[..2], ["  xxx   ", "  xxx   "]);
 }
+
+#[test]
+fn decslrm_clears_a_pending_wrap() {
+	let mut t = terminal(4, 3);
+	feed(&mut t, "\x1b[?69h\x1b[1;4Hx\x1b[1;3sy");
+	assert_eq!(screen(&t)[..2], ["y  x", "    "]);
+}
+
+#[test]
+fn next_and_previous_line_return_to_the_left_margin() {
+	// CNL and CPL return the carriage as CR does: from inside the margins
+	// to the left one, from left of them to the first column.
+	let mut t = terminal(12, 6);
+	feed(&mut t, "\x1b[2;4r\x1b[?69h\x1b[5;10s\x1b[3;7H\x1b[E");
+	assert_eq!(cursor(&t), (5, 4));
+	feed(&mut t, "\x1b[3;7H\x1b[F");
+	assert_eq!(cursor(&t), (5, 2));
+	feed(&mut t, "\x1b[3;2H\x1b[E");
+	assert_eq!(cursor(&t), (1, 4));
+}
+
+#[test]
+fn text_beyond_ascii_wraps_between_the_margins() {
+	let mut t = terminal(8, 4);
+	feed(&mut t, "\x1b[?69h\x1b[2;4s\x1b[1;2Hàéîõü");
+	assert_eq!(screen(&t)[..2], [" àéî    ", " õü     "]);
+	// A combining mark at the right margin joins the character before it.
+	feed(&mut t, "\x1b[3;2Habc\u{301}d");
+	assert_eq!(screen(&t)[2..4], [" abc    ", " d      "]);
+	assert_eq!(t.extras.marks(t.grid[2][3].extra), ['\u{301}']);
+}
+
+#[test]
+fn a_wide_character_that_fits_before_the_margin_waits_there() {
+	let mut t = terminal(8, 4);
+	feed(&mut t, "\x1b[?69h\x1b[2;5s\x1b[1;4H世");
+	let (left, right) = (t.grid[0][3], t.grid[0][4]);
+	assert_eq!((left.ch, left.width, right.width), ('世', 2, 0));
+	assert_eq!(cursor(&t), (5, 1));
+	assert!(t.wrap_pending);
+}
+
+#[test]
+fn insert_mode_right_of_the_right_margin_shifts_to_the_screen_edge() {
+	let mut t = terminal(10, 2);
+	feed(&mut t, "\x1b[1;6Habcde\x1b[?69h\x1b[2;4s\x1b[1;7H\x1b[4hX");
+	assert_eq!(screen(&t)[0], "     aXbcd");
+}
+
+#[test]
+fn scrolling_the_rectangle_erases_sixel_images_inside_it_only() {
+	let mut t = terminal(10, 4);
+	(t.cell_width, t.cell_height) = (10, 20);
+	let sixel = "\x1bPq#0;2;0;0;0~\x1b\\";
+	feed(&mut t, &format!("\x1b[2;1H{sixel}\x1b[2;4H{sixel}"));
+	assert_eq!(t.images.len(), 2);
+	feed(&mut t, "\x1b[?69h\x1b[3;6s\x1b[S");
+	let columns: Vec<usize> = t.images.iter().map(|image| image.col).collect();
+	assert_eq!(columns, [0]);
+}
+
+#[test]
+fn scrolling_the_rectangle_erases_scaled_text_it_cuts() {
+	let mut t = terminal(10, 4);
+	feed(
+		&mut t,
+		"\x1b[2;1H\x1b]66;s=2;ab\x07\x1b[?69h\x1b[2;6s\x1b[S",
+	);
+	for y in 0..4 {
+		for x in 0..10 {
+			assert_eq!(t.extras.multicell(t.grid[y][x].extra), None, "({x}, {y})");
+		}
+	}
+}
+
+#[test]
+fn scrolling_the_rectangle_into_empty_rows_marks_them_used() {
+	for background in ["", "\x1b[44m"] {
+		let mut t = terminal(5, 5);
+		feed(
+			&mut t,
+			&format!("\x1b[5;1Habcde\x1b[?69h\x1b[2;4s{background}\x1b[4S"),
+		);
+		assert_eq!(screen(&t)[0], " bcd ", "{background:?}");
+		assert_eq!(screen(&t)[4], "a   e", "{background:?}");
+		t.grid.assert_extents();
+	}
+}

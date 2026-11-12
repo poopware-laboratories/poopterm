@@ -61,10 +61,10 @@ impl Term {
 	/// ignored. Homes the cursor.
 	pub(crate) fn set_lr_margins(&mut self, left: usize, right: usize) {
 		let right = right.min(self.cols);
-		if left == 0 || left >= right {
+		if left >= right {
 			return;
 		}
-		(self.left_margin, self.right_margin) = (left - 1, right - 1);
+		(self.left_margin, self.right_margin) = (left.saturating_sub(1), right - 1);
 		self.wrap_pending = false;
 		self.cx = self.origin_column();
 		self.cy = if self.origin_mode { self.scroll_top } else { 0 };
