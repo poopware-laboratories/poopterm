@@ -216,18 +216,19 @@ impl Term {
 				_ => {}
 			},
 			'I' | 'Z' => {
-				// Tab stops end at the margins from inside them.
-				let (start, end) = (self.line_start(), self.line_end());
+				// Forward tabs stop at the right margin from inside it; back
+				// tabs pass the left one, as xterm's do.
+				let end = self.line_end();
 				for _ in 0..p(0, 1).min(self.cols) {
 					self.cx = if action == 'I' {
 						(self.cx + 1..=end)
 							.find(|&col| self.tab_stops[col])
 							.unwrap_or(end)
 					} else {
-						(start..self.cx)
+						(0..self.cx)
 							.rev()
 							.find(|&col| self.tab_stops[col])
-							.unwrap_or(start)
+							.unwrap_or(0)
 					};
 				}
 			}

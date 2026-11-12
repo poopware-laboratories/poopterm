@@ -209,7 +209,7 @@ fn reverse_wrap_goes_to_the_right_margin_of_the_line_above() {
 }
 
 #[test]
-fn tabs_stop_at_the_right_margin_and_back_tabs_at_the_left_one() {
+fn tabs_stop_at_the_right_margin_and_back_tabs_pass_the_left_one() {
 	// esctest DECSET_DECAWM_NoLineWrapOnTabWithLeftRightMargin.
 	let mut t = terminal(80, 4);
 	feed(&mut t, "\x1b[?69h\x1b[10;20s");
@@ -219,8 +219,13 @@ fn tabs_stop_at_the_right_margin_and_back_tabs_at_the_left_one() {
 		stops.push(cursor(&t).0);
 	}
 	assert_eq!(stops, [9, 17, 20, 20]);
-	feed(&mut t, "\x1b[Z\x1b[Z\x1b[Z");
-	assert_eq!(cursor(&t).0, 10);
+	// Back tabs pass the left margin (esctest CBT_IgnoresRegion).
+	let mut back = Vec::new();
+	for _ in 0..3 {
+		feed(&mut t, "\x1b[Z");
+		back.push(cursor(&t).0);
+	}
+	assert_eq!(back, [17, 9, 1]);
 	// Right of the right margin, tabs go on to the screen edge.
 	feed(&mut t, "\x1b[1;30H\t\t\t\t\t\t\t");
 	assert_eq!(cursor(&t).0, 80);

@@ -88,7 +88,7 @@ with `font_path` or `POOPTERM_FONT`.
 - **Margins:** DECSTBM (`CSI Pt ; Pb r`) sets the top and bottom margins;
   with DECLRMM (`CSI ? 69 h`) set, DECSLRM (`CSI Pl ; Pr s`) sets the left
   and right ones (without it, `CSI s` saves the cursor). Text wraps from the
-  right margin to the left one; CR, BS, tabs, CUF and CUB stop at the
+  right margin to the left one; CR, BS, forward tabs, CUF and CUB stop at the
   margins from inside them; line feeds and RI at a margin scroll only the
   rectangle inside all four, and only when the cursor is inside it; SU and
   SD scroll that rectangle. Origin mode counts rows and columns from the
