@@ -38,13 +38,7 @@ impl Term {
 				self.scale = scale;
 				self.scrollback_limit = limit;
 			}
-			b'M' => {
-				if self.cy == self.scroll_top {
-					self.scroll_region_down(1);
-				} else {
-					self.cy = self.cy.saturating_sub(1);
-				}
-			}
+			b'M' => self.reverse_index(),
 			// HP memory lock: the lines above the cursor stop scrolling.
 			b'l' if self.cy < self.scroll_bottom => {
 				self.scroll_top = self.cy;
@@ -56,8 +50,8 @@ impl Term {
 			}
 			b'D' => self.linefeed(),
 			b'E' => {
-				self.cx = 0;
 				self.linefeed();
+				self.carriage_return();
 			}
 			// DECKPAM and DECKPNM.
 			b'=' => self.application_keypad = true,
@@ -86,6 +80,7 @@ impl Term {
 		}
 		self.scroll_top = 0;
 		self.scroll_bottom = self.rows - 1;
+		self.reset_lr_margins();
 		self.cx = 0;
 		self.cy = 0;
 		self.wrap_pending = false;
