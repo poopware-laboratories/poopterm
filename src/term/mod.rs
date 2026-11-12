@@ -25,6 +25,8 @@ mod cwd_host_tests;
 pub(crate) mod dcs;
 #[cfg(test)]
 mod dcs_tests;
+#[cfg(test)]
+mod esctest_tests;
 mod extras;
 mod fill;
 #[cfg(test)]
@@ -71,6 +73,8 @@ pub(crate) mod pointer;
 mod pointer_tests;
 #[cfg(test)]
 mod prompt_tests;
+#[cfg(test)]
+mod pty_harness_tests;
 mod recolor;
 #[cfg(test)]
 mod recolor_tests;
