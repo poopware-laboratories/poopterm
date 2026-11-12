@@ -5,6 +5,7 @@ use super::{
 	call::{Error, check, enumerate},
 	device::{Device, SWAPCHAIN},
 	entry::load,
+	handle::RawImage,
 	image::Image,
 	present::Acquire,
 	semaphore::Semaphore,
@@ -88,7 +89,7 @@ impl Swapchain {
 			return Err(Error::Unshown);
 		}
 		let functions = Functions::load(device)?;
-		Self::make(functions, device, surface, plan, 0)
+		Self::make(functions, device, surface, plan, RawSwapchain::NULL)
 	}
 
 	/// The swapchain remade to `plan`, as when the window changes size; the
@@ -126,7 +127,7 @@ impl Swapchain {
 			clipped: 1,
 			old_swapchain: old,
 		};
-		let mut handle = 0;
+		let mut handle = RawSwapchain::NULL;
 		// SAFETY: the device is live and made with the extension, `info`
 		// outlives the call and names its live surface, which its queue shows
 		// on, and `handle` is writable.
@@ -137,7 +138,7 @@ impl Swapchain {
 			device: device.clone(),
 			_surface: surface.clone(),
 		});
-		let handles = enumerate(0, |count, images| {
+		let handles = enumerate(RawImage::NULL, |count, images| {
 			// SAFETY: the swapchain is live, and `enumerate` passes room for
 			// `count`.
 			unsafe { (functions.images)(device.handle, handle, count, images) }

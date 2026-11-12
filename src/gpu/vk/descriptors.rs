@@ -7,7 +7,7 @@ use super::{
 	draw_types::{DescriptorImageInfo, STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, WriteDescriptorSet},
 	image::Image,
 	pipeline::QuadPipeline,
-	pipeline_types::RawDescriptorSetLayout,
+	pipeline_types::{RawDescriptorSetLayout, RawSampler},
 	recording::Layout,
 	timeline::Timeline,
 };
@@ -69,7 +69,7 @@ impl QuadSet {
 			pool_size_count: sizes.len() as u32,
 			pool_sizes: sizes.as_ptr(),
 		};
-		let mut pool = 0;
+		let mut pool = RawDescriptorPool::NULL;
 		let create = device.functions.create_descriptor_pool;
 		// SAFETY: the device is live, `info` and the sizes outlive the call,
 		// and the handle is writable.
@@ -77,7 +77,7 @@ impl QuadSet {
 		// From here on, dropping `made` destroys the pool.
 		let mut made = Self {
 			pool,
-			set: 0,
+			set: RawDescriptorSet::NULL,
 			used: RefCell::new(None),
 			pipeline: pipeline.clone(),
 		};
@@ -88,7 +88,7 @@ impl QuadSet {
 			set_count: 1,
 			set_layouts: &layout,
 		};
-		let mut set = 0;
+		let mut set = RawDescriptorSet::NULL;
 		let allocate = device.functions.allocate_descriptor_sets;
 		// SAFETY: the pool and the set layout are the device's and live,
 		// `info` outlives the call, and there is room for one handle.
@@ -130,7 +130,7 @@ impl TextureSet {
 		let set = QuadSet::of(pipeline, pipeline.texture_layout(), &TEXTURE_SIZES)?;
 		let info = DescriptorImageInfo {
 			// The set layout's sampler is immutable.
-			sampler: 0,
+			sampler: RawSampler::NULL,
 			image_view: image.view(),
 			image_layout: Layout::ShaderReadOnly as i32,
 		};

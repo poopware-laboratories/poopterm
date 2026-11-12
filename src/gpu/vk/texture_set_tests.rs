@@ -4,6 +4,7 @@
 //! the image while it lives, images not made for sampling refused, and
 //! failures releasing what was made. The
 //! real driver makes and writes one too, under the validation layer.
+use super::handle::RawDescriptorSetLayout;
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,
@@ -48,7 +49,7 @@ fn a_texture_set_comes_from_a_pool_of_its_own_and_points_at_its_image() {
 	let pipeline = pipeline();
 	let image = image(&pipeline);
 	let texture = TextureSet::new(&pipeline, &image).unwrap();
-	assert_eq!(texture.handle(), SETS + 1);
+	assert_eq!(texture.handle(), RawDescriptorSet(SETS + 1));
 	assert!(Rc::ptr_eq(texture.pipeline(), &pipeline));
 	assert!(Rc::ptr_eq(&texture.image, &image));
 	// Written once, made: the image's view, in the shader read only layout.
@@ -62,7 +63,13 @@ fn a_texture_set_comes_from_a_pool_of_its_own_and_points_at_its_image() {
 		count: 1,
 	}];
 	assert_eq!(objects.pools, [(1, sizes)]);
-	assert_eq!(objects.sets, [(POOLS + 1, 0x62_0002)]);
+	assert_eq!(
+		objects.sets,
+		[(
+			RawDescriptorPool(POOLS + 1),
+			RawDescriptorSetLayout(0x62_0002)
+		)]
+	);
 }
 
 #[test]
@@ -71,7 +78,7 @@ fn each_texture_set_is_its_own_and_writes_only_itself() {
 	let (first, second) = (image(&pipeline), image(&pipeline));
 	let a = TextureSet::new(&pipeline, &first).unwrap();
 	let b = TextureSet::new(&pipeline, &second).unwrap();
-	assert_eq!((a.handle(), b.handle()), (SETS + 1, SETS + 2));
+	assert_eq!((a.handle().0, b.handle().0), (SETS + 1, SETS + 2));
 	let expected = [
 		"write 0x660001 binding 0: 0xf00001 layout 0x5",
 		"write 0x660002 binding 0: 0xf00002 layout 0x5",
@@ -146,5 +153,5 @@ fn a_real_device_makes_and_writes_a_texture_set() {
 	let pipeline = Rc::new(QuadPipeline::new(&device, Format::Bgra).expect("pipeline"));
 	let image = Image::new(&device, Format::Bgra, [2, 2, 1], TEXTURE).expect("image");
 	let texture = TextureSet::new(&pipeline, &Rc::new(image)).expect("set");
-	assert_ne!(texture.handle(), 0);
+	assert_ne!(texture.handle(), RawDescriptorSet::NULL);
 }

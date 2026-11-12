@@ -4,8 +4,7 @@
 use super::{pipeline_types::RawDescriptorSetLayout, types::RawDevice};
 use std::ffi::c_void;
 
-pub(crate) type RawDescriptorPool = u64;
-pub(crate) type RawDescriptorSet = u64;
+pub(crate) use super::handle::{RawDescriptorPool, RawDescriptorSet};
 
 pub(crate) const STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO: i32 = 33;
 pub(crate) const STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO: i32 = 34;

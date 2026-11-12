@@ -39,10 +39,10 @@ impl Driver {
 	/// The descriptors of each type that the live set layout `layout`
 	/// holds, if it is one.
 	fn descriptors(&self, layout: RawDescriptorSetLayout) -> Option<Vec<(i32, u32)>> {
-		if !self.live_object(layout, SET_LAYOUTS) {
+		if !self.live_object(layout.0, SET_LAYOUTS) {
 			return None;
 		}
-		let bindings = &self.pipeline_objects.set_layouts[(layout - SET_LAYOUTS - 1) as usize];
+		let bindings = &self.pipeline_objects.set_layouts[(layout.0 - SET_LAYOUTS - 1) as usize];
 		Some(
 			bindings
 				.iter()
@@ -53,7 +53,7 @@ impl Driver {
 
 	/// Whether `pool` has room for one more set of each of `layouts`.
 	fn room(&self, pool: RawDescriptorPool, layouts: &[RawDescriptorSetLayout]) -> bool {
-		let (most, sizes) = &self.pipeline_objects.pools[(pool - POOLS - 1) as usize];
+		let (most, sizes) = &self.pipeline_objects.pools[(pool.0 - POOLS - 1) as usize];
 		let sets = &self.pipeline_objects.sets;
 		let held: Vec<_> = (sets.iter())
 			.filter(|&&(of, _)| of == pool)
@@ -115,7 +115,7 @@ pub(super) unsafe extern "system" fn create_pool(
 			Ok(handle) => {
 				(driver.pipeline_objects.pools).push((info.max_sets, sizes.to_vec()));
 				// SAFETY: the bindings pass a writable handle.
-				unsafe { *pool = handle };
+				unsafe { *pool = RawDescriptorPool(handle) };
 				0
 			}
 			Err(code) => code,
@@ -129,7 +129,7 @@ pub(super) unsafe extern "system" fn destroy_pool(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (pool, POOLS, allocator);
+		let what = (pool.0, POOLS, allocator);
 		driver.release_object(device, what, "vkDestroyDescriptorPool", "descriptor pool");
 	})
 }
@@ -149,7 +149,7 @@ pub(super) unsafe extern "system" fn allocate_sets(
 	};
 	with(|driver| {
 		driver.check_live_device(device, "vkAllocateDescriptorSets");
-		let live_pool = driver.live_object(info.pool, POOLS);
+		let live_pool = driver.live_object(info.pool.0, POOLS);
 		let rules = [
 			(
 				info.s_type == STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO && info.next.is_null(),
@@ -175,7 +175,7 @@ pub(super) unsafe extern "system" fn allocate_sets(
 			let handle = SETS + driver.pipeline_objects.sets.len() as u64 + 1;
 			driver.pipeline_objects.sets.push((info.pool, layout));
 			// SAFETY: the bindings pass room for one handle a layout.
-			unsafe { sets.wrapping_add(index).write(handle) };
+			unsafe { sets.wrapping_add(index).write(RawDescriptorSet(handle)) };
 		}
 		0
 	})

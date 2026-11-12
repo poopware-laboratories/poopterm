@@ -97,7 +97,7 @@ impl Driver {
 
 	/// The size and usage of `buffer`, if live.
 	pub(super) fn made_buffer(&self, buffer: RawBuffer) -> Option<(u64, u32)> {
-		let made = self.buffers.get(buffer.wrapping_sub(0xb0_0001) as usize);
+		let made = self.buffers.get(buffer.0.wrapping_sub(0xb0_0001) as usize);
 		made
 			.filter(|_| self.live_buffers.contains(&buffer))
 			.map(|made| (made.size, made.usage))
@@ -105,7 +105,7 @@ impl Driver {
 
 	/// The extent, layers and usage of `image`, if live and bound.
 	pub(super) fn made_image(&self, image: RawImage) -> Option<([u32; 3], u32, u32)> {
-		let made = self.images.get(image.wrapping_sub(0xa0_0001) as usize);
+		let made = self.images.get(image.0.wrapping_sub(0xa0_0001) as usize);
 		let bound = self.bound_images.iter().any(|&(bound, _)| bound == image);
 		let live = self.live_images.contains(&image) && bound;
 		made
@@ -718,7 +718,7 @@ fn the_fake_driver_reports_broken_copy_rules() {
 	} = setup();
 	let reported = || with(|driver| std::mem::take(&mut driver.invalid));
 	let functions = &image.device.functions;
-	let command_buffer = (0x7c_0001) as RawCommandBuffer;
+	let command_buffer = RawCommandBuffer((0x7c_0001) as _);
 	let region = |buffer_offset, layer, image_offset: [i32; 2], extent: [u32; 2]| BufferImageCopy {
 		buffer_offset,
 		buffer_row_length: 0,

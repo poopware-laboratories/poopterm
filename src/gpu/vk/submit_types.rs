@@ -4,10 +4,7 @@
 use super::types::{RawBuffer, RawDevice, RawImage, RawQueue, RawSemaphore, SubresourceRange};
 use std::ffi::c_void;
 
-/// A `VkCommandPool`: 64 bits on every platform.
-pub(crate) type RawCommandPool = u64;
-/// A `VkCommandBuffer`.
-pub(crate) type RawCommandBuffer = *mut c_void;
+pub(crate) use super::handle::{RawCommandBuffer, RawCommandPool};
 
 /// `VkStructureType` values.
 pub(crate) const STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO: i32 = 39;

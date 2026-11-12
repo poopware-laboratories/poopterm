@@ -9,7 +9,7 @@ use super::{
 };
 use std::{ffi::c_void, ptr, rc::Rc, time::Duration};
 
-pub(crate) type RawQueryPool = u64;
+pub(crate) use super::handle::RawQueryPool;
 
 pub(crate) const STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO: i32 = 11;
 /// `VK_QUERY_TYPE_TIMESTAMP`.
@@ -87,7 +87,7 @@ impl Stamps {
 			query_count: 2,
 			pipeline_statistics: 0,
 		};
-		let mut pool = 0;
+		let mut pool = RawQueryPool::NULL;
 		// SAFETY: the device is live, `info` outlives the call, and `pool`
 		// is writable.
 		check(unsafe { (functions.create)(device.handle, &info, ptr::null(), &mut pool) })?;

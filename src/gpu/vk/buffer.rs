@@ -42,14 +42,14 @@ impl Buffer {
 			queue_family_index_count: 0,
 			queue_family_indices: ptr::null(),
 		};
-		let mut handle = 0;
+		let mut handle = RawBuffer::NULL;
 		// SAFETY: the device is live, `info` outlives the call, and `handle`
 		// is writable.
 		check(unsafe { (functions.create_buffer)(device.handle, &info, ptr::null(), &mut handle) })?;
 		// From here on, dropping `buffer` undoes what was done so far.
 		let mut buffer = Self {
 			handle,
-			memory: 0,
+			memory: RawMemory::NULL,
 			mapped: ptr::null_mut(),
 			size: size.get(),
 			usage,
@@ -97,7 +97,7 @@ impl Drop for Buffer {
 		let (device, functions) = (self.device.handle, &self.device.functions);
 		// SAFETY: the buffer is the device's and no longer used.
 		unsafe { (functions.destroy_buffer)(device, self.handle, ptr::null()) };
-		if self.memory != 0 {
+		if self.memory != RawMemory::NULL {
 			// SAFETY: the memory is the device's, and the buffer bound to it
 			// is gone; freeing memory unmaps it.
 			unsafe { (functions.free)(device, self.memory, ptr::null()) };

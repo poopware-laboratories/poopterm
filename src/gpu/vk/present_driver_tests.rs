@@ -39,14 +39,14 @@ impl Driver {
 	fn known_queue(&self, queue: RawQueue) -> bool {
 		let queues = self.live_devices.iter().zip(&self.made);
 		(queues.into_iter())
-			.any(|(&device, made)| queue as usize == device as usize + 1 + made.family as usize)
+			.any(|(&device, made)| queue.0 as usize == device.0 as usize + 1 + made.family as usize)
 	}
 
 	/// Sets the binary semaphore `semaphore` signalled or not.
 	fn set_binary(&mut self, semaphore: RawSemaphore, signalled: bool) {
 		if let Some(counter) = self
 			.counters
-			.get_mut(semaphore.wrapping_sub(0xc0_0001) as usize)
+			.get_mut(semaphore.0.wrapping_sub(0xc0_0001) as usize)
 		{
 			*counter = signalled.into();
 		}
@@ -242,7 +242,7 @@ unsafe extern "system" fn wait_idle(queue: RawQueue) -> i32 {
 			})
 			.collect();
 		for (semaphore, value) in done {
-			let counter = &mut driver.counters[semaphore.wrapping_sub(0xc0_0001) as usize];
+			let counter = &mut driver.counters[semaphore.0.wrapping_sub(0xc0_0001) as usize];
 			*counter = value.max(*counter);
 		}
 		driver.presenting = false;
@@ -301,7 +301,10 @@ fn the_fake_driver_reports_images_acquired_against_the_rules() {
 		(NOT_READY, 9, vec![])
 	);
 	let unknown = rule("a live swapchain, not retired");
-	assert_eq!(call(0x6_0099, 0, second.handle(), 0), (-3, 9, unknown));
+	assert_eq!(
+		call(RawSwapchain(0x6_0099), 0, second.handle(), 0),
+		(-3, 9, unknown)
+	);
 	drop((first, second, timeline));
 	window.close();
 }
@@ -348,7 +351,7 @@ fn the_fake_driver_reports_images_presented_against_the_rules() {
 	let unsignalled_waits = [unsignalled.handle()];
 	let cases: [(_, PresentInfo, &[&str]); 5] = [
 		(
-			0x99 as RawQueue,
+			RawQueue(0x99 as _),
 			good(&zero, &swapchains),
 			&["a live device's queue"],
 		),
@@ -404,7 +407,7 @@ fn the_fake_driver_reports_images_presented_against_the_rules() {
 	// SAFETY: the fake's own function, cast back to its type.
 	let wait: QueueWaitIdle = unsafe { transmute(function(c"vkQueueWaitIdle").unwrap()) };
 	// SAFETY: the fake only checks the handle.
-	assert_eq!(unsafe { wait(0x99 as RawQueue) }, 0);
+	assert_eq!(unsafe { wait(RawQueue(0x99 as _)) }, 0);
 	assert_eq!(broken(), ["vkQueueWaitIdle: a live device's queue"]);
 	drop((waited, unsignalled));
 	window.close();

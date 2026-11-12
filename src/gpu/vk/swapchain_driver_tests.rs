@@ -56,7 +56,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 impl Driver {
 	/// What `device` was created with, if the driver made it.
 	fn made_device(&self, device: RawDevice) -> Option<&Made> {
-		let index = (device as usize).checked_sub(0x5000)? / 0x100;
+		let index = (device.0 as usize).checked_sub(0x5000)? / 0x100;
 		self.made.get(index.checked_sub(1)?)
 	}
 
@@ -104,7 +104,8 @@ impl Driver {
 		let [width, height] = info.image_extent;
 		let (min, max) = (capabilities.min_extent, capabilities.max_extent);
 		let one_bit = |value: u32, allowed: u32| value.is_power_of_two() && allowed & value != 0;
-		let old = (info.old_swapchain != 0).then(|| self.swapchain(info.old_swapchain));
+		let old =
+			(info.old_swapchain != RawSwapchain::NULL).then(|| self.swapchain(info.old_swapchain));
 		let others = self.live_swapchains.iter().filter(|live| {
 			live.surface == info.surface && !live.retired && live.handle != info.old_swapchain
 		});
@@ -212,7 +213,7 @@ unsafe extern "system" fn create_swapchain(
 		});
 		let made = (0..info.min_image_count).map(|_| make_image(driver, info));
 		let images = made.collect();
-		let handle = 0x6_0000 + driver.swapchains.len() as RawSwapchain;
+		let handle = RawSwapchain(0x6_0000 + driver.swapchains.len() as u64);
 		driver.live_swapchains.push(LiveSwapchain {
 			handle,
 			device,
@@ -238,9 +239,9 @@ fn make_image(driver: &mut Driver, info: &SwapchainCreateInfo) -> RawImage {
 		usage: info.image_usage,
 		fixed: [1, 1, 0, 0],
 	});
-	let handle = 0xa0_0000 + driver.images.len() as RawImage;
+	let handle = RawImage(0xa0_0000 + driver.images.len() as u64);
 	driver.live_images.push(handle);
-	driver.bound_images.push((handle, 0));
+	driver.bound_images.push((handle, RawMemory::NULL));
 	handle
 }
 
@@ -330,11 +331,11 @@ fn good(surface: RawSurface, old: RawSwapchain) -> SwapchainCreateInfo {
 /// Calls the fake to create a swapchain on `device` with `info`: the code,
 /// the handle, and the rules it reported broken.
 fn create(device: RawDevice, info: &SwapchainCreateInfo) -> (i32, RawSwapchain, Vec<String>) {
-	let mut handle = 0;
+	let mut handle = RawSwapchain::NULL;
 	// SAFETY: the fake reads only the create info.
 	let code = unsafe { create_swapchain(device, info, std::ptr::null(), &mut handle) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
-	(code, handle, invalid)
+	(code, RawSwapchain(handle.0), invalid)
 }
 
 fn destroy(device: RawDevice, swapchain: RawSwapchain) -> Vec<String> {
@@ -361,13 +362,13 @@ fn the_fake_driver_reports_each_broken_swapchain_rule() {
 	// Were it blind to them, the swapchain tests would prove nothing.
 	let (device, surface) = window();
 	let (handle, surface_handle) = (device.handle, surface.handle());
-	let base = good(surface_handle, 0);
+	let base = good(surface_handle, RawSwapchain::NULL);
 	let cases: [(SwapchainCreateInfo, &str); 15] = [
 		(SwapchainCreateInfo { s_type: 3, ..base }, "sType"),
 		(SwapchainCreateInfo { flags: 1, ..base }, "pNext and flags"),
 		(
 			SwapchainCreateInfo {
-				surface: 0x5_0009,
+				surface: RawSurface(0x5_0009),
 				..base
 			},
 			"a live surface",
@@ -500,7 +501,7 @@ fn the_fake_driver_reports_each_broken_swapchain_rule() {
 fn the_fake_driver_reports_swapchains_misused_around_their_images() {
 	let (device, surface) = window();
 	let handle = device.handle;
-	let (_, swapchain, _) = create(handle, &good(surface.handle(), 0));
+	let (_, swapchain, _) = create(handle, &good(surface.handle(), RawSwapchain::NULL));
 	let image = with(|driver| driver.swapchain(swapchain).unwrap().images[0]);
 	// A view of an image keeps the swapchain from being destroyed.
 	let view = super::image::Image::presented(
@@ -520,13 +521,13 @@ fn the_fake_driver_reports_swapchains_misused_around_their_images() {
 	);
 	drop(view);
 	// So does presentation that may still be pending, until the queue idles.
-	let (_, swapchain, _) = create(handle, &good(surface.handle(), 0));
+	let (_, swapchain, _) = create(handle, &good(surface.handle(), RawSwapchain::NULL));
 	with(|driver| driver.presenting = true);
 	let pending = ["vkDestroySwapchainKHR: presentation may be pending"];
 	assert_eq!(destroy(handle, swapchain), pending);
 	with(|driver| driver.presenting = false);
 	// Destroying a swapchain's image, or its surface before it, is broken.
-	let (_, swapchain, _) = create(handle, &good(surface.handle(), 0));
+	let (_, swapchain, _) = create(handle, &good(surface.handle(), RawSwapchain::NULL));
 	let image = with(|driver| driver.swapchain(swapchain).unwrap().images[0]);
 	let destroy_image: super::types::DestroyImage =
 		// SAFETY: the fake's own function, cast back to its type.
@@ -540,7 +541,14 @@ fn the_fake_driver_reports_swapchains_misused_around_their_images() {
 	);
 	let mut count = 0;
 	// SAFETY: as above.
-	let code = unsafe { images(handle, 0x6_0099, &mut count, std::ptr::null_mut()) };
+	let code = unsafe {
+		images(
+			handle,
+			RawSwapchain(0x6_0099),
+			&mut count,
+			std::ptr::null_mut(),
+		)
+	};
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!((code, invalid.len()), (-3, 1));
 	let live = with(|driver| driver.live_swapchains.len());

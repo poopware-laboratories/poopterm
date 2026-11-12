@@ -6,7 +6,7 @@ use super::{
 };
 use std::ffi::c_void;
 
-pub(crate) type RawSwapchain = u64;
+pub(crate) use super::handle::RawSwapchain;
 
 pub(crate) const STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO: i32 = 1_000_001_000;
 

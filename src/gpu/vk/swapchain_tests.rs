@@ -1,6 +1,7 @@
 //! Tests of swapchains against the fake driver of `driver_tests`: what
 //! each is made with, the views of its images, remaking it, what is undone
 //! when a step fails, and the order things are destroyed in.
+use super::handle::{RawImage, RawSurface, RawSwapchain};
 use super::{
 	call::Error,
 	choose::{GRAPHICS, Kind},
@@ -56,13 +57,13 @@ fn a_swapchain_is_made_to_its_plan_with_a_view_of_each_image() {
 	let swapchain = Swapchain::new(&device, &surface, plan()).expect("swapchain");
 	assert_eq!(swapchain.plan(), &plan());
 	let images: Vec<_> = (swapchain.images().iter())
-		.map(|image| (image.handle(), image.view()))
+		.map(|image| (image.handle().0, image.view().0))
 		.collect();
 	let expected: Vec<_> = (1..=4).map(|n| (0xa0_0000 + n, 0xf0_0000 + n)).collect();
 	assert_eq!(images, expected);
 	let (made, views) = with(|driver| (driver.swapchains.clone(), driver.views.len()));
 	let expected = MadeSwapchain {
-		surface: 0x5_0000,
+		surface: RawSurface(0x5_0000),
 		images: 4,
 		format: BGRA,
 		extent: [1280, 720],
@@ -71,7 +72,7 @@ fn a_swapchain_is_made_to_its_plan_with_a_view_of_each_image() {
 		alpha: OPAQUE,
 		mode: MAILBOX,
 		clipped: true,
-		old: 0,
+		old: RawSwapchain::NULL,
 	};
 	assert_eq!((made, views), (vec![expected], 4));
 	let view = with(|driver| driver.views.remove(0));
@@ -83,7 +84,7 @@ fn a_swapchain_is_made_to_its_plan_with_a_view_of_each_image() {
 		layer_count: 1,
 	};
 	let first = MadeView {
-		image: 0xa0_0001,
+		image: RawImage(0xa0_0001),
 		view_type: 5,
 		format: 44,
 		components: [0; 4],
@@ -124,16 +125,16 @@ fn a_recreated_swapchain_retires_the_old_one_and_destroys_it_after() {
 	};
 	let swapchain = swapchain.recreate(bigger.clone()).expect("recreated");
 	assert_eq!(swapchain.plan(), &bigger);
-	assert_eq!(swapchain.images()[0].handle(), 0xa0_0005);
+	assert_eq!(swapchain.images()[0].handle(), RawImage(0xa0_0005));
 	let driver = with(|driver| (driver.swapchains.clone(), driver.live_swapchains.clone()));
-	assert_eq!(driver.0[1].old, 0x6_0001);
+	assert_eq!(driver.0[1].old, RawSwapchain(0x6_0001));
 	assert_eq!(driver.0[1].extent, [1920, 1080]);
 	let live = LiveSwapchain {
-		handle: 0x6_0002,
+		handle: RawSwapchain(0x6_0002),
 		device: device.handle,
-		surface: 0x5_0000,
+		surface: RawSurface(0x5_0000),
 		retired: false,
-		images: (5..=8).map(|n| 0xa0_0000 + n).collect(),
+		images: (5..=8).map(|n| RawImage(0xa0_0000 + n)).collect(),
 		acquired: Vec::new(),
 	};
 	assert_eq!(driver.1, [live], "the old one is destroyed");
@@ -286,7 +287,7 @@ fn a_failed_recreation_still_retires_and_destroys_the_old_swapchain() {
 	with(|driver| driver.fails.clear());
 	let fresh = Swapchain::new(&device, &surface, plan()).expect("swapchain");
 	drop((fresh, device, surface));
-	assert_eq!(finish().swapchains[1].old, 0);
+	assert_eq!(finish().swapchains[1].old, RawSwapchain::NULL);
 }
 
 /// Whether the plan for a window of `window` pixels, on a surface of
@@ -337,7 +338,7 @@ fn what_a_surface_reports_plans_a_swapchain_the_driver_takes() {
 	driver.present_modes = Some(vec![FIFO]);
 	let made = planned_and_made(driver, Platform::Xlib, [1, 1]);
 	let expected = MadeSwapchain {
-		surface: 0x5_0000,
+		surface: RawSurface(0x5_0000),
 		images: 3,
 		format: SurfaceFormat {
 			format: 44,
@@ -349,7 +350,7 @@ fn what_a_surface_reports_plans_a_swapchain_the_driver_takes() {
 		alpha: OPAQUE,
 		mode: FIFO,
 		clipped: true,
-		old: 0,
+		old: RawSwapchain::NULL,
 	};
 	assert_eq!(made, expected);
 	// A window larger than the surface allows, and RGBA alone.

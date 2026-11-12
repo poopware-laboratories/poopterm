@@ -72,7 +72,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 
 /// The index of `image` in `images`, as the fake numbers them.
 fn index(image: RawImage) -> usize {
-	(image - 0xa0_0001) as usize
+	(image.0 - 0xa0_0001) as usize
 }
 
 unsafe extern "system" fn create_image(
@@ -113,7 +113,7 @@ unsafe extern "system" fn create_image(
 		}
 		if let Some(code) = driver.failing(c"vkCreateImage") {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { image.write(GARBAGE) };
+			unsafe { image.write(RawImage(GARBAGE)) };
 			return code;
 		}
 		driver.images.push(MadeImage {
@@ -129,9 +129,9 @@ unsafe extern "system" fn create_image(
 			],
 		});
 		let handle = 0xa0_0000 + driver.images.len() as u64;
-		driver.live_images.push(handle);
+		driver.live_images.push(RawImage(handle));
 		// SAFETY: as above.
-		unsafe { image.write(handle) };
+		unsafe { image.write(RawImage(handle)) };
 		0
 	})
 }
@@ -249,7 +249,7 @@ unsafe extern "system" fn create_view(
 		}
 		if let Some(code) = driver.failing(c"vkCreateImageView") {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { view.write(GARBAGE) };
+			unsafe { view.write(RawImageView(GARBAGE)) };
 			return code;
 		}
 		driver.views.push(MadeView {
@@ -260,9 +260,9 @@ unsafe extern "system" fn create_view(
 			range,
 		});
 		let handle = 0xf0_0000 + driver.views.len() as u64;
-		driver.live_views.push(handle);
+		driver.live_views.push(RawImageView(handle));
 		// SAFETY: as above.
-		unsafe { view.write(handle) };
+		unsafe { view.write(RawImageView(handle)) };
 		0
 	})
 }
@@ -307,7 +307,7 @@ unsafe extern "system" fn destroy_view(
 fn an_image_is_made_in_gpu_memory_and_viewed_as_all_its_layers() {
 	let device = device(&INTEL, |_| {});
 	let image = Image::new(&device, BGRA, [512, 256, 3], SAMPLED | TRANSFER_DST).expect("image");
-	assert_eq!((image.handle(), image.view()), (0xa0_0001, 0xf0_0001));
+	assert_eq!((image.handle().0, image.view().0), (0xa0_0001, 0xf0_0001));
 	drop(image);
 	drop(device);
 	let driver = finish();
@@ -321,7 +321,7 @@ fn an_image_is_made_in_gpu_memory_and_viewed_as_all_its_layers() {
 	};
 	assert_eq!(driver.images, [made]);
 	let view = MadeView {
-		image: 0xa0_0001,
+		image: RawImage(0xa0_0001),
 		// VK_IMAGE_VIEW_TYPE_2D_ARRAY, identity components.
 		view_type: 5,
 		format: 44,
@@ -337,7 +337,10 @@ fn an_image_is_made_in_gpu_memory_and_viewed_as_all_its_layers() {
 	assert_eq!(driver.views, [view]);
 	// Device-local memory the CPU cannot see, as large as asked for.
 	assert_eq!(driver.allocations, [(512 * 256 * 3 * 4, 0)]);
-	assert_eq!(driver.bound_images, [(0xa0_0001, 0xe0_0001)]);
+	assert_eq!(
+		driver.bound_images,
+		[(RawImage(0xa0_0001), RawMemory(0xe0_0001))]
+	);
 	assert_eq!(
 		driver.released,
 		["view 0xf00001", "image 0xa00001", "memory 0xe00001"]
@@ -502,7 +505,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 		queue_family_indices: ptr::null(),
 		initial_layout,
 	};
-	let mut image = 0;
+	let mut image = RawImage::NULL;
 	// SAFETY: the fake reads only what the pointers point to.
 	unsafe { create_image(handle, &info([16385, 1, 1], 1, 0), ptr::null(), &mut image) };
 	// SAFETY: as above.
@@ -525,7 +528,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 			allocation_size: PAGE,
 			memory_type_index,
 		};
-		let mut memory = 0;
+		let mut memory = RawMemory::NULL;
 		// SAFETY: as above.
 		unsafe { (device.functions.allocate)(handle, &info, ptr::null(), &mut memory) };
 		memory
@@ -547,7 +550,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 			layer_count,
 		},
 	};
-	let mut view = 0;
+	let mut view = RawImageView::NULL;
 	// SAFETY: as above.
 	// A view of an image not bound yet; then bound to a type it does not
 	// allow, and bound twice; then views in another format and of more
@@ -586,7 +589,7 @@ fn the_fake_driver_reports_broken_image_rules() {
 	// SAFETY: as above.
 	let mut copied = info([1, 1, 1], 1, 0);
 	copied.usage = TRANSFER_SRC | TRANSFER_DST;
-	let mut image = 0;
+	let mut image = RawImage::NULL;
 	// SAFETY: as above.
 	unsafe { create_image(handle, &copied, ptr::null(), &mut image) };
 	// SAFETY: as above.

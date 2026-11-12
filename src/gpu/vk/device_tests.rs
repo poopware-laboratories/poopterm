@@ -298,7 +298,7 @@ pub(super) unsafe extern "system" fn create_device(
 			enabled,
 			extensions,
 		});
-		let device = (0x5000 + 0x100 * driver.made.len()) as RawDevice;
+		let device = RawDevice((0x5000 + 0x100 * driver.made.len()) as _);
 		driver.live_devices.push(device);
 		// SAFETY: the bindings pass a writable handle.
 		unsafe { handle.write(device) };
@@ -313,7 +313,9 @@ pub(super) unsafe extern "system" fn get_device_proc_addr(
 	// SAFETY: the bindings pass C strings.
 	let name = unsafe { CStr::from_ptr(name) };
 	with(|driver| {
-		driver.lookups.push((device, name.to_string_lossy().into()));
+		driver
+			.lookups
+			.push((device.0, name.to_string_lossy().into()));
 		driver.check_live_device(device, "vkGetDeviceProcAddr");
 		if driver.lacks.contains(&name) {
 			return None;
@@ -367,14 +369,14 @@ unsafe extern "system" fn get_device_queue(
 	with(|driver| {
 		driver.check_live_device(device, "vkGetDeviceQueue");
 		let made = (driver.live_devices.iter().position(|&live| live == device))
-			.and_then(|_| driver.made.get((device as usize - 0x5000) / 0x100 - 1));
+			.and_then(|_| driver.made.get((device.0 as usize - 0x5000) / 0x100 - 1));
 		if made.is_none_or(|made| made.family != family || index as usize >= made.priorities.len()) {
 			driver.invalid.push(format!(
 				"vkGetDeviceQueue: queue {index} of family {family}, never asked for"
 			));
 		}
 		// SAFETY: the bindings pass a writable handle.
-		unsafe { queue.write((device as usize + 1 + family as usize) as RawQueue) };
+		unsafe { queue.write(RawQueue((device.0 as usize + 1 + family as usize) as _)) };
 	})
 }
 
@@ -403,7 +405,7 @@ fn a_device_turns_on_exactly_the_needed_features_with_one_queue() {
 	assert_eq!(device.family(), 1);
 	let handle = with(|driver| driver.live_devices.clone());
 	assert_eq!(handle.len(), 1);
-	assert_eq!(device.queue(), (handle[0] as usize + 2) as RawQueue);
+	assert_eq!(device.queue(), RawQueue((handle[0].0 as usize + 2) as _));
 	drop(device);
 	drop(instance);
 	let driver = finish();
@@ -584,7 +586,7 @@ fn device_functions_are_looked_up_with_the_new_device() {
 		"vkCmdWriteTimestamp2",
 		"vkGetQueryPoolResults",
 	];
-	let expected = names.map(|name| (live, name));
+	let expected = names.map(|name| (live.0, name));
 	let lookups: Vec<_> = lookups
 		.iter()
 		.map(|(at, name)| (*at, name.as_str()))
@@ -688,7 +690,7 @@ fn the_fake_driver_reports_broken_device_rules() {
 		queue_priorities: priority.as_ptr(),
 	};
 	let create = |info: &DeviceCreateInfo, at: RawPhysicalDevice| {
-		let mut handle = ptr::null_mut();
+		let mut handle = RawDevice::NULL;
 		// SAFETY: the fake reads only what the create info points to.
 		let code = unsafe { create_device(at, info, ptr::null(), &mut handle) };
 		(code, reported())
@@ -800,7 +802,7 @@ fn the_fake_driver_reports_broken_device_rules() {
 	);
 	// Destroying a device twice, and a queue never asked for.
 	let live = with(|driver| driver.live_devices.clone());
-	let mut queue = ptr::null_mut();
+	let mut queue = RawQueue::NULL;
 	// SAFETY: the fake only records the handles.
 	unsafe { get_device_queue(live[0], 0, 0, &mut queue) };
 	// SAFETY: as above.
@@ -821,7 +823,7 @@ fn the_fake_driver_reports_broken_device_rules() {
 		)]
 	);
 	// Destroying the instance while a device lives.
-	let mut handle = ptr::null_mut();
+	let mut handle = RawDevice::NULL;
 	// SAFETY: as above.
 	unsafe {
 		create_device(
@@ -834,7 +836,7 @@ fn the_fake_driver_reports_broken_device_rules() {
 	drop(instance);
 	assert_eq!(reported(), ["vkDestroyInstance while a device is live"]);
 	// SAFETY: as above.
-	unsafe { destroy_device(handle, ptr::null()) };
+	unsafe { destroy_device(RawDevice(handle.0), ptr::null()) };
 	finish();
 }
 

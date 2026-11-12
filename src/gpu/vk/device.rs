@@ -233,7 +233,7 @@ impl Device {
 				return Err(error);
 			}
 		};
-		let mut queue = ptr::null_mut();
+		let mut queue = RawQueue::NULL;
 		// SAFETY: the device was made with one queue of `family`, and `queue`
 		// is writable.
 		unsafe { (functions.get_queue)(handle, family, 0, &mut queue) };

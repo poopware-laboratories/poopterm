@@ -91,7 +91,7 @@ unsafe extern "system" fn create_buffer(
 		}
 		if let Some(code) = driver.failing(c"vkCreateBuffer") {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { buffer.write(GARBAGE) };
+			unsafe { buffer.write(RawBuffer(GARBAGE)) };
 			return code;
 		}
 		driver.buffers.push(Made {
@@ -99,16 +99,16 @@ unsafe extern "system" fn create_buffer(
 			usage: info.usage,
 		});
 		let handle = 0xb0_0000 + driver.buffers.len() as u64;
-		driver.live_buffers.push(handle);
+		driver.live_buffers.push(RawBuffer(handle));
 		// SAFETY: as above.
-		unsafe { buffer.write(handle) };
+		unsafe { buffer.write(RawBuffer(handle)) };
 		0
 	})
 }
 
 /// The index of `buffer` in `buffers`, as the fake numbers them.
 fn index(buffer: RawBuffer) -> usize {
-	(buffer - 0xb0_0001) as usize
+	(buffer.0 - 0xb0_0001) as usize
 }
 
 unsafe extern "system" fn requirements(
@@ -166,14 +166,14 @@ unsafe extern "system" fn allocate(
 		let failed = driver.failing(c"vkAllocateMemory").or(full.then_some(-2));
 		if let Some(code) = failed {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { memory.write(GARBAGE) };
+			unsafe { memory.write(RawMemory(GARBAGE)) };
 			return code;
 		}
 		(driver.allocations).push((info.allocation_size, info.memory_type_index));
 		let handle = 0xe0_0000 + driver.allocations.len() as u64;
-		driver.live_memory.push(handle);
+		driver.live_memory.push(RawMemory(handle));
 		// SAFETY: as above.
-		unsafe { memory.write(handle) };
+		unsafe { memory.write(RawMemory(handle)) };
 		0
 	})
 }
@@ -181,7 +181,7 @@ unsafe extern "system" fn allocate(
 /// The size and type of `memory`, as the fake numbers allocations.
 pub(super) fn allocation(driver: &Driver, memory: RawMemory) -> Option<(u64, u32)> {
 	let live = driver.live_memory.contains(&memory);
-	live.then(|| driver.allocations[(memory - 0xe0_0001) as usize])
+	live.then(|| driver.allocations[(memory.0 - 0xe0_0001) as usize])
 }
 
 unsafe extern "system" fn bind(
@@ -315,7 +315,7 @@ fn size(bytes: usize) -> NonZeroUsize {
 fn an_upload_buffer_is_bound_to_coherent_memory_and_written_through_its_mapping() {
 	let device = device(&INTEL, |_| {});
 	let mut buffer = Buffer::new(&device, size(1000), VERTEX, Usage::Upload).expect("buffer");
-	assert_eq!(buffer.handle(), 0xb0_0001);
+	assert_eq!(buffer.handle(), RawBuffer(0xb0_0001));
 	let bytes = buffer.bytes_mut().expect("mapped");
 	assert_eq!(bytes.len(), 1000);
 	bytes.fill(7);
@@ -335,7 +335,7 @@ fn an_upload_buffer_is_bound_to_coherent_memory_and_written_through_its_mapping(
 		}]
 	);
 	assert_eq!(driver.allocations, [(1024, 1)]);
-	assert_eq!(driver.bound, [(0xb0_0001, 0xe0_0001)]);
+	assert_eq!(driver.bound, [(RawBuffer(0xb0_0001), RawMemory(0xe0_0001))]);
 	assert_eq!(driver.released, ["buffer 0xb00001", "memory 0xe00001"]);
 	assert_eq!(driver.destroyed_devices.len(), 1);
 }
@@ -490,7 +490,7 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 		queue_family_index_count: 0,
 		queue_family_indices: ptr::null(),
 	};
-	let mut buffer = 0;
+	let mut buffer = RawBuffer::NULL;
 	// SAFETY: the fake reads only what the pointers point to.
 	unsafe { create_buffer(handle, &info(0, 0), ptr::null(), &mut buffer) };
 	// SAFETY: as above.
@@ -505,7 +505,8 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 		allocation_size: 256,
 		memory_type_index,
 	};
-	let (mut device_local, mut cached, mut unknown) = (0, 0, 0);
+	let (mut device_local, mut cached, mut unknown) =
+		(RawMemory::NULL, RawMemory::NULL, RawMemory::NULL);
 	// SAFETY: as above.
 	unsafe { allocate(handle, &allocate_info(0), ptr::null(), &mut device_local) };
 	// SAFETY: as above.
@@ -541,9 +542,9 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 	assert_eq!(reported(), expected);
 	// Destroying the device while they live, then each twice.
 	let live = with(|driver| (driver.live_buffers.clone(), driver.live_memory.clone()));
-	with(|driver| driver.live_devices.push(0x7777 as RawDevice));
+	with(|driver| driver.live_devices.push(RawDevice(0x7777 as _)));
 	// SAFETY: the fake only records the handles.
-	unsafe { (device.functions.free)(0x7777 as RawDevice, 0x1, ptr::null()) };
+	unsafe { (device.functions.free)(RawDevice(0x7777 as _), RawMemory(0x1), ptr::null()) };
 	assert_eq!(reported().len(), 1);
 	with(|driver| driver.live_devices.retain(|&live| live == handle));
 	drop(device);

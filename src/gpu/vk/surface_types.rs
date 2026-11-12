@@ -7,7 +7,7 @@ use super::{
 };
 use std::ffi::{c_char, c_ulong, c_void};
 
-pub(crate) type RawSurface = u64;
+pub(crate) use super::handle::RawSurface;
 
 pub(crate) const STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO: i32 = 1_000_004_000;
 pub(crate) const STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO: i32 = 1_000_006_000;

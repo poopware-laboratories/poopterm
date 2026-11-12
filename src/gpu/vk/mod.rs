@@ -57,6 +57,9 @@ mod fault_tests;
 pub(crate) mod features;
 #[cfg(test)]
 mod features_tests;
+pub(crate) mod handle;
+#[cfg(test)]
+mod handle_tests;
 pub(crate) mod image;
 #[cfg(test)]
 mod image_tests;

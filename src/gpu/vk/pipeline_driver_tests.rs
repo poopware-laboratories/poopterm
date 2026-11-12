@@ -178,7 +178,7 @@ pub(super) unsafe extern "system" fn create_module(
 		);
 		let made = driver.make_object(device, c"vkCreateShaderModule", shared, MODULES, count);
 		// SAFETY: the bindings pass a writable handle.
-		unsafe { module.write(made.unwrap_or(GARBAGE)) };
+		unsafe { module.write(RawShaderModule(made.unwrap_or(GARBAGE))) };
 		made
 			.map(|_| driver.pipeline_objects.modules.push(code.to_vec()))
 			.err()
@@ -192,7 +192,7 @@ pub(super) unsafe extern "system" fn destroy_module(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (module, MODULES, allocator);
+		let what = (module.0, MODULES, allocator);
 		driver.release_object(device, what, "vkDestroyShaderModule", "module");
 	})
 }
@@ -224,7 +224,7 @@ pub(super) unsafe extern "system" fn create_sampler(
 		let shared = (info.s_type, STRUCTURE_TYPE_SAMPLER_CREATE_INFO, allocator);
 		let made = driver.make_object(device, c"vkCreateSampler", shared, SAMPLERS, count);
 		// SAFETY: the bindings pass a writable handle.
-		unsafe { sampler.write(made.unwrap_or(GARBAGE)) };
+		unsafe { sampler.write(RawSampler(made.unwrap_or(GARBAGE))) };
 		let modes = [
 			info.mag_filter,
 			info.min_filter,
@@ -246,7 +246,7 @@ pub(super) unsafe extern "system" fn destroy_sampler(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (sampler, SAMPLERS, allocator);
+		let what = (sampler.0, SAMPLERS, allocator);
 		driver.release_object(device, what, "vkDestroySampler", "sampler");
 	})
 }
@@ -286,7 +286,7 @@ pub(super) unsafe extern "system" fn create_set_layout(
 				(unique, "bindings numbered once"),
 				(count == 1 && stages != 0, "one descriptor, for some stage"),
 				(
-					sampler.is_none_or(|sampler| samples && driver.live_object(sampler, SAMPLERS)),
+					sampler.is_none_or(|sampler| samples && driver.live_object(sampler.0, SAMPLERS)),
 					"live immutable samplers, for samplers",
 				),
 			];
@@ -303,7 +303,7 @@ pub(super) unsafe extern "system" fn create_set_layout(
 		let call = c"vkCreateDescriptorSetLayout";
 		let made = driver.make_object(device, call, shared, SET_LAYOUTS, count);
 		// SAFETY: the bindings pass a writable handle.
-		unsafe { layout.write(made.unwrap_or(GARBAGE)) };
+		unsafe { layout.write(RawDescriptorSetLayout(made.unwrap_or(GARBAGE))) };
 		made
 			.map(|_| driver.pipeline_objects.set_layouts.push(bindings))
 			.err()
@@ -317,7 +317,7 @@ unsafe extern "system" fn destroy_set_layout(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (layout, SET_LAYOUTS, allocator);
+		let what = (layout.0, SET_LAYOUTS, allocator);
 		driver.release_object(device, what, "vkDestroyDescriptorSetLayout", "set layout");
 	})
 }
@@ -343,7 +343,9 @@ pub(super) unsafe extern "system" fn create_pipeline_layout(
 		let rules = [
 			(info.next.is_null() && info.flags == 0, "pNext and flags"),
 			(
-				sets.iter().all(|&set| driver.live_object(set, SET_LAYOUTS)),
+				sets
+					.iter()
+					.all(|&set| driver.live_object(set.0, SET_LAYOUTS)),
 				"live set layouts",
 			),
 			(
@@ -365,7 +367,7 @@ pub(super) unsafe extern "system" fn create_pipeline_layout(
 		let call = c"vkCreatePipelineLayout";
 		let made = driver.make_object(device, call, shared, PIPELINE_LAYOUTS, count);
 		// SAFETY: the bindings pass a writable handle.
-		unsafe { layout.write(made.unwrap_or(GARBAGE)) };
+		unsafe { layout.write(RawPipelineLayout(made.unwrap_or(GARBAGE))) };
 		(made.map(|_| {
 			driver
 				.pipeline_objects
@@ -383,7 +385,7 @@ unsafe extern "system" fn destroy_pipeline_layout(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (layout, PIPELINE_LAYOUTS, allocator);
+		let what = (layout.0, PIPELINE_LAYOUTS, allocator);
 		driver.release_object(device, what, "vkDestroyPipelineLayout", "pipeline layout");
 	})
 }
@@ -470,7 +472,7 @@ unsafe fn describe(info: &GraphicsPipelineCreateInfo) -> (MadePipeline, Vec<&'st
 			"dynamic rendering to color alone",
 		),
 		(
-			info.render_pass == 0 && info.base_pipeline_handle == 0,
+			info.render_pass == 0 && info.base_pipeline_handle == RawPipeline::NULL,
 			"no render pass or base",
 		),
 		(
@@ -558,7 +560,7 @@ pub(super) unsafe extern "system" fn create_pipelines(
 		let live = made
 			.stages
 			.iter()
-			.all(|&(_, module, _)| driver.live_object(module, MODULES));
+			.all(|&(_, module, _)| driver.live_object(module.0, MODULES));
 		let rules = [
 			(cache == 0 && count == 1, "one pipeline, no cache"),
 			(live, "live shader modules"),
@@ -570,7 +572,7 @@ pub(super) unsafe extern "system" fn create_pipelines(
 				"stages entered at main",
 			),
 			(
-				driver.live_object(made.layout, PIPELINE_LAYOUTS),
+				driver.live_object(made.layout.0, PIPELINE_LAYOUTS),
 				"a live layout",
 			),
 		];
@@ -586,7 +588,7 @@ pub(super) unsafe extern "system" fn create_pipelines(
 		let call = c"vkCreateGraphicsPipelines";
 		let made_handle = driver.make_object(device, call, shared, PIPELINES, number);
 		// SAFETY: the bindings pass room for one handle.
-		unsafe { pipelines.write(made_handle.unwrap_or(GARBAGE)) };
+		unsafe { pipelines.write(RawPipeline(made_handle.unwrap_or(GARBAGE))) };
 		made_handle
 			.map(|_| driver.pipeline_objects.pipelines.push(made))
 			.err()
@@ -600,7 +602,7 @@ unsafe extern "system" fn destroy_pipeline(
 	allocator: *const c_void,
 ) {
 	with(|driver| {
-		let what = (pipeline, PIPELINES, allocator);
+		let what = (pipeline.0, PIPELINES, allocator);
 		driver.release_object(device, what, "vkDestroyPipeline", "pipeline");
 	})
 }

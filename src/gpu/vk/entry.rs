@@ -56,7 +56,7 @@ impl Entry {
 
 	/// The Vulkan version the loader offers; a 1.0 loader lacks the call.
 	pub(crate) fn version(&self) -> Result<u32, Error> {
-		let Ok(function) = self.function(ptr::null_mut(), c"vkEnumerateInstanceVersion") else {
+		let Ok(function) = self.function(RawInstance::NULL, c"vkEnumerateInstanceVersion") else {
 			return Ok(api_version(1, 0));
 		};
 		// SAFETY: the function the loader returned for this name has this type.
@@ -69,7 +69,7 @@ impl Entry {
 
 	/// The instance extensions the loader and its drivers offer.
 	pub(crate) fn instance_extensions(&self) -> Result<Vec<String>, Error> {
-		let function = self.function(ptr::null_mut(), c"vkEnumerateInstanceExtensionProperties")?;
+		let function = self.function(RawInstance::NULL, c"vkEnumerateInstanceExtensionProperties")?;
 		// SAFETY: the function the loader returned for this name has this type.
 		let list: EnumerateInstanceExtensionProperties = unsafe { cast(function) };
 		let none = ExtensionProperties {
@@ -119,7 +119,7 @@ impl Entry {
 		let api = requested(loader).ok_or(Error::TooOld(loader))?;
 		// SAFETY: the function the loader returned for this name has this type.
 		let create: CreateInstance =
-			unsafe { cast(self.function(ptr::null_mut(), c"vkCreateInstance")?) };
+			unsafe { cast(self.function(RawInstance::NULL, c"vkCreateInstance")?) };
 		let extensions = platform.map_or(Vec::new(), |platform| {
 			(platform.extensions().iter())
 				.map(|name| name.as_ptr())
@@ -144,7 +144,7 @@ impl Entry {
 			enabled_extension_count: extensions.len() as u32,
 			enabled_extension_names: extensions.as_ptr(),
 		};
-		let mut handle = ptr::null_mut();
+		let mut handle = RawInstance::NULL;
 		// SAFETY: `info` and the strings it points to outlive the call, and
 		// `handle` is writable.
 		check(unsafe { create(&info, ptr::null(), &mut handle) })?;

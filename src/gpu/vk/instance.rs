@@ -109,7 +109,7 @@ impl Instance {
 	}
 
 	pub(crate) fn physical_devices(&self) -> Result<Vec<RawPhysicalDevice>, Error> {
-		enumerate(ptr::null_mut(), |count, devices| {
+		enumerate(RawPhysicalDevice::NULL, |count, devices| {
 			// SAFETY: the instance is live, and `enumerate` passes room for
 			// `count` devices.
 			unsafe { (self.functions.enumerate_physical_devices)(self.handle, count, devices) }
@@ -271,7 +271,7 @@ impl Instance {
 			enabled_extension_names: names.as_ptr(),
 			enabled_features: ptr::null(),
 		};
-		let mut handle = ptr::null_mut();
+		let mut handle = RawDevice::NULL;
 		// SAFETY: `info` and all it points to outlive the call, and `handle`
 		// is writable.
 		check(unsafe { (self.functions.create_device)(physical, &info, ptr::null(), &mut handle) })?;

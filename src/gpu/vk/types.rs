@@ -3,21 +3,10 @@
 use super::memory::MemoryType;
 use std::ffi::{c_char, c_void};
 
-/// A `VkInstance`.
-pub(crate) type RawInstance = *mut c_void;
-/// A `VkPhysicalDevice`.
-pub(crate) type RawPhysicalDevice = *mut c_void;
-/// A `VkDevice`.
-pub(crate) type RawDevice = *mut c_void;
-/// A `VkQueue`.
-pub(crate) type RawQueue = *mut c_void;
-/// A `VkBuffer`, `VkDeviceMemory`, `VkImage`, `VkImageView` and
-/// `VkSemaphore`: handles that are 64 bits on every platform.
-pub(crate) type RawBuffer = u64;
-pub(crate) type RawMemory = u64;
-pub(crate) type RawImage = u64;
-pub(crate) type RawImageView = u64;
-pub(crate) type RawSemaphore = u64;
+pub(crate) use super::handle::{
+	RawBuffer, RawDevice, RawImage, RawImageView, RawInstance, RawMemory, RawPhysicalDevice,
+	RawQueue, RawSemaphore,
+};
 
 /// `VK_WHOLE_SIZE`.
 pub(crate) const WHOLE_SIZE: u64 = !0;

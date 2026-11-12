@@ -48,7 +48,8 @@ pub(super) struct Driver {
 	pub device_calls: u32,
 	/// What each of `devices` is, by index.
 	pub described: Vec<Device>,
-	pub lookups: Vec<(RawInstance, String)>,
+	/// Each function looked up: on the instance or device it names, or null.
+	pub lookups: Vec<(*mut c_void, String)>,
 	/// The instance extensions offered, if not [`OFFERED`].
 	pub instance_extensions: Option<Vec<&'static str>>,
 	pub(super) created: Vec<Created>,
@@ -295,14 +296,14 @@ unsafe extern "system" fn get_instance_proc_addr(
 	with(|driver| {
 		driver
 			.lookups
-			.push((instance, name.to_string_lossy().into()));
+			.push((instance.0, name.to_string_lossy().into()));
 		let global = matches!(
 			name.to_bytes(),
 			b"vkEnumerateInstanceVersion"
 				| b"vkEnumerateInstanceExtensionProperties"
 				| b"vkCreateInstance"
 		);
-		if global && !instance.is_null() {
+		if global && instance != RawInstance::NULL {
 			driver
 				.invalid
 				.push(format!("{name:?} looked up with an instance"));
@@ -442,7 +443,7 @@ unsafe extern "system" fn create_instance(
 			});
 			driver.created.push(Created {
 				// Distinct, never null, and never reused.
-				handle: (0x1010 + 0x10 * driver.created.len()) as RawInstance,
+				handle: RawInstance((0x1010 + 0x10 * driver.created.len()) as _),
 				application: string(application.application_name),
 				engine: string(application.engine_name),
 				api,
@@ -682,7 +683,7 @@ fn instances_ask_for_the_newest_version_used_and_enable_nothing_yet() {
 		drop(instance);
 		let driver = finish();
 		let created = Created {
-			handle: 0x1010 as RawInstance,
+			handle: RawInstance(0x1010 as _),
 			application: "poopterm".into(),
 			engine: "poopterm".into(),
 			api: asked,
@@ -759,17 +760,17 @@ fn global_functions_are_looked_up_without_an_instance_and_the_rest_with_it() {
 	let expected = [
 		(ptr::null_mut(), "vkEnumerateInstanceVersion"),
 		(ptr::null_mut(), "vkCreateInstance"),
-		(handle, "vkDestroyInstance"),
-		(handle, "vkEnumeratePhysicalDevices"),
-		(handle, "vkGetPhysicalDeviceProperties"),
-		(handle, "vkGetPhysicalDeviceQueueFamilyProperties"),
-		(handle, "vkEnumerateDeviceExtensionProperties"),
-		(handle, "vkGetPhysicalDeviceMemoryProperties"),
-		(handle, "vkGetPhysicalDeviceFeatures2"),
-		(handle, "vkCreateDevice"),
-		(handle, "vkGetDeviceProcAddr"),
-		(handle, "vkGetPhysicalDeviceProperties2"),
-		(handle, "vkGetPhysicalDeviceMemoryProperties2"),
+		(handle.0, "vkDestroyInstance"),
+		(handle.0, "vkEnumeratePhysicalDevices"),
+		(handle.0, "vkGetPhysicalDeviceProperties"),
+		(handle.0, "vkGetPhysicalDeviceQueueFamilyProperties"),
+		(handle.0, "vkEnumerateDeviceExtensionProperties"),
+		(handle.0, "vkGetPhysicalDeviceMemoryProperties"),
+		(handle.0, "vkGetPhysicalDeviceFeatures2"),
+		(handle.0, "vkCreateDevice"),
+		(handle.0, "vkGetDeviceProcAddr"),
+		(handle.0, "vkGetPhysicalDeviceProperties2"),
+		(handle.0, "vkGetPhysicalDeviceMemoryProperties2"),
 	];
 	let lookups: Vec<_> = driver
 		.lookups
@@ -851,7 +852,9 @@ fn each_instance_is_destroyed_once_when_dropped() {
 
 #[test]
 fn physical_devices_are_listed_in_the_drivers_order() {
-	let devices: Vec<RawPhysicalDevice> = [0x20, 0x10, 0x30].map(|at| at as RawPhysicalDevice).into();
+	let devices: Vec<RawPhysicalDevice> = [0x20, 0x10, 0x30]
+		.map(|at| RawPhysicalDevice(at as _))
+		.into();
 	for listed in [vec![], devices[..1].to_vec(), devices.clone()] {
 		let mut driver = Driver::offering(api_version(1, 3));
 		driver.devices = listed.clone();
@@ -874,8 +877,8 @@ fn a_device_list_that_grows_while_it_is_read_is_read_again() {
 	// The count says one device; by the time devices are asked for there
 	// are two, so the driver answers VK_INCOMPLETE and is asked again.
 	let mut driver = Driver::offering(api_version(1, 3));
-	driver.devices = vec![0x40 as RawPhysicalDevice];
-	driver.grown = vec![0x40 as RawPhysicalDevice, 0x50 as RawPhysicalDevice];
+	driver.devices = vec![RawPhysicalDevice(0x40 as _)];
+	driver.grown = vec![RawPhysicalDevice(0x40 as _), RawPhysicalDevice(0x50 as _)];
 	let instance = install(driver).create_instance(c"poopterm").unwrap();
 	let expected = with(|driver| driver.grown.clone());
 	assert_eq!(instance.physical_devices(), Ok(expected));
@@ -977,25 +980,25 @@ fn the_fake_driver_reports_broken_rules() {
 		(info(&old), "apiVersion"),
 	];
 	for (info, rule) in cases {
-		let mut handle = ptr::null_mut();
+		let mut handle = RawInstance::NULL;
 		// SAFETY: the fake reads only what the create info points to.
 		unsafe { create_instance(&info, ptr::null(), &mut handle) };
 		let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 		assert_eq!(invalid, [format!("vkCreateInstance: {rule}")]);
 		// SAFETY: as above.
-		unsafe { destroy_instance(handle, ptr::null()) };
+		unsafe { destroy_instance(RawInstance(handle.0), ptr::null()) };
 	}
 	// Destroying twice, or an instance it never made.
 	// SAFETY: the fake only records the handle.
-	unsafe { destroy_instance(0x1000 as RawInstance, ptr::null()) };
+	unsafe { destroy_instance(RawInstance(0x1000 as _), ptr::null()) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(invalid, ["vkDestroyInstance on 0x1000, which is not live"]);
 	// Looking a global function up with an instance, or an instance's
 	// function without one.
 	// SAFETY: C strings.
-	unsafe { get_instance_proc_addr(0x1000 as RawInstance, c"vkCreateInstance".as_ptr()) };
+	unsafe { get_instance_proc_addr(RawInstance(0x1000 as _), c"vkCreateInstance".as_ptr()) };
 	// SAFETY: as above.
-	unsafe { get_instance_proc_addr(ptr::null_mut(), c"vkDestroyInstance".as_ptr()) };
+	unsafe { get_instance_proc_addr(RawInstance::NULL, c"vkDestroyInstance".as_ptr()) };
 	let invalid = with(std::mem::take).invalid;
 	assert_eq!(invalid.len(), 2, "{invalid:?}");
 }
@@ -1004,7 +1007,7 @@ fn the_fake_driver_reports_broken_rules() {
 pub(super) fn with_devices(devices: &[Device]) -> Driver {
 	let mut driver = Driver::offering(api_version(1, 3));
 	driver.devices = (1..=devices.len())
-		.map(|i| (i << 8) as RawPhysicalDevice)
+		.map(|i| RawPhysicalDevice((i << 8) as _))
 		.collect();
 	driver.described = devices.to_vec();
 	driver
@@ -1082,7 +1085,7 @@ fn the_fake_driver_reports_devices_it_never_listed() {
 	let instance = install(with_devices(&[]))
 		.create_instance(c"poopterm")
 		.unwrap();
-	let unlisted = 0x900 as RawPhysicalDevice;
+	let unlisted = RawPhysicalDevice(0x900 as _);
 	assert!(instance.describe(unlisted).is_err());
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(invalid.len(), 3, "{invalid:?}");

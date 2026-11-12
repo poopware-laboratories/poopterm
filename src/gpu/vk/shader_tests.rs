@@ -2,6 +2,7 @@
 //! byte order, refusing what is not SPIR-V for Vulkan 1.3, the entry
 //! points and bindings the checked-in shaders declare, and their modules
 //! on the fake driver.
+use super::handle::RawShaderModule;
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,
@@ -180,7 +181,7 @@ fn a_module_is_made_from_the_words_and_destroyed_with_its_owner() {
 	let device = device(&INTEL, |_| {});
 	let code = words(QUAD_VERTEX).unwrap();
 	let module = ShaderModule::new(&device, &code).unwrap();
-	assert_eq!(module.handle(), 0x60_0001);
+	assert_eq!(module.handle(), RawShaderModule(0x60_0001));
 	drop(module);
 	with(|driver| driver.fails.push((c"vkCreateShaderModule", -2)));
 	let failed = ShaderModule::new(&device, &code);

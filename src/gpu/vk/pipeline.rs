@@ -74,11 +74,11 @@ impl QuadPipeline {
 		let (handle, functions) = (device.handle, &device.functions);
 		// From here on, dropping `made` undoes what was done so far.
 		let mut made = Self {
-			pipeline: 0,
-			layout: 0,
-			set_layout: 0,
-			texture_layout: 0,
-			sampler: 0,
+			pipeline: RawPipeline::NULL,
+			layout: RawPipelineLayout::NULL,
+			set_layout: RawDescriptorSetLayout::NULL,
+			texture_layout: RawDescriptorSetLayout::NULL,
+			sampler: RawSampler::NULL,
 			format,
 			device: device.clone(),
 		};
@@ -105,7 +105,7 @@ impl QuadPipeline {
 			unnormalized_coordinates: 0,
 		};
 		// A failed call may leave anything in its output.
-		let mut sampler = 0;
+		let mut sampler = RawSampler::NULL;
 		// SAFETY: the device is live, `info` outlives the call, and the
 		// handle is writable.
 		check(unsafe { (functions.create_sampler)(handle, &info, ptr::null(), &mut sampler) })?;
@@ -133,7 +133,7 @@ impl QuadPipeline {
 			binding_count: bindings.len() as u32,
 			bindings: bindings.as_ptr(),
 		};
-		let mut set_layout = 0;
+		let mut set_layout = RawDescriptorSetLayout::NULL;
 		let create = functions.create_set_layout;
 		// SAFETY: as for the sampler; the bindings and the sampler outlive
 		// the call.
@@ -151,7 +151,7 @@ impl QuadPipeline {
 			bindings: &binding,
 			..info
 		};
-		let mut texture_layout = 0;
+		let mut texture_layout = RawDescriptorSetLayout::NULL;
 		// SAFETY: as for the set layout.
 		check(unsafe { create(handle, &info, ptr::null(), &mut texture_layout) })?;
 		made.texture_layout = texture_layout;
@@ -170,7 +170,7 @@ impl QuadPipeline {
 			push_constant_range_count: 1,
 			push_constant_ranges: &range,
 		};
-		let mut layout = 0;
+		let mut layout = RawPipelineLayout::NULL;
 		let create = functions.create_pipeline_layout;
 		// SAFETY: as for the sampler; the set layouts are live.
 		check(unsafe { create(handle, &info, ptr::null(), &mut layout) })?;
@@ -294,10 +294,10 @@ impl QuadPipeline {
 			layout: self.layout,
 			render_pass: 0,
 			subpass: 0,
-			base_pipeline_handle: 0,
+			base_pipeline_handle: RawPipeline::NULL,
 			base_pipeline_index: -1,
 		};
-		let mut pipeline = 0;
+		let mut pipeline = RawPipeline::NULL;
 		let (device, create) = (self.device.handle, self.device.functions.create_pipelines);
 		// SAFETY: the device is live, the modules and layout are its, `info`
 		// and every state it points to outlive the call, and there is room
@@ -329,23 +329,23 @@ impl Drop for QuadPipeline {
 		let (device, functions) = (self.device.handle, &self.device.functions);
 		// Each goes before what it was made with; all are the device's and no
 		// longer used.
-		if self.pipeline != 0 {
+		if self.pipeline != RawPipeline::NULL {
 			// SAFETY: the pipeline is the device's and no longer used.
 			unsafe { (functions.destroy_pipeline)(device, self.pipeline, ptr::null()) };
 		}
-		if self.layout != 0 {
+		if self.layout != RawPipelineLayout::NULL {
 			// SAFETY: the layout is the device's, and the pipeline made with
 			// it is gone.
 			unsafe { (functions.destroy_pipeline_layout)(device, self.layout, ptr::null()) };
 		}
 		for layout in [self.set_layout, self.texture_layout] {
-			if layout != 0 {
+			if layout != RawDescriptorSetLayout::NULL {
 				// SAFETY: the set layout is the device's, and the pipeline
 				// layout made with it is gone.
 				unsafe { (functions.destroy_set_layout)(device, layout, ptr::null()) };
 			}
 		}
-		if self.sampler != 0 {
+		if self.sampler != RawSampler::NULL {
 			// SAFETY: the sampler is the device's, and the set layouts that
 			// named it are gone.
 			unsafe { (functions.destroy_sampler)(device, self.sampler, ptr::null()) };

@@ -1,6 +1,7 @@
 //! Tests that the fake drawing functions of `draw_driver_tests` report
 //! each rule they check, broken one at a time; were they blind to them,
 //! the tests of `draw_tests` would prove nothing.
+use super::handle::{RawBuffer, RawDescriptorSet, RawImageView, RawPipelineLayout, RawSampler};
 use super::{
 	buffer::Buffer,
 	buffer_tests::{INTEL, device},
@@ -30,7 +31,7 @@ const STORAGE: u32 = 0x20;
 const VERTEX: u32 = 0x1;
 const FRAGMENT: u32 = 0x10;
 /// The first command buffer, as the bindings see it.
-const BUFFER: RawCommandBuffer = 0x7c_0001 as RawCommandBuffer;
+const BUFFER: RawCommandBuffer = RawCommandBuffer(0x7c_0001 as _);
 
 /// What the rules are broken around: a pipeline and its set, room for
 /// three quads, an atlas and a 16×8 target, and buffers and images made
@@ -93,7 +94,7 @@ fn write(
 	WriteDescriptorSet {
 		s_type: STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		next: ptr::null(),
-		dst_set: set,
+		dst_set: RawDescriptorSet(set),
 		dst_binding: binding,
 		dst_array_element: 0,
 		descriptor_count: 1,
@@ -106,7 +107,7 @@ fn write(
 
 fn buffer_info(buffer: u64, offset: u64) -> DescriptorBufferInfo {
 	DescriptorBufferInfo {
-		buffer,
+		buffer: RawBuffer(buffer),
 		offset,
 		range: !0,
 	}
@@ -114,8 +115,8 @@ fn buffer_info(buffer: u64, offset: u64) -> DescriptorBufferInfo {
 
 fn image_info(image_view: u64, image_layout: i32) -> DescriptorImageInfo {
 	DescriptorImageInfo {
-		sampler: 0,
-		image_view,
+		sampler: RawSampler::NULL,
+		image_view: RawImageView(image_view),
 		image_layout,
 	}
 }
@@ -131,36 +132,36 @@ fn the_fake_driver_reports_broken_update_rules() {
 	let device = with(|driver| driver.live_devices[0]);
 	let set = scene.set.handle();
 	let image_set = scene.runs[0].1.handle();
-	let quads = buffer_info(scene.quads.handle(), 0);
-	let atlas = image_info(scene.atlas.view(), 5);
+	let quads = buffer_info(scene.quads.handle().0, 0);
+	let atlas = image_info(scene.atlas.view().0, 5);
 	// Bound here, as the writes point at them.
-	let unstored = buffer_info(scene.unstored.handle(), 0);
-	let past_start = buffer_info(scene.quads.handle(), 16);
-	let target = image_info(scene.target.view(), 5);
-	let writable = image_info(scene.atlas.view(), 7);
+	let unstored = buffer_info(scene.unstored.handle().0, 0);
+	let past_start = buffer_info(scene.quads.handle().0, 16);
+	let target = image_info(scene.target.view().0, 5);
+	let writable = image_info(scene.atlas.view().0, 7);
 	let cases = [
 		WriteDescriptorSet {
 			s_type: 0,
-			..write(set, 0, Some(&quads), None)
+			..write(set.0, 0, Some(&quads), None)
 		},
 		write(SETS + 9, 0, Some(&quads), None),
 		WriteDescriptorSet {
 			descriptor_count: 2,
-			..write(set, 0, Some(&quads), None)
+			..write(set.0, 0, Some(&quads), None)
 		},
-		write(set, 0, Some(&unstored), None),
-		write(set, 0, Some(&past_start), None),
-		write(set, 1, None, Some(&target)),
-		write(set, 1, None, Some(&writable)),
-		write(set, 2, None, Some(&atlas)),
+		write(set.0, 0, Some(&unstored), None),
+		write(set.0, 0, Some(&past_start), None),
+		write(set.0, 1, None, Some(&target)),
+		write(set.0, 1, None, Some(&writable)),
+		write(set.0, 2, None, Some(&atlas)),
 		// A buffer descriptor without its buffer.
-		write(set, 0, None, None),
+		write(set.0, 0, None, None),
 		// The image set's one binding takes an image, not the quads; an
 		// image is fine.
-		write(image_set, 0, Some(&quads), None),
+		write(image_set.0, 0, Some(&quads), None),
 		WriteDescriptorSet {
 			descriptor_type: 1,
-			..write(image_set, 0, None, Some(&atlas))
+			..write(image_set.0, 0, None, Some(&atlas))
 		},
 	];
 	// SAFETY: each write and what it points to outlive the call.
@@ -174,7 +175,7 @@ fn the_fake_driver_reports_broken_update_rules() {
 		update_sets(
 			device,
 			1,
-			&write(set, 0, Some(&quads), None),
+			&write(set.0, 0, Some(&quads), None),
 			1,
 			ptr::null(),
 		);
@@ -208,7 +209,7 @@ fn the_fake_driver_reports_broken_update_rules() {
 		update_sets(
 			device,
 			1,
-			&write(set, 1, None, Some(&atlas)),
+			&write(set.0, 1, None, Some(&atlas)),
 			0,
 			ptr::null(),
 		)
@@ -225,7 +226,7 @@ fn the_fake_driver_reports_broken_update_rules() {
 		update_sets(
 			device,
 			1,
-			&write(set, 1, None, Some(&atlas)),
+			&write(set.0, 1, None, Some(&atlas)),
 			0,
 			ptr::null(),
 		)
@@ -243,10 +244,10 @@ fn attachment(image_view: u64) -> RenderingAttachmentInfo {
 	RenderingAttachmentInfo {
 		s_type: STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		next: ptr::null(),
-		image_view,
+		image_view: RawImageView(image_view),
 		image_layout: 2,
 		resolve_mode: 0,
-		resolve_image_view: 0,
+		resolve_image_view: RawImageView::NULL,
 		resolve_image_layout: 0,
 		load_op: 0,
 		store_op: 0,
@@ -275,24 +276,24 @@ fn rendering(attachment: &RenderingAttachmentInfo) -> RenderingInfo {
 #[test]
 fn the_fake_driver_reports_broken_rendering_rules() {
 	let (mut commands, scene) = scene();
-	let target = attachment(scene.target.view());
+	let target = attachment(scene.target.view().0);
 	// Bound here, as the infos point at them.
 	let chained = RenderingAttachmentInfo {
 		next: ptr::from_ref(&target).cast(),
-		..attachment(scene.target.view())
+		..attachment(scene.target.view().0)
 	};
-	let atlas = attachment(scene.atlas.view());
+	let atlas = attachment(scene.atlas.view().0);
 	let general = RenderingAttachmentInfo {
 		image_layout: 5,
-		..attachment(scene.target.view())
+		..attachment(scene.target.view().0)
 	};
 	let resolving = RenderingAttachmentInfo {
 		resolve_mode: 1,
-		..attachment(scene.target.view())
+		..attachment(scene.target.view().0)
 	};
 	let storing = RenderingAttachmentInfo {
 		store_op: 1,
-		..attachment(scene.target.view())
+		..attachment(scene.target.view().0)
 	};
 	let infos = [
 		RenderingInfo {
@@ -405,9 +406,31 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 	// SAFETY: as above.
 	unsafe { bind_sets(BUFFER, 1, layout, 0, 1, &set, 0, ptr::null()) };
 	// SAFETY: as above.
-	unsafe { bind_sets(BUFFER, 0, layout + 9, 0, 1, &set, 0, ptr::null()) };
+	unsafe {
+		bind_sets(
+			BUFFER,
+			0,
+			RawPipelineLayout(layout.0 + 9),
+			0,
+			1,
+			&set,
+			0,
+			ptr::null(),
+		)
+	};
 	// SAFETY: as above.
-	unsafe { bind_sets(BUFFER, 0, layout, 0, 1, &(SETS + 9), 0, ptr::null()) };
+	unsafe {
+		bind_sets(
+			BUFFER,
+			0,
+			layout,
+			0,
+			1,
+			&RawDescriptorSet(SETS + 9),
+			0,
+			ptr::null(),
+		)
+	};
 	// SAFETY: as above.
 	unsafe { bind_sets(BUFFER, 0, layout, 0, 1, &set, 1, ptr::null()) };
 	// SAFETY: as above.
@@ -421,7 +444,16 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 	// SAFETY: as above.
 	unsafe { bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null()) };
 	// SAFETY: as above.
-	unsafe { push(BUFFER, layout + 9, VERTEX, 0, 8, size.as_ptr().cast()) };
+	unsafe {
+		push(
+			BUFFER,
+			RawPipelineLayout(layout.0 + 9),
+			VERTEX,
+			0,
+			8,
+			size.as_ptr().cast(),
+		)
+	};
 	// SAFETY: as above.
 	unsafe { push(BUFFER, layout, VERTEX, 0, 6, size.as_ptr().cast()) };
 	// SAFETY: as above.
@@ -493,8 +525,8 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 	// The set written, then a recording with nothing bound.
 	recording.draw(scene.draw()).unwrap();
 	drop(recording);
-	let target = attachment(scene.target.view());
-	let rgba = attachment(scene.rgba.view());
+	let target = attachment(scene.target.view().0);
+	let rgba = attachment(scene.rgba.view().0);
 	let mut recording = commands.record().unwrap();
 	recording.transition(&scene.target, super::recording::Layout::ColorAttachment);
 	recording.transition(&scene.rgba, super::recording::Layout::ColorAttachment);

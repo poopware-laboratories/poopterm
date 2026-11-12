@@ -46,7 +46,7 @@ impl Commands {
 			flags: TRANSIENT,
 			queue_family_index: device.family(),
 		};
-		let mut pool = 0;
+		let mut pool = RawCommandPool::NULL;
 		let create = device.functions.create_pool;
 		// SAFETY: the device is live, `info` outlives the call, and `pool` is
 		// writable.
@@ -54,7 +54,7 @@ impl Commands {
 		// From here on, dropping `commands` destroys the pool.
 		let mut commands = Self {
 			pool,
-			buffer: ptr::null_mut(),
+			buffer: RawCommandBuffer::NULL,
 			submitted: 0,
 			held: Vec::new(),
 			timeline: timeline.clone(),
@@ -70,7 +70,7 @@ impl Commands {
 			command_buffer_count: 1,
 		};
 		// A failed call may leave anything in its output.
-		let mut buffer = ptr::null_mut();
+		let mut buffer = RawCommandBuffer::NULL;
 		let allocate = device.functions.allocate_commands;
 		// SAFETY: the pool is the device's, and `buffer` has room for one.
 		check(unsafe { allocate(device.handle, &info, &mut buffer) })?;
