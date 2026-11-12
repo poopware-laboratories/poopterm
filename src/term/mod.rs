@@ -105,6 +105,8 @@ mod tests;
 #[cfg(test)]
 mod underline_color_tests;
 #[cfg(test)]
+mod vertical_margin_tests;
+#[cfg(test)]
 mod width_tests;
 #[cfg(test)]
 mod window_ops_tests;
