@@ -13,7 +13,7 @@ mod strings;
 #[cfg(test)]
 mod tests;
 mod text;
-mod utf8;
+pub(crate) mod utf8;
 #[cfg(test)]
 mod utf8_tests;
 
@@ -122,25 +122,8 @@ impl Parser {
 	/// Feeds one read of the stream, through the x86-64-v3 variant when the
 	/// CPU has it. The whole state machine and the handler's sequence path
 	/// are inlined into each variant, so they share one dispatch per read.
-	#[allow(
-		unsafe_code,
-		reason = "calls the x86-64-v3 copy after checking the CPU"
-	)]
 	pub(crate) fn advance<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
-		#[cfg(target_arch = "x86_64")]
-		if crate::cpu::has_v3() {
-			// SAFETY: the CPU supports the features.
-			return unsafe { self.advance_v3(handler, bytes) };
-		}
-		self.advance_with(handler, bytes);
-	}
-
-	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
-	/// checks.
-	#[cfg(target_arch = "x86_64")]
-	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	pub(crate) fn advance_v3<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
-		self.advance_with(handler, bytes);
+		crate::cpu::dispatch!(self.advance_with(handler, bytes));
 	}
 
 	/// The body of [`Parser::advance`], compiled into each variant.

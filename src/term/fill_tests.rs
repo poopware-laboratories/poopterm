@@ -1,20 +1,18 @@
 //! Cell fills against `slice::fill`, at every short length and alignment,
 //! through every kernel the CPU can run.
-// The tests call C, the kernel or CPU-dispatched copies directly.
-#![allow(unsafe_code)]
 use super::Cell;
 
 type Filler = (&'static str, fn(&mut [Cell], Cell));
 
 fn fillers() -> Vec<Filler> {
-	let all: Vec<Filler> = vec![("dispatched", Cell::fill)];
-	#[cfg(target_arch = "x86_64")]
-	if std::arch::is_x86_feature_detected!("avx2") {
-		// SAFETY: the CPU supports AVX2.
-		let avx2: Filler = ("avx2", |cells, cell| unsafe {
-			super::fill::fill(cells, cell)
-		});
-		return [all, vec![avx2]].concat();
+	let mut all: Vec<Filler> = vec![("dispatched", Cell::fill), ("pairs", super::fill::pairs)];
+	if crate::cpu::V3::detect().is_some() {
+		all.push(("v3 pairs", |cells, cell| {
+			crate::cpu::run!(
+				crate::cpu::V3::detect().unwrap(),
+				super::fill::pairs(cells, cell)
+			)
+		}));
 	}
 	all
 }

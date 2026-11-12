@@ -8,8 +8,6 @@
 //! lookups only when `core` itself was built with SSSE3, so the kernels use
 //! `core::arch` directly on x86. Aarch64 uses safe portable SIMD, where
 //! dynamic swizzles lower to NEON table lookups.
-// Calls copies compiled for CPU features checked at run time.
-#![allow(unsafe_code)]
 #![cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 
 #[cfg(any(target_arch = "aarch64", test))]
@@ -20,9 +18,8 @@ pub(super) mod neon;
 #[inline]
 pub(crate) fn is_valid(bytes: &[u8]) -> bool {
 	#[cfg(target_arch = "x86_64")]
-	if std::arch::is_x86_feature_detected!("avx2") {
-		// SAFETY: the CPU supports AVX2.
-		return unsafe { x86::is_valid(bytes) };
+	if let Some(v3) = crate::cpu::V3::detect() {
+		return v3.utf8_is_valid(bytes);
 	}
 	#[cfg(target_arch = "aarch64")]
 	if bytes.len() >= 8 {
@@ -113,7 +110,7 @@ pub(super) const INCOMPLETE: [u8; 32] = {
 };
 
 #[cfg(target_arch = "x86_64")]
-pub(super) mod x86 {
+pub(crate) mod x86 {
 	use std::arch::x86_64::*;
 	use std::simd::{u8x16, u8x32};
 
@@ -167,7 +164,7 @@ pub(super) mod x86 {
 
 	/// Callable only where the CPU supports AVX2.
 	#[target_feature(enable = "avx2")]
-	pub(in crate::vt) fn is_valid(bytes: &[u8]) -> bool {
+	pub(crate) fn is_valid(bytes: &[u8]) -> bool {
 		let tables = [table(&PREV_HIGH), table(&PREV_LOW), table(&HIGH)];
 		let incomplete_max = load(&INCOMPLETE);
 		let (chunks, rest) = bytes.as_chunks::<32>();

@@ -169,8 +169,9 @@ Details: [`docs/architecture.md`](docs/architecture.md).
   define), checked conversions the optimizer can prove away. `unsafe` is
   for what safe Rust cannot express at all: calls into C and the kernel
   (Vulkan, Metal and Objective-C, Wayland and X11 libraries, `libc`) that
-  have no safe `std` equivalent, and the one call per CPU dispatch into a
-  copy compiled for features checked at runtime.
+  have no safe `std` equivalent, and `src/cpu.rs`, the one place that runs
+  copies compiled for CPU features checked at run time (callers use
+  `cpu::dispatch!` and stay safe).
   - **Never `unsafe` for speed.** Unchecked conversions, pointer casts,
     `transmute` and raw-pointer loops are not a way to win throughput. If
     the safe version measures slower, optimize the safe version (see

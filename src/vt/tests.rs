@@ -1,7 +1,5 @@
 //! Differential tests: the parser must produce the same events as vte 0.15
 //! for any byte stream, however it is split into reads.
-// The tests call C, the kernel or CPU-dispatched copies directly.
-#![allow(unsafe_code)]
 use super::{Handler, Params, Parser, Text};
 use crate::bench::corpus::Rng;
 
@@ -509,9 +507,9 @@ fn oversized_osc_strings_are_dropped() {
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_v3_variant_reports_the_same_events_as_the_baseline() {
-	if !crate::cpu::has_v3() {
+	let Some(cpu) = crate::cpu::V3::detect() else {
 		return;
-	}
+	};
 	let mut rng = Rng::new(0x3);
 	for _ in 0..5_000 {
 		let mut stream = Vec::new();
@@ -528,8 +526,7 @@ fn the_v3_variant_reports_the_same_events_as_the_baseline() {
 		let mut start = 0;
 		for &end in &cuts {
 			baseline_parser.advance_with(&mut baseline, &stream[start..end]);
-			// SAFETY: checked above.
-			unsafe { v3_parser.advance_v3(&mut v3, &stream[start..end]) };
+			crate::cpu::run!(cpu, v3_parser.advance_with(&mut v3, &stream[start..end]));
 			start = end;
 		}
 		assert_eq!(v3.events, baseline.events, "cut at {cuts:?}: {stream:?}");

@@ -229,10 +229,10 @@ Width choice and dispatch:
 
 - Compile-time: `u8x32` by default (maps to AVX2 on x86_64-v3, two NEON
   ops on aarch64); `u8x64` behind `target_feature = "avx512bw"`.
-- Runtime: one `std::is_x86_feature_detected!` check at `Parser::new`
-  selects a function pointer per scan (`avx512`, `avx2`, `sse2`); aarch64
-  always has NEON. Each variant is `#[target_feature(enable = ...)]` over
-  the same generic `std::simd` code, so there is one implementation.
+- Runtime: `Parser::advance` runs through `cpu::dispatch!`, which picks
+  the x86-64-v3 copy of the whole parse loop when the CPU has it; aarch64
+  always has NEON. Each copy is the same generic `std::simd` code, so
+  there is one implementation.
 - Only keep a wider variant if the benchmark shows a gain; AVX-512
   frequency effects on some x86 parts can make it slower for short runs.
 - Short inputs (< 32 bytes, typical for interactive use) use a scalar

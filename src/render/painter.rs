@@ -1,6 +1,4 @@
 //! Rectangle, button and text rasterization into a 0RGB pixel buffer.
-// Calls copies compiled for CPU features checked at run time.
-#![allow(unsafe_code)]
 use super::{
 	blend::{blend, blend_coverage_row},
 	glyphs::Glyph,
@@ -92,27 +90,7 @@ impl<'a> Painter<'a> {
 		italic: bool,
 		color: u32,
 	) {
-		#[cfg(target_arch = "x86_64")]
-		if crate::cpu::has_v3() {
-			// SAFETY: the CPU supports the features.
-			return unsafe { self.glyph_v3(glyph, origin, clip, italic, color) };
-		}
-		self.glyph_with(glyph, origin, clip, italic, color);
-	}
-
-	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
-	/// checks.
-	#[cfg(target_arch = "x86_64")]
-	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	fn glyph_v3(
-		&mut self,
-		glyph: &Glyph,
-		origin: (i32, i32),
-		clip: (i32, i32, i32, i32),
-		italic: bool,
-		color: u32,
-	) {
-		self.glyph_with(glyph, origin, clip, italic, color);
+		crate::cpu::dispatch!(self.glyph_with(glyph, origin, clip, italic, color));
 	}
 
 	/// The body of [`Painter::glyph`], compiled into each variant.
@@ -303,6 +281,7 @@ mod tests {
 	/// baseline body and with the v3 variant; returns both results.
 	#[cfg(target_arch = "x86_64")]
 	fn both_variants(
+		cpu: crate::cpu::V3,
 		background: &[u32],
 		width: usize,
 		glyph: &Glyph,
@@ -311,8 +290,10 @@ mod tests {
 		let height = background.len() / width;
 		let (mut baseline, mut v3) = (background.to_vec(), background.to_vec());
 		Painter::new(&mut baseline, width, height).glyph_with(glyph, origin, clip, italic, color);
-		// SAFETY: the callers check `has_v3`.
-		unsafe { Painter::new(&mut v3, width, height).glyph_v3(glyph, origin, clip, italic, color) };
+		crate::cpu::run!(
+			cpu,
+			Painter::new(&mut v3, width, height).glyph_with(glyph, origin, clip, italic, color)
+		);
 		(baseline, v3)
 	}
 
@@ -330,9 +311,9 @@ mod tests {
 	#[cfg(target_arch = "x86_64")]
 	#[test]
 	fn v3_glyphs_match_the_baseline_on_random_glyphs_clips_and_backgrounds() {
-		if !crate::cpu::has_v3() {
+		let Some(cpu) = crate::cpu::V3::detect() else {
 			return;
-		}
+		};
 		let mut rng = crate::bench::corpus::Rng::new(0x9e7);
 		for case in 0..4_000 {
 			let (width, height) = (1 + rng.below(40), 1 + rng.below(12));
@@ -371,7 +352,7 @@ mod tests {
 				rng.below(2) == 0,
 				rng.next() as u32 & 0xff_ffff,
 			);
-			let (baseline, v3) = both_variants(&background, width, &glyph, style);
+			let (baseline, v3) = both_variants(cpu, &background, width, &glyph, style);
 			assert_eq!(
 				v3, baseline,
 				"case {case}: {width}x{height}, glyph {w}x{h}, {style:?}"
@@ -384,9 +365,9 @@ mod tests {
 	fn v3_glyphs_match_the_baseline_for_every_row_length_and_alpha_run() {
 		// Rows of 1 to 33 pixels at each offset, so every chunk and remainder
 		// length meets runs of no, full and partial coverage.
-		if !crate::cpu::has_v3() {
+		let Some(cpu) = crate::cpu::V3::detect() else {
 			return;
-		}
+		};
 		for len in 1..=33 {
 			for offset in 0..8 {
 				for pattern in [[0, 0, 0, 0], [255; 4], [0, 255, 128, 7], [1, 254, 255, 0]] {
@@ -402,7 +383,7 @@ mod tests {
 					};
 					let background: Vec<u32> = (0..48).map(|i| 0x0001_0203 * i).collect();
 					let style = ((offset, 0), (0, 0, 48, 1), false, 0xc0_ffee);
-					let (baseline, v3) = both_variants(&background, 48, &glyph, style);
+					let (baseline, v3) = both_variants(cpu, &background, 48, &glyph, style);
 					assert_eq!(v3, baseline, "{len} pixels at {offset}, {pattern:?}");
 				}
 			}

@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(stmt_expr_attributes)]
 //! Poopterm: a small software-rendered terminal emulator.
 //!
 //! Module map (see `docs/architecture.md` for the full picture):
@@ -27,7 +28,6 @@ mod clipboard;
 #[path = "../build/codename.rs"]
 mod codename;
 mod config;
-#[cfg(target_arch = "x86_64")]
 mod cpu;
 #[cfg(not(target_os = "macos"))]
 mod dbus;
