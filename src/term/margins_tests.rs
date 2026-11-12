@@ -579,3 +579,25 @@ fn scrolling_the_rectangle_into_empty_rows_marks_them_used() {
 		t.grid.assert_extents();
 	}
 }
+
+#[test]
+fn outside_origin_mode_cursor_positions_ignore_the_margins() {
+	let mut t = terminal(12, 4);
+	feed(&mut t, "\x1b[?69h\x1b[2;4s\x1b[2;9H");
+	assert_eq!(cursor(&t), (9, 2));
+	feed(&mut t, "\x1b[11G");
+	assert_eq!(cursor(&t), (11, 2));
+	assert_eq!(ask(&mut t, "\x1b[6n"), ["\x1b[2;11R"]);
+	feed(&mut t, "\x1b[99`");
+	assert_eq!(cursor(&t), (12, 2));
+}
+
+#[test]
+fn without_auto_wrap_a_wide_character_backs_up_from_the_right_margin() {
+	let mut t = terminal(8, 2);
+	feed(&mut t, "\x1b[?7l\x1b[?69h\x1b[2;5s\x1b[1;5H世");
+	let (left, right) = (t.grid[0][3], t.grid[0][4]);
+	assert_eq!((left.ch, left.width, right.width), ('世', 2, 0));
+	assert_eq!(cursor(&t), (5, 1));
+	assert_eq!(screen(&t)[1], "        ");
+}

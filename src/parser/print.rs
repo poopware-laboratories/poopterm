@@ -48,6 +48,8 @@ impl Term {
 			self.erase_multicells_in_row(self.cy, self.cx, self.cx + width);
 		}
 		let (x, y, cols) = (self.cx, self.cy, self.cols);
+		// Skipping scaled text's lower rows can carry the cursor past the
+		// right margin; the line then ends where the character does.
 		let end = (self.line_end() + 1).max(x + width).min(cols);
 		let i = self.idx(x, y);
 		if self.insert_mode {
