@@ -57,12 +57,11 @@ its own A/B-measured change:
 
 - **CSI parameters.** Parsing them takes about half of source and cursor.
   Try a fast path for one or two plain numeric parameters.
-- **`vt::text::Chars::next` is not inlined** despite `#[inline]`: 20% of
-  emoji and 14% of CJK. Then a SIMD path for runs of 3-byte CJK.
+- **UTF-8 decoding** (`vt::text::Chars::next`) is 20% of emoji and 14% of
+  CJK, and the cost is the decoding itself, not the call. Decode whole runs
+  with SIMD, starting with 3-byte CJK.
 - **`parser::cluster::join_marks`** takes 11.5% of emoji. Skip it when the
   next code point cannot join the cluster.
-- **A clock read per OSC 133 marker** (`clock_gettime`, about 5% of shell).
-  Read the clock once per batch, or only when a mark needs a time.
 - **`Term::sgr`** takes 8% of source.
 - **History copies** cost log 19% and ls 17% since they became safe code
   (#311); make the safe copy fast.
