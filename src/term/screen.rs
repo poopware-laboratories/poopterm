@@ -149,7 +149,7 @@ impl Term {
 	/// screen, rows leaving the top move into the scrollback.
 	pub(crate) fn scroll_region_up(&mut self, count: usize) {
 		if self.has_lr_margins() {
-			return self.scroll_rectangle(count, true);
+			return self.scroll_rectangle(self.scroll_top, count, true);
 		}
 		let (top, bottom) = (self.scroll_top, self.scroll_bottom);
 		let count = count.min(bottom - top + 1);
@@ -204,7 +204,7 @@ impl Term {
 
 	pub(crate) fn scroll_region_down(&mut self, count: usize) {
 		if self.has_lr_margins() {
-			return self.scroll_rectangle(count, false);
+			return self.scroll_rectangle(self.scroll_top, count, false);
 		}
 		let (top, bottom) = (self.scroll_top, self.scroll_bottom);
 		let count = count.min(bottom - top + 1);

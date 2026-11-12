@@ -54,6 +54,8 @@ mod kitty_animation;
 mod kitty_animation_tests;
 #[cfg(test)]
 mod kitty_tests;
+#[cfg(test)]
+mod margin_edit_tests;
 mod margins;
 #[cfg(test)]
 mod memory_lock_tests;
