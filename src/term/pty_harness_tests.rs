@@ -138,10 +138,15 @@ impl Walker {
 				.iter()
 				.any(|line| line.to_ascii_uppercase().contains("RETURN"));
 			self.waits = if asks { 0 } else { self.waits + 1 };
+			// A page no quit key leaves: stop, so the pages show where.
+			if self.waits > WAITS + 30 {
+				return None;
+			}
 			let keys: &[u8] = match self.waits.checked_sub(WAITS) {
 				_ if asks => b"\r",
 				None => b"",
-				Some(n) => [&b"q"[..], b"\x1b", b"\r"][n % 3],
+				// Doubled: some tests quit on any key typed twice in a row.
+				Some(n) => [&b"qq"[..], b"\x1b\x1b", b"\r\r"][n % 3],
 			};
 			return Some((keys.to_vec(), path));
 		};
@@ -230,7 +235,7 @@ fn return_is_typed_only_where_a_page_asks_for_it() {
 }
 
 #[test]
-fn a_page_that_asks_for_nothing_for_long_gets_q_escape_and_return_in_turn() {
+fn a_page_that_asks_for_nothing_for_long_gets_doubled_quit_keys_in_turn() {
 	let mut walker = Walker::default();
 	// Pages that change as keys echo still count as the same wait.
 	let keys: Vec<Vec<u8>> = (0..WAITS + 4)
@@ -242,8 +247,16 @@ fn a_page_that_asks_for_nothing_for_long_gets_q_escape_and_return_in_turn() {
 		})
 		.collect();
 	assert!(keys[..WAITS - 1].iter().all(Vec::is_empty));
-	let expected: [&[u8]; 5] = [b"q", b"\x1b", b"\r", b"q", b"\x1b"];
+	let expected: [&[u8]; 5] = [b"qq", b"\x1b\x1b", b"\r\r", b"qq", b"\x1b\x1b"];
 	assert_eq!(keys[WAITS - 1..], expected);
+	// One that never leaves ends the walk.
+	let mut stuck = Walker::default();
+	let page = ["Ignores every key".to_owned()];
+	assert_eq!(
+		(0..WAITS + 30).filter_map(|_| stuck.next(&page)).count(),
+		WAITS + 30
+	);
+	assert_eq!(stuck.next(&page), None);
 	// A page that asks starts the count over.
 	assert_eq!(walker.next(&["Push <RETURN>".to_owned()]).unwrap().0, b"\r");
 	assert_eq!(walker.next(&["Quiet".to_owned()]).unwrap().0, b"");
