@@ -6,6 +6,7 @@
 use super::{
 	call::Error,
 	choose::{Choice, Device, GRAPHICS, Kind, QueueFamily, choose},
+	driver_tests::erase,
 	driver_tests::{Driver, finish, install, with, with_devices},
 	entry::Entry,
 	instance::Instance,
@@ -34,33 +35,36 @@ pub(crate) struct MadeSurface {
 
 /// The fake's surface function `name`, if it has one.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateWaylandSurfaceKHR" => {
-				transmute::<CreateSurface, VoidFunction>(create_wayland_surface)
-			}
-			b"vkCreateXlibSurfaceKHR" => transmute::<CreateSurface, VoidFunction>(create_xlib_surface),
-			b"vkCreateHeadlessSurfaceEXT" => {
-				transmute::<CreateSurface, VoidFunction>(create_headless_surface)
-			}
-			b"vkDestroySurfaceKHR" => transmute::<DestroySurface, VoidFunction>(destroy_surface),
-			b"vkGetPhysicalDeviceSurfaceSupportKHR" => {
-				transmute::<GetPhysicalDeviceSurfaceSupport, VoidFunction>(surface_support)
-			}
-			b"vkGetPhysicalDeviceSurfaceCapabilitiesKHR" => transmute::<
-				GetPhysicalDeviceSurfaceCapabilities,
-				VoidFunction,
-			>(surface_query_tests::capabilities),
-			b"vkGetPhysicalDeviceSurfaceFormatsKHR" => {
-				transmute::<GetPhysicalDeviceSurfaceFormats, VoidFunction>(surface_query_tests::formats)
-			}
-			b"vkGetPhysicalDeviceSurfacePresentModesKHR" => {
-				transmute::<GetPhysicalDeviceSurfacePresentModes, VoidFunction>(surface_query_tests::modes)
-			}
-			_ => return None,
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateWaylandSurfaceKHR" => {
+			erase!(CreateSurface, create_wayland_surface)
+		}
+		b"vkCreateXlibSurfaceKHR" => erase!(CreateSurface, create_xlib_surface),
+		b"vkCreateHeadlessSurfaceEXT" => {
+			erase!(CreateSurface, create_headless_surface)
+		}
+		b"vkDestroySurfaceKHR" => erase!(DestroySurface, destroy_surface),
+		b"vkGetPhysicalDeviceSurfaceSupportKHR" => {
+			erase!(GetPhysicalDeviceSurfaceSupport, surface_support)
+		}
+		b"vkGetPhysicalDeviceSurfaceCapabilitiesKHR" => erase!(
+			GetPhysicalDeviceSurfaceCapabilities,
+			surface_query_tests::capabilities
+		),
+		b"vkGetPhysicalDeviceSurfaceFormatsKHR" => {
+			erase!(
+				GetPhysicalDeviceSurfaceFormats,
+				surface_query_tests::formats
+			)
+		}
+		b"vkGetPhysicalDeviceSurfacePresentModesKHR" => {
+			erase!(
+				GetPhysicalDeviceSurfacePresentModes,
+				surface_query_tests::modes
+			)
+		}
+		_ => return None,
+	})
 }
 
 /// Checks a surface create call, and makes the surface unless it fails.

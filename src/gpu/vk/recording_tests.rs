@@ -10,6 +10,7 @@ use super::{
 	call::Error,
 	commands::Commands,
 	commands_tests::Stage,
+	driver_tests::erase,
 	driver_tests::{Driver, finish, with},
 	image::{Format, Image},
 	memory::Usage,
@@ -20,7 +21,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	num::NonZeroUsize,
 	ptr,
 	rc::Rc,
@@ -47,15 +47,12 @@ const HOST_READ: u64 = 0x2000;
 
 /// The fake's barrier and copy function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCmdPipelineBarrier2" => transmute::<CmdPipelineBarrier2, VoidFunction>(barrier),
-			b"vkCmdCopyBufferToImage" => transmute::<CmdCopyBufferToImage, VoidFunction>(upload),
-			b"vkCmdCopyImageToBuffer" => transmute::<CmdCopyImageToBuffer, VoidFunction>(download),
-			_ => return super::pipeline_driver_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCmdPipelineBarrier2" => erase!(CmdPipelineBarrier2, barrier),
+		b"vkCmdCopyBufferToImage" => erase!(CmdCopyBufferToImage, upload),
+		b"vkCmdCopyImageToBuffer" => erase!(CmdCopyImageToBuffer, download),
+		_ => return super::pipeline_driver_tests::function(name),
+	})
 }
 
 /// What uses an image in `layout`: the stages and accesses a barrier
@@ -179,20 +176,17 @@ impl Driver {
 }
 
 unsafe extern "system" fn barrier(buffer: RawCommandBuffer, info: *const DependencyInfo) {
-	// SAFETY: the bindings pass a dependency whose arrays live across the
-	// call, each as long as its count.
-	let (info, buffers, images) = unsafe {
-		let info = &*info;
-		let read = |count: u32| count as usize;
-		let buffers = match info.buffer_memory_barrier_count {
-			0 => &[][..],
-			count => slice::from_raw_parts(info.buffer_memory_barriers, read(count)),
-		};
-		let images = match info.image_memory_barrier_count {
-			0 => &[][..],
-			count => slice::from_raw_parts(info.image_memory_barriers, read(count)),
-		};
-		(info, buffers, images)
+	// SAFETY: the bindings pass a dependency that lives across the call.
+	let info = unsafe { &*info };
+	let buffers = match info.buffer_memory_barrier_count as usize {
+		0 => &[][..],
+		// SAFETY: its arrays live across the call, each as long as its count.
+		count => unsafe { slice::from_raw_parts(info.buffer_memory_barriers, count) },
+	};
+	let images = match info.image_memory_barrier_count as usize {
+		0 => &[][..],
+		// SAFETY: as above.
+		count => unsafe { slice::from_raw_parts(info.image_memory_barriers, count) },
 	};
 	with(|driver| {
 		driver.check_recording(buffer, "vkCmdPipelineBarrier2");
@@ -782,8 +776,8 @@ fn the_fake_driver_reports_broken_copy_rules() {
 	);
 	let recording = commands.record().unwrap();
 	// SAFETY: as above.
+	// Copying in while it is still undefined.
 	unsafe {
-		// Copying in while it is still undefined.
 		(functions.upload)(
 			command_buffer,
 			staging.handle(),
@@ -792,44 +786,44 @@ fn the_fake_driver_reports_broken_copy_rules() {
 			1,
 			&region(0, 0, [0, 0], [1, 1]),
 		);
-		// A barrier from a layout it is not in, of some layers, to
-		// undefined, and with scopes that miss what used it.
-		barrier_with(
-			Some(&image_barrier(
-				SOURCE,
-				DESTINATION,
-				[scope(SOURCE), write],
-				3,
-			)),
-			None,
-		);
-		barrier_with(
-			Some(&image_barrier(UNDEFINED, DESTINATION, [(0, 0), write], 2)),
-			None,
-		);
-		barrier_with(
-			Some(&image_barrier(UNDEFINED, UNDEFINED, [(0, 0), (0, 0)], 3)),
-			None,
-		);
-		barrier_with(
-			Some(&image_barrier(
-				UNDEFINED,
-				DESTINATION,
-				[(0, 0), (ALL_TRANSFER, 0)],
-				3,
-			)),
-			None,
-		);
-		barrier_with(
-			Some(&image_barrier(
-				DESTINATION,
-				SOURCE,
-				[(0, 0), scope(SOURCE)],
-				3,
-			)),
-			None,
-		);
 	}
+	// A barrier from a layout it is not in, of some layers, to
+	// undefined, and with scopes that miss what used it.
+	barrier_with(
+		Some(&image_barrier(
+			SOURCE,
+			DESTINATION,
+			[scope(SOURCE), write],
+			3,
+		)),
+		None,
+	);
+	barrier_with(
+		Some(&image_barrier(UNDEFINED, DESTINATION, [(0, 0), write], 2)),
+		None,
+	);
+	barrier_with(
+		Some(&image_barrier(UNDEFINED, UNDEFINED, [(0, 0), (0, 0)], 3)),
+		None,
+	);
+	barrier_with(
+		Some(&image_barrier(
+			UNDEFINED,
+			DESTINATION,
+			[(0, 0), (ALL_TRANSFER, 0)],
+			3,
+		)),
+		None,
+	);
+	barrier_with(
+		Some(&image_barrier(
+			DESTINATION,
+			SOURCE,
+			[(0, 0), scope(SOURCE)],
+			3,
+		)),
+		None,
+	);
 	let expected = [
 		"vkCmdCopyBufferToImage: in layout 7, not 0",
 		"vkCmdPipelineBarrier2: image the layout it is in",
@@ -845,17 +839,20 @@ fn the_fake_driver_reports_broken_copy_rules() {
 	let mut padded = region(0, 0, [0, 0], [1, 1]);
 	padded.buffer_row_length = 2;
 	// SAFETY: as above.
-	unsafe {
-		let out = |region: &BufferImageCopy, to| {
+	let out = unsafe {
+		|region: &BufferImageCopy, to| {
 			(functions.download)(command_buffer, image.handle(), SOURCE, to, 1, region)
-		};
-		out(&region(0, 3, [0, 0], [1, 1]), readback.handle());
-		out(&region(0, 0, [-1, 0], [1, 1]), readback.handle());
-		out(&region(0, 0, [0, 0], [17, 1]), readback.handle());
-		out(&region(1021, 0, [0, 0], [1, 1]), readback.handle());
-		out(&region(1024, 0, [0, 0], [1, 1]), readback.handle());
-		out(&region(0, 0, [0, 0], [1, 1]), staging.handle());
-		out(&padded, readback.handle());
+		}
+	};
+	out(&region(0, 3, [0, 0], [1, 1]), readback.handle());
+	out(&region(0, 0, [-1, 0], [1, 1]), readback.handle());
+	out(&region(0, 0, [0, 0], [17, 1]), readback.handle());
+	out(&region(1021, 0, [0, 0], [1, 1]), readback.handle());
+	out(&region(1024, 0, [0, 0], [1, 1]), readback.handle());
+	out(&region(0, 0, [0, 0], [1, 1]), staging.handle());
+	out(&padded, readback.handle());
+	// SAFETY: as above.
+	unsafe {
 		(functions.download)(
 			command_buffer,
 			image.handle(),

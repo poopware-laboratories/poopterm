@@ -6,13 +6,14 @@
 use super::{
 	call::{Error, INCOMPLETE},
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{Driver, finish, install, with},
 	fault::*,
 	optional::{DEVICE_FAULT, DEVICE_FAULT_FEATURE, Optional},
 	types::*,
 	window_tests::{SIZE, close, draw, open, showing},
 };
-use std::{ffi::CStr, mem::transmute, rc::Rc};
+use std::{ffi::CStr, rc::Rc};
 
 const FUNCTION: &CStr = c"vkGetDeviceFaultInfoEXT";
 
@@ -28,8 +29,7 @@ pub(super) struct Faults {
 }
 
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast it back to its own type.
-	(name == FUNCTION).then(|| unsafe { transmute::<GetDeviceFaultInfo, VoidFunction>(get_info) })
+	(name == FUNCTION).then(|| erase!(GetDeviceFaultInfo, get_info))
 }
 
 /// Copies `text` into a fixed C string field, keeping its last NUL.
@@ -113,7 +113,7 @@ unsafe extern "system" fn get_info(device: RawDevice, counts: *mut Counts, info:
 				precision,
 			};
 			// SAFETY: room for `counts.addresses`, checked above.
-			unsafe { info.addresses.add(index).write(address) };
+			unsafe { info.addresses.wrapping_add(index).write(address) };
 		}
 		for (index, &(text, code, data)) in faults
 			.vendor
@@ -128,7 +128,7 @@ unsafe extern "system" fn get_info(device: RawDevice, counts: *mut Counts, info:
 			};
 			copy(text, &mut vendor.description);
 			// SAFETY: as above.
-			unsafe { info.vendors.add(index).write(vendor) };
+			unsafe { info.vendors.wrapping_add(index).write(vendor) };
 		}
 		let written = (counts.addresses.min(have.0), counts.vendors.min(have.1));
 		(counts.addresses, counts.vendors) = written;

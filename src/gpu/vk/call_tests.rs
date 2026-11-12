@@ -62,7 +62,7 @@ fn driver(list: &[u32]) -> impl FnMut(&mut u32, *mut u32) -> i32 + '_ {
 		let written = list.len().min(*count as usize);
 		for (i, &item) in list[..written].iter().enumerate() {
 			// SAFETY: `enumerate` passes room for `count` items.
-			unsafe { items.add(i).write(item) };
+			unsafe { items.wrapping_add(i).write(item) };
 		}
 		*count = written as u32;
 		if written < list.len() { INCOMPLETE } else { 0 }
@@ -92,7 +92,7 @@ fn enumeration_asks_again_while_the_list_grows_between_calls() {
 		};
 		for (i, &item) in have.iter().enumerate() {
 			// SAFETY: room for `count` items, and `have` is no longer.
-			unsafe { items.add(i).write(item) };
+			unsafe { items.wrapping_add(i).write(item) };
 		}
 		*count = have.len() as u32;
 		if *count < 2 { INCOMPLETE } else { 0 }

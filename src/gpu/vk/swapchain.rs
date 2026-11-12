@@ -4,7 +4,7 @@
 use super::{
 	call::{Error, check, enumerate},
 	device::{Device, SWAPCHAIN},
-	entry::cast,
+	entry::load,
 	image::Image,
 	present::Acquire,
 	semaphore::Semaphore,
@@ -28,18 +28,14 @@ pub(super) struct Functions {
 impl Functions {
 	fn load(device: &Device) -> Result<Self, Error> {
 		let function = |name: &'static CStr| device.instance.device_function(device.handle, name);
-		// SAFETY: the functions the driver returned for these names have
-		// these types.
-		unsafe {
-			Ok(Self {
-				create: cast(function(c"vkCreateSwapchainKHR")?),
-				destroy: cast(function(c"vkDestroySwapchainKHR")?),
-				images: cast(function(c"vkGetSwapchainImagesKHR")?),
-				acquire: cast(function(c"vkAcquireNextImageKHR")?),
-				present: cast(function(c"vkQueuePresentKHR")?),
-				wait_idle: cast(function(c"vkQueueWaitIdle")?),
-			})
-		}
+		Ok(Self {
+			create: load!(function, c"vkCreateSwapchainKHR"),
+			destroy: load!(function, c"vkDestroySwapchainKHR"),
+			images: load!(function, c"vkGetSwapchainImagesKHR"),
+			acquire: load!(function, c"vkAcquireNextImageKHR"),
+			present: load!(function, c"vkQueuePresentKHR"),
+			wait_idle: load!(function, c"vkQueueWaitIdle"),
+		})
 	}
 }
 
@@ -180,3 +176,7 @@ impl Drop for Swapchain {
 		let _ = unsafe { (self.functions.wait_idle)(device.queue()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "swapchain_table_tests.rs"]
+mod table_tests;

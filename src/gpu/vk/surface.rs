@@ -4,7 +4,7 @@
 use super::{
 	call::{Error, check, enumerate},
 	choose::Device,
-	entry::cast,
+	entry::{cast, load},
 	instance::Instance,
 	surface_types::*,
 	swapchain_plan::{Capabilities, FIFO_LATEST_READY, Plan, SurfaceFormat, plan},
@@ -88,17 +88,13 @@ struct Functions {
 impl Functions {
 	fn load(instance: &Instance) -> Result<Self, Error> {
 		let function = |name| instance.function(name);
-		// SAFETY: the functions the loader returned for these names have
-		// these types.
-		unsafe {
-			Ok(Self {
-				destroy: cast(function(c"vkDestroySurfaceKHR")?),
-				support: cast(function(c"vkGetPhysicalDeviceSurfaceSupportKHR")?),
-				capabilities: cast(function(c"vkGetPhysicalDeviceSurfaceCapabilitiesKHR")?),
-				formats: cast(function(c"vkGetPhysicalDeviceSurfaceFormatsKHR")?),
-				modes: cast(function(c"vkGetPhysicalDeviceSurfacePresentModesKHR")?),
-			})
-		}
+		Ok(Self {
+			destroy: load!(function, c"vkDestroySurfaceKHR"),
+			support: load!(function, c"vkGetPhysicalDeviceSurfaceSupportKHR"),
+			capabilities: load!(function, c"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"),
+			formats: load!(function, c"vkGetPhysicalDeviceSurfaceFormatsKHR"),
+			modes: load!(function, c"vkGetPhysicalDeviceSurfacePresentModesKHR"),
+		})
 	}
 }
 
@@ -236,3 +232,7 @@ impl Drop for Surface {
 		unsafe { (self.functions.destroy)(self.instance.handle(), self.handle, ptr::null()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "surface_table_tests.rs"]
+mod table_tests;

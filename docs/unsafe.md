@@ -26,9 +26,14 @@ The compiler enforces both: `Cargo.toml` denies clippy's
 rustc's `unsafe_op_in_unsafe_fn`. An `unsafe fn` must still wrap each
 unsafe operation inside it in its own commented block, and documents what
 callers must ensure under `# Safety`. Some C bindings still expect
-several operations per block, each with its reason: `gpu::vk`, `gpu::mtl`,
+several operations per block, each with its reason: `gpu::mtl`,
 `present::x11`, `present::wayland`, `objc` and `about_menu`, whose driver
 and library calls get one safe wrapper each in the steps that follow.
+`gpu::vk` holds one per block, its fake drivers' tests too. Its function
+tables load through `load!` and `load_optional!` (`gpu/vk/entry.rs`), one
+cast per entry, and the fake driver's tables erase each fake through
+`erase!` (`gpu/vk/driver_tests.rs`) the same way. Pointer offsets use the
+safe `wrapping_add`, so the read or write is a block's one operation.
 
 ### Where it is allowed
 

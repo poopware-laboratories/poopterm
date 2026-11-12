@@ -9,6 +9,7 @@ use super::{
 	descriptor_driver_tests::{POOLS, SETS},
 	descriptor_types::RawDescriptorSet,
 	draw_types::*,
+	driver_tests::erase,
 	driver_tests::{Driver, with},
 	pipeline_driver_tests::{
 		COMBINED_IMAGE_SAMPLER, PIPELINE_LAYOUTS, PIPELINES, SET_LAYOUTS, STORAGE_BUFFER,
@@ -19,7 +20,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	slice,
 };
 
@@ -62,21 +62,18 @@ const QUAD: u64 = 48;
 
 /// The fake's update and drawing function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkUpdateDescriptorSets" => transmute::<UpdateDescriptorSets, VoidFunction>(update_sets),
-			b"vkCmdBeginRendering" => transmute::<CmdBeginRendering, VoidFunction>(begin_rendering),
-			b"vkCmdEndRendering" => transmute::<CmdEndRendering, VoidFunction>(end_rendering),
-			b"vkCmdBindPipeline" => transmute::<CmdBindPipeline, VoidFunction>(bind_pipeline),
-			b"vkCmdSetViewport" => transmute::<CmdSetViewport, VoidFunction>(set_viewport),
-			b"vkCmdSetScissor" => transmute::<CmdSetScissor, VoidFunction>(set_scissor),
-			b"vkCmdBindDescriptorSets" => transmute::<CmdBindDescriptorSets, VoidFunction>(bind_sets),
-			b"vkCmdPushConstants" => transmute::<CmdPushConstants, VoidFunction>(push),
-			b"vkCmdDraw" => transmute::<CmdDraw, VoidFunction>(draw),
-			_ => return super::swapchain_driver_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkUpdateDescriptorSets" => erase!(UpdateDescriptorSets, update_sets),
+		b"vkCmdBeginRendering" => erase!(CmdBeginRendering, begin_rendering),
+		b"vkCmdEndRendering" => erase!(CmdEndRendering, end_rendering),
+		b"vkCmdBindPipeline" => erase!(CmdBindPipeline, bind_pipeline),
+		b"vkCmdSetViewport" => erase!(CmdSetViewport, set_viewport),
+		b"vkCmdSetScissor" => erase!(CmdSetScissor, set_scissor),
+		b"vkCmdBindDescriptorSets" => erase!(CmdBindDescriptorSets, bind_sets),
+		b"vkCmdPushConstants" => erase!(CmdPushConstants, push),
+		b"vkCmdDraw" => erase!(CmdDraw, draw),
+		_ => return super::swapchain_driver_tests::function(name),
+	})
 }
 
 impl Driver {
@@ -224,9 +221,10 @@ pub(super) unsafe extern "system" fn begin_rendering(
 	buffer: RawCommandBuffer,
 	info: *const RenderingInfo,
 ) {
-	// SAFETY: the bindings pass a rendering info and its one attachment,
-	// which live across the call.
-	let (info, attachment) = unsafe { (&*info, &*(*info).color_attachments) };
+	// SAFETY: the bindings pass a rendering info that lives across the call.
+	let info = unsafe { &*info };
+	// SAFETY: and its one attachment, which does too.
+	let attachment = unsafe { &*info.color_attachments };
 	with(|driver| {
 		let call = "vkCmdBeginRendering";
 		let rendering = driver

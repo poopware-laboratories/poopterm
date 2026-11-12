@@ -252,10 +252,13 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 			ptr::null(),
 			&mut out,
 		);
-		create_module(handle, &module(&code, 6), ptr::null(), &mut out);
-		destroy_module(handle, 0x60_0009, ptr::null());
-		destroy_sampler(handle, 0x60_0001, ptr::null());
 	}
+	// SAFETY: as above.
+	unsafe { create_module(handle, &module(&code, 6), ptr::null(), &mut out) };
+	// SAFETY: as above.
+	unsafe { destroy_module(handle, 0x60_0009, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { destroy_sampler(handle, 0x60_0001, ptr::null()) };
 	let expected = [
 		"vkCreateShaderModule: SPIR-V",
 		"vkCreateShaderModule: a size in words",
@@ -317,28 +320,40 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 			push_constant_ranges: ranges.as_ptr(),
 		};
 	// SAFETY: as above.
+	unsafe { create_sampler(handle, &sampler(1, 0), ptr::null(), &mut out) };
+	// SAFETY: as above.
+	unsafe { create_sampler(handle, &sampler(0, 1), ptr::null(), &mut out) };
+	let twice = {
+		[
+			binding(0, STORAGE_BUFFER, ptr::null()),
+			binding(0, STORAGE_BUFFER, ptr::null()),
+		]
+	};
+	// SAFETY: as above.
+	unsafe { create_set_layout(handle, &set_layout(&twice), ptr::null(), &mut out) };
+	let dead_sampler = [binding(0, COMBINED_IMAGE_SAMPLER, &dead)];
+	// SAFETY: as above.
+	unsafe { create_set_layout(handle, &set_layout(&dead_sampler), ptr::null(), &mut out) };
+	// SAFETY: as above.
 	unsafe {
-		create_sampler(handle, &sampler(1, 0), ptr::null(), &mut out);
-		create_sampler(handle, &sampler(0, 1), ptr::null(), &mut out);
-		let twice = [
-			binding(0, STORAGE_BUFFER, ptr::null()),
-			binding(0, STORAGE_BUFFER, ptr::null()),
-		];
-		create_set_layout(handle, &set_layout(&twice), ptr::null(), &mut out);
-		let dead_sampler = [binding(0, COMBINED_IMAGE_SAMPLER, &dead)];
-		create_set_layout(handle, &set_layout(&dead_sampler), ptr::null(), &mut out);
 		create_pipeline_layout(
 			handle,
 			&pipeline_layout(&[0x62_0009], &[]),
 			ptr::null(),
 			&mut out,
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		create_pipeline_layout(
 			handle,
 			&pipeline_layout(&[], &ranges(124, 8)),
 			ptr::null(),
 			&mut out,
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		create_pipeline_layout(
 			handle,
 			&pipeline_layout(&[], &ranges(0, 6)),

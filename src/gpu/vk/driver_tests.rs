@@ -27,7 +27,6 @@ use super::{
 use std::{
 	cell::RefCell,
 	ffi::{CStr, c_char, c_void},
-	mem::transmute,
 	ptr,
 };
 
@@ -245,6 +244,18 @@ impl Driver {
 	}
 }
 
+/// `erase!(Type, function)`: a fake function as the untyped pointer the
+/// loader hands out, which the bindings cast back to `Type`.
+macro_rules! erase {
+	($kind:ty, $function:expr) => {{
+		let typed: $kind = $function;
+		// SAFETY: both are function pointers of one size, and the bindings
+		// cast it back to `$kind`, the type it has, before calling it.
+		unsafe { std::mem::transmute::<$kind, VoidFunction>(typed) }
+	}};
+}
+pub(super) use erase;
+
 thread_local! {
 	static DRIVER: RefCell<Driver> = RefCell::default();
 }
@@ -301,51 +312,49 @@ unsafe extern "system" fn get_instance_proc_addr(
 		if driver.lacks.contains(&name) {
 			return None;
 		}
-		// SAFETY: the bindings cast each back to its own type.
-		unsafe {
-			Some(match name.to_bytes() {
-				b"vkEnumerateInstanceVersion" if driver.version.is_some() => {
-					transmute::<EnumerateInstanceVersion, VoidFunction>(enumerate_instance_version)
-				}
-				b"vkEnumerateInstanceExtensionProperties" => {
-					transmute::<EnumerateInstanceExtensionProperties, VoidFunction>(instance_extensions)
-				}
-				b"vkCreateInstance" => transmute::<CreateInstance, VoidFunction>(create_instance),
-				b"vkDestroyInstance" => transmute::<DestroyInstance, VoidFunction>(destroy_instance),
-				b"vkEnumeratePhysicalDevices" => {
-					transmute::<EnumeratePhysicalDevices, VoidFunction>(enumerate_physical_devices)
-				}
-				b"vkGetPhysicalDeviceProperties" => {
-					transmute::<GetPhysicalDeviceProperties, VoidFunction>(properties)
-				}
-				b"vkGetPhysicalDeviceQueueFamilyProperties" => {
-					transmute::<GetPhysicalDeviceQueueFamilyProperties, VoidFunction>(queue_families)
-				}
-				b"vkEnumerateDeviceExtensionProperties" => {
-					transmute::<EnumerateDeviceExtensionProperties, VoidFunction>(extensions)
-				}
-				b"vkGetPhysicalDeviceMemoryProperties" => transmute::<
-					GetPhysicalDeviceMemoryProperties,
-					VoidFunction,
-				>(memory_driver_tests::memory_properties),
-				b"vkGetPhysicalDeviceFeatures2" => {
-					transmute::<GetPhysicalDeviceFeatures2, VoidFunction>(device_tests::features2)
-				}
-				b"vkGetPhysicalDeviceProperties2" => {
-					transmute::<driver_info::GetPhysicalDeviceProperties2, VoidFunction>(properties2)
-				}
-				b"vkGetPhysicalDeviceMemoryProperties2" => {
-					transmute::<super::memory_budget::GetPhysicalDeviceMemoryProperties2, VoidFunction>(
-						super::memory_budget_tests::memory_properties2,
-					)
-				}
-				b"vkCreateDevice" => transmute::<CreateDevice, VoidFunction>(device_tests::create_device),
-				b"vkGetDeviceProcAddr" => {
-					transmute::<GetDeviceProcAddr, VoidFunction>(device_tests::get_device_proc_addr)
-				}
-				_ => return surface_driver_tests::function(name),
-			})
-		}
+		Some(match name.to_bytes() {
+			b"vkEnumerateInstanceVersion" if driver.version.is_some() => {
+				erase!(EnumerateInstanceVersion, enumerate_instance_version)
+			}
+			b"vkEnumerateInstanceExtensionProperties" => {
+				erase!(EnumerateInstanceExtensionProperties, instance_extensions)
+			}
+			b"vkCreateInstance" => erase!(CreateInstance, create_instance),
+			b"vkDestroyInstance" => erase!(DestroyInstance, destroy_instance),
+			b"vkEnumeratePhysicalDevices" => {
+				erase!(EnumeratePhysicalDevices, enumerate_physical_devices)
+			}
+			b"vkGetPhysicalDeviceProperties" => {
+				erase!(GetPhysicalDeviceProperties, properties)
+			}
+			b"vkGetPhysicalDeviceQueueFamilyProperties" => {
+				erase!(GetPhysicalDeviceQueueFamilyProperties, queue_families)
+			}
+			b"vkEnumerateDeviceExtensionProperties" => {
+				erase!(EnumerateDeviceExtensionProperties, extensions)
+			}
+			b"vkGetPhysicalDeviceMemoryProperties" => erase!(
+				GetPhysicalDeviceMemoryProperties,
+				memory_driver_tests::memory_properties
+			),
+			b"vkGetPhysicalDeviceFeatures2" => {
+				erase!(GetPhysicalDeviceFeatures2, device_tests::features2)
+			}
+			b"vkGetPhysicalDeviceProperties2" => {
+				erase!(driver_info::GetPhysicalDeviceProperties2, properties2)
+			}
+			b"vkGetPhysicalDeviceMemoryProperties2" => {
+				erase!(
+					super::memory_budget::GetPhysicalDeviceMemoryProperties2,
+					super::memory_budget_tests::memory_properties2
+				)
+			}
+			b"vkCreateDevice" => erase!(CreateDevice, device_tests::create_device),
+			b"vkGetDeviceProcAddr" => {
+				erase!(GetDeviceProcAddr, device_tests::get_device_proc_addr)
+			}
+			_ => return surface_driver_tests::function(name),
+		})
 	})
 }
 
@@ -429,7 +438,7 @@ unsafe extern "system" fn create_instance(
 			let named = !info.enabled_extension_names.is_null();
 			let names = (0..extensions as usize * usize::from(named)).map(|i| {
 				// SAFETY: the bindings pass `extensions` C strings.
-				string(unsafe { *info.enabled_extension_names.add(i) })
+				string(unsafe { *info.enabled_extension_names.wrapping_add(i) })
 			});
 			driver.created.push(Created {
 				// Distinct, never null, and never reused.
@@ -522,7 +531,7 @@ pub(super) unsafe fn answer<T: Copy>(all: &[T], count: *mut u32, items: *mut T) 
 	let written = (unsafe { count.read() } as usize).min(all.len());
 	for (i, &item) in all[..written].iter().enumerate() {
 		// SAFETY: within the room the caller gives.
-		unsafe { items.add(i).write(item) };
+		unsafe { items.wrapping_add(i).write(item) };
 	}
 	// SAFETY: writable.
 	unsafe { count.write(written as u32) };
@@ -984,10 +993,9 @@ fn the_fake_driver_reports_broken_rules() {
 	// Looking a global function up with an instance, or an instance's
 	// function without one.
 	// SAFETY: C strings.
-	unsafe {
-		get_instance_proc_addr(0x1000 as RawInstance, c"vkCreateInstance".as_ptr());
-		get_instance_proc_addr(ptr::null_mut(), c"vkDestroyInstance".as_ptr());
-	}
+	unsafe { get_instance_proc_addr(0x1000 as RawInstance, c"vkCreateInstance".as_ptr()) };
+	// SAFETY: as above.
+	unsafe { get_instance_proc_addr(ptr::null_mut(), c"vkDestroyInstance".as_ptr()) };
 	let invalid = with(std::mem::take).invalid;
 	assert_eq!(invalid.len(), 2, "{invalid:?}");
 }

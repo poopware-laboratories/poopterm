@@ -7,6 +7,7 @@ use super::{
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{Driver, family, finish, install, with, with_devices},
 	memory::{HOST_VISIBLE, MemoryType, Usage},
 	types::*,
@@ -14,7 +15,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	num::NonZeroUsize,
 	ptr,
 	rc::Rc,
@@ -37,21 +37,18 @@ const VERTEX: u32 = 0x80;
 
 /// The fake's buffer and memory function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateBuffer" => transmute::<CreateBuffer, VoidFunction>(create_buffer),
-			b"vkDestroyBuffer" => transmute::<DestroyBuffer, VoidFunction>(destroy_buffer),
-			b"vkGetBufferMemoryRequirements" => {
-				transmute::<GetBufferMemoryRequirements, VoidFunction>(requirements)
-			}
-			b"vkAllocateMemory" => transmute::<AllocateMemory, VoidFunction>(allocate),
-			b"vkFreeMemory" => transmute::<FreeMemory, VoidFunction>(free),
-			b"vkBindBufferMemory" => transmute::<BindBufferMemory, VoidFunction>(bind),
-			b"vkMapMemory" => transmute::<MapMemory, VoidFunction>(map),
-			_ => return super::image_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateBuffer" => erase!(CreateBuffer, create_buffer),
+		b"vkDestroyBuffer" => erase!(DestroyBuffer, destroy_buffer),
+		b"vkGetBufferMemoryRequirements" => {
+			erase!(GetBufferMemoryRequirements, requirements)
+		}
+		b"vkAllocateMemory" => erase!(AllocateMemory, allocate),
+		b"vkFreeMemory" => erase!(FreeMemory, free),
+		b"vkBindBufferMemory" => erase!(BindBufferMemory, bind),
+		b"vkMapMemory" => erase!(MapMemory, map),
+		_ => return super::image_tests::function(name),
+	})
 }
 
 impl Driver {
@@ -495,10 +492,9 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 	};
 	let mut buffer = 0;
 	// SAFETY: the fake reads only what the pointers point to.
-	unsafe {
-		create_buffer(handle, &info(0, 0), ptr::null(), &mut buffer);
-		create_buffer(handle, &info(8, 1), ptr::null(), &mut buffer);
-	}
+	unsafe { create_buffer(handle, &info(0, 0), ptr::null(), &mut buffer) };
+	// SAFETY: as above.
+	unsafe { create_buffer(handle, &info(8, 1), ptr::null(), &mut buffer) };
 	assert_eq!(
 		reported(),
 		["vkCreateBuffer: size", "vkCreateBuffer: exclusive"]
@@ -511,26 +507,30 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 	};
 	let (mut device_local, mut cached, mut unknown) = (0, 0, 0);
 	// SAFETY: as above.
-	unsafe {
-		allocate(handle, &allocate_info(0), ptr::null(), &mut device_local);
-		allocate(handle, &allocate_info(2), ptr::null(), &mut cached);
-		allocate(handle, &allocate_info(3), ptr::null(), &mut unknown);
-	}
+	unsafe { allocate(handle, &allocate_info(0), ptr::null(), &mut device_local) };
+	// SAFETY: as above.
+	unsafe { allocate(handle, &allocate_info(2), ptr::null(), &mut cached) };
+	// SAFETY: as above.
+	unsafe { allocate(handle, &allocate_info(3), ptr::null(), &mut unknown) };
 	assert_eq!(reported(), ["vkAllocateMemory: memoryTypeIndex"]);
 	let mut data = ptr::null_mut();
 	// SAFETY: as above.
-	unsafe {
-		// Type 2 is not one the buffer allows; then bound twice; then a
-		// fresh buffer with too little room past the offset.
-		bind(handle, buffer, cached, 0);
-		bind(handle, buffer, device_local, 0);
-		create_buffer(handle, &info(256, 0), ptr::null(), &mut buffer);
-		bind(handle, buffer, device_local, 256);
-		// Device-local memory is not host-visible; cached memory twice.
-		map(handle, device_local, 0, WHOLE_SIZE, 0, &mut data);
-		map(handle, cached, 0, WHOLE_SIZE, 0, &mut data);
-		map(handle, cached, 0, WHOLE_SIZE, 0, &mut data);
-	}
+	// Type 2 is not one the buffer allows; then bound twice; then a
+	// fresh buffer with too little room past the offset.
+	unsafe { bind(handle, buffer, cached, 0) };
+	// SAFETY: as above.
+	unsafe { bind(handle, buffer, device_local, 0) };
+	// SAFETY: as above.
+	unsafe { create_buffer(handle, &info(256, 0), ptr::null(), &mut buffer) };
+	// SAFETY: as above.
+	unsafe { bind(handle, buffer, device_local, 256) };
+	// Device-local memory is not host-visible; cached memory twice.
+	// SAFETY: as above.
+	unsafe { map(handle, device_local, 0, WHOLE_SIZE, 0, &mut data) };
+	// SAFETY: as above.
+	unsafe { map(handle, cached, 0, WHOLE_SIZE, 0, &mut data) };
+	// SAFETY: as above.
+	unsafe { map(handle, cached, 0, WHOLE_SIZE, 0, &mut data) };
 	let expected = [
 		"vkBindBufferMemory: a memory type it allows",
 		"vkBindBufferMemory: a live buffer bound once",
@@ -553,14 +553,16 @@ fn the_fake_driver_reports_broken_buffer_rules() {
 	);
 	with(|driver| driver.live_devices.push(handle));
 	// SAFETY: as above.
-	unsafe {
-		for &buffer in &live.0 {
-			destroy_buffer(handle, buffer, ptr::null());
-			destroy_buffer(handle, buffer, ptr::null());
-		}
-		for &memory in &live.1 {
-			free(handle, memory, ptr::null());
-		}
+	for &buffer in &live.0 {
+		// SAFETY: as above.
+		unsafe { destroy_buffer(handle, buffer, ptr::null()) };
+		// SAFETY: as above.
+		unsafe { destroy_buffer(handle, buffer, ptr::null()) };
+	}
+	// SAFETY: as above.
+	for &memory in &live.1 {
+		// SAFETY: as above.
+		unsafe { free(handle, memory, ptr::null()) };
 	}
 	assert_eq!(reported().len(), live.0.len());
 	with(|driver| driver.live_devices.clear());

@@ -7,7 +7,7 @@ use super::{
 		DriverProperties, GetPhysicalDeviceProperties2, PhysicalDeviceProperties2,
 		STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
 	},
-	entry::{Entry, cast},
+	entry::{Entry, cast, load, load_optional},
 	features::Features,
 	memory::MemoryType,
 	memory_budget::{
@@ -39,26 +39,18 @@ struct Functions {
 impl Functions {
 	fn load(entry: &Entry, instance: RawInstance) -> Result<Self, Error> {
 		let function = |name| entry.function(instance, name);
-		// SAFETY: the functions the loader returned for these names have
-		// these types.
-		unsafe {
-			Ok(Self {
-				enumerate_physical_devices: cast(function(c"vkEnumeratePhysicalDevices")?),
-				properties: cast(function(c"vkGetPhysicalDeviceProperties")?),
-				queue_families: cast(function(c"vkGetPhysicalDeviceQueueFamilyProperties")?),
-				extensions: cast(function(c"vkEnumerateDeviceExtensionProperties")?),
-				memory: cast(function(c"vkGetPhysicalDeviceMemoryProperties")?),
-				features: cast(function(c"vkGetPhysicalDeviceFeatures2")?),
-				create_device: cast(function(c"vkCreateDevice")?),
-				device_function: cast(function(c"vkGetDeviceProcAddr")?),
-				properties2: function(c"vkGetPhysicalDeviceProperties2")
-					.ok()
-					.map(|f| cast(f)),
-				memory2: function(c"vkGetPhysicalDeviceMemoryProperties2")
-					.ok()
-					.map(|f| cast(f)),
-			})
-		}
+		Ok(Self {
+			enumerate_physical_devices: load!(function, c"vkEnumeratePhysicalDevices"),
+			properties: load!(function, c"vkGetPhysicalDeviceProperties"),
+			queue_families: load!(function, c"vkGetPhysicalDeviceQueueFamilyProperties"),
+			extensions: load!(function, c"vkEnumerateDeviceExtensionProperties"),
+			memory: load!(function, c"vkGetPhysicalDeviceMemoryProperties"),
+			features: load!(function, c"vkGetPhysicalDeviceFeatures2"),
+			create_device: load!(function, c"vkCreateDevice"),
+			device_function: load!(function, c"vkGetDeviceProcAddr"),
+			properties2: load_optional!(function, c"vkGetPhysicalDeviceProperties2"),
+			memory2: load_optional!(function, c"vkGetPhysicalDeviceMemoryProperties2"),
+		})
 	}
 }
 
@@ -319,3 +311,7 @@ impl Drop for Instance {
 		unsafe { (self.destroy)(self.handle, ptr::null()) };
 	}
 }
+
+#[cfg(test)]
+#[path = "instance_table_tests.rs"]
+mod table_tests;

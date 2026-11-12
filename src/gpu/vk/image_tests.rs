@@ -8,6 +8,7 @@ use super::{
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{family, finish, install, with, with_devices},
 	image::{Format, Image},
 	memory::Usage,
@@ -16,7 +17,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	num::NonZeroUsize,
 	ptr,
 	rc::Rc,
@@ -57,20 +57,17 @@ const COLOR_ATTACHMENT: u32 = 0x10;
 
 /// The fake's image function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateImage" => transmute::<CreateImage, VoidFunction>(create_image),
-			b"vkDestroyImage" => transmute::<DestroyImage, VoidFunction>(destroy_image),
-			b"vkGetImageMemoryRequirements" => {
-				transmute::<GetImageMemoryRequirements, VoidFunction>(requirements)
-			}
-			b"vkBindImageMemory" => transmute::<BindImageMemory, VoidFunction>(bind),
-			b"vkCreateImageView" => transmute::<CreateImageView, VoidFunction>(create_view),
-			b"vkDestroyImageView" => transmute::<DestroyImageView, VoidFunction>(destroy_view),
-			_ => return super::timeline_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateImage" => erase!(CreateImage, create_image),
+		b"vkDestroyImage" => erase!(DestroyImage, destroy_image),
+		b"vkGetImageMemoryRequirements" => {
+			erase!(GetImageMemoryRequirements, requirements)
+		}
+		b"vkBindImageMemory" => erase!(BindImageMemory, bind),
+		b"vkCreateImageView" => erase!(CreateImageView, create_view),
+		b"vkDestroyImageView" => erase!(DestroyImageView, destroy_view),
+		_ => return super::timeline_tests::function(name),
+	})
 }
 
 /// The index of `image` in `images`, as the fake numbers them.
@@ -507,12 +504,13 @@ fn the_fake_driver_reports_broken_image_rules() {
 	};
 	let mut image = 0;
 	// SAFETY: the fake reads only what the pointers point to.
-	unsafe {
-		create_image(handle, &info([16385, 1, 1], 1, 0), ptr::null(), &mut image);
-		create_image(handle, &info([1, 1, 2], 1, 0), ptr::null(), &mut image);
-		create_image(handle, &info([1, 1, 1], 2049, 0), ptr::null(), &mut image);
-		create_image(handle, &info([1, 1, 1], 1, 2), ptr::null(), &mut image);
-	}
+	unsafe { create_image(handle, &info([16385, 1, 1], 1, 0), ptr::null(), &mut image) };
+	// SAFETY: as above.
+	unsafe { create_image(handle, &info([1, 1, 2], 1, 0), ptr::null(), &mut image) };
+	// SAFETY: as above.
+	unsafe { create_image(handle, &info([1, 1, 1], 2049, 0), ptr::null(), &mut image) };
+	// SAFETY: as above.
+	unsafe { create_image(handle, &info([1, 1, 1], 1, 2), ptr::null(), &mut image) };
 	let expected = [
 		"vkCreateImage: extent",
 		"vkCreateImage: two-dimensional",
@@ -551,36 +549,50 @@ fn the_fake_driver_reports_broken_image_rules() {
 	};
 	let mut view = 0;
 	// SAFETY: as above.
+	// A view of an image not bound yet; then bound to a type it does not
+	// allow, and bound twice; then views in another format and of more
+	// layers than it has.
 	unsafe {
-		// A view of an image not bound yet; then bound to a type it does not
-		// allow, and bound twice; then views in another format and of more
-		// layers than it has.
 		create_view(
 			handle,
 			&view_info(image, BGRA as i32, 1),
 			ptr::null(),
 			&mut view,
 		);
-		bind(handle, image, visible, 0);
-		bind(handle, image, device_local, 0);
+	}
+	// SAFETY: as above.
+	unsafe { bind(handle, image, visible, 0) };
+	// SAFETY: as above.
+	unsafe { bind(handle, image, device_local, 0) };
+	// SAFETY: as above.
+	unsafe {
 		create_view(
 			handle,
 			&view_info(image, RGBA as i32, 1),
 			ptr::null(),
 			&mut view,
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		create_view(
 			handle,
 			&view_info(image, BGRA as i32, 2),
 			ptr::null(),
 			&mut view,
 		);
-		// A view of an image only copied to and from.
-		let mut copied = info([1, 1, 1], 1, 0);
-		copied.usage = TRANSFER_SRC | TRANSFER_DST;
-		let mut image = 0;
-		create_image(handle, &copied, ptr::null(), &mut image);
-		bind(handle, image, allocate(0), 0);
+	}
+	// A view of an image only copied to and from.
+	// SAFETY: as above.
+	let mut copied = info([1, 1, 1], 1, 0);
+	copied.usage = TRANSFER_SRC | TRANSFER_DST;
+	let mut image = 0;
+	// SAFETY: as above.
+	unsafe { create_image(handle, &copied, ptr::null(), &mut image) };
+	// SAFETY: as above.
+	unsafe { bind(handle, image, allocate(0), 0) };
+	// SAFETY: as above.
+	unsafe {
 		create_view(
 			handle,
 			&view_info(image, BGRA as i32, 1),
@@ -605,15 +617,18 @@ fn the_fake_driver_reports_broken_image_rules() {
 		(driver.live_images.clone(), driver.live_views.clone())
 	});
 	// SAFETY: the fake only records the handles.
-	unsafe {
-		for &view in &live.1 {
-			destroy_view(handle, view, ptr::null());
-			destroy_view(handle, view, ptr::null());
-		}
-		for &image in &live.0 {
-			destroy_image(handle, image, ptr::null());
-			destroy_image(handle, image, ptr::null());
-		}
+	for &view in &live.1 {
+		// SAFETY: as above.
+		unsafe { destroy_view(handle, view, ptr::null()) };
+		// SAFETY: as above.
+		unsafe { destroy_view(handle, view, ptr::null()) };
+	}
+	// SAFETY: as above.
+	for &image in &live.0 {
+		// SAFETY: as above.
+		unsafe { destroy_image(handle, image, ptr::null()) };
+		// SAFETY: as above.
+		unsafe { destroy_image(handle, image, ptr::null()) };
 	}
 	assert_eq!(reported().len(), live.0.len() + live.1.len());
 	with(|driver| {
