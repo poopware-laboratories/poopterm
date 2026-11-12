@@ -32,7 +32,9 @@ prepare() {
 build() {
 	cd "$pkgname"
 	export RUSTUP_HOME="$srcdir/rustup" CARGO_HOME="$srcdir/cargo"
-	rustup run nightly cargo build --release --frozen
+	# makepkg.conf's RUSTFLAGS replace .cargo/config.toml; build.sh adds its
+	# x86-64-v2 level back.
+	rustup run nightly sh scripts/build.sh --release --frozen
 }
 
 check() {

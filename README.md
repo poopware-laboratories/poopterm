@@ -150,9 +150,16 @@ make                        # local macOS: automatically tune for this CPU
 Local `make`, `make install` and PGO builds detect macOS and use
 `-Ctarget-cpu=native`, letting rustc select the host CPU's instruction set
 and scheduling. Set `POOPTERM_PORTABLE=1` for a transferable build, or use
-`cargo build --release` for Cargo's normal defaults. CI, staged packages and
+`cargo build --release` for the portable defaults. CI, staged packages and
 cross builds stay portable; explicit CPU flags are respected. This tunes
 source builds, including dependencies, without recompiling at app startup.
+
+On x86-64, portable means **x86-64-v2**: SSE4.2 and POPCNT, which every
+x86-64 CPU since about 2009 has (Nehalem, Bulldozer, Jaguar, Silvermont and
+later), with an x86-64-v3 (AVX2) copy of the hot paths chosen at run time.
+On an older CPU Poopterm says which features it lacks and exits. To build
+for one anyway, pass your own level, which replaces it:
+`RUSTFLAGS=-Ctarget-cpu=x86-64 cargo build --release`.
 
 <details>
 <summary>Build dependencies per platform</summary>

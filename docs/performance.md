@@ -580,6 +580,32 @@ shell slowdown. These are host-specific observations, not a fastest-terminal
 claim. Text and hyperlink snapshots matched before and after on the saved
 ASCII, raw UTF-8, common-width UTF-8, styled, grapheme and retention fixtures.
 
+## The x86-64 baseline: x86-64-v2 (26.11)
+
+x86-64 builds target x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT,
+CMPXCHG16B) instead of the original SSE2-only x86-64: `.cargo/config.toml`
+enables those features, and `scripts/build.sh` adds them whenever
+`RUSTFLAGS` is set, since that variable replaces the config (`pgo.sh`
+release builds, makepkg). They are enabled one by one, not with
+`-Ctarget-cpu=x86-64-v2`: LLVM's x86-64-v2 model also brings Sandy Bridge
+tuning, which turns rotates into `shld`. On this Alder Lake-N that made
+SipHash (the hyperlink table) take about 10% of the shell workload, and
+cost shell and compiler 8% more cycles for the same instructions. The
+five hot paths keep their x86-64-v3 copy, chosen at run time.
+`src/cpu_baseline.rs` reads CPUID before anything else runs and refuses an
+older CPU by name; `is_x86_feature_detected!` cannot, because it answers
+`true` for every feature the build enables.
+
+A v2 build was chosen over a runtime v2 copy because v2 speed cannot be
+measured honestly on a v3 machine, while raising the floor costs nothing on
+any CPU from about 2009 on. Proof that it runs where it should: CI runs the
+binary on Alpine under `qemu-x86_64 -cpu Nehalem` (it starts) and
+`-cpu Penryn` (it refuses, exit 1). Locally, a static build passed the
+whole test suite on an emulated Nehalem, apart from the tests that load
+shared libraries, which a static binary cannot. Hosts whose own libraries
+are built for v3 (CachyOS) cannot run anything under an older emulated CPU,
+so try it with a static binary there.
+
 ## Local macOS CPU builds (26.10.132)
 
 `make`, `make install` and local PGO builds use `-Ctarget-cpu=native` on

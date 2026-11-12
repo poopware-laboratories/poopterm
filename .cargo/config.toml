@@ -3,3 +3,13 @@
 # exits with `NoWaylandLib` (Alpine). Link musl's C library dynamically.
 [target.'cfg(target_env = "musl")']
 rustflags = ["-C", "target-feature=-crt-static"]
+
+# x86-64 builds require x86-64-v2 (SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT,
+# CMPXCHG16B: CPUs from about 2009 on); hot paths add an x86-64-v3 copy chosen
+# at run time. Features, not `target-cpu=x86-64-v2`: that CPU model also
+# brings Sandy Bridge tuning, whose `shld` rotates cost SipHash, and with it
+# the shell and compiler workloads, 8% more cycles on current cores.
+# RUSTFLAGS in the environment replaces this table, so scripts/build.sh adds
+# the same flag when it is set; src/cpu_baseline.rs refuses older CPUs.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b"]

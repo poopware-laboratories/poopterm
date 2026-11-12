@@ -29,6 +29,7 @@ mod clipboard;
 mod codename;
 mod config;
 mod cpu;
+mod cpu_baseline;
 #[cfg(not(target_os = "macos"))]
 mod dbus;
 mod fonts;
@@ -99,6 +100,8 @@ use std::{
 };
 
 fn main() -> ExitCode {
+	// First, before code built for x86-64-v2 can run on an older CPU.
+	cpu_baseline::check();
 	allocator::purge_eagerly();
 	match run() {
 		Ok(()) => ExitCode::SUCCESS,

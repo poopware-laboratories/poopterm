@@ -181,6 +181,17 @@ jobs:
           cargo build --locked
           readelf -l target/debug/poopterm | grep -q INTERP
           ./target/debug/poopterm --version
+      - name: Check the x86-64-v2 level on emulated CPUs
+        # Alpine's own libraries are plain x86-64, so the binary gets as far
+        # as its own check on any CPU qemu emulates.
+        run: |
+          apk add --no-cache qemu-x86_64
+          qemu-x86_64 -cpu Nehalem target/debug/poopterm --version
+          status=0
+          qemu-x86_64 -cpu Penryn target/debug/poopterm --version 2> refused.txt || status=$?
+          cat refused.txt
+          test "$status" = 1
+          grep -q 'needs an x86-64-v2 CPU.*lacks SSE4.2, POPCNT' refused.txt
 
   debian-package:
     runs-on: ubuntu-22.04
