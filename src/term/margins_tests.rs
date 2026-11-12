@@ -601,3 +601,17 @@ fn without_auto_wrap_a_wide_character_backs_up_from_the_right_margin() {
 	assert_eq!(cursor(&t), (5, 1));
 	assert_eq!(screen(&t)[1], "        ");
 }
+
+#[test]
+fn text_skipping_scaled_text_past_the_right_margin_runs_on_to_the_screen_edge() {
+	let mut t = terminal(8, 3);
+	// A block of doubled text in columns 2 and 3, rows 1 and 2.
+	feed(&mut t, "\x1b[1;2H\x1b]66;s=2;a\x07\x1b[?69h\x1b[2;3s");
+	// From the block's lower row the text skips it, past the right margin.
+	feed(&mut t, "\x1b[2;2Hxy");
+	assert_eq!((t.grid[1][3].ch, t.grid[1][4].ch), ('x', 'y'));
+	assert_eq!(cursor(&t), (6, 2));
+	assert!(!t.wrap_pending);
+	feed(&mut t, "zzz");
+	assert_eq!(screen(&t)[1].get(5..), Some("zzz"));
+}
