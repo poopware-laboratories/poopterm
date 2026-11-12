@@ -56,6 +56,8 @@ impl Term {
 			// DECKPAM and DECKPNM.
 			b'=' => self.application_keypad = true,
 			b'>' => self.application_keypad = false,
+			b'6' => self.back_index(),
+			b'9' => self.forward_index(),
 			b'7' => self.save_cursor(),
 			b'8' => self.restore_cursor(),
 			_ => {}
