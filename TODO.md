@@ -51,6 +51,22 @@ workloads; raw, the window ran at 119–478 MB/s (206 overall) at 26.11.51.
 kernel's, so headless `parse` against `ceiling` is where the 500 MB/s goal
 is tracked. See [`docs/performance.md`](docs/performance.md#results).
 
+Where the parse spends its time (`perf record -e cycles:u` on the profiling
+build, `--benchmark --no-render --only <workload>`, 2026-11-12); each is
+its own A/B-measured change:
+
+- **CSI parameters.** Parsing them takes about half of source and cursor.
+  Try a fast path for one or two plain numeric parameters.
+- **`vt::text::Chars::next` is not inlined** despite `#[inline]`: 20% of
+  emoji and 14% of CJK. Then a SIMD path for runs of 3-byte CJK.
+- **`parser::cluster::join_marks`** takes 11.5% of emoji. Skip it when the
+  next code point cannot join the cluster.
+- **A clock read per OSC 133 marker** (`clock_gettime`, about 5% of shell).
+  Read the clock once per batch, or only when a mark needs a time.
+- **`Term::sgr`** takes 8% of source.
+- **History copies** cost log 19% and ls 17% since they became safe code
+  (#311); make the safe copy fast.
+
 **Images: as fast as possible** for Sixel and the kitty graphics protocol,
 from first byte to pixels on screen. There is no target to stop at; at least
 match text throughput, within the explicit size limits on untrusted input.
@@ -355,6 +371,14 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
 
 ## Protocol gaps
 
+- **xterm.** Still missing, in the order planned: left and right margins
+  (DECLRMM ?69, DECSLRM, DECIC/DECDC, SL/SR, DECBI/DECFI); reports (DA3,
+  DECXCPR, DECRQPSR, XTPUSHSGR/XTPOPSGR, XTSMTITLE, `CSI ? n` statuses);
+  cursor blink ?12; selective erase (DECSCA, DECSED, DECSEL), which DA1
+  already claims; VT400 rectangle operations (DECRQCRA stays unanswered:
+  its checksums leak the screen); G2/G3 charsets with single and locking
+  shifts and national sets; double-size lines; S8C1T, VT52 mode, DECCOLM
+  and DECARM. vttest and esctest2 measure the result.
 - **GIF inline images.** iTerm2 inline images accept PNG, JPEG and WebP;
   GIF (often animated) needs our own decoder, since enabling the `image`
   crate's GIF support would add a dependency. Animated GIFs can reuse the
