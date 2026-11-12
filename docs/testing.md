@@ -116,6 +116,28 @@ When fixing a parser bug, add the triggering sequence to the fragments in
 state, to `batched_printing_matches_per_character_printing`. A failing
 `vt/tests.rs` case is shrunk to a minimal stream automatically.
 
+## Conformance suites
+
+Two xterm conformance programs run headless, on a real PTY, through the
+parser and `Term` (`src/term/pty_harness_tests.rs`). Both are ignored
+tests, since they need the programs installed:
+
+```sh
+# esctest2 (git clone https://github.com/ThomasDickey/esctest2), one
+# test per process; NAMES lists the tests, or the "Run test:" lines of
+# an earlier log. Without it, one process runs ESCTEST_INCLUDE (a regex).
+ESCTEST=~/src/esctest2/esctest ESCTEST_NAMES=names.txt \
+    cargo test --release -- --ignored --nocapture esctest
+# vttest: walks every menu but the keyboard's and writes each page drawn
+# to VTTEST_PAGES, to read against vttest's description of the page.
+cargo test --release -- --ignored --nocapture vttest_pages
+```
+
+esctest reads cells back with DECRQCRA checksums, which Poopterm never
+answers; the harness answers them from the grid itself, so its screen
+checks still work. Quote the pass and fail counts before and after in
+pull requests that change emulation.
+
 ## Pure functions over UI state
 
 Code that needs a window is hard to test, so keep decisions in functions
