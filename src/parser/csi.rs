@@ -33,14 +33,20 @@ impl Term {
 				return;
 			}
 			match (intermediates, action) {
-				// DECSCUSR: 0-2 block, 3-4 underline, 5-6 bar.
+				// DECSCUSR: 0-2 block, 3-4 underline, 5-6 bar; odd ones (and 0,
+				// a blinking block) blink.
 				(b" ", 'q') => {
-					self.cursor_shape = match params.iter().next().and_then(|p| p.first().copied()) {
+					let style = params.iter().next().and_then(|p| p.first().copied());
+					self.cursor_shape = match style {
 						Some(3 | 4) => CursorShape::Underline,
 						Some(5 | 6) => CursorShape::Bar,
 						_ => CursorShape::Block,
-					}
+					};
+					self.cursor_blink = matches!(style, None | Some(0 | 1 | 3 | 5));
 				}
+				// DECRQCRA: a checksum of a screen rectangle. Blocked: asked
+				// over and over, it reads the screen back to any program.
+				(b"*", 'y') => {}
 				// XTVERSION
 				(b">", 'q') => self
 					.responses
@@ -119,6 +125,7 @@ impl Term {
 					7 => self.auto_wrap = enabled,
 					45 => self.reverse_wrap = enabled,
 					25 => self.cursor_visible = enabled,
+					12 => self.cursor_blink = enabled,
 					80 => self.sixel_scrolling = enabled,
 					1048 => {
 						if enabled {
@@ -167,6 +174,16 @@ impl Term {
 				_ => options.format_reply(p[0]),
 			});
 			self.responses.extend(reply.map(String::into_bytes));
+			return;
+		}
+		// DECXCPR: the cursor position with its page, which is always 1.
+		if private && action == 'n' {
+			if raw0 == 6 {
+				let (row, col) = self.reported_cursor();
+				self
+					.responses
+					.push(format!("\x1b[?{row};{col};1R").into_bytes());
+			}
 			return;
 		}
 		if private && action == 'u' {
@@ -328,12 +345,16 @@ impl Term {
 			'm' => self.sgr(params),
 			'n' => match raw0 {
 				5 => self.responses.push(b"\x1b[0n".to_vec()),
-				6 => self
-					.responses
-					.push(format!("\x1b[{};{}R", self.cy + 1, self.cx.min(self.cols - 1) + 1).into_bytes()),
+				6 => {
+					let (row, col) = self.reported_cursor();
+					self
+						.responses
+						.push(format!("\x1b[{row};{col}R").into_bytes());
+				}
 				_ => {}
 			},
-			'c' => self.responses.push(b"\x1b[?62;4;6c".to_vec()),
+			// VT220 with Sixel graphics.
+			'c' => self.responses.push(b"\x1b[?62;4c".to_vec()),
 			't' if !private => self.window_op(leading[0], leading[1]),
 			'b' => {
 				if let Some(c) = self.last_printed {
@@ -365,6 +386,7 @@ impl Term {
 			7 => self.auto_wrap,
 			45 => self.reverse_wrap,
 			25 => self.cursor_visible,
+			12 => self.cursor_blink,
 			47 | 1047 | 1049 => self.primary_screen.is_some(),
 			80 => self.sixel_scrolling,
 			9 | 1000 | 1002 | 1003 => self.mouse_tracking == mode,
@@ -389,6 +411,13 @@ fn version_number() -> u32 {
 impl Term {
 	/// DECSTR: resets modes, margins, character sets and attributes without
 	/// clearing the screen or moving the cursor.
+	/// The cursor's row and column for CPR and DECXCPR, counted from 1: from
+	/// the scroll region's top in origin mode, and never past the last column.
+	fn reported_cursor(&self) -> (usize, usize) {
+		let top = if self.origin_mode { self.scroll_top } else { 0 };
+		(self.cy - top + 1, self.cx.min(self.cols - 1) + 1)
+	}
+
 	fn soft_reset(&mut self) {
 		self.cursor_visible = true;
 		self.insert_mode = false;

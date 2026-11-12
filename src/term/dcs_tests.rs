@@ -48,9 +48,10 @@ fn other_settings_are_reported() {
 	send(&mut t, "\x1b[5;10r");
 	assert_eq!(status(&mut t, "r"), "\x1bP1$r5;10r\x1b\\");
 	assert_eq!(status(&mut t, " q"), "\x1bP1$r2 q\x1b\\");
+	// Blinking styles are reported as set, not as their steady twins.
 	send(&mut t, "\x1b[5 q");
-	assert_eq!(status(&mut t, " q"), "\x1bP1$r6 q\x1b\\");
-	send(&mut t, "\x1b[3 q");
+	assert_eq!(status(&mut t, " q"), "\x1bP1$r5 q\x1b\\");
+	send(&mut t, "\x1b[4 q");
 	assert_eq!(status(&mut t, " q"), "\x1bP1$r4 q\x1b\\");
 	assert_eq!(status(&mut t, "\"p"), "\x1bP1$r62;1\"p\x1b\\");
 	assert_eq!(status(&mut t, "\"q"), "\x1bP1$r0\"q\x1b\\");
