@@ -88,8 +88,13 @@ with `font_path` or `POOPTERM_FONT`.
 - **Queries:** DECRQSS (`DCS $ q`) reports SGR, margins, cursor style,
   conformance level and page size; XTGETTCAP (`DCS + q`) answers from
   poopterm's terminfo entry; XTWINOPS reports sizes in cells and pixels
-  (`CSI 14/16/18/19 t`). Window moves, resizes and title reports are
-  ignored on purpose.
+  (`CSI 14/16/18/19 t`). The cursor position (`CSI 6 n`, and DECXCPR
+  `CSI ? 6 n` with its page) counts from the scroll region in origin mode.
+  `?12` and the DECSCUSR styles track whether the cursor should blink
+  (drawn steady for now), and DECRQSS reports the style with its blink.
+  Window moves, resizes and title reports are ignored on purpose, and so is
+  DECRQCRA (`CSI * y`): its checksums would let any program read the
+  screen back.
 - **Sixel:** DCS `q` images support RGB/HLS registers, repeated columns,
   transparency, raster dimensions, and integer pixel aspect ratios. Defensive
   limits cap an image at 4,096 × 4,096 pixels, 16 megapixels, and 4 MiB encoded.

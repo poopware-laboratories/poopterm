@@ -79,6 +79,8 @@ mod recolor;
 #[cfg(test)]
 mod recolor_tests;
 #[cfg(test)]
+mod report_tests;
+#[cfg(test)]
 mod reverse_screen_tests;
 #[cfg(test)]
 mod reverse_wrap_tests;
@@ -313,6 +315,8 @@ pub(crate) struct Term {
 	pub(crate) key_options: crate::input::modify::KeyOptions,
 	pub(crate) keyboard: crate::input::keyboard_modes::KeyboardModes,
 	pub(crate) cursor_shape: CursorShape,
+	/// `?12`, and the odd DECSCUSR styles: the cursor should blink.
+	pub(crate) cursor_blink: bool,
 	/// `?1004`: report window focus changes as `CSI I` / `CSI O`.
 	pub(crate) focus_reporting: bool,
 	/// The last printed graphic character, repeated by REP (`CSI Ps b`).
@@ -523,6 +527,7 @@ impl Term {
 			key_options: Default::default(),
 			keyboard: Default::default(),
 			cursor_shape: CursorShape::Block,
+			cursor_blink: false,
 			focus_reporting: false,
 			last_printed: None,
 			active_hyperlink: 0,

@@ -35,12 +35,15 @@ impl Term {
 		Some(match setting {
 			b"m" => format!("{}m", self.rendition()),
 			b"r" => format!("{};{}r", self.scroll_top + 1, self.scroll_bottom + 1),
-			b" q" => match self.cursor_shape {
-				CursorShape::Block => "2 q",
-				CursorShape::Underline => "4 q",
-				CursorShape::Bar => "6 q",
+			// DECSCUSR's style: the steady one, or the blinking one before it.
+			b" q" => {
+				let steady = match self.cursor_shape {
+					CursorShape::Block => 2,
+					CursorShape::Underline => 4,
+					CursorShape::Bar => 6,
+				};
+				format!("{} q", steady - usize::from(self.cursor_blink))
 			}
-			.to_owned(),
 			// A VT220 (as primary DA says) with 7-bit controls.
 			b"\"p" => "62;1\"p".to_owned(),
 			// No characters are protected.
