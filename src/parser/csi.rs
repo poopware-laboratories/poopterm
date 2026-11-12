@@ -117,7 +117,7 @@ impl Term {
 					66 => self.application_keypad = enabled,
 					6 => {
 						self.origin_mode = enabled;
-						self.cx = 0;
+						self.cx = self.origin_column();
 						self.cy = if enabled { self.scroll_top } else { 0 };
 						self.wrap_pending = false;
 					}
@@ -127,6 +127,12 @@ impl Term {
 					25 => self.cursor_visible = enabled,
 					12 => self.cursor_blink = enabled,
 					80 => self.sixel_scrolling = enabled,
+					69 => {
+						self.lr_margin_mode = enabled;
+						if !enabled {
+							self.reset_lr_margins();
+						}
+					}
 					1048 => {
 						if enabled {
 							self.save_cursor();
@@ -210,11 +216,14 @@ impl Term {
 				_ => {}
 			},
 			'I' | 'Z' => {
+				// Forward tabs stop at the right margin from inside it; back
+				// tabs pass the left one, as xterm's do.
+				let end = self.line_end();
 				for _ in 0..p(0, 1).min(self.cols) {
 					self.cx = if action == 'I' {
-						(self.cx + 1..self.cols)
+						(self.cx + 1..=end)
 							.find(|&col| self.tab_stops[col])
-							.unwrap_or(self.cols - 1)
+							.unwrap_or(end)
 					} else {
 						(0..self.cx)
 							.rev()
@@ -244,7 +253,7 @@ impl Term {
 				} else {
 					self.cy.saturating_sub(p(0, 1)).max(top)
 				};
-				self.cx = 0;
+				self.carriage_return();
 			}
 			// CUU, and VPB from ECMA-48.
 			'A' | 'k' => {
@@ -260,10 +269,11 @@ impl Term {
 				})
 			}
 			// CUF and HPR.
-			'C' | 'a' => self.cx = (self.cx + p(0, 1)).min(self.cols - 1),
+			// Both stop at the margins from inside them.
+			'C' | 'a' => self.cx = (self.cx + p(0, 1)).min(self.line_end()),
 			// CUB, and HPB from ECMA-48.
-			'D' | 'j' => self.cx = self.cx.saturating_sub(p(0, 1)),
-			'G' | '`' => self.cx = (p(0, 1) - 1).min(self.cols - 1),
+			'D' | 'j' => self.cx = self.cx.saturating_sub(p(0, 1)).max(self.line_start()),
+			'G' | '`' => self.cx = self.column(p(0, 1)),
 			'H' | 'f' => {
 				let row = p(0, 1) - 1 + if self.origin_mode { self.scroll_top } else { 0 };
 				self.cy = row.min(if self.origin_mode {
@@ -271,7 +281,7 @@ impl Term {
 				} else {
 					self.rows - 1
 				});
-				self.cx = (p(1, 1) - 1).min(self.cols - 1);
+				self.cx = self.column(p(1, 1));
 			}
 			'r' => {
 				let top = (p(0, 1) - 1).min(self.rows - 1);
@@ -280,12 +290,13 @@ impl Term {
 					self.scroll_top = top;
 					self.scroll_bottom = bottom;
 					self.memory_locked = false;
-					self.cx = 0;
+					self.cx = self.origin_column();
 					self.cy = if self.origin_mode { top } else { 0 };
 				}
 			}
 			'S' => self.scroll_region_up(p(0, 1)),
 			'T' => self.scroll_region_down(p(0, 1)),
+			's' if self.lr_margin_mode => self.set_lr_margins(p(0, 1), p(1, self.cols as u16)),
 			's' => self.save_cursor(),
 			'u' => self.restore_cursor(),
 			'J' => match raw0 {
@@ -394,6 +405,7 @@ impl Term {
 			1007 => self.alternate_scroll,
 			1005 | 1006 | 1015 | 1016 => self.mouse_encoding.mode() == Some(mode),
 			2004 => self.bracketed_paste,
+			69 => self.lr_margin_mode,
 			_ => return self.keyboard.clone().mode(mode).copied(),
 		})
 	}
@@ -415,7 +427,23 @@ impl Term {
 	/// the scroll region's top in origin mode, and never past the last column.
 	fn reported_cursor(&self) -> (usize, usize) {
 		let top = if self.origin_mode { self.scroll_top } else { 0 };
-		(self.cy - top + 1, self.cx.min(self.cols - 1) + 1)
+		let column = self
+			.cx
+			.min(self.cols - 1)
+			.saturating_sub(self.origin_column());
+		(self.cy - top + 1, column + 1)
+	}
+
+	/// The column CUP, HVP, CHA and HPA move to, counted from 1: from the
+	/// left margin in origin mode, and never past the right one there.
+	#[inline(always)]
+	fn column(&self, column: usize) -> usize {
+		let last = if self.origin_mode {
+			self.right_margin
+		} else {
+			self.cols - 1
+		};
+		(self.origin_column() + column - 1).min(last)
 	}
 
 	fn soft_reset(&mut self) {
@@ -428,6 +456,8 @@ impl Term {
 		self.application_keypad = false;
 		self.scroll_top = 0;
 		self.scroll_bottom = self.rows - 1;
+		self.lr_margin_mode = false;
+		self.reset_lr_margins();
 		self.charsets = [false; 2];
 		self.active_charset = 0;
 		self.reset_style();

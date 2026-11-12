@@ -30,12 +30,14 @@ impl Term {
 		if self.attach_to_previous(c, width) || width == 0 {
 			return;
 		}
-		if self.wrap_pending || self.cx + width > self.cols {
+		// Text wraps at the right margin, or at the screen's edge right of it.
+		let mut end = self.line_end() + 1;
+		if self.wrap_pending || self.cx + width > end {
 			if self.auto_wrap {
-				self.cx = 0;
 				self.linefeed();
+				(self.cx, end) = (self.left_margin, self.right_margin + 1);
 			} else {
-				self.cx = self.cols.saturating_sub(width);
+				self.cx = end.saturating_sub(width);
 			}
 		}
 		self.wrap_pending = false;
@@ -44,13 +46,17 @@ impl Term {
 			// erases the whole block.
 			self.skip_lower_rows(width);
 			self.erase_multicells_in_row(self.cy, self.cx, self.cx + width);
+			// Skipping can carry the cursor past the right margin; the line
+			// then ends where the character does.
+			end = (self.line_end() + 1).max(self.cx + width).min(self.cols);
 		}
 		let (x, y, cols) = (self.cx, self.cy, self.cols);
 		let i = self.idx(x, y);
 		if self.insert_mode {
-			let count = width.min(cols - x);
+			// Cells pushed past the right margin are lost.
+			let count = width.min(end - x);
 			self.erase_multicells_for_shift(x, y, count, true);
-			self.grid[y].copy_within(x..cols - count, x + count);
+			self.grid[y].copy_within(x..end - count, x + count);
 			self.clear_row(y, x, x + count);
 			self.repair_wide_rows(y, y + 1);
 		}
@@ -80,8 +86,8 @@ impl Term {
 				..template
 			};
 		}
-		self.wrap_pending = x + width >= cols;
-		self.cx = (x + width).min(cols - 1);
+		self.wrap_pending = x + width >= end;
+		self.cx = (x + width).min(end - 1);
 		self.last_printed = Some(c);
 	}
 
@@ -99,6 +105,7 @@ impl Term {
 		let general = self.charsets[self.active_charset]
 			|| self.insert_mode
 			|| self.has_multicells
+			|| self.has_lr_margins()
 			|| self.has_sixel_images();
 		let mut chars = text.chars();
 		while let Some(c) = chars.next() {
@@ -191,7 +198,11 @@ impl Term {
 	/// fills each row segment in one pass.
 	#[inline(always)]
 	pub(crate) fn print_ascii(&mut self, mut bytes: &[u8]) {
-		if self.charsets[self.active_charset] || self.insert_mode || self.has_multicells {
+		if self.charsets[self.active_charset]
+			|| self.insert_mode
+			|| self.has_multicells
+			|| self.has_lr_margins()
+		{
 			for &byte in bytes {
 				self.apply_print(byte as char);
 			}
@@ -270,7 +281,7 @@ impl Term {
 
 	/// Appends zero-width marks (and anything after a ZWJ) to the previous
 	/// cell's cluster. Returns true when `c` was consumed that way.
-	#[inline]
+	#[inline(always)]
 	fn attach_to_previous(&mut self, c: char, width: usize) -> bool {
 		let mut x = if self.wrap_pending {
 			self.cx
@@ -326,31 +337,27 @@ impl Term {
 			0x0f => self.active_charset = 0,
 			7 => self.bell = true,
 			0x84 => self.linefeed(),
+			// NEL: whether it scrolls depends on the column it starts from.
 			0x85 => {
-				self.cx = 0;
 				self.linefeed();
+				self.carriage_return();
 			}
 			0x88 => self.tab_stops[self.cx] = true,
-			0x8d => {
-				if self.cy == self.scroll_top {
-					self.scroll_region_down(1);
-				} else {
-					self.cy = self.cy.saturating_sub(1);
-				}
-			}
+			0x8d => self.reverse_index(),
 			b'\n' | 0x0b | 0x0c => {
+				self.linefeed();
 				// LNM: line feeds also return the carriage.
 				if self.newline_mode {
-					self.cx = 0;
+					self.carriage_return();
 				}
-				self.linefeed();
 			}
-			b'\r' => self.cx = 0,
+			b'\r' => self.carriage_return(),
 			0x08 => self.backspace(),
 			b'\t' => {
-				self.cx = (self.cx + 1..self.cols)
+				let end = self.line_end();
+				self.cx = (self.cx + 1..=end)
 					.find(|&col| self.tab_stops[col])
-					.unwrap_or(self.cols - 1)
+					.unwrap_or(end)
 			}
 			_ => {}
 		}
@@ -358,19 +365,21 @@ impl Term {
 }
 
 impl Term {
-	/// BS; with reverse wraparound the first column leads to the end of the
-	/// line above, stopping at the top margin as cursor up does.
+	/// BS, stopping at the left margin from inside it; with reverse
+	/// wraparound the line's start leads to the right margin of the line
+	/// above, stopping at the top margin as cursor up does.
 	fn backspace(&mut self) {
 		let top = if self.cy >= self.scroll_top {
 			self.scroll_top
 		} else {
 			0
 		};
-		if self.cx == 0 && self.reverse_wrap && self.auto_wrap && self.cy > top {
+		let start = self.line_start();
+		if self.cx == start && self.reverse_wrap && self.auto_wrap && self.cy > top {
 			self.cy -= 1;
-			self.cx = self.cols - 1;
-		} else {
-			self.cx = self.cx.saturating_sub(1);
+			self.cx = self.right_margin;
+		} else if self.cx > start {
+			self.cx -= 1;
 		}
 	}
 }

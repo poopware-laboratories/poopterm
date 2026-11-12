@@ -847,6 +847,10 @@ fn batched_printing_matches_per_character_printing() {
 		b"\x7f",
 		b"\x1b[3;5r",
 		b"\x1b[r",
+		// Left and right margins: printing wraps between them.
+		b"\x1b[?69h\x1b[3;7s",
+		b"\x1b[?69h\x1b[2;5s\x1b[1;9H",
+		b"\x1b[?69l",
 		b"\x1b[1\x18x",
 		b"\x1b]0;title\x1a",
 		b"\x1b[1<2mz",

@@ -63,7 +63,7 @@ fn other_settings_are_reported() {
 #[test]
 fn unknown_or_oversized_requests_are_invalid() {
 	let mut t = terminal();
-	for setting in ["s", "", "x", "mm", "$}", &"m".repeat(5000)] {
+	for setting in ["u", "", "x", "mm", "$}", &"m".repeat(5000)] {
 		assert_eq!(status(&mut t, setting), "\x1bP0$r\x1b\\", "{setting}");
 	}
 }

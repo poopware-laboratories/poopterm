@@ -24,6 +24,7 @@ impl Term {
 		self.wrap_pending = false;
 		self.scroll_top = 0;
 		self.scroll_bottom = rows.saturating_sub(1);
+		self.reset_lr_margins();
 		if let Some((primary, cx, cy, ..)) = &mut self.primary_screen {
 			primary.resize(cols, rows, blank);
 			*cx = (*cx).min(cols - 1);
@@ -121,18 +122,35 @@ impl Term {
 		self.scroll_offset = 0;
 	}
 
+	/// LF and IND: down a line, scrolling at the bottom margin when the
+	/// cursor is between the left and right ones.
 	#[inline(always)]
 	pub(crate) fn linefeed(&mut self) {
 		if self.cy == self.scroll_bottom {
-			self.scroll_region_up(1);
+			if self.inside_lr_margins() {
+				self.scroll_region_up(1);
+			}
 		} else if self.cy + 1 < self.rows {
 			self.cy += 1;
+		}
+	}
+
+	/// RI: up a line, scrolling down at the top margin when the cursor is
+	/// between the left and right ones.
+	pub(crate) fn reverse_index(&mut self) {
+		if self.cy != self.scroll_top {
+			self.cy = self.cy.saturating_sub(1);
+		} else if self.inside_lr_margins() {
+			self.scroll_region_down(1);
 		}
 	}
 
 	/// Scrolls the scroll region up. When the region is the whole primary
 	/// screen, rows leaving the top move into the scrollback.
 	pub(crate) fn scroll_region_up(&mut self, count: usize) {
+		if self.has_lr_margins() {
+			return self.scroll_rectangle(count, true);
+		}
 		let (top, bottom) = (self.scroll_top, self.scroll_bottom);
 		let count = count.min(bottom - top + 1);
 		self.split_multicells_above(&[top, bottom + 1]);
@@ -185,6 +203,9 @@ impl Term {
 	}
 
 	pub(crate) fn scroll_region_down(&mut self, count: usize) {
+		if self.has_lr_margins() {
+			return self.scroll_rectangle(count, false);
+		}
 		let (top, bottom) = (self.scroll_top, self.scroll_bottom);
 		let count = count.min(bottom - top + 1);
 		self.split_multicells_above(&[top, bottom + 1]);

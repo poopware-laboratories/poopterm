@@ -54,6 +54,7 @@ mod kitty_animation;
 mod kitty_animation_tests;
 #[cfg(test)]
 mod kitty_tests;
+mod margins;
 #[cfg(test)]
 mod memory_lock_tests;
 #[cfg(test)]
@@ -283,6 +284,13 @@ pub(crate) struct Term {
 	pub(crate) bg: u32,
 	pub(crate) scroll_top: usize,
 	pub(crate) scroll_bottom: usize,
+	/// The left and right margins (inclusive): the screen's edges unless
+	/// DECSLRM moved them.
+	pub(crate) left_margin: usize,
+	pub(crate) right_margin: usize,
+	/// DECLRMM (`?69`): `CSI Pl ; Pr s` sets the left and right margins
+	/// instead of saving the cursor.
+	pub(crate) lr_margin_mode: bool,
 	/// The top margin came from an HP memory lock (`ESC l`).
 	pub(crate) memory_locked: bool,
 	pub(crate) saved_cursor: Option<SavedCursor>,
@@ -506,6 +514,9 @@ impl Term {
 			bg: theme.bg,
 			scroll_top: 0,
 			scroll_bottom: rows.saturating_sub(1),
+			left_margin: 0,
+			right_margin: cols.saturating_sub(1),
+			lr_margin_mode: false,
 			memory_locked: false,
 			saved_cursor: None,
 			bracketed_paste: false,
