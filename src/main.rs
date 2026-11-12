@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(stmt_expr_attributes)]
 //! Poopterm: a small software-rendered terminal emulator.
 //!
 //! Module map (see `docs/architecture.md` for the full picture):

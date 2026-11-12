@@ -26,7 +26,6 @@ pub(crate) mod dcs;
 #[cfg(test)]
 mod dcs_tests;
 mod extras;
-#[cfg(target_arch = "x86_64")]
 mod fill;
 #[cfg(test)]
 mod fill_tests;
@@ -177,12 +176,11 @@ impl Cell {
 	/// Sets every cell of `cells` to `cell` with whole-cell vector stores;
 	/// `slice::fill` writes cells field by field.
 	#[inline(always)]
-	#[allow(unsafe_code, reason = "calls the AVX2 copy after checking the CPU")]
 	pub(crate) fn fill(cells: &mut [Cell], cell: Cell) {
-		#[cfg(target_arch = "x86_64")]
-		if cells.len() >= 4 && std::arch::is_x86_feature_detected!("avx2") {
-			// SAFETY: the CPU supports AVX2.
-			return unsafe { fill::fill(cells, cell) };
+		if cells.len() >= 4
+			&& let Some(v3) = crate::cpu::V3::detect()
+		{
+			return crate::cpu::run!(v3, fill::pairs(cells, cell));
 		}
 		cells.fill(cell);
 	}

@@ -1,6 +1,4 @@
 //! Printable characters and C0/C1 control execution.
-// Calls copies compiled for CPU features checked at run time.
-#![allow(unsafe_code)]
 use std::sync::Arc;
 
 use super::{cluster::join_marks, narrow};
@@ -90,20 +88,7 @@ impl Term {
 	/// Prints text without C0 or C1 controls with one style lookup. Equivalent
 	/// to calling [`Term::apply_print`] per character.
 	pub(super) fn print_text(&mut self, text: Text<'_>) {
-		#[cfg(target_arch = "x86_64")]
-		if crate::cpu::has_v3() {
-			// SAFETY: the CPU supports the features.
-			return unsafe { self.print_text_v3(text) };
-		}
-		self.print_text_with(text);
-	}
-
-	/// Callable only where the CPU has the features [`crate::cpu::has_v3`]
-	/// checks.
-	#[cfg(target_arch = "x86_64")]
-	#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]
-	pub(super) fn print_text_v3(&mut self, text: Text<'_>) {
-		self.print_text_with(text);
+		crate::cpu::dispatch!(self.print_text_with(text));
 	}
 
 	/// The body of [`Term::print_text`], compiled into each variant.

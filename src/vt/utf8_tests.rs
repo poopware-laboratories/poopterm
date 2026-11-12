@@ -1,7 +1,5 @@
 //! Tests for the UTF-8 validator: its lookup tables against a scalar model
 //! of the encoding, and every variant against `std::str::from_utf8`.
-// The tests call C, the kernel or CPU-dispatched copies directly.
-#![allow(unsafe_code)]
 use super::utf8::{self, HIGH, INCOMPLETE, PREV_HIGH, PREV_LOW, TWO_CONTS};
 use crate::bench::corpus::Rng;
 
@@ -11,9 +9,10 @@ type Validator = (&'static str, fn(&[u8]) -> bool);
 fn validators() -> Vec<Validator> {
 	let all: Vec<Validator> = vec![("dispatched", utf8::is_valid), ("portable", utf8::portable)];
 	#[cfg(target_arch = "x86_64")]
-	if std::arch::is_x86_feature_detected!("avx2") {
-		// SAFETY: the CPU supports AVX2.
-		let avx2: Validator = ("avx2", |bytes| unsafe { utf8::x86::is_valid(bytes) });
+	if crate::cpu::V3::detect().is_some() {
+		let avx2: Validator = ("avx2", |bytes| {
+			crate::cpu::V3::detect().unwrap().utf8_is_valid(bytes)
+		});
 		return [all, vec![avx2]].concat();
 	}
 	all

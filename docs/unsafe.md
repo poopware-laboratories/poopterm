@@ -42,14 +42,12 @@ and library calls get one safe wrapper each in the steps that follow.
   `#[allow(unsafe_code)]` on its `mod` line.
 - **Files with operating-system or library calls:** `allocator`,
   `app/gpu`, `app/wayland`, `objc`, `about_menu` and `platform`. Each starts with `#![allow(unsafe_code)]` and a comment.
-- **CPU dispatch:** `parser/print`, `render/painter` and `vt/utf8`, and in
-  `mod.rs` files, where a file-wide allow would cover the whole tree, only
-  the one function: `Cell::fill` and `vt::Parser::advance`.
+- **CPU dispatch:** `cpu`, the one place that runs code compiled for CPU
+  features checked at run time.
 - **Tests** that call C or a dispatched copy directly, under otherwise
   safe modules: `cgroup_tree_tests`, `fonts/data_tests`, `mapped_tests`,
-  `parser/dispatch_tests`, `present/memory_tests`, `pty/reap_tests`,
-  `pty/session_tests`, `shell_integration/tests`, `term/cell_tests`, `term/fill_tests`,
-  `vt/tests` and `vt/utf8_tests`.
+  `present/memory_tests`, `pty/reap_tests`, `pty/session_tests`,
+  `shell_integration/tests` and `term/cell_tests`.
 
 `scripts/pr_check.py` prints how many `unsafe` blocks, functions and impls
 a pull request adds and removes, and fails one that adds more than it
@@ -66,8 +64,8 @@ softbuffer, mimalloc, `image`); replacing them (see
 
 - **Runtime CPU dispatch.** A function compiled for AVX2 and the other
   x86-64-v3 features is safe to define, but calling it is `unsafe` unless
-  the caller has the same features; each call sits right after the runtime
-  check.
+  the caller has the same features. Those calls all sit in `cpu.rs`,
+  behind a proof that the check passed.
 - **The operating system.** A few calls have no safe wrapper in `std`:
   `getuid`, `gethostname`, POSIX shared memory, `mmap`, `madvise`, and one
   Objective-C message on macOS. Since we write our own code instead of
@@ -79,28 +77,40 @@ Paths are relative to `src/`. Test-only blocks are listed at the end.
 
 ### Functions compiled for x86-64-v3
 
-Hot functions are compiled twice: once for the baseline x86-64 target, and
-once with `#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]`.
-`crate::cpu::has_v3()` checks those features at runtime (the standard
-library caches the detection) and picks the copy. Calling a
-`target_feature` function is `unsafe`, because running it on a CPU without
-the features is undefined behavior.
+Hot paths are compiled twice: once for the baseline x86-64 target, and
+once inside `cpu::run_v3`, a function with
+`#[target_feature(enable = "avx2,bmi1,bmi2,lzcnt,popcnt,fma")]`. Calling
+it is `unsafe`, because running it on a CPU without the features is
+undefined behavior, so `cpu.rs` holds the only two calls:
+
+| Where | What | Why it is sound |
+|-------|------|-----------------|
+| `cpu.rs` `V3::run` → `run_v3` | Runs any safe body compiled for x86-64-v3. | A `V3` has a private field, so only `V3::detect` makes one, and only after `is_x86_feature_detected!` found every feature. |
+| `cpu.rs` `V3::utf8_is_valid` → `vt/utf8.rs` `x86::is_valid` | The AVX2 UTF-8 validator, written with `std::arch` intrinsics because `std::simd` lowers its byte lookups to `vpshufb` only when the standard library itself is built for SSSE3. | The same proof; v3 includes AVX2. |
+
+Callers write no `unsafe`: `cpu::dispatch!(body)` picks the copy, and
+`cpu::run!(v3, body)` runs the v3 one given a proof. Both macros pass the
+body as an `#[inline(always)]` closure; a closure called from both copies
+is otherwise compiled once, for the baseline, and the v3 copy only jumps
+to it (seen in the tokenizer's copy before the macros existed). The bodies
+call `#[inline(always)]` functions, so all of their code lands in each copy.
 
 | Where | What |
 |-------|------|
-| `vt/mod.rs` `Parser::advance` → `advance_v3` | The tokenizer, the hottest loop. |
-| `parser/print.rs` `print_text` → `print_text_v3` | Writing text into cells. |
-| `render/painter.rs` `glyph` → `glyph_v3` | Blending glyph coverage into the frame. |
-| `term/mod.rs` `Cell::fill` → `term/fill.rs` `fill` (AVX2) | Filling runs of cells: erases, clears, new rows. |
-| `vt/utf8.rs` `is_valid` → `x86::is_valid` (AVX2) | UTF-8 validation of printable runs. |
+| `vt/mod.rs` `Parser::advance` | The tokenizer, the hottest loop. |
+| `parser/print.rs` `print_text` | Writing text into cells. |
+| `render/painter.rs` `glyph` | Blending glyph coverage into the frame. |
+| `term/mod.rs` `Cell::fill` → `term/fill.rs` `pairs` | Filling runs of cells: erases, clears, new rows. |
+| `vt/utf8.rs` `is_valid` | UTF-8 validation of printable runs. |
 
-- **Sound because** each call site checks `has_v3()` (or AVX2 alone)
-  first, in the same function. The copies themselves are safe
-  `#[target_feature]` functions: only the call needs `unsafe`, and code
-  compiled with the same features may call them without it.
-- **Tested** by differential tests that run both copies on the same input
+- **Tested** by `cpu_tests.rs` (the proof exists exactly where `std`
+  detects every feature; each copy runs its body once and returns its
+  value; on Linux, each hot path's v3 copy in the test binary's symbol
+  table holds its body rather than a jump to the baseline) and by
+  differential tests that run both copies on the same input
   and require identical results: `vt/tests.rs` (the tokenizer, also
-  against vte), `parser/dispatch_tests.rs` (parsing and printing),
+  against vte), `parser/dispatch_tests.rs` (parsing and printing, and
+  every benchmark workload),
   `painter.rs` `both_variants` (glyph pixels), `term/fill_tests.rs` and
   `vt/utf8_tests.rs` (every variant against `std::str::from_utf8`).
 - **Measured:** the v3 copies were kept only where they win (#125 for
@@ -277,9 +287,6 @@ objects. `mapped.rs` (fonts), `present/memory.rs` (window buffers) and
 
 ### Test-only
 
-- `parser/dispatch_tests.rs`, `vt/tests.rs`, `render/painter.rs`
-  (`both_variants`): call the v3 copies directly, after checking
-  `has_v3()`, to compare them with the baseline.
 - `gpu/vk/call_tests.rs`: fake drivers write items through the pointer
   `enumerate` passes, within the count it gave.
 - `gpu/vk/driver_tests.rs`, `device_tests.rs`, `memory_driver_tests.rs`,

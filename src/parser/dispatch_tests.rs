@@ -1,7 +1,5 @@
 //! The x86-64-v3 variants of the parse loop and of `print_text` must leave a
 //! terminal exactly as the baseline variants do.
-// The tests call C, the kernel or CPU-dispatched copies directly.
-#![allow(unsafe_code)]
 use crate::{
 	bench::corpus::Rng,
 	parser::Parser,
@@ -130,9 +128,9 @@ fn stream(rng: &mut Rng) -> String {
 
 #[test]
 fn the_v3_parse_loop_matches_the_baseline_on_random_streams_split_at_random() {
-	if !crate::cpu::has_v3() {
+	let Some(cpu) = crate::cpu::V3::detect() else {
 		return;
-	}
+	};
 	let mut rng = Rng::new(0xd15);
 	for _ in 0..3_000 {
 		let bytes = stream(&mut rng).into_bytes();
@@ -148,8 +146,7 @@ fn the_v3_parse_loop_matches_the_baseline_on_random_streams_split_at_random() {
 		for &end in &cuts {
 			let read = &bytes[start..end];
 			baseline_parser.0.advance_with(&mut baseline, read);
-			// SAFETY: checked above.
-			unsafe { v3_parser.0.advance_v3(&mut v3, read) };
+			crate::cpu::run!(cpu, v3_parser.0.advance_with(&mut v3, read));
 			start = end;
 		}
 		assert_eq!(
@@ -163,9 +160,9 @@ fn the_v3_parse_loop_matches_the_baseline_on_random_streams_split_at_random() {
 
 #[test]
 fn v3_printing_matches_the_baseline_in_every_mode_and_width() {
-	if !crate::cpu::has_v3() {
+	let Some(cpu) = crate::cpu::V3::detect() else {
 		return;
-	}
+	};
 	// Sets up insert mode, the DEC graphics charset, a pending wrap, or none.
 	let setups: [&[u8]; 4] = [b"", b"\x1b[4h", b"\x1b(0", b"\x1b[999Cx"];
 	let mut rng = Rng::new(0x7e57);
@@ -178,8 +175,7 @@ fn v3_printing_matches_the_baseline_in_every_mode_and_width() {
 				Parser::new().advance(&mut baseline, setup);
 				let mut v3 = baseline.clone();
 				baseline.print_text_with(text.as_str().into());
-				// SAFETY: checked above.
-				unsafe { v3.print_text_v3(text.as_str().into()) };
+				crate::cpu::run!(cpu, v3.print_text_with(text.as_str().into()));
 				assert_eq!(
 					state(&v3),
 					state(&baseline),
@@ -194,20 +190,51 @@ fn v3_printing_matches_the_baseline_in_every_mode_and_width() {
 /// variant cannot hide behind an unexercised path.
 #[test]
 fn the_parse_loop_prints_through_both_paths_on_the_same_stream() {
-	if !crate::cpu::has_v3() {
+	let Some(cpu) = crate::cpu::V3::detect() else {
 		return;
-	}
+	};
 	let mut term = terminal(20);
-	// SAFETY: checked above.
-	unsafe {
+	crate::cpu::run!(cpu, {
 		Parser::new()
 			.0
-			.advance_v3(&mut term, "ab\x1b[1mé日".as_bytes())
-	};
+			.advance_with(&mut term, "ab\x1b[1mé日".as_bytes())
+	});
 	let row: String = term.grid.iter().next().unwrap()[..5]
 		.iter()
 		.map(|cell| char::from_u32(cell.ch as u32).unwrap_or(' '))
 		.collect();
 	assert_eq!(row, "abé日 ");
 	assert_eq!((term.cx, term.cy), (5, 0));
+}
+
+/// Every benchmark workload, real-world output from logs to kitty images,
+/// leaves the same terminal through both variants, read in pieces that cut
+/// sequences and characters.
+#[test]
+fn every_benchmark_workload_parses_the_same_through_both_variants() {
+	let Some(cpu) = crate::cpu::V3::detect() else {
+		return;
+	};
+	let size = crate::bench::corpus::Size::bounded(40, 12);
+	let fresh = || {
+		let theme = Theme::from_kind(ThemeKind::Poop);
+		let mut term = Term::new(size.cols, size.rows, theme, "/".into());
+		term.scrollback_limit = 40;
+		term
+	};
+	for workload in crate::bench::corpus::WORKLOADS {
+		let bytes = workload.build(24 << 10, size);
+		let (mut baseline, mut v3) = (fresh(), fresh());
+		let (mut baseline_parser, mut v3_parser) = (Parser::new(), Parser::new());
+		for read in bytes.chunks(4_093) {
+			baseline_parser.0.advance_with(&mut baseline, read);
+			crate::cpu::run!(cpu, v3_parser.0.advance_with(&mut v3, read));
+		}
+		assert!(
+			state(&v3) == state(&baseline),
+			"{}: the variants left different terminals",
+			workload.name
+		);
+		assert_eq!(v3.title, baseline.title, "{}", workload.name);
+	}
 }
