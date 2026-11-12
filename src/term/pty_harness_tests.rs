@@ -7,7 +7,7 @@
 //! - vttest: `cargo test --release -- --ignored --nocapture vttest_pages`
 //!   walks every menu and writes each page it draws to `VTTEST_PAGES`
 //!   (`/tmp/poopterm-vttest.txt` by default), to read against vttest's own
-//!   description of each page. `VTTEST_SKIP` lists main-menu items to leave (5, the keyboard, by default)
+//!   description of each page. `VTTEST_SKIP` lists choices to leave, by menu path or label words (`keyboard` by default)
 //!   out, comma-separated.
 use crate::{
 	parser::Parser,
@@ -110,16 +110,25 @@ fn menu_choices(screen: &[String]) -> Option<u32> {
 struct Walker {
 	/// The open menus: their first line, the next choice and the last one.
 	menus: Vec<(String, u32, u32)>,
-	/// Main-menu choices to leave out.
-	skip: Vec<u32>,
-	/// Pauses in a row on a page that asks for nothing: a test still
-	/// reading reports, or one that wants a key other than Return.
+	/// Choices to leave out: by menu path (`5`, `11.3.4`), or by words of
+	/// their label (`keyboard`).
+	skip: Vec<String>,
+	/// Pauses in a row on a page that asks for nothing and has not changed
+	/// since the last: a test that wants a key other than Return. A page
+	/// still changing is still reading reports.
 	waits: usize,
+	/// Quit keys typed since a page last asked for Return.
+	quits: usize,
+	/// The screen at the last pause.
+	last: Vec<String>,
 }
 
-/// Pauses on a page that asks for nothing before typing the keys tests
-/// quit on: 3 seconds, past vttest's waits for reports.
+/// Pauses on an unchanged page that asks for nothing before each quit key:
+/// 3 seconds, past vttest's waits for reports.
 const WAITS: usize = 10;
+
+/// Quit keys a page may ignore before the walk stops.
+const QUITS: usize = 30;
 
 impl Walker {
 	/// What to type on `screen`, and the menu path it was typed at.
@@ -137,15 +146,26 @@ impl Walker {
 			let asks = screen
 				.iter()
 				.any(|line| line.to_ascii_uppercase().contains("RETURN"));
-			self.waits = if asks { 0 } else { self.waits + 1 };
-			let keys: &[u8] = match self.waits.checked_sub(WAITS) {
-				_ if asks => b"\r",
-				None => b"",
-				Some(n) => [&b"q"[..], b"\x1b", b"\r"][n % 3],
-			};
+			let unchanged = screen == self.last;
+			self.last = screen.to_vec();
+			if asks {
+				(self.waits, self.quits) = (0, 0);
+				return Some((b"\r".to_vec(), path));
+			}
+			self.waits = if unchanged { self.waits + 1 } else { 0 };
+			if self.waits < WAITS {
+				return Some((Vec::new(), path));
+			}
+			// A page no quit key leaves: stop, so the pages show where.
+			(self.waits, self.quits) = (0, self.quits + 1);
+			if self.quits > QUITS {
+				return None;
+			}
+			// Doubled: some tests quit on any key typed twice in a row.
+			let keys = [&b"qq"[..], b"\x1b\x1b", b"\r\r"][(self.quits - 1) % 3];
 			return Some((keys.to_vec(), path));
 		};
-		self.waits = 0;
+		(self.waits, self.quits) = (0, 0);
 		let title = screen
 			.iter()
 			.find(|line| !line.is_empty())
@@ -159,8 +179,41 @@ impl Walker {
 			}
 		}
 		let top = self.menus.len() == 1;
+		// Where this menu sits: the choices that led to it.
+		let depth = self.menus.len() - 1;
+		let parents: Vec<String> = self.menus[..depth]
+			.iter()
+			.map(|(_, next, _)| (next - 1).to_string())
+			.collect();
 		let (_, next, last) = self.menus.last_mut()?;
-		while top && self.skip.contains(next) {
+		let skipped = |choice: u32| {
+			let path = parents
+				.iter()
+				.cloned()
+				.chain([choice.to_string()])
+				.collect::<Vec<_>>()
+				.join(".");
+			// The choice's line on the menu, such as ` 5. Test of keyboard`.
+			let label = screen
+				.iter()
+				.map(|line| line.trim_start())
+				.find(|line| {
+					line
+						.strip_prefix(&choice.to_string())
+						.is_some_and(|rest| rest.starts_with(['.', '*']))
+				})
+				.unwrap_or("")
+				.to_lowercase();
+			self.skip.iter().any(|skip| {
+				let by_path = skip.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+				if by_path {
+					*skip == path
+				} else {
+					label.contains(&skip.to_lowercase())
+				}
+			})
+		};
+		while skipped(*next) {
 			*next += 1;
 		}
 		if *next > *last {
@@ -200,7 +253,7 @@ fn the_walker_runs_every_choice_then_leaves_the_menu() {
 	};
 	let page = vec!["A page".to_owned(), "Push <RETURN>".to_owned()];
 	let mut walker = Walker {
-		skip: vec![2],
+		skip: vec!["2".into(), "3.2".into()],
 		..Default::default()
 	};
 	let mut typed = |screen: &[String]| {
@@ -210,12 +263,34 @@ fn the_walker_runs_every_choice_then_leaves_the_menu() {
 	};
 	assert_eq!(typed(&menu("Main", 3)).as_deref(), Some("1\r"));
 	assert_eq!(typed(&page).as_deref(), Some("\r"));
-	// Choice 2 is skipped; 3 opens a submenu with one choice.
+	// Choice 2 is skipped; 3 opens a submenu.
 	assert_eq!(typed(&menu("Main", 3)).as_deref(), Some("3\r"));
-	assert_eq!(typed(&menu("Sub", 1)).as_deref(), Some("1\r"));
-	assert_eq!(typed(&menu("Sub", 1)).as_deref(), Some("0\r"));
+	assert_eq!(typed(&menu("Sub", 3)).as_deref(), Some("1\r"));
+	// 3.2 is skipped too, by its path.
+	assert_eq!(typed(&menu("Sub", 3)).as_deref(), Some("3\r"));
+	assert_eq!(typed(&menu("Sub", 3)).as_deref(), Some("0\r"));
 	// Back at the main menu with nothing left: stop.
 	assert_eq!(typed(&menu("Main", 3)), None);
+}
+
+#[test]
+fn choices_are_skipped_by_words_of_their_label() {
+	let screen: Vec<String> = [
+		"Menu 3: Tests",
+		"          1. Test of keyboard",
+		"          2* Test Keyboard usage (DECKBUM)",
+		"          3. Test of screen",
+		"Enter choice number (0 - 3): ",
+	]
+	.map(str::to_owned)
+	.to_vec();
+	let mut walker = Walker {
+		skip: vec!["Keyboard".into()],
+		..Default::default()
+	};
+	// 1 and 2 name the keyboard, in either case and after `.` or `*`.
+	assert_eq!(walker.next(&screen).unwrap().0, b"3\r");
+	assert_eq!(walker.next(&screen), None);
 }
 
 #[test]
@@ -230,36 +305,66 @@ fn return_is_typed_only_where_a_page_asks_for_it() {
 }
 
 #[test]
-fn a_page_that_asks_for_nothing_for_long_gets_q_escape_and_return_in_turn() {
+fn a_page_that_stays_unchanged_gets_doubled_quit_keys_in_turn() {
 	let mut walker = Walker::default();
-	// Pages that change as keys echo still count as the same wait.
-	let keys: Vec<Vec<u8>> = (0..WAITS + 4)
-		.map(|n| {
-			walker
-				.next(&[format!("Press 'q' to quit. Echo {n}")])
-				.unwrap()
-				.0
-		})
+	let page = ["Press 'q' to quit.".to_owned()];
+	let keys: Vec<Vec<u8>> = (0..3 * WAITS + 1)
+		.map(|_| walker.next(&page).unwrap().0)
 		.collect();
-	assert!(keys[..WAITS - 1].iter().all(Vec::is_empty));
-	let expected: [&[u8]; 5] = [b"q", b"\x1b", b"\r", b"q", b"\x1b"];
-	assert_eq!(keys[WAITS - 1..], expected);
+	// The first pause only notes the page; each quit key needs WAITS
+	// unchanged pauses after the last.
+	let typed: Vec<(usize, &[u8])> = keys
+		.iter()
+		.enumerate()
+		.filter(|(_, key)| !key.is_empty())
+		.map(|(at, key)| (at, &key[..]))
+		.collect();
+	let expected: [(usize, &[u8]); 3] = [
+		(WAITS, b"qq"),
+		(2 * WAITS, b"\x1b\x1b"),
+		(3 * WAITS, b"\r\r"),
+	];
+	assert_eq!(typed, expected);
 	// A page that asks starts the count over.
 	assert_eq!(walker.next(&["Push <RETURN>".to_owned()]).unwrap().0, b"\r");
 	assert_eq!(walker.next(&["Quiet".to_owned()]).unwrap().0, b"");
 }
 
 #[test]
+fn a_page_still_printing_reports_gets_no_keys() {
+	let mut walker = Walker::default();
+	// Each pause shows one more report: never a key among them.
+	for n in 0..5 * WAITS {
+		let page: Vec<String> = (0..=n)
+			.map(|line| format!("{line}: <27> [ ? {line} ; 0 $ y"))
+			.collect();
+		assert_eq!(walker.next(&page).unwrap().0, b"", "after {n} reports");
+	}
+}
+
+#[test]
+fn a_page_that_ignores_every_quit_key_ends_the_walk() {
+	let mut walker = Walker::default();
+	let page = ["Ignores every key".to_owned()];
+	let mut quits = 0;
+	for _ in 0..=(QUITS + 1) * WAITS {
+		match walker.next(&page) {
+			Some((key, _)) => quits += usize::from(!key.is_empty()),
+			None => break,
+		}
+	}
+	assert_eq!(quits, QUITS, "then the walk ends");
+}
+
+#[test]
 #[ignore = "needs vttest installed"]
 fn vttest_pages() {
 	let out = std::env::var("VTTEST_PAGES").unwrap_or_else(|_| "/tmp/poopterm-vttest.txt".into());
-	// Menu 5 tests the keyboard: it waits for keys pressed by a person.
-	let skip = std::env::var("VTTEST_SKIP").unwrap_or_else(|_| "5".into());
+	// Keyboard tests wait for keys a person presses, and no quit key the
+	// walker types leaves them; they appear in several menus.
+	let skip = std::env::var("VTTEST_SKIP").unwrap_or_else(|_| "keyboard".into());
 	let mut walker = Walker {
-		skip: skip
-			.split(',')
-			.filter_map(|n| n.trim().parse().ok())
-			.collect(),
+		skip: skip.split(',').map(|path| path.trim().to_owned()).collect(),
 		..Default::default()
 	};
 	// Written page by page, so a walk that stalls still shows where.
