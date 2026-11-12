@@ -4,12 +4,9 @@
 use super::types::RawDevice;
 use std::ffi::{c_char, c_void};
 
-/// Non-dispatchable handles: 64 bits on every platform.
-pub(crate) type RawShaderModule = u64;
-pub(crate) type RawSampler = u64;
-pub(crate) type RawDescriptorSetLayout = u64;
-pub(crate) type RawPipelineLayout = u64;
-pub(crate) type RawPipeline = u64;
+pub(crate) use super::handle::{
+	RawDescriptorSetLayout, RawPipeline, RawPipelineLayout, RawSampler, RawShaderModule,
+};
 
 /// `VkStructureType` values.
 pub(crate) const STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO: i32 = 16;

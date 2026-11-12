@@ -29,7 +29,7 @@ impl Semaphore {
 			next: ptr::from_ref(&kind).cast(),
 			flags: 0,
 		};
-		let mut handle = 0;
+		let mut handle = RawSemaphore::NULL;
 		let create = device.functions.create_semaphore;
 		// SAFETY: the device is live, the chain outlives the call, and
 		// `handle` is writable.

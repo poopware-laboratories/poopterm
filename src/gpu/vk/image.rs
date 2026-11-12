@@ -86,15 +86,15 @@ impl Image {
 			queue_family_indices: ptr::null(),
 			initial_layout: 0,
 		};
-		let mut handle = 0;
+		let mut handle = RawImage::NULL;
 		// SAFETY: the device is live, `info` outlives the call, and `handle`
 		// is writable.
 		check(unsafe { (functions.create_image)(device.handle, &info, ptr::null(), &mut handle) })?;
 		// From here on, dropping `image` undoes what was done so far.
 		let mut image = Self {
 			handle,
-			memory: 0,
-			view: 0,
+			memory: RawMemory::NULL,
+			view: RawImageView::NULL,
 			size,
 			format,
 			usage,
@@ -124,8 +124,8 @@ impl Image {
 	) -> Result<Self, Error> {
 		let mut image = Self {
 			handle,
-			memory: 0,
-			view: 0,
+			memory: RawMemory::NULL,
+			view: RawImageView::NULL,
 			size: [width, height, 1],
 			format,
 			usage,
@@ -156,7 +156,7 @@ impl Image {
 				layer_count: layers,
 			},
 		};
-		let (device, mut view) = (&self.device, 0);
+		let (device, mut view) = (&self.device, RawImageView::NULL);
 		// SAFETY: the image is bound to memory, and the view covers what it
 		// has.
 		check(unsafe { (device.functions.create_view)(device.handle, &info, ptr::null(), &mut view) })?;
@@ -182,7 +182,7 @@ impl Drop for Image {
 	fn drop(&mut self) {
 		let (device, functions) = (self.device.handle, &self.device.functions);
 		// Each goes before what it was made from.
-		if self.view != 0 {
+		if self.view != RawImageView::NULL {
 			// SAFETY: the view is the device's and no longer used.
 			unsafe { (functions.destroy_view)(device, self.view, ptr::null()) };
 		}
@@ -191,7 +191,7 @@ impl Drop for Image {
 			// longer used, and its view is gone.
 			unsafe { (functions.destroy_image)(device, self.handle, ptr::null()) };
 		}
-		if self.memory != 0 {
+		if self.memory != RawMemory::NULL {
 			// SAFETY: the memory is the device's, and the image bound to it
 			// is gone.
 			unsafe { (functions.free)(device, self.memory, ptr::null()) };

@@ -283,7 +283,7 @@ fn the_fake_driver_reports_queries_on_surfaces_not_live() {
 	let physical = instance.physical_devices().unwrap()[0];
 	let mut room = Capabilities::default();
 	// SAFETY: the fake writes the capabilities only for a live surface.
-	let code = unsafe { capabilities(physical, 0x7777, &mut room) };
+	let code = unsafe { capabilities(physical, RawSurface(0x7777), &mut room) };
 	assert_eq!(code, 0);
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	let rule = "vkGetPhysicalDeviceSurfaceCapabilitiesKHR on a surface not live";

@@ -33,7 +33,7 @@ pub(super) fn allocate(
 			memory_type_index: index,
 		};
 		// A failed call may leave anything in its output.
-		let mut memory = 0;
+		let mut memory = RawMemory::NULL;
 		// SAFETY: the device is live, `info` outlives the call, and
 		// `memory` is writable.
 		let code =

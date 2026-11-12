@@ -42,10 +42,14 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 	let device = device(&INTEL, |_| {});
 	let pipeline = QuadPipeline::new(&device, Format::Bgra).unwrap();
 	assert_eq!(
-		(pipeline.handle(), pipeline.layout(), pipeline.set_layout()),
+		(
+			pipeline.handle().0,
+			pipeline.layout().0,
+			pipeline.set_layout().0
+		),
 		(0x64_0001, 0x63_0001, 0x62_0001)
 	);
-	assert_eq!(pipeline.texture_layout(), 0x62_0002);
+	assert_eq!(pipeline.texture_layout(), RawDescriptorSetLayout(0x62_0002));
 	// The shader modules go once the pipeline is made.
 	let released = with(|driver| std::mem::take(&mut driver.released));
 	assert_eq!(released, ["module 0x600001", "module 0x600002"]);
@@ -60,19 +64,37 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 	// sampler.
 	let bindings: [Binding; 2] = [
 		(0, STORAGE_BUFFER, 1, VERTEX | FRAGMENT, None),
-		(1, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001)),
+		(
+			1,
+			COMBINED_IMAGE_SAMPLER,
+			1,
+			FRAGMENT,
+			Some(RawSampler(0x61_0001)),
+		),
 	];
-	let image: Binding = (0, COMBINED_IMAGE_SAMPLER, 1, FRAGMENT, Some(0x61_0001));
+	let image: Binding = (
+		0,
+		COMBINED_IMAGE_SAMPLER,
+		1,
+		FRAGMENT,
+		Some(RawSampler(0x61_0001)),
+	);
 	assert_eq!(objects.set_layouts, [bindings.to_vec(), vec![image]]);
 	// The target's width and height, two floats, for the vertex stage.
 	assert_eq!(
 		objects.pipeline_layouts,
-		[(vec![0x62_0001, 0x62_0002], vec![[VERTEX, 0, 8]])]
+		[(
+			vec![
+				RawDescriptorSetLayout(0x62_0001),
+				RawDescriptorSetLayout(0x62_0002)
+			],
+			vec![[VERTEX, 0, 8]]
+		)]
 	);
 	let expected = MadePipeline {
 		stages: vec![
-			(VERTEX, 0x60_0001, "main".into()),
-			(FRAGMENT, 0x60_0002, "main".into()),
+			(VERTEX, RawShaderModule(0x60_0001), "main".into()),
+			(FRAGMENT, RawShaderModule(0x60_0002), "main".into()),
 		],
 		// A triangle list, filled, neither face culled.
 		topology: 3,
@@ -81,7 +103,7 @@ fn the_quad_pipeline_draws_the_quad_shaders_over_the_target() {
 		blend: vec![OVER],
 		dynamic: vec![VIEWPORT, SCISSOR],
 		formats: vec![BGRA],
-		layout: 0x63_0001,
+		layout: RawPipelineLayout(0x63_0001),
 	};
 	assert_eq!(objects.pipelines, [expected]);
 	let code = [QUAD_VERTEX, QUAD_FRAGMENT].map(|bytes| words(bytes).unwrap());
@@ -174,7 +196,7 @@ fn the_fake_driver_fails_pipeline_objects_only_from_the_count_asked() {
 	});
 	let pipeline = QuadPipeline::new(&device, Format::Bgra).unwrap();
 	assert_eq!(
-		(pipeline.set_layout(), pipeline.texture_layout()),
+		(pipeline.set_layout().0, pipeline.texture_layout().0),
 		(0x62_0001, 0x62_0002)
 	);
 	// The next pipeline's first is the third, so it fails.
@@ -243,22 +265,28 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 		code_size: size,
 		code: code.as_ptr(),
 	};
-	let mut out = 0;
 	// SAFETY: the fake reads only what the pointers point to.
 	unsafe {
 		create_module(
 			handle,
 			&module(&code[1..], 4 * (code.len() - 1)),
 			ptr::null(),
-			&mut out,
+			&mut Default::default(),
 		);
 	}
 	// SAFETY: as above.
-	unsafe { create_module(handle, &module(&code, 6), ptr::null(), &mut out) };
+	unsafe {
+		create_module(
+			handle,
+			&module(&code, 6),
+			ptr::null(),
+			&mut Default::default(),
+		)
+	};
 	// SAFETY: as above.
-	unsafe { destroy_module(handle, 0x60_0009, ptr::null()) };
+	unsafe { destroy_module(handle, RawShaderModule(0x60_0009), ptr::null()) };
 	// SAFETY: as above.
-	unsafe { destroy_sampler(handle, 0x60_0001, ptr::null()) };
+	unsafe { destroy_sampler(handle, RawSampler(0x60_0001), ptr::null()) };
 	let expected = [
 		"vkCreateShaderModule: SPIR-V",
 		"vkCreateShaderModule: a size in words",
@@ -301,7 +329,7 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 		binding_count: bindings.len() as u32,
 		bindings: bindings.as_ptr(),
 	};
-	let dead: RawSampler = 0x61_0009;
+	let dead: RawSampler = RawSampler(0x61_0009);
 	let ranges = |offset, size| {
 		[PushConstantRange {
 			stage_flags: VERTEX,
@@ -320,9 +348,9 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 			push_constant_ranges: ranges.as_ptr(),
 		};
 	// SAFETY: as above.
-	unsafe { create_sampler(handle, &sampler(1, 0), ptr::null(), &mut out) };
+	unsafe { create_sampler(handle, &sampler(1, 0), ptr::null(), &mut Default::default()) };
 	// SAFETY: as above.
-	unsafe { create_sampler(handle, &sampler(0, 1), ptr::null(), &mut out) };
+	unsafe { create_sampler(handle, &sampler(0, 1), ptr::null(), &mut Default::default()) };
 	let twice = {
 		[
 			binding(0, STORAGE_BUFFER, ptr::null()),
@@ -330,17 +358,31 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 		]
 	};
 	// SAFETY: as above.
-	unsafe { create_set_layout(handle, &set_layout(&twice), ptr::null(), &mut out) };
+	unsafe {
+		create_set_layout(
+			handle,
+			&set_layout(&twice),
+			ptr::null(),
+			&mut Default::default(),
+		)
+	};
 	let dead_sampler = [binding(0, COMBINED_IMAGE_SAMPLER, &dead)];
 	// SAFETY: as above.
-	unsafe { create_set_layout(handle, &set_layout(&dead_sampler), ptr::null(), &mut out) };
+	unsafe {
+		create_set_layout(
+			handle,
+			&set_layout(&dead_sampler),
+			ptr::null(),
+			&mut Default::default(),
+		)
+	};
 	// SAFETY: as above.
 	unsafe {
 		create_pipeline_layout(
 			handle,
-			&pipeline_layout(&[0x62_0009], &[]),
+			&pipeline_layout(&[RawDescriptorSetLayout(0x62_0009)], &[]),
 			ptr::null(),
-			&mut out,
+			&mut Default::default(),
 		);
 	}
 	// SAFETY: as above.
@@ -349,7 +391,7 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 			handle,
 			&pipeline_layout(&[], &ranges(124, 8)),
 			ptr::null(),
-			&mut out,
+			&mut Default::default(),
 		);
 	}
 	// SAFETY: as above.
@@ -358,7 +400,7 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 			handle,
 			&pipeline_layout(&[], &ranges(0, 6)),
 			ptr::null(),
-			&mut out,
+			&mut Default::default(),
 		);
 	}
 	let expected = [
@@ -382,7 +424,7 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 		next: ptr::null(),
 		flags: 0,
 		stage: VERTEX,
-		module: 0x60_0009,
+		module: RawShaderModule(0x60_0009),
 		name: entry.as_ptr(),
 		specialization_info: ptr::null(),
 	};
@@ -453,14 +495,14 @@ fn the_fake_driver_reports_broken_pipeline_rules() {
 		depth_stencil_state: ptr::from_ref(&mask).cast(),
 		color_blend_state: ptr::null(),
 		dynamic_state: ptr::null(),
-		layout: 0x63_0009,
+		layout: RawPipelineLayout(0x63_0009),
 		render_pass: 1,
 		subpass: 0,
-		base_pipeline_handle: 0,
+		base_pipeline_handle: RawPipeline::NULL,
 		base_pipeline_index: -1,
 	};
 	// SAFETY: as above.
-	unsafe { create_pipelines(handle, 7, 1, &info, ptr::null(), &mut out) };
+	unsafe { create_pipelines(handle, 7, 1, &info, ptr::null(), &mut Default::default()) };
 	let expected = [
 		"vkCreateGraphicsPipelines: dynamic rendering to color alone",
 		"vkCreateGraphicsPipelines: no render pass or base",
@@ -497,6 +539,10 @@ fn a_real_device_makes_the_quad_pipeline() {
 	let device = Rc::new(offscreen(instance).expect("device"));
 	for format in [Format::Bgra, Format::Rgba] {
 		let pipeline = QuadPipeline::new(&device, format).expect("pipeline");
-		assert!(pipeline.handle() != 0 && pipeline.layout() != 0 && pipeline.set_layout() != 0);
+		assert!(
+			pipeline.handle() != RawPipeline::NULL
+				&& pipeline.layout() != RawPipelineLayout::NULL
+				&& pipeline.set_layout() != RawDescriptorSetLayout::NULL
+		);
 	}
 }

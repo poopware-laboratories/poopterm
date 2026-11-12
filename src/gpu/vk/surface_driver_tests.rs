@@ -95,7 +95,7 @@ fn create(
 	if let Some(code) = driver.failing(call) {
 		return code;
 	}
-	let handle = 0x5_0000 + driver.surfaces.len() as RawSurface;
+	let handle = RawSurface(0x5_0000 + driver.surfaces.len() as u64);
 	driver.surfaces.push(made);
 	driver.live_surfaces.push((instance, handle));
 	// SAFETY: the bindings pass a writable handle.
@@ -369,7 +369,7 @@ fn a_wayland_surface_is_made_from_the_windows_handles_and_destroyed_first() {
 	drop(made);
 	let driver = finish();
 	let expected = MadeSurface {
-		instance: 0x1010 as RawInstance,
+		instance: RawInstance(0x1010 as _),
 		platform: Platform::Wayland,
 		display: 0xd15,
 		window: 0x5ace,
@@ -386,7 +386,7 @@ fn an_xlib_surface_passes_the_display_and_window_id() {
 	drop(instance);
 	let driver = finish();
 	let expected = MadeSurface {
-		instance: 0x1010 as RawInstance,
+		instance: RawInstance(0x1010 as _),
 		platform: Platform::Xlib,
 		display: 0xd15,
 		window: 0x0420_0007,
@@ -537,7 +537,7 @@ fn the_fake_driver_reports_broken_surface_rules() {
 		display: ptr::null_mut(),
 		surface: WL_SURFACE.as_ptr(),
 	};
-	let mut handle = 0;
+	let mut handle = RawSurface::NULL;
 	// SAFETY: the fake reads the info and writes the handle.
 	unsafe {
 		create(
@@ -550,9 +550,9 @@ fn the_fake_driver_reports_broken_surface_rules() {
 	// SAFETY: as above.
 	let destroy: DestroySurface = unsafe { transmute(function(c"vkDestroySurfaceKHR").unwrap()) };
 	// SAFETY: the fake only records the call.
-	unsafe { destroy(instance.handle(), 0x7777, ptr::null()) };
+	unsafe { destroy(instance.handle(), RawSurface(0x7777), ptr::null()) };
 	// SAFETY: as above.
-	unsafe { destroy(instance.handle(), handle, ptr::null()) };
+	unsafe { destroy(instance.handle(), RawSurface(handle.0), ptr::null()) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(
 		invalid,
@@ -575,16 +575,23 @@ fn the_fake_driver_reports_surfaces_left_live_and_support_out_of_range() {
 	let support: GetPhysicalDeviceSurfaceSupport =
 		unsafe { transmute(function(c"vkGetPhysicalDeviceSurfaceSupportKHR").unwrap()) };
 	with(|driver| {
-		driver.devices = vec![0x100 as RawPhysicalDevice];
+		driver.devices = vec![RawPhysicalDevice(0x100 as _)];
 		driver.described = vec![gpu(Kind::Cpu, vec![present(GRAPHICS, true)])];
 	});
 	let mut supported = 7;
 	// SAFETY: the fake writes the flag only for a family it has.
-	let code = unsafe { support(0x100 as RawPhysicalDevice, 1, 0x50000, &mut supported) };
+	let code = unsafe {
+		support(
+			RawPhysicalDevice(0x100 as _),
+			1,
+			RawSurface(0x50000),
+			&mut supported,
+		)
+	};
 	assert_eq!((code, supported), (-3, 7));
 	// Destroying the instance first leaves the surface live.
 	let handle = instance.handle();
-	with(|driver| driver.live_surfaces.push((handle, 0x9)));
+	with(|driver| driver.live_surfaces.push((handle, RawSurface(0x9))));
 	drop(made);
 	drop(instance);
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
@@ -606,7 +613,10 @@ fn each_window_gets_its_own_surface_destroyed_once_before_the_instance() {
 	drop(instance);
 	drop(first);
 	with(|driver| {
-		assert_eq!(driver.live_surfaces, [(0x1010 as RawInstance, 0x50001)]);
+		assert_eq!(
+			driver.live_surfaces,
+			[(RawInstance(0x1010 as _), RawSurface(0x50001))]
+		);
 		assert_eq!(
 			driver.live.len(),
 			1,
@@ -616,7 +626,7 @@ fn each_window_gets_its_own_surface_destroyed_once_before_the_instance() {
 	drop(second);
 	let driver = finish();
 	assert_eq!(driver.released, ["surface 0x50000", "surface 0x50001"]);
-	assert_eq!(driver.destroyed, [0x1010 as RawInstance]);
+	assert_eq!(driver.destroyed, [RawInstance(0x1010 as _)]);
 }
 
 #[test]
@@ -716,7 +726,7 @@ fn the_fake_driver_reports_surfaces_on_instances_without_their_extension() {
 		display: DISPLAY.as_ptr(),
 		surface: WL_SURFACE.as_ptr(),
 	};
-	let mut handle = 0;
+	let mut handle = RawSurface::NULL;
 	// SAFETY: the fake reads the info and writes the handle.
 	let code = unsafe {
 		create(

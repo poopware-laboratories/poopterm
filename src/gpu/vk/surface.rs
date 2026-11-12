@@ -154,7 +154,7 @@ impl Surface {
 		// type but for the pointee of its info, and pointers to sized types
 		// are passed alike.
 		let create: CreateSurface = unsafe { cast(instance.function(name)?) };
-		let mut handle = 0;
+		let mut handle = RawSurface::NULL;
 		// SAFETY: the instance is live, `info` is the structure `create`
 		// takes and outlives the call, the caller vouches for the handles,
 		// and `handle` is writable.

@@ -2,6 +2,7 @@
 //! driver of `driver_tests`: which semaphores each frame signals and waits
 //! for, reusing them, what each answer of the driver comes to, and waiting
 //! for the queue before a swapchain goes.
+use super::handle::RawSwapchain;
 use super::{
 	call::Error,
 	choose::{GRAPHICS, Kind},
@@ -95,7 +96,7 @@ fn a_frame_waits_for_its_acquisition_and_is_shown_once_drawn() {
 	];
 	assert_eq!(super::present_tests::operations(), operations);
 	let driver = with(|driver| (driver.presents.clone(), driver.semaphores.clone()));
-	assert_eq!(driver.0, [(0x6_0001, 0)]);
+	assert_eq!(driver.0, [(RawSwapchain(0x6_0001), 0)]);
 	assert_eq!(driver.1, [(0, 0), (0, 0), (0, 0), (0, 0), (1, 0), (0, 0)]);
 	let barrier = with(|driver| {
 		driver
@@ -220,7 +221,7 @@ fn a_frame_dropped_unpresented_keeps_its_image_and_semaphore() {
 	// Dropped at the end of the match, never presented.
 	match window.swapchain.acquire(Duration::MAX).unwrap() {
 		Acquired::Frame(frame) => {
-			assert_eq!((frame.index(), frame.image().handle()), (0, 0xa0_0001));
+			assert_eq!((frame.index(), frame.image().handle().0), (0, 0xa0_0001));
 		}
 		_ => panic!("no frame"),
 	}
@@ -228,10 +229,13 @@ fn a_frame_dropped_unpresented_keeps_its_image_and_semaphore() {
 	let Acquired::Frame(frame) = window.swapchain.acquire(Duration::MAX).unwrap() else {
 		panic!("no frame");
 	};
-	assert_eq!((frame.index(), frame.image().handle()), (1, 0xa0_0002));
+	assert_eq!((frame.index(), frame.image().handle().0), (1, 0xa0_0002));
 	let presented = window.commands.record().unwrap().present(frame);
 	assert_eq!(presented, Ok(Presented::Shown));
-	assert_eq!(with(|driver| driver.presents.clone()), [(0x6_0001, 1)]);
+	assert_eq!(
+		with(|driver| driver.presents.clone()),
+		[(RawSwapchain(0x6_0001), 1)]
+	);
 	let acquired: Vec<_> = (operations().into_iter())
 		.filter(|operation| operation.starts_with("acquire"))
 		.collect();

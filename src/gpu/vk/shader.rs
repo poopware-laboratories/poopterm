@@ -51,7 +51,7 @@ impl ShaderModule {
 			code_size: size_of_val(code),
 			code: code.as_ptr(),
 		};
-		let mut handle = 0;
+		let mut handle = RawShaderModule::NULL;
 		let create = device.functions.create_module;
 		// SAFETY: the device is live, `info` and the code it points to
 		// outlive the call, and `handle` is writable.

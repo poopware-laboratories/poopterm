@@ -5,6 +5,7 @@
 //! Tests that need a loader skip without one, unless `POOPTERM_REQUIRE_VULKAN`
 //! is 1, as on Linux CI, which installs Mesa's software driver and the
 //! validation layer.
+use super::handle::{RawBuffer, RawImage, RawImageView, RawInstance, RawPhysicalDevice, RawQueue};
 use super::{
 	buffer::Buffer,
 	call::Error,
@@ -28,7 +29,6 @@ use std::{
 	io::Read,
 	num::NonZeroUsize,
 	process::{Command, Stdio},
-	ptr,
 	rc::Rc,
 	time::{Duration, Instant},
 };
@@ -75,9 +75,13 @@ fn a_library_without_vulkan_lacks_get_instance_proc_addr() {
 #[test]
 fn a_function_the_loader_lacks_is_an_error_that_names_it() {
 	let Some(entry) = entry() else { return };
-	let missing = entry.function(ptr::null_mut(), c"vkPoopNoSuchFunction");
+	let missing = entry.function(RawInstance::NULL, c"vkPoopNoSuchFunction");
 	assert_eq!(missing.err(), Some(Error::Missing(c"vkPoopNoSuchFunction")));
-	assert!(entry.function(ptr::null_mut(), c"vkCreateInstance").is_ok());
+	assert!(
+		entry
+			.function(RawInstance::NULL, c"vkCreateInstance")
+			.is_ok()
+	);
 }
 
 #[test]
@@ -93,7 +97,11 @@ fn an_instance_asks_for_the_newest_version_used_and_sees_a_device() {
 		!devices.is_empty(),
 		"no Vulkan device, not even a software one"
 	);
-	assert!(devices.iter().all(|device| !device.is_null()));
+	assert!(
+		devices
+			.iter()
+			.all(|&device| device != RawPhysicalDevice::NULL)
+	);
 	// Asking twice gives the same devices.
 	assert_eq!(instance.physical_devices().unwrap(), devices);
 }
@@ -426,12 +434,12 @@ fn a_device_is_made_with_the_needed_features_and_a_queue_that_draws() {
 	let Some(entry) = entry() else { return };
 	let instance = Rc::new(entry.create_instance(c"poopterm tests").expect("instance"));
 	let device = offscreen(instance.clone()).expect("device");
-	assert!(!device.queue().is_null());
+	assert_ne!(device.queue(), RawQueue::NULL);
 	// A second device on the same GPU is independent of the first.
 	let again = offscreen(instance).expect("device");
 	assert_eq!(again.family(), device.family());
 	drop(device);
-	assert!(!again.queue().is_null());
+	assert_ne!(again.queue(), RawQueue::NULL);
 }
 
 #[test]
@@ -472,7 +480,7 @@ fn buffers_get_memory_for_their_purpose_and_the_cpu_sees_what_it_should() {
 	let size = NonZeroUsize::new(65_536 + 3).unwrap();
 	for (purpose, usage) in PURPOSES {
 		let mut buffer = Buffer::new(&device, size, usage, purpose).expect("buffer");
-		assert_ne!(buffer.handle(), 0);
+		assert_ne!(buffer.handle(), RawBuffer::NULL);
 		if purpose == Usage::Device {
 			assert!(buffer.bytes().is_none());
 			continue;
@@ -515,7 +523,7 @@ fn images_are_made_within_the_devices_limits() {
 	assert!(
 		images
 			.iter()
-			.all(|image| image.handle() != 0 && image.view() != 0)
+			.all(|image| image.handle() != RawImage::NULL && image.view() != RawImageView::NULL)
 	);
 	assert_ne!(images[0].handle(), images[1].handle());
 	// Every device allows 4096 wide and 256 layers; none allows 2^20.

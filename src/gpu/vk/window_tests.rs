@@ -2,6 +2,7 @@
 //! `driver_tests`: the device chosen for its surface or why none was, the
 //! swapchain made at the window's size and remade only when the window or
 //! the presentation engine asks, and frames that cannot be shown skipped.
+use super::handle::RawSwapchain;
 use super::{
 	buffer_tests::INTEL,
 	call::Error,
@@ -58,7 +59,7 @@ pub(super) fn draw(window: &mut GpuWindow, size: [u32; 2]) -> Result<Drawn, Erro
 pub(super) fn swapchains() -> Vec<([u32; 2], bool)> {
 	with(|driver| {
 		(driver.swapchains.iter())
-			.map(|made| (made.extent, made.old != 0))
+			.map(|made| (made.extent, made.old != RawSwapchain::NULL))
 			.collect()
 	})
 }

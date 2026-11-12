@@ -70,7 +70,7 @@ unsafe extern "system" fn create(
 			return code;
 		}
 		driver.query_pools.made += 1;
-		let handle = 0x9900 + driver.query_pools.made as RawQueryPool;
+		let handle = RawQueryPool(0x9900 + driver.query_pools.made as u64);
 		let queries = vec![false; info.query_count as usize];
 		driver.query_pools.live.push((handle, queries));
 		// SAFETY: the bindings pass a writable handle.
@@ -313,13 +313,13 @@ fn the_fake_driver_checks_the_query_rules() {
 	let pool = with(|driver| driver.query_pools.live[0].0);
 	let buffer = std::ptr::null_mut();
 	// SAFETY: the fake only records what it is given.
-	unsafe { write(buffer, 0x1, pool, 0) };
+	unsafe { write(RawCommandBuffer(buffer), 0x1, pool, 0) };
 	// SAFETY: as above.
-	unsafe { reset(buffer, pool, 1, 2) };
+	unsafe { reset(RawCommandBuffer(buffer), pool, 1, 2) };
 	// SAFETY: as above.
-	unsafe { write(buffer, 0x3, pool, 1) };
+	unsafe { write(RawCommandBuffer(buffer), 0x3, pool, 1) };
 	// SAFETY: as above.
-	unsafe { write(buffer, 0x1, 0xbad, 0) };
+	unsafe { write(RawCommandBuffer(buffer), 0x1, RawQueryPool(0xbad), 0) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	let expected = [
 		"vkCmdWriteTimestamp2: a query reset and not written since",

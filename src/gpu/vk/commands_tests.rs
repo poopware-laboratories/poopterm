@@ -78,7 +78,7 @@ impl Driver {
 	/// Whether the live binary semaphore `semaphore` is signalled, or
 	/// about to be; `None` if it is not one.
 	pub(super) fn binary(&self, semaphore: RawSemaphore) -> Option<bool> {
-		let index = semaphore.wrapping_sub(0xc0_0001) as usize;
+		let index = semaphore.0.wrapping_sub(0xc0_0001) as usize;
 		let made = self.semaphores.get(index)?;
 		let live = self.live_semaphores.contains(&semaphore);
 		(live && made.0 == 0).then(|| self.counters[index] != 0)
@@ -86,7 +86,7 @@ impl Driver {
 
 	/// How far the GPU got on `semaphore`.
 	pub(super) fn reached(&self, semaphore: RawSemaphore) -> u64 {
-		let index = semaphore.wrapping_sub(0xc0_0001) as usize;
+		let index = semaphore.0.wrapping_sub(0xc0_0001) as usize;
 		self.counters.get(index).copied().unwrap_or(0)
 	}
 
@@ -98,7 +98,7 @@ impl Driver {
 	/// The command buffer behind `handle`, if the fake allocated it from a
 	/// live pool.
 	pub(super) fn command_buffer(&mut self, handle: RawCommandBuffer) -> Option<&mut CommandBuffer> {
-		let index = (handle as usize).wrapping_sub(0x7c_0001);
+		let index = (handle.0 as usize).wrapping_sub(0x7c_0001);
 		let buffer = self.command_buffers.get(index)?;
 		self
 			.live_pools
@@ -126,7 +126,7 @@ unsafe extern "system" fn create_pool(
 		driver.check_live_device(device, "vkCreateCommandPool");
 		let made = driver
 			.made
-			.get((device as usize).wrapping_sub(0x5100) / 0x100);
+			.get((device.0 as usize).wrapping_sub(0x5100) / 0x100);
 		let rules = [
 			(
 				info.s_type == STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -147,14 +147,14 @@ unsafe extern "system" fn create_pool(
 		}
 		if let Some(code) = driver.failing(c"vkCreateCommandPool") {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { pool.write(GARBAGE) };
+			unsafe { pool.write(RawCommandPool(GARBAGE)) };
 			return code;
 		}
 		driver.pools.push((info.flags, info.queue_family_index));
 		let handle = 0xd0_0000 + driver.pools.len() as u64;
-		driver.live_pools.push(handle);
+		driver.live_pools.push(RawCommandPool(handle));
 		// SAFETY: as above.
-		unsafe { pool.write(handle) };
+		unsafe { pool.write(RawCommandPool(handle)) };
 		0
 	})
 }
@@ -186,7 +186,7 @@ unsafe extern "system" fn allocate(
 		}
 		if let Some(code) = driver.failing(c"vkAllocateCommandBuffers") {
 			// SAFETY: the bindings pass room for one handle.
-			unsafe { buffers.write(GARBAGE as RawCommandBuffer) };
+			unsafe { buffers.write(RawCommandBuffer(GARBAGE as _)) };
 			return code;
 		}
 		driver.command_buffers.push(CommandBuffer {
@@ -197,7 +197,7 @@ unsafe extern "system" fn allocate(
 		});
 		let handle = 0x7c_0000 + driver.command_buffers.len();
 		// SAFETY: as above.
-		unsafe { buffers.write(handle as RawCommandBuffer) };
+		unsafe { buffers.write(RawCommandBuffer(handle as _)) };
 		0
 	})
 }
@@ -334,7 +334,7 @@ unsafe extern "system" fn submit(
 		let before = driver.invalid.len();
 		let queues = driver.live_devices.iter().zip(&driver.made);
 		let known = (queues.into_iter())
-			.any(|(&device, made)| queue as usize == device as usize + 1 + made.family as usize);
+			.any(|(&device, made)| queue.0 as usize == device.0 as usize + 1 + made.family as usize);
 		let rules = [
 			(known, "a live device's queue"),
 			(count == 1 && fence == 0, "one submission, no fence"),
@@ -357,7 +357,7 @@ unsafe extern "system" fn submit(
 		let timeline = driver.live_semaphores.contains(&signal.semaphore)
 			&& driver
 				.semaphores
-				.get((signal.semaphore - 0xc0_0001) as usize)
+				.get((signal.semaphore.0 - 0xc0_0001) as usize)
 				.is_some_and(|made| made.0 == 1);
 		let pending = (driver.command_buffers.iter())
 			.filter_map(|buffer| match buffer.stage {
@@ -414,7 +414,7 @@ unsafe extern "system" fn submit(
 		let waited = waits.iter().map(|wait| (wait.semaphore, 0));
 		let signalled = signals[1..].iter().map(|signal| (signal.semaphore, 1));
 		for (semaphore, state) in waited.chain(signalled) {
-			driver.counters[semaphore.wrapping_sub(0xc0_0001) as usize] = state;
+			driver.counters[semaphore.0.wrapping_sub(0xc0_0001) as usize] = state;
 		}
 		if !(waits.is_empty() && signals.len() == 1) {
 			let names = |infos: &[SemaphoreSubmitInfo]| {
@@ -467,7 +467,7 @@ fn make(change: impl FnOnce(&mut Driver)) -> (Rc<Timeline>, Commands) {
 
 /// The fake's command buffer handles, as the bindings see them.
 fn buffer(n: usize) -> RawCommandBuffer {
-	(0x7c_0000 + n) as RawCommandBuffer
+	RawCommandBuffer((0x7c_0000 + n) as _)
 }
 
 /// Sets how far the fake's GPU got on the first timeline.
@@ -514,7 +514,7 @@ fn commands_are_recorded_and_submitted_to_raise_the_timeline() {
 fn with_queue(driver: &Driver) -> String {
 	format!(
 		"{:?}",
-		(driver.destroyed_devices[0] as usize + 1) as RawQueue
+		RawQueue((driver.destroyed_devices[0].0 as usize + 1) as _)
 	)
 }
 
@@ -716,7 +716,7 @@ fn the_fake_driver_reports_broken_command_rules() {
 	// nothing is released on drop.
 	let device = device(&INTEL, |_| {});
 	let handle = with(|driver| driver.live_devices[0]);
-	let queue = (handle as usize + 1) as RawQueue;
+	let queue = RawQueue((handle.0 as usize + 1) as _);
 	let reported = || with(|driver| std::mem::take(&mut driver.invalid));
 	let functions = &device.functions;
 	let kind = SemaphoreTypeCreateInfo {
@@ -749,8 +749,12 @@ fn the_fake_driver_reports_broken_command_rules() {
 		flags: 0,
 		inheritance_info: ptr::null(),
 	};
-	let (mut semaphore, mut pool, mut other) = (0, 0, 0);
-	let (mut first, mut second) = (ptr::null_mut(), ptr::null_mut());
+	let (mut semaphore, mut pool, mut other) = (
+		RawSemaphore::NULL,
+		RawCommandPool::NULL,
+		RawCommandPool::NULL,
+	);
+	let (mut first, mut second) = (RawCommandBuffer::NULL, RawCommandBuffer::NULL);
 	// SAFETY: the fake reads only what the pointers point to.
 	unsafe { (functions.create_semaphore)(handle, &semaphore_info, ptr::null(), &mut semaphore) };
 	// Unknown flags, another family, and a secondary buffer.
@@ -813,7 +817,12 @@ fn the_fake_driver_reports_broken_command_rules() {
 	unsafe { (functions.end)(first) };
 	// Another queue, no stage, and a value the timeline is not above.
 	// SAFETY: as above.
-	submit_to(first, (handle as usize + 2) as RawQueue, 1, ALL_COMMANDS);
+	submit_to(
+		first,
+		RawQueue((handle.0 as usize + 2) as _),
+		1,
+		ALL_COMMANDS,
+	);
 	submit_to(first, queue, 1, 0);
 	reach(3);
 	submit_to(first, queue, 3, ALL_COMMANDS);

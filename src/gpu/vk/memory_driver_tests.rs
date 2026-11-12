@@ -104,7 +104,7 @@ fn memory_of_a_device_the_driver_never_listed_is_reported() {
 	let instance = install(with_memory(&memory(&[(0x1, 0)])))
 		.create_instance(c"poopterm")
 		.unwrap();
-	assert_eq!(instance.memory_types(0x900 as RawPhysicalDevice), []);
+	assert_eq!(instance.memory_types(RawPhysicalDevice(0x900 as _)), []);
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(
 		invalid,

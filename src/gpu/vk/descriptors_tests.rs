@@ -4,6 +4,7 @@
 //! fake functions of `descriptor_driver_tests` report each rule they
 //! check. The real driver allocates the set too, under the validation
 //! layer.
+use super::handle::RawDescriptorSetLayout;
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,
@@ -34,7 +35,7 @@ fn pipeline() -> Rc<QuadPipeline> {
 fn the_set_comes_from_a_pool_with_room_for_it_alone() {
 	let pipeline = pipeline();
 	let set = QuadSet::new(&pipeline).unwrap();
-	assert_eq!(set.handle(), SETS + 1);
+	assert_eq!(set.handle(), RawDescriptorSet(SETS + 1));
 	drop(set);
 	let released = with(|driver| driver.released.split_off(2));
 	assert_eq!(released, ["descriptor pool 0x650001"]);
@@ -53,7 +54,13 @@ fn the_set_comes_from_a_pool_with_room_for_it_alone() {
 		},
 	];
 	assert_eq!(objects.pools, [(1, sizes)]);
-	assert_eq!(objects.sets, [(POOLS + 1, 0x62_0001)]);
+	assert_eq!(
+		objects.sets,
+		[(
+			RawDescriptorPool(POOLS + 1),
+			RawDescriptorSetLayout(0x62_0001)
+		)]
+	);
 }
 
 #[test]
@@ -136,7 +143,10 @@ fn pool_info(max_sets: u32, flags: u32, sizes: &[DescriptorPoolSize]) -> Descrip
 }
 
 /// An allocate info for one set of each of `layouts` from `pool`.
-fn allocate_info(pool: RawDescriptorPool, layouts: &[u64]) -> DescriptorSetAllocateInfo {
+fn allocate_info(
+	pool: RawDescriptorPool,
+	layouts: &[RawDescriptorSetLayout],
+) -> DescriptorSetAllocateInfo {
 	DescriptorSetAllocateInfo {
 		s_type: STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		next: ptr::null(),
@@ -156,7 +166,7 @@ fn a_pool_runs_out_of_sets_and_descriptors_as_a_driver_would() {
 		descriptor_type,
 		count,
 	};
-	let (mut pool, mut sets) = (0, [0; 2]);
+	let (mut pool, mut sets) = (RawDescriptorPool::NULL, [RawDescriptorSet::NULL; 2]);
 	// The sizes live in their own bindings: the infos point at them.
 	let sizes = [
 		// Room for two sets: the second allocation has none left.
@@ -192,7 +202,7 @@ fn a_pool_runs_out_of_sets_and_descriptors_as_a_driver_would() {
 	unsafe { destroy_pool(handle, pool, ptr::null()) };
 	let full = OUT_OF_POOL_MEMORY;
 	assert_eq!(results, [0, 0, full, full, 0, full, 0]);
-	assert_eq!(sets, [SETS + 4, SETS + 5]);
+	assert_eq!(sets.map(|set| set.0), [SETS + 4, SETS + 5]);
 	drop(pipeline);
 	finish();
 }
@@ -211,7 +221,7 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 		}]
 	};
 	let good = buffers(1, STORAGE_BUFFER);
-	let (mut pool, mut set) = (0, 0);
+	let (mut pool, mut set) = (RawDescriptorPool::NULL, RawDescriptorSet::NULL);
 	let mut wrong_type = pool_info(1, 0, &good);
 	wrong_type.s_type = 0;
 	// SAFETY: the infos and handles outlive each call; the bad handles are
@@ -247,13 +257,25 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 	// SAFETY: as above.
 	unsafe { allocate_sets(handle, &wrong_type, &mut set) };
 	// SAFETY: as above.
-	unsafe { allocate_sets(handle, &allocate_info(POOLS + 9, &[layout]), &mut set) };
+	unsafe {
+		allocate_sets(
+			handle,
+			&allocate_info(RawDescriptorPool(POOLS + 9), &[layout]),
+			&mut set,
+		)
+	};
 	// SAFETY: as above.
 	unsafe { allocate_sets(handle, &allocate_info(pool, &[]), &mut set) };
 	// SAFETY: as above.
-	unsafe { allocate_sets(handle, &allocate_info(pool, &[0x62_0009]), &mut set) };
+	unsafe {
+		allocate_sets(
+			handle,
+			&allocate_info(pool, &[RawDescriptorSetLayout(0x62_0009)]),
+			&mut set,
+		)
+	};
 	// SAFETY: as above.
-	unsafe { destroy_pool(handle, POOLS + 9, ptr::null()) };
+	unsafe { destroy_pool(handle, RawDescriptorPool(POOLS + 9), ptr::null()) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(
 		invalid,
@@ -276,7 +298,7 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 	// SAFETY: as above.
 	for pool in POOLS + 1..=POOLS + made {
 		// SAFETY: as above.
-		unsafe { destroy_pool(handle, pool, ptr::null()) };
+		unsafe { destroy_pool(handle, RawDescriptorPool(pool), ptr::null()) };
 	}
 	drop(pipeline);
 	finish();
@@ -289,5 +311,5 @@ fn a_real_device_allocates_the_quad_set() {
 	let device = Rc::new(offscreen(instance).expect("device"));
 	let pipeline = Rc::new(QuadPipeline::new(&device, Format::Bgra).expect("pipeline"));
 	let set = QuadSet::new(&pipeline).expect("set");
-	assert_ne!(set.handle(), 0);
+	assert_ne!(set.handle(), RawDescriptorSet::NULL);
 }

@@ -79,7 +79,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 impl Driver {
 	/// The image of the live view `view`, if it is one.
 	pub(super) fn viewed(&self, view: RawImageView) -> Option<RawImage> {
-		let made = self.views.get(view.wrapping_sub(0xf0_0001) as usize)?;
+		let made = self.views.get(view.0.wrapping_sub(0xf0_0001) as usize)?;
 		self.live_views.contains(&view).then_some(made.image)
 	}
 
@@ -88,8 +88,8 @@ impl Driver {
 		let made = self
 			.pipeline_objects
 			.sets
-			.get(set.wrapping_sub(SETS + 1) as usize);
-		made.is_some_and(|&(pool, _)| self.live_object(pool, POOLS))
+			.get(set.0.wrapping_sub(SETS + 1) as usize);
+		made.is_some_and(|&(pool, _)| self.live_object(pool.0, POOLS))
 	}
 
 	/// What `buffer` has set up for drawing, breaking the test unless it
@@ -106,11 +106,11 @@ impl Driver {
 	fn declares(&self, set: RawDescriptorSet, binding: u32, kind: i32) -> bool {
 		let sets = &self.pipeline_objects.sets;
 		let layout = sets
-			.get(set.wrapping_sub(SETS + 1) as usize)
+			.get(set.0.wrapping_sub(SETS + 1) as usize)
 			.map(|&(_, layout)| layout);
 		let layouts = &self.pipeline_objects.set_layouts;
 		let bindings =
-			layout.and_then(|layout| layouts.get(layout.wrapping_sub(SET_LAYOUTS + 1) as usize));
+			layout.and_then(|layout| layouts.get(layout.0.wrapping_sub(SET_LAYOUTS + 1) as usize));
 		bindings.is_some_and(|bindings| {
 			bindings
 				.iter()
@@ -136,7 +136,7 @@ impl Driver {
 					),
 					(info.offset == 0 && within, "the quads from the start"),
 				];
-				(rules, (info.buffer, info.range))
+				(rules, (info.buffer.0, info.range))
 			}
 			(true, COMBINED_IMAGE_SAMPLER) if !write.image_info.is_null() => {
 				// SAFETY: the bindings pass one image info for one descriptor.
@@ -153,7 +153,7 @@ impl Driver {
 						"read only by shaders",
 					),
 				];
-				(rules, (info.image_view, info.image_layout as u64))
+				(rules, (info.image_view.0, info.image_layout as u64))
 			}
 			_ => (
 				[(false, "a binding of the set's layout"), (true, "")],
@@ -311,7 +311,7 @@ pub(super) unsafe extern "system" fn bind_pipeline(
 	pipeline: RawPipeline,
 ) {
 	with(|driver| {
-		let live = driver.live_object(pipeline, PIPELINES);
+		let live = driver.live_object(pipeline.0, PIPELINES);
 		driver.require(point == 0 && live, || {
 			"vkCmdBindPipeline: a live graphics pipeline".into()
 		});
@@ -402,9 +402,9 @@ pub(super) unsafe extern "system" fn bind_sets(
 	let sets = unsafe { slice::from_raw_parts(sets, count as usize) };
 	with(|driver| {
 		let call = "vkCmdBindDescriptorSets";
-		let live_layout = driver.live_object(layout, PIPELINE_LAYOUTS);
+		let live_layout = driver.live_object(layout.0, PIPELINE_LAYOUTS);
 		let set_layouts = (live_layout).then(|| {
-			driver.pipeline_objects.pipeline_layouts[(layout - PIPELINE_LAYOUTS - 1) as usize]
+			driver.pipeline_objects.pipeline_layouts[(layout.0 - PIPELINE_LAYOUTS - 1) as usize]
 				.0
 				.clone()
 		});
@@ -415,7 +415,7 @@ pub(super) unsafe extern "system" fn bind_sets(
 		let made = driver
 			.pipeline_objects
 			.sets
-			.get(set.wrapping_sub(SETS + 1) as usize)
+			.get(set.0.wrapping_sub(SETS + 1) as usize)
 			.copied();
 		let rules = [
 			(point == 0 && first <= 1, "set 0 or 1 for graphics"),
@@ -457,9 +457,9 @@ pub(super) unsafe extern "system" fn push(
 	// SAFETY: the bindings pass `size` bytes, as floats.
 	let values = unsafe { slice::from_raw_parts(values.cast::<f32>(), size as usize / 4) };
 	with(|driver| {
-		let live = driver.live_object(layout, PIPELINE_LAYOUTS);
+		let live = driver.live_object(layout.0, PIPELINE_LAYOUTS);
 		let ranges = (live).then(|| {
-			driver.pipeline_objects.pipeline_layouts[(layout - PIPELINE_LAYOUTS - 1) as usize]
+			driver.pipeline_objects.pipeline_layouts[(layout.0 - PIPELINE_LAYOUTS - 1) as usize]
 				.1
 				.clone()
 		});
@@ -503,12 +503,12 @@ pub(super) unsafe extern "system" fn draw(
 		let texture = drawing.texture;
 		let ready = drawing.pushed && drawing.viewport && drawing.scissor;
 		let made = pipeline.and_then(|pipeline| {
-			let index = (pipeline - PIPELINES - 1) as usize;
+			let index = (pipeline.0 - PIPELINES - 1) as usize;
 			let made = driver.pipeline_objects.pipelines.get(index)?;
 			Some((made.formats.clone(), made.layout))
 		});
 		let target = rendering.and_then(|view| driver.viewed(view));
-		let format = target.and_then(|image| driver.images.get((image - 0xa0_0001) as usize));
+		let format = target.and_then(|image| driver.images.get((image.0 - 0xa0_0001) as usize));
 		let formats_match = made
 			.as_ref()
 			.zip(format)
@@ -520,7 +520,7 @@ pub(super) unsafe extern "system" fn draw(
 		let quads = set.and_then(|(set, _)| driver.written(set, 0));
 		let atlas = set
 			.and_then(|(set, _)| driver.written(set, 1))
-			.and_then(|(view, _)| driver.viewed(view));
+			.and_then(|(view, _)| driver.viewed(RawImageView(view)));
 		let readable = atlas.is_some_and(|atlas| driver.layout(buffer, atlas) == READ_ONLY_LAYOUT);
 		let textured = made
 			.as_ref()
@@ -528,11 +528,11 @@ pub(super) unsafe extern "system" fn draw(
 			.is_some_and(|(&(_, made), (_, layout))| made == layout);
 		let image = texture
 			.and_then(|(set, _)| driver.written(set, 0))
-			.and_then(|(view, _)| driver.viewed(view));
+			.and_then(|(view, _)| driver.viewed(RawImageView(view)));
 		let shown = image.is_some_and(|image| driver.layout(buffer, image) == READ_ONLY_LAYOUT);
 		let read = (u64::from(first_instance) + u64::from(instances)) * QUAD;
 		let held = quads.and_then(|(quads, range)| {
-			let (size, _) = driver.made_buffer(quads)?;
+			let (size, _) = driver.made_buffer(RawBuffer(quads))?;
 			Some(range.min(size) >= read)
 		});
 		let rules = [

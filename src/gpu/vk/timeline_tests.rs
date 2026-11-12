@@ -40,7 +40,7 @@ pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
 
 /// The index of `semaphore` in `semaphores`, as the fake numbers them.
 fn index(semaphore: RawSemaphore) -> usize {
-	semaphore.wrapping_sub(0xc0_0001) as usize
+	semaphore.0.wrapping_sub(0xc0_0001) as usize
 }
 
 unsafe extern "system" fn create(
@@ -80,16 +80,16 @@ unsafe extern "system" fn create(
 		}
 		if let Some(code) = driver.failing(c"vkCreateSemaphore") {
 			// SAFETY: the bindings pass a writable handle.
-			unsafe { semaphore.write(GARBAGE) };
+			unsafe { semaphore.write(RawSemaphore(GARBAGE)) };
 			return code;
 		}
 		let (kind, initial) = kind.map_or((-1, 0), |kind| (kind.semaphore_type, kind.initial_value));
 		driver.semaphores.push((kind, initial));
 		driver.counters.push(initial);
 		let handle = 0xc0_0000 + driver.semaphores.len() as u64;
-		driver.live_semaphores.push(handle);
+		driver.live_semaphores.push(RawSemaphore(handle));
 		// SAFETY: as above.
-		unsafe { semaphore.write(handle) };
+		unsafe { semaphore.write(RawSemaphore(handle)) };
 		0
 	})
 }
@@ -209,7 +209,7 @@ fn reach(n: usize, value: u64) {
 fn a_timeline_starts_at_zero_and_reads_how_far_the_gpu_got() {
 	let device = device(&INTEL, |_| {});
 	let timeline = Timeline::new(&device).expect("timeline");
-	assert_eq!(timeline.handle(), 0xc0_0001);
+	assert_eq!(timeline.handle(), RawSemaphore(0xc0_0001));
 	assert_eq!(timeline.reached(), Ok(0));
 	reach(0, 7);
 	assert_eq!(timeline.reached(), Ok(7));
@@ -243,7 +243,7 @@ fn waiting_says_whether_the_gpu_reached_the_value_in_time() {
 	let waits: Vec<_> = (finish().waits.into_iter())
 		.map(|(semaphores, values, timeout)| (semaphores, values[0], timeout))
 		.collect();
-	let one = || vec![0xc0_0001];
+	let one = || vec![RawSemaphore(0xc0_0001)];
 	let expected = [
 		(one(), 3, 0),
 		(one(), 0, 1_000_000),
@@ -339,7 +339,7 @@ fn the_fake_driver_reports_broken_semaphore_rules() {
 			next: kind.map_or(ptr::null(), |kind| ptr::from_ref(kind).cast()),
 			flags: 0,
 		};
-		let mut semaphore = 0;
+		let mut semaphore = RawSemaphore::NULL;
 		// SAFETY: the fake reads only what the pointers point to.
 		unsafe { create(handle, &info, ptr::null(), &mut semaphore) };
 		semaphore
@@ -380,10 +380,10 @@ fn the_fake_driver_reports_broken_semaphore_rules() {
 	};
 	let mut value = 0;
 	// SAFETY: as above.
-	unsafe { counter(handle, binary, &mut value) };
-	assert_eq!(waiting(1, &[timeline]), 0);
+	unsafe { counter(handle, RawSemaphore(binary.0), &mut value) };
+	assert_eq!(waiting(1, &[RawSemaphore(timeline.0)]), 0);
 	waiting(0, &[]);
-	waiting(0, &[binary]);
+	waiting(0, &[RawSemaphore(binary.0)]);
 	let expected = [
 		format!("vkGetSemaphoreCounterValue: {binary:#x}, which is not a live timeline"),
 		"vkWaitSemaphores: waits for every semaphore".into(),
@@ -406,7 +406,7 @@ fn the_fake_driver_reports_broken_semaphore_rules() {
 	}
 	assert_eq!(reported().len(), live.len());
 	// A destroyed timeline is no longer one to wait for.
-	waiting(0, &[timeline]);
+	waiting(0, &[RawSemaphore(timeline.0)]);
 	assert_eq!(reported().len(), 1);
 	with(|driver| driver.live_devices.clear());
 	finish();

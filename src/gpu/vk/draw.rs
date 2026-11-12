@@ -8,6 +8,7 @@ use super::{
 	call::Error,
 	descriptors::{QuadSet, TextureSet},
 	draw_types::*,
+	handle::{RawImageView, RawSampler},
 	image::Image,
 	recording::{Layout, Recording},
 };
@@ -101,7 +102,7 @@ impl Recording<'_> {
 			image_view: target.view(),
 			image_layout: Layout::ColorAttachment as i32,
 			resolve_mode: 0,
-			resolve_image_view: 0,
+			resolve_image_view: RawImageView::NULL,
 			resolve_image_layout: 0,
 			load_op: LOAD,
 			store_op: STORE,
@@ -185,7 +186,7 @@ impl Recording<'_> {
 		};
 		let image = DescriptorImageInfo {
 			// The set layout's sampler is immutable.
-			sampler: 0,
+			sampler: RawSampler::NULL,
 			image_view: draw.atlas.view(),
 			image_layout: Layout::ShaderReadOnly as i32,
 		};
