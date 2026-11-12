@@ -28,7 +28,6 @@ mod clipboard;
 #[path = "../build/codename.rs"]
 mod codename;
 mod config;
-#[cfg(target_arch = "x86_64")]
 mod cpu;
 #[cfg(not(target_os = "macos"))]
 mod dbus;
