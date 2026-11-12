@@ -33,7 +33,9 @@ and library calls get one safe wrapper each in the steps that follow.
 tables load through `load!` and `load_optional!` (`gpu/vk/entry.rs`), one
 cast per entry, and the fake driver's tables erase each fake through
 `erase!` (`gpu/vk/driver_tests.rs`) the same way. Pointer offsets use the
-safe `wrapping_add`, so the read or write is a block's one operation.
+safe `wrapping_add`, so the read or write is a block's one operation. Each
+handle has a type of its own (`gpu/vk/handle.rs`), laid out as the C handle
+it wraps, so a call given the wrong kind of handle does not compile.
 
 ### Where it is allowed
 
