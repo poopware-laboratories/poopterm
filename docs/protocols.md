@@ -85,11 +85,21 @@ with `font_path` or `POOPTERM_FONT`.
 - **Scaled text:** kitty's [text sizing protocol](https://sw.kovidgoyal.net/kitty/text-sizing-protocol/)
   (OSC 66) draws text up to seven times larger, or at a fraction of a
   cell, following its rules for wrapping, overwriting and erasing.
+- **Margins:** DECSTBM (`CSI Pt ; Pb r`) sets the top and bottom margins;
+  with DECLRMM (`CSI ? 69 h`) set, DECSLRM (`CSI Pl ; Pr s`) sets the left
+  and right ones (without it, `CSI s` saves the cursor). Text wraps from the
+  right margin to the left one; CR, BS, tabs, CUF and CUB stop at the
+  margins from inside them; line feeds and RI at a margin scroll only the
+  rectangle inside all four, and only when the cursor is inside it; SU and
+  SD scroll that rectangle. Origin mode counts rows and columns from the
+  margins. DECSTR, RIS, DECALN and resizing remove the left and right
+  margins. Insert and delete (ICH, DCH, IL, DL) do not respect the left
+  and right margins yet.
 - **Queries:** DECRQSS (`DCS $ q`) reports SGR, margins, cursor style,
   conformance level and page size; XTGETTCAP (`DCS + q`) answers from
   poopterm's terminfo entry; XTWINOPS reports sizes in cells and pixels
   (`CSI 14/16/18/19 t`). The cursor position (`CSI 6 n`, and DECXCPR
-  `CSI ? 6 n` with its page) counts from the scroll region in origin mode.
+  `CSI ? 6 n` with its page) counts from the margins in origin mode.
   `?12` and the DECSCUSR styles track whether the cursor should blink
   (drawn steady for now), and DECRQSS reports the style with its blink.
   Window moves, resizes and title reports are ignored on purpose, and so is
