@@ -2,14 +2,12 @@
 //! the features and queue asked for, the functions looked up with it, and
 //! the order devices and instances are destroyed in. The fake's device
 //! functions live here and check the specification's valid usage rules.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests,
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind, TRANSFER},
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{Driver, family, finish, install, with, with_devices},
 	features::{Flag, NEEDED},
 	types::*,
@@ -17,7 +15,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_char, c_void},
-	mem::transmute,
 	ptr,
 	rc::Rc,
 };
@@ -121,7 +118,9 @@ unsafe fn chain(
 	let mut link = head as *mut Link;
 	while !link.is_null() {
 		// SAFETY: the caller vouches for the chain.
-		let (s_type, next) = unsafe { ((*link).s_type, (*link).next) };
+		let s_type = unsafe { (*link).s_type };
+		// SAFETY: as above.
+		let next = unsafe { (*link).next };
 		// SAFETY: as above.
 		match unsafe { flags(link) } {
 			_ if found.iter().any(|&(seen, _)| seen == s_type) => {
@@ -169,7 +168,7 @@ pub(super) unsafe extern "system" fn features2(
 					_ => !driver.has_one_flag(s_type),
 				};
 				// SAFETY: within the structure's flags.
-				unsafe { flags.add(index).write(u32::from(!lacked)) };
+				unsafe { flags.wrapping_add(index).write(u32::from(!lacked)) };
 			}
 		}
 	})
@@ -212,8 +211,10 @@ pub(super) unsafe extern "system" fn create_device(
 		}
 		let extensions: Vec<String> = (0..info.enabled_extension_count as usize)
 			.filter(|_| !info.enabled_extension_names.is_null())
-			// SAFETY: as many C strings as the count says.
-			.map(|index| unsafe { CStr::from_ptr(*info.enabled_extension_names.add(index)) })
+			// SAFETY: as many pointers as the count says, each a C string.
+			.map(|index| unsafe { *info.enabled_extension_names.wrapping_add(index) })
+			// SAFETY: as above.
+			.map(|name| unsafe { CStr::from_ptr(name) })
 			.map(|name| name.to_string_lossy().into())
 			.collect();
 		let extra = driver.device_extensions.clone();
@@ -260,7 +261,7 @@ pub(super) unsafe extern "system" fn create_device(
 		for (s_type, flags) in found {
 			for index in 0..length(s_type) {
 				// SAFETY: within the structure's flags.
-				if unsafe { flags.add(index).read() } != 0 {
+				if unsafe { flags.wrapping_add(index).read() } != 0 {
 					enabled.push((s_type, index));
 				}
 			}
@@ -317,14 +318,11 @@ pub(super) unsafe extern "system" fn get_device_proc_addr(
 		if driver.lacks.contains(&name) {
 			return None;
 		}
-		// SAFETY: the bindings cast each back to its own type.
-		unsafe {
-			Some(match name.to_bytes() {
-				b"vkDestroyDevice" => transmute::<DestroyDevice, VoidFunction>(destroy_device),
-				b"vkGetDeviceQueue" => transmute::<GetDeviceQueue, VoidFunction>(get_device_queue),
-				_ => return buffer_tests::function(name),
-			})
-		}
+		Some(match name.to_bytes() {
+			b"vkDestroyDevice" => erase!(DestroyDevice, destroy_device),
+			b"vkGetDeviceQueue" => erase!(GetDeviceQueue, get_device_queue),
+			_ => return buffer_tests::function(name),
+		})
 	})
 }
 
@@ -804,10 +802,9 @@ fn the_fake_driver_reports_broken_device_rules() {
 	let live = with(|driver| driver.live_devices.clone());
 	let mut queue = ptr::null_mut();
 	// SAFETY: the fake only records the handles.
-	unsafe {
-		get_device_queue(live[0], 0, 0, &mut queue);
-		get_device_queue(live[0], 1, 1, &mut queue);
-	}
+	unsafe { get_device_queue(live[0], 0, 0, &mut queue) };
+	// SAFETY: as above.
+	unsafe { get_device_queue(live[0], 1, 1, &mut queue) };
 	assert_eq!(reported().len(), 2);
 	for &device in &live {
 		// SAFETY: as above.

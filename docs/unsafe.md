@@ -29,9 +29,11 @@ callers must ensure under `# Safety`. Some C bindings still expect
 several operations per block, each with its reason: `gpu::mtl`,
 `present::x11`, `present::wayland`, `objc` and `about_menu`, whose driver
 and library calls get one safe wrapper each in the steps that follow.
-`gpu::vk` holds one per block; only its fake drivers' tests still expect
-several, until a follow-up splits them. Its function tables load through
-`load!` and `load_optional!` (`gpu/vk/entry.rs`), one cast per entry.
+`gpu::vk` holds one per block, its fake drivers' tests too. Its function
+tables load through `load!` and `load_optional!` (`gpu/vk/entry.rs`), one
+cast per entry, and the fake driver's tables erase each fake through
+`erase!` (`gpu/vk/driver_tests.rs`) the same way. Pointer offsets use the
+safe `wrapping_add`, so the read or write is a block's one operation.
 
 ### Where it is allowed
 

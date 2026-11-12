@@ -2,19 +2,16 @@
 //! functions, for `pipeline_tests`: each checks the specification's valid
 //! usage rules for what the quad pipeline makes, records what was made and
 //! hands out handles, and destroys them.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::GARBAGE,
 	descriptor_types::{DescriptorPoolSize, RawDescriptorPool, RawDescriptorSet},
+	driver_tests::erase,
 	driver_tests::{Driver, with},
 	pipeline_types::*,
 	types::*,
 };
 use std::{
 	ffi::{CStr, c_char, c_void},
-	mem::transmute,
 	slice,
 };
 
@@ -78,32 +75,29 @@ pub(super) const PIPELINES: u64 = 0x64_0000;
 
 /// The fake's shader and pipeline function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateShaderModule" => transmute::<CreateShaderModule, VoidFunction>(create_module),
-			b"vkDestroyShaderModule" => transmute::<DestroyShaderModule, VoidFunction>(destroy_module),
-			b"vkCreateSampler" => transmute::<CreateSampler, VoidFunction>(create_sampler),
-			b"vkDestroySampler" => transmute::<DestroySampler, VoidFunction>(destroy_sampler),
-			b"vkCreateDescriptorSetLayout" => {
-				transmute::<CreateDescriptorSetLayout, VoidFunction>(create_set_layout)
-			}
-			b"vkDestroyDescriptorSetLayout" => {
-				transmute::<DestroyDescriptorSetLayout, VoidFunction>(destroy_set_layout)
-			}
-			b"vkCreatePipelineLayout" => {
-				transmute::<CreatePipelineLayout, VoidFunction>(create_pipeline_layout)
-			}
-			b"vkDestroyPipelineLayout" => {
-				transmute::<DestroyPipelineLayout, VoidFunction>(destroy_pipeline_layout)
-			}
-			b"vkCreateGraphicsPipelines" => {
-				transmute::<CreateGraphicsPipelines, VoidFunction>(create_pipelines)
-			}
-			b"vkDestroyPipeline" => transmute::<DestroyPipeline, VoidFunction>(destroy_pipeline),
-			_ => return super::descriptor_driver_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateShaderModule" => erase!(CreateShaderModule, create_module),
+		b"vkDestroyShaderModule" => erase!(DestroyShaderModule, destroy_module),
+		b"vkCreateSampler" => erase!(CreateSampler, create_sampler),
+		b"vkDestroySampler" => erase!(DestroySampler, destroy_sampler),
+		b"vkCreateDescriptorSetLayout" => {
+			erase!(CreateDescriptorSetLayout, create_set_layout)
+		}
+		b"vkDestroyDescriptorSetLayout" => {
+			erase!(DestroyDescriptorSetLayout, destroy_set_layout)
+		}
+		b"vkCreatePipelineLayout" => {
+			erase!(CreatePipelineLayout, create_pipeline_layout)
+		}
+		b"vkDestroyPipelineLayout" => {
+			erase!(DestroyPipelineLayout, destroy_pipeline_layout)
+		}
+		b"vkCreateGraphicsPipelines" => {
+			erase!(CreateGraphicsPipelines, create_pipelines)
+		}
+		b"vkDestroyPipeline" => erase!(DestroyPipeline, destroy_pipeline),
+		_ => return super::descriptor_driver_tests::function(name),
+	})
 }
 
 impl Driver {
@@ -160,13 +154,10 @@ pub(super) unsafe extern "system" fn create_module(
 	allocator: *const c_void,
 	module: *mut RawShaderModule,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info whose code is `code_size`
-	// bytes.
-	let (info, code) = unsafe {
-		let info = &*info;
-		let code = slice::from_raw_parts(info.code, info.code_size / 4);
-		(info, code)
-	};
+	// SAFETY: the bindings pass a create info that lives across the call.
+	let info = unsafe { &*info };
+	// SAFETY: its code is `code_size` bytes.
+	let code = unsafe { slice::from_raw_parts(info.code, info.code_size / 4) };
 	with(|driver| {
 		let rules = [
 			(info.next.is_null() && info.flags == 0, "pNext and flags"),
@@ -266,26 +257,24 @@ pub(super) unsafe extern "system" fn create_set_layout(
 	allocator: *const c_void,
 	layout: *mut RawDescriptorSetLayout,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info with `binding_count` bindings,
-	// each with null or one immutable sampler.
-	let (info, bindings) = unsafe {
-		let info = &*info;
-		let bindings = slice::from_raw_parts(info.bindings, info.binding_count as usize);
-		let bindings: Vec<Binding> = (bindings.iter())
-			.map(|binding| {
-				let sampler = binding.immutable_samplers.as_ref().copied();
-				let kind = binding.descriptor_type;
-				(
-					binding.binding,
-					kind,
-					binding.descriptor_count,
-					binding.stage_flags,
-					sampler,
-				)
-			})
-			.collect();
-		(info, bindings)
-	};
+	// SAFETY: the bindings pass a create info that lives across the call.
+	let info = unsafe { &*info };
+	// SAFETY: it has `binding_count` bindings.
+	let bindings = unsafe { slice::from_raw_parts(info.bindings, info.binding_count as usize) };
+	let bindings: Vec<Binding> = (bindings.iter())
+		.map(|binding| {
+			// SAFETY: each binding has null or one immutable sampler.
+			let sampler = unsafe { binding.immutable_samplers.as_ref() }.copied();
+			let kind = binding.descriptor_type;
+			(
+				binding.binding,
+				kind,
+				binding.descriptor_count,
+				binding.stage_flags,
+				sampler,
+			)
+		})
+		.collect();
 	with(|driver| {
 		driver.require(info.next.is_null() && info.flags == 0, || {
 			"vkCreateDescriptorSetLayout: pNext and flags".into()
@@ -339,18 +328,17 @@ pub(super) unsafe extern "system" fn create_pipeline_layout(
 	allocator: *const c_void,
 	layout: *mut RawPipelineLayout,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info with arrays as long as their
-	// counts.
-	let (info, sets, ranges) = unsafe {
-		let info = &*info;
-		let sets = slice::from_raw_parts(info.set_layouts, info.set_layout_count as usize);
-		let count = info.push_constant_range_count as usize;
-		let ranges = slice::from_raw_parts(info.push_constant_ranges, count);
-		let ranges: Vec<_> = (ranges.iter())
-			.map(|range| [range.stage_flags, range.offset, range.size])
-			.collect();
-		(info, sets.to_vec(), ranges)
-	};
+	// SAFETY: the bindings pass a create info that lives across the call.
+	let info = unsafe { &*info };
+	// SAFETY: its arrays are as long as their counts.
+	let sets =
+		unsafe { slice::from_raw_parts(info.set_layouts, info.set_layout_count as usize) }.to_vec();
+	let count = info.push_constant_range_count as usize;
+	// SAFETY: as above.
+	let ranges = unsafe { slice::from_raw_parts(info.push_constant_ranges, count) };
+	let ranges: Vec<_> = (ranges.iter())
+		.map(|range| [range.stage_flags, range.offset, range.size])
+		.collect();
 	with(|driver| {
 		let rules = [
 			(info.next.is_null() && info.flags == 0, "pNext and flags"),
@@ -406,133 +394,149 @@ unsafe extern "system" fn destroy_pipeline_layout(
 ///
 /// `info` and what it points to are valid, as the specification requires.
 unsafe fn describe(info: &GraphicsPipelineCreateInfo) -> (MadePipeline, Vec<&'static str>) {
-	// SAFETY: the caller passes a valid create info; each pointer read is
-	// checked for null first, and each array is as long as its count.
-	unsafe {
-		let rendering = info.next.cast::<PipelineRenderingCreateInfo>().as_ref();
-		let formats = rendering.map_or(&[][..], |rendering| {
-			let count = rendering.color_attachment_count as usize;
-			slice::from_raw_parts(rendering.color_attachment_formats, count)
-		});
-		let stages = slice::from_raw_parts(info.stages, info.stage_count as usize);
-		let name = |name: *const c_char| CStr::from_ptr(name).to_string_lossy().into_owned();
-		let input = info.vertex_input_state.as_ref();
-		let assembly = info.input_assembly_state.as_ref();
-		let viewport = info.viewport_state.as_ref();
-		let raster = info.rasterization_state.as_ref();
-		let multisample = info.multisample_state.as_ref();
-		let blend = info.color_blend_state.as_ref();
-		let attachments = blend.map_or(&[][..], |blend| {
-			slice::from_raw_parts(blend.attachments, blend.attachment_count as usize)
-		});
-		let dynamic = info.dynamic_state.as_ref().map_or(&[][..], |dynamic| {
-			slice::from_raw_parts(dynamic.dynamic_states, dynamic.dynamic_state_count as usize)
-		});
-		let made = MadePipeline {
-			stages: (stages.iter())
-				.map(|stage| (stage.stage, stage.module, name(stage.name)))
-				.collect(),
-			topology: assembly.map_or(-1, |assembly| assembly.topology),
-			rasterization: raster.map_or((-1, 0, -1, 0.0), |raster| {
-				let (mode, cull, front) = (raster.polygon_mode, raster.cull_mode, raster.front_face);
-				(mode, cull, front, raster.line_width)
+	// SAFETY: the caller passes a valid create info, whose chain is null or
+	// the rendering info the bindings put there.
+	let rendering = unsafe { info.next.cast::<PipelineRenderingCreateInfo>().as_ref() };
+	let formats = rendering.map_or(&[][..], |rendering| {
+		let count = rendering.color_attachment_count as usize;
+		// SAFETY: a valid rendering info has `count` formats.
+		unsafe { slice::from_raw_parts(rendering.color_attachment_formats, count) }
+	});
+	// SAFETY: a valid create info has `stage_count` stages.
+	let stages = unsafe { slice::from_raw_parts(info.stages, info.stage_count as usize) };
+	let name = |name: *const c_char| {
+		// SAFETY: each stage names its entry point with a nul-terminated string.
+		unsafe { CStr::from_ptr(name) }
+			.to_string_lossy()
+			.into_owned()
+	};
+	// SAFETY: each state of a valid create info is null or valid, which
+	// `as_ref` checks.
+	let input = unsafe { info.vertex_input_state.as_ref() };
+	// SAFETY: as above.
+	let assembly = unsafe { info.input_assembly_state.as_ref() };
+	// SAFETY: as above.
+	let viewport = unsafe { info.viewport_state.as_ref() };
+	// SAFETY: as above.
+	let raster = unsafe { info.rasterization_state.as_ref() };
+	// SAFETY: as above.
+	let multisample = unsafe { info.multisample_state.as_ref() };
+	// SAFETY: as above.
+	let blend = unsafe { info.color_blend_state.as_ref() };
+	let attachments = blend.map_or(&[][..], |blend| {
+		// SAFETY: a valid blend state has `attachment_count` attachments.
+		unsafe { slice::from_raw_parts(blend.attachments, blend.attachment_count as usize) }
+	});
+	// SAFETY: as for the states above.
+	let dynamic = unsafe { info.dynamic_state.as_ref() }.map_or(&[][..], |dynamic| {
+		let count = dynamic.dynamic_state_count as usize;
+		// SAFETY: a valid dynamic state has `count` states.
+		unsafe { slice::from_raw_parts(dynamic.dynamic_states, count) }
+	});
+	let made = MadePipeline {
+		stages: (stages.iter())
+			.map(|stage| (stage.stage, stage.module, name(stage.name)))
+			.collect(),
+		topology: assembly.map_or(-1, |assembly| assembly.topology),
+		rasterization: raster.map_or((-1, 0, -1, 0.0), |raster| {
+			let (mode, cull, front) = (raster.polygon_mode, raster.cull_mode, raster.front_face);
+			(mode, cull, front, raster.line_width)
+		}),
+		samples: multisample.map_or(0, |multisample| multisample.rasterization_samples),
+		blend: attachments.to_vec(),
+		dynamic: dynamic.to_vec(),
+		formats: formats.to_vec(),
+		layout: info.layout,
+	};
+	let stage_rules = stages.iter().all(|stage| {
+		stage.s_type == STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+			&& stage.next.is_null()
+			&& stage.flags == 0
+			&& stage.specialization_info.is_null()
+	});
+	let rules = [
+		(
+			info.flags == 0 && info.tessellation_state.is_null(),
+			"flags and no tessellation",
+		),
+		(
+			rendering.is_some_and(|rendering| {
+				rendering.s_type == STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO
+					&& rendering.next.is_null()
+					&& rendering.view_mask == 0
+					&& rendering.depth_attachment_format == 0
+					&& rendering.stencil_attachment_format == 0
 			}),
-			samples: multisample.map_or(0, |multisample| multisample.rasterization_samples),
-			blend: attachments.to_vec(),
-			dynamic: dynamic.to_vec(),
-			formats: formats.to_vec(),
-			layout: info.layout,
-		};
-		let stage_rules = stages.iter().all(|stage| {
-			stage.s_type == STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
-				&& stage.next.is_null()
-				&& stage.flags == 0
-				&& stage.specialization_info.is_null()
-		});
-		let rules = [
-			(
-				info.flags == 0 && info.tessellation_state.is_null(),
-				"flags and no tessellation",
-			),
-			(
-				rendering.is_some_and(|rendering| {
-					rendering.s_type == STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO
-						&& rendering.next.is_null()
-						&& rendering.view_mask == 0
-						&& rendering.depth_attachment_format == 0
-						&& rendering.stencil_attachment_format == 0
-				}),
-				"dynamic rendering to color alone",
-			),
-			(
-				info.render_pass == 0 && info.base_pipeline_handle == 0,
-				"no render pass or base",
-			),
-			(
-				stage_rules && stages.len() == 2 && stages[0].stage != stages[1].stage,
-				"a vertex and a fragment stage",
-			),
-			(
-				input.is_some_and(|input| {
-					input.s_type == STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-						&& input.vertex_binding_description_count == 0
-						&& input.vertex_attribute_description_count == 0
-				}),
-				"no vertex input",
-			),
-			(
-				assembly.is_some_and(|assembly| {
-					assembly.s_type == STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
-						&& assembly.primitive_restart_enable == 0
-				}),
-				"input assembly",
-			),
-			(
-				viewport.is_some_and(|viewport| {
-					viewport.s_type == STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
-						&& viewport.viewport_count == 1
-						&& viewport.scissor_count == 1
-				}),
-				"one viewport and scissor",
-			),
-			(
-				dynamic.contains(&VIEWPORT) && dynamic.contains(&SCISSOR),
-				"the viewport and scissor set when drawing",
-			),
-			(
-				raster.is_some_and(|raster| {
-					raster.s_type == STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
-						&& raster.depth_clamp_enable == 0
-						&& raster.rasterizer_discard_enable == 0
-						&& raster.depth_bias_enable == 0
-				}),
-				"rasterization",
-			),
-			(
-				multisample.is_some_and(|multisample| {
-					multisample.s_type == STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
-						&& multisample.sample_mask.is_null()
-				}),
-				"multisampling",
-			),
-			(
-				info.depth_stencil_state.is_null() && attachments.len() == formats.len(),
-				"a blend state for each color attachment and no depth",
-			),
-			(
-				blend.is_some_and(|blend| {
-					blend.s_type == STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
-						&& blend.logic_op_enable == 0
-				}),
-				"blending without logic operations",
-			),
-		];
-		let broken = rules
-			.iter()
-			.filter(|(holds, _)| !holds)
-			.map(|&(_, rule)| rule);
-		(made, broken.collect())
-	}
+			"dynamic rendering to color alone",
+		),
+		(
+			info.render_pass == 0 && info.base_pipeline_handle == 0,
+			"no render pass or base",
+		),
+		(
+			stage_rules && stages.len() == 2 && stages[0].stage != stages[1].stage,
+			"a vertex and a fragment stage",
+		),
+		(
+			input.is_some_and(|input| {
+				input.s_type == STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+					&& input.vertex_binding_description_count == 0
+					&& input.vertex_attribute_description_count == 0
+			}),
+			"no vertex input",
+		),
+		(
+			assembly.is_some_and(|assembly| {
+				assembly.s_type == STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
+					&& assembly.primitive_restart_enable == 0
+			}),
+			"input assembly",
+		),
+		(
+			viewport.is_some_and(|viewport| {
+				viewport.s_type == STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
+					&& viewport.viewport_count == 1
+					&& viewport.scissor_count == 1
+			}),
+			"one viewport and scissor",
+		),
+		(
+			dynamic.contains(&VIEWPORT) && dynamic.contains(&SCISSOR),
+			"the viewport and scissor set when drawing",
+		),
+		(
+			raster.is_some_and(|raster| {
+				raster.s_type == STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
+					&& raster.depth_clamp_enable == 0
+					&& raster.rasterizer_discard_enable == 0
+					&& raster.depth_bias_enable == 0
+			}),
+			"rasterization",
+		),
+		(
+			multisample.is_some_and(|multisample| {
+				multisample.s_type == STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
+					&& multisample.sample_mask.is_null()
+			}),
+			"multisampling",
+		),
+		(
+			info.depth_stencil_state.is_null() && attachments.len() == formats.len(),
+			"a blend state for each color attachment and no depth",
+		),
+		(
+			blend.is_some_and(|blend| {
+				blend.s_type == STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
+					&& blend.logic_op_enable == 0
+			}),
+			"blending without logic operations",
+		),
+	];
+	let broken = rules
+		.iter()
+		.filter(|(holds, _)| !holds)
+		.map(|&(_, rule)| rule);
+	(made, broken.collect())
 }
 
 pub(super) unsafe extern "system" fn create_pipelines(
@@ -544,7 +548,9 @@ pub(super) unsafe extern "system" fn create_pipelines(
 	pipelines: *mut RawPipeline,
 ) -> i32 {
 	// SAFETY: the bindings pass one valid create info.
-	let (info, (made, broken)) = unsafe { (&*infos, describe(&*infos)) };
+	let info = unsafe { &*infos };
+	// SAFETY: as above.
+	let (made, broken) = unsafe { describe(info) };
 	with(|driver| {
 		for rule in broken {
 			(driver.invalid).push(format!("vkCreateGraphicsPipelines: {rule}"));

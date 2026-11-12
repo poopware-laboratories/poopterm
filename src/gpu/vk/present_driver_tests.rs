@@ -2,10 +2,8 @@
 //! hands out: acquiring and presenting swapchain images and waiting for a
 //! queue, each checking the specification's valid usage rules, with tests
 //! that it reports each broken rule.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
+	driver_tests::erase,
 	driver_tests::{Driver, with},
 	present_regions::{PresentRegions, STRUCTURE_TYPE_PRESENT_REGIONS},
 	present_tests::{showing, window},
@@ -28,15 +26,12 @@ pub(super) const SURFACE_LOST: i32 = -1_000_000_000;
 
 /// The fake's function `name` for showing images, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkAcquireNextImageKHR" => transmute::<AcquireNextImage, VoidFunction>(acquire),
-			b"vkQueuePresentKHR" => transmute::<QueuePresent, VoidFunction>(present_image),
-			b"vkQueueWaitIdle" => transmute::<QueueWaitIdle, VoidFunction>(wait_idle),
-			_ => return None,
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkAcquireNextImageKHR" => erase!(AcquireNextImage, acquire),
+		b"vkQueuePresentKHR" => erase!(QueuePresent, present_image),
+		b"vkQueueWaitIdle" => erase!(QueueWaitIdle, wait_idle),
+		_ => return None,
+	})
 }
 
 impl Driver {
@@ -125,31 +120,33 @@ unsafe extern "system" fn acquire(
 }
 
 unsafe extern "system" fn present_image(queue: RawQueue, info: *const PresentInfo) -> i32 {
-	// SAFETY: the bindings pass a present info whose arrays live across the
-	// call, each as long as its count.
-	let (info, waits, swapchains, indices) = unsafe {
-		let info = &*info;
-		let read = |count| count as usize;
-		(
-			info,
-			std::slice::from_raw_parts(info.wait_semaphores, read(info.wait_semaphore_count)),
-			std::slice::from_raw_parts(info.swapchains, read(info.swapchain_count)),
-			std::slice::from_raw_parts(info.image_indices, read(info.swapchain_count)),
-		)
-	};
-	// SAFETY: every chained structure starts with its sType; one of the
-	// regions' type is the regions the bindings name, whose arrays live
-	// across the call.
-	let regions = (!info.next.is_null()).then(|| unsafe {
-		let s_type = *info.next.cast::<i32>();
+	// SAFETY: the bindings pass a present info that lives across the call.
+	let info = unsafe { &*info };
+	let (waits, swapchains) = (
+		info.wait_semaphore_count as usize,
+		info.swapchain_count as usize,
+	);
+	// SAFETY: its arrays live across the call, each as long as its count.
+	let waits = unsafe { std::slice::from_raw_parts(info.wait_semaphores, waits) };
+	// SAFETY: as above.
+	let indices = unsafe { std::slice::from_raw_parts(info.image_indices, swapchains) };
+	// SAFETY: as above.
+	let swapchains = unsafe { std::slice::from_raw_parts(info.swapchains, swapchains) };
+	let regions = (!info.next.is_null()).then(|| {
+		// SAFETY: every chained structure starts with its sType.
+		let s_type = unsafe { *info.next.cast::<i32>() };
 		if s_type != STRUCTURE_TYPE_PRESENT_REGIONS {
 			return (s_type, None);
 		}
-		let regions = &*info.next.cast::<PresentRegions>();
-		let region = (regions.swapchain_count == 1).then(|| &*regions.regions);
+		// SAFETY: one of the regions' type is the regions the bindings name,
+		// whose arrays live across the call.
+		let regions = unsafe { &*info.next.cast::<PresentRegions>() };
+		// SAFETY: as above.
+		let region = (regions.swapchain_count == 1).then(|| unsafe { &*regions.regions });
 		let rects = region.map(|region| {
 			let count = region.rectangle_count as usize;
-			std::slice::from_raw_parts(region.rectangles, count).to_vec()
+			// SAFETY: as above.
+			unsafe { std::slice::from_raw_parts(region.rectangles, count) }.to_vec()
 		});
 		(s_type, rects)
 	});

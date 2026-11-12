@@ -1,9 +1,6 @@
 //! Tests that the fake drawing functions of `draw_driver_tests` report
 //! each rule they check, broken one at a time; were they blind to them,
 //! the tests of `draw_tests` would prove nothing.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer::Buffer,
 	buffer_tests::{INTEL, device},
@@ -171,6 +168,9 @@ fn the_fake_driver_reports_broken_update_rules() {
 		for case in &cases {
 			update_sets(device, 1, case, 0, ptr::null());
 		}
+	}
+	// SAFETY: as above.
+	unsafe {
 		update_sets(
 			device,
 			1,
@@ -338,16 +338,24 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 	let size = [16.0f32, 8.0];
 	// SAFETY: every struct and array outlives its call; the bad handles
 	// are only compared.
+	for info in &infos {
+		// SAFETY: as above.
+		unsafe { begin_rendering(BUFFER, info) };
+		// SAFETY: as above.
+		unsafe { end_rendering(BUFFER) };
+	}
+	// SAFETY: as above.
+	unsafe { end_rendering(BUFFER) };
+	// SAFETY: as above.
+	unsafe { begin_rendering(BUFFER, &rendering(&target)) };
+	// SAFETY: as above.
+	unsafe { begin_rendering(BUFFER, &rendering(&target)) };
+	// SAFETY: as above.
+	unsafe { bind_pipeline(BUFFER, 1, scene.pipeline.handle()) };
+	// SAFETY: as above.
+	unsafe { set_viewport(BUFFER, 0, 2, &viewport) };
+	// SAFETY: as above.
 	unsafe {
-		for info in &infos {
-			begin_rendering(BUFFER, info);
-			end_rendering(BUFFER);
-		}
-		end_rendering(BUFFER);
-		begin_rendering(BUFFER, &rendering(&target));
-		begin_rendering(BUFFER, &rendering(&target));
-		bind_pipeline(BUFFER, 1, scene.pipeline.handle());
-		set_viewport(BUFFER, 0, 2, &viewport);
 		set_viewport(
 			BUFFER,
 			0,
@@ -357,6 +365,9 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 				..viewport
 			},
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		set_viewport(
 			BUFFER,
 			0,
@@ -366,6 +377,9 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 				..viewport
 			},
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		set_scissor(
 			BUFFER,
 			1,
@@ -375,6 +389,9 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 				extent: [16, 8],
 			},
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		set_scissor(
 			BUFFER,
 			0,
@@ -384,24 +401,39 @@ fn the_fake_driver_reports_broken_rendering_rules() {
 				extent: [16, 8],
 			},
 		);
-		bind_sets(BUFFER, 1, layout, 0, 1, &set, 0, ptr::null());
-		bind_sets(BUFFER, 0, layout + 9, 0, 1, &set, 0, ptr::null());
-		bind_sets(BUFFER, 0, layout, 0, 1, &(SETS + 9), 0, ptr::null());
-		bind_sets(BUFFER, 0, layout, 0, 1, &set, 1, ptr::null());
-		bind_sets(BUFFER, 0, layout, 0, 2, [set, set].as_ptr(), 0, ptr::null());
-		// Past the layout's two sets, and the quad set as the image's.
-		bind_sets(BUFFER, 0, layout, 2, 1, &set, 0, ptr::null());
-		bind_sets(BUFFER, 0, layout, 1, 1, &set, 0, ptr::null());
-		// The image's own set again, for the draws below.
-		bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null());
-		push(BUFFER, layout + 9, VERTEX, 0, 8, size.as_ptr().cast());
-		push(BUFFER, layout, VERTEX, 0, 6, size.as_ptr().cast());
-		push(BUFFER, layout, VERTEX, 4, 8, size.as_ptr().cast());
-		push(BUFFER, layout, FRAGMENT, 0, 8, size.as_ptr().cast());
-		draw(BUFFER, 6, 4, 0, 0);
-		draw(BUFFER, 6, 1, 1, 0);
-		end_rendering(BUFFER);
 	}
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 1, layout, 0, 1, &set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout + 9, 0, 1, &set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 0, 1, &(SETS + 9), 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 0, 1, &set, 1, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 0, 2, [set, set].as_ptr(), 0, ptr::null()) };
+	// Past the layout's two sets, and the quad set as the image's.
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 2, 1, &set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 1, 1, &set, 0, ptr::null()) };
+	// The image's own set again, for the draws below.
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { push(BUFFER, layout + 9, VERTEX, 0, 8, size.as_ptr().cast()) };
+	// SAFETY: as above.
+	unsafe { push(BUFFER, layout, VERTEX, 0, 6, size.as_ptr().cast()) };
+	// SAFETY: as above.
+	unsafe { push(BUFFER, layout, VERTEX, 4, 8, size.as_ptr().cast()) };
+	// SAFETY: as above.
+	unsafe { push(BUFFER, layout, FRAGMENT, 0, 8, size.as_ptr().cast()) };
+	// SAFETY: as above.
+	unsafe { draw(BUFFER, 6, 4, 0, 0) };
+	// SAFETY: as above.
+	unsafe { draw(BUFFER, 6, 1, 1, 0) };
+	// SAFETY: as above.
+	unsafe { end_rendering(BUFFER) };
 	let begin = |rule| format!("vkCmdBeginRendering: {rule}");
 	let mut expected: Vec<String> = [
 		"sType, pNext and flags",
@@ -467,11 +499,11 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 	recording.transition(&scene.target, super::recording::Layout::ColorAttachment);
 	recording.transition(&scene.rgba, super::recording::Layout::ColorAttachment);
 	// SAFETY: every struct outlives its call.
-	unsafe {
-		draw(BUFFER, 6, 1, 0, 0);
-		begin_rendering(BUFFER, &rendering(&target));
-		draw(BUFFER, 6, 1, 0, 0);
-	}
+	unsafe { draw(BUFFER, 6, 1, 0, 0) };
+	// SAFETY: as above.
+	unsafe { begin_rendering(BUFFER, &rendering(&target)) };
+	// SAFETY: as above.
+	unsafe { draw(BUFFER, 6, 1, 0, 0) };
 	let draw_rule = |rule| format!("vkCmdDraw: {rule}");
 	let nothing = [
 		"a bound pipeline",
@@ -509,17 +541,23 @@ fn the_fake_driver_reports_draws_without_what_they_need() {
 	};
 	let size = [16.0f32, 8.0];
 	// SAFETY: as above.
-	unsafe {
-		end_rendering(BUFFER);
-		begin_rendering(BUFFER, &rendering(&rgba));
-		bind_pipeline(BUFFER, 0, scene.pipeline.handle());
-		set_viewport(BUFFER, 0, 1, &viewport);
-		set_scissor(BUFFER, 0, 1, &area);
-		bind_sets(BUFFER, 0, layout, 0, 1, &set, 0, ptr::null());
-		push(BUFFER, layout, VERTEX, 0, 8, size.as_ptr().cast());
-		bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null());
-		draw(BUFFER, 6, 1, 0, 0);
-	}
+	unsafe { end_rendering(BUFFER) };
+	// SAFETY: as above.
+	unsafe { begin_rendering(BUFFER, &rendering(&rgba)) };
+	// SAFETY: as above.
+	unsafe { bind_pipeline(BUFFER, 0, scene.pipeline.handle()) };
+	// SAFETY: as above.
+	unsafe { set_viewport(BUFFER, 0, 1, &viewport) };
+	// SAFETY: as above.
+	unsafe { set_scissor(BUFFER, 0, 1, &area) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 0, 1, &set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { push(BUFFER, layout, VERTEX, 0, 8, size.as_ptr().cast()) };
+	// SAFETY: as above.
+	unsafe { bind_sets(BUFFER, 0, layout, 1, 1, &image_set, 0, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { draw(BUFFER, 6, 1, 0, 0) };
 	// Neither the atlas nor the image was made readable in this recording.
 	let rules = [
 		"vkCmdDraw: a target of the pipeline's format",

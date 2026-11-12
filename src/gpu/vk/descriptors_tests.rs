@@ -4,9 +4,6 @@
 //! fake functions of `descriptor_driver_tests` report each rule they
 //! check. The real driver allocates the set too, under the validation
 //! layer.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{INTEL, device},
 	call::Error,
@@ -172,23 +169,27 @@ fn a_pool_runs_out_of_sets_and_descriptors_as_a_driver_would() {
 	let pools =
 		[(2, &sizes[0]), (1, &sizes[1]), (2, &sizes[2])].map(|(max, sizes)| pool_info(max, 0, sizes));
 	let mut results = Vec::new();
-	// SAFETY: the infos and handles outlive each call.
-	unsafe {
-		for info in &pools {
-			create_pool(handle, info, ptr::null(), &mut pool);
-			let one = [layout];
-			let one = allocate_info(pool, &one);
-			results.push(allocate_sets(handle, &one, sets.as_mut_ptr()));
-			results.push(allocate_sets(handle, &one, sets.as_mut_ptr()));
-			destroy_pool(handle, pool, ptr::null());
-		}
-		// Two sets in one call.
-		create_pool(handle, &pools[0], ptr::null(), &mut pool);
-		let two = [layout, layout];
-		let two = allocate_info(pool, &two);
-		results.push(allocate_sets(handle, &two, sets.as_mut_ptr()));
-		destroy_pool(handle, pool, ptr::null());
+	for info in &pools {
+		// SAFETY: the infos and handles outlive each call.
+		unsafe { create_pool(handle, info, ptr::null(), &mut pool) };
+		let one = [layout];
+		let one = allocate_info(pool, &one);
+		// SAFETY: as above.
+		unsafe { results.push(allocate_sets(handle, &one, sets.as_mut_ptr())) };
+		// SAFETY: as above.
+		unsafe { results.push(allocate_sets(handle, &one, sets.as_mut_ptr())) };
+		// SAFETY: as above.
+		unsafe { destroy_pool(handle, pool, ptr::null()) };
 	}
+	// Two sets in one call.
+	// SAFETY: as above.
+	unsafe { create_pool(handle, &pools[0], ptr::null(), &mut pool) };
+	let two = [layout, layout];
+	let two = allocate_info(pool, &two);
+	// SAFETY: as above.
+	unsafe { results.push(allocate_sets(handle, &two, sets.as_mut_ptr())) };
+	// SAFETY: as above.
+	unsafe { destroy_pool(handle, pool, ptr::null()) };
 	let full = OUT_OF_POOL_MEMORY;
 	assert_eq!(results, [0, 0, full, full, 0, full, 0]);
 	assert_eq!(sets, [SETS + 4, SETS + 5]);
@@ -211,36 +212,48 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 	};
 	let good = buffers(1, STORAGE_BUFFER);
 	let (mut pool, mut set) = (0, 0);
+	let mut wrong_type = pool_info(1, 0, &good);
+	wrong_type.s_type = 0;
 	// SAFETY: the infos and handles outlive each call; the bad handles are
 	// only compared.
+	unsafe { create_pool(handle, &wrong_type, ptr::null(), &mut pool) };
+	// SAFETY: as above.
+	unsafe { create_pool(handle, &pool_info(1, 1, &good), ptr::null(), &mut pool) };
+	// SAFETY: as above.
+	unsafe { create_pool(handle, &pool_info(0, 0, &good), ptr::null(), &mut pool) };
+	// SAFETY: as above.
+	unsafe { create_pool(handle, &pool_info(1, 0, &[]), ptr::null(), &mut pool) };
+	// SAFETY: as above.
 	unsafe {
-		let mut wrong_type = pool_info(1, 0, &good);
-		wrong_type.s_type = 0;
-		create_pool(handle, &wrong_type, ptr::null(), &mut pool);
-		create_pool(handle, &pool_info(1, 1, &good), ptr::null(), &mut pool);
-		create_pool(handle, &pool_info(0, 0, &good), ptr::null(), &mut pool);
-		create_pool(handle, &pool_info(1, 0, &[]), ptr::null(), &mut pool);
 		create_pool(
 			handle,
 			&pool_info(1, 0, &buffers(0, STORAGE_BUFFER)),
 			ptr::null(),
 			&mut pool,
 		);
+	}
+	// SAFETY: as above.
+	unsafe {
 		create_pool(
 			handle,
 			&pool_info(1, 0, &buffers(1, 11)),
 			ptr::null(),
 			&mut pool,
 		);
-		let one = [layout];
-		let mut wrong_type = allocate_info(pool, &one);
-		wrong_type.s_type = 0;
-		allocate_sets(handle, &wrong_type, &mut set);
-		allocate_sets(handle, &allocate_info(POOLS + 9, &[layout]), &mut set);
-		allocate_sets(handle, &allocate_info(pool, &[]), &mut set);
-		allocate_sets(handle, &allocate_info(pool, &[0x62_0009]), &mut set);
-		destroy_pool(handle, POOLS + 9, ptr::null());
 	}
+	let one = [layout];
+	let mut wrong_type = allocate_info(pool, &one);
+	wrong_type.s_type = 0;
+	// SAFETY: as above.
+	unsafe { allocate_sets(handle, &wrong_type, &mut set) };
+	// SAFETY: as above.
+	unsafe { allocate_sets(handle, &allocate_info(POOLS + 9, &[layout]), &mut set) };
+	// SAFETY: as above.
+	unsafe { allocate_sets(handle, &allocate_info(pool, &[]), &mut set) };
+	// SAFETY: as above.
+	unsafe { allocate_sets(handle, &allocate_info(pool, &[0x62_0009]), &mut set) };
+	// SAFETY: as above.
+	unsafe { destroy_pool(handle, POOLS + 9, ptr::null()) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	assert_eq!(
 		invalid,
@@ -261,10 +274,9 @@ fn the_fake_driver_reports_broken_descriptor_rules() {
 	// The pools the broken calls made are still live.
 	let made = with(|driver| driver.pipeline_objects.pools.len() as u64);
 	// SAFETY: as above.
-	unsafe {
-		for pool in POOLS + 1..=POOLS + made {
-			destroy_pool(handle, pool, ptr::null());
-		}
+	for pool in POOLS + 1..=POOLS + made {
+		// SAFETY: as above.
+		unsafe { destroy_pool(handle, pool, ptr::null()) };
 	}
 	drop(pipeline);
 	finish();

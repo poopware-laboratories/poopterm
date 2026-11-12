@@ -3,13 +3,11 @@
 //! when the next is recorded, on devices that can write them and only
 //! those. The fake's query functions live here and check the
 //! specification's valid usage rules.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{INTEL, device},
 	choose::{GRAPHICS, Kind},
 	commands::Commands,
+	driver_tests::erase,
 	driver_tests::{Driver, finish, install, with},
 	stamps::*,
 	submit_types::RawCommandBuffer,
@@ -20,7 +18,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	rc::Rc,
 	time::Duration,
 };
@@ -34,17 +31,14 @@ pub(super) struct Pools {
 }
 
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateQueryPool" => transmute::<CreateQueryPool, VoidFunction>(create),
-			b"vkDestroyQueryPool" => transmute::<DestroyQueryPool, VoidFunction>(destroy),
-			b"vkCmdResetQueryPool" => transmute::<CmdResetQueryPool, VoidFunction>(reset),
-			b"vkCmdWriteTimestamp2" => transmute::<CmdWriteTimestamp2, VoidFunction>(write),
-			b"vkGetQueryPoolResults" => transmute::<GetQueryPoolResults, VoidFunction>(results),
-			_ => return None,
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateQueryPool" => erase!(CreateQueryPool, create),
+		b"vkDestroyQueryPool" => erase!(DestroyQueryPool, destroy),
+		b"vkCmdResetQueryPool" => erase!(CmdResetQueryPool, reset),
+		b"vkCmdWriteTimestamp2" => erase!(CmdWriteTimestamp2, write),
+		b"vkGetQueryPoolResults" => erase!(GetQueryPoolResults, results),
+		_ => return None,
+	})
 }
 
 unsafe extern "system" fn create(
@@ -179,13 +173,9 @@ unsafe extern "system" fn results(
 		if answer == 0 {
 			let values = driver.timestamps;
 			for index in 0..count.min(2) as usize {
+				let slot = data.cast::<u64>().wrapping_add(index);
 				// SAFETY: checked above to have room for `count` 64-bit values.
-				unsafe {
-					data
-						.cast::<u64>()
-						.add(index)
-						.write(values[first as usize + index])
-				};
+				unsafe { slot.write(values[first as usize + index]) };
 			}
 		}
 		answer
@@ -323,12 +313,13 @@ fn the_fake_driver_checks_the_query_rules() {
 	let pool = with(|driver| driver.query_pools.live[0].0);
 	let buffer = std::ptr::null_mut();
 	// SAFETY: the fake only records what it is given.
-	unsafe {
-		write(buffer, 0x1, pool, 0);
-		reset(buffer, pool, 1, 2);
-		write(buffer, 0x3, pool, 1);
-		write(buffer, 0x1, 0xbad, 0);
-	}
+	unsafe { write(buffer, 0x1, pool, 0) };
+	// SAFETY: as above.
+	unsafe { reset(buffer, pool, 1, 2) };
+	// SAFETY: as above.
+	unsafe { write(buffer, 0x3, pool, 1) };
+	// SAFETY: as above.
+	unsafe { write(buffer, 0x1, 0xbad, 0) };
 	let invalid = with(|driver| std::mem::take(&mut driver.invalid));
 	let expected = [
 		"vkCmdWriteTimestamp2: a query reset and not written since",

@@ -4,15 +4,13 @@
 //! failures, and the order things go in. The fake's command functions live
 //! here and check the specification's valid usage rules, among them that
 //! nothing pending is reset or destroyed.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{GARBAGE, INTEL, device},
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
 	commands::Commands,
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{Driver, family, finish, install, with, with_devices},
 	submit_types::*,
 	timeline::Timeline,
@@ -21,7 +19,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	ptr,
 	rc::Rc,
 };
@@ -61,23 +58,20 @@ const VALIDATION_FAILED: i32 = -1_000_011_001;
 
 /// The fake's command function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateCommandPool" => transmute::<CreateCommandPool, VoidFunction>(create_pool),
-			b"vkDestroyCommandPool" => transmute::<DestroyCommandPool, VoidFunction>(destroy_pool),
-			b"vkResetCommandPool" => transmute::<ResetCommandPool, VoidFunction>(reset_pool),
-			b"vkAllocateCommandBuffers" => transmute::<AllocateCommandBuffers, VoidFunction>(allocate),
-			b"vkBeginCommandBuffer" => transmute::<BeginCommandBuffer, VoidFunction>(begin),
-			b"vkEndCommandBuffer" => transmute::<EndCommandBuffer, VoidFunction>(end),
-			b"vkQueueSubmit2" => transmute::<QueueSubmit2, VoidFunction>(submit),
-			_ => {
-				let stamps = super::stamps_tests::function(name);
-				let stamps = stamps.or_else(|| super::fault_tests::function(name));
-				return stamps.or_else(|| super::recording_tests::function(name));
-			}
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateCommandPool" => erase!(CreateCommandPool, create_pool),
+		b"vkDestroyCommandPool" => erase!(DestroyCommandPool, destroy_pool),
+		b"vkResetCommandPool" => erase!(ResetCommandPool, reset_pool),
+		b"vkAllocateCommandBuffers" => erase!(AllocateCommandBuffers, allocate),
+		b"vkBeginCommandBuffer" => erase!(BeginCommandBuffer, begin),
+		b"vkEndCommandBuffer" => erase!(EndCommandBuffer, end),
+		b"vkQueueSubmit2" => erase!(QueueSubmit2, submit),
+		_ => {
+			let stamps = super::stamps_tests::function(name);
+			let stamps = stamps.or_else(|| super::fault_tests::function(name));
+			return stamps.or_else(|| super::recording_tests::function(name));
+		}
+	})
 }
 
 impl Driver {
@@ -322,17 +316,19 @@ unsafe extern "system" fn submit(
 	submits: *const SubmitInfo2,
 	fence: u64,
 ) -> i32 {
-	// SAFETY: the bindings pass one submission whose arrays live across the
-	// call, each as long as its count, or null and empty.
-	let (info, buffers, waits, signals) = unsafe {
-		let info = &*submits;
-		let buffers = read(info.command_buffer_infos, info.command_buffer_info_count);
-		let waits = read(info.wait_semaphore_infos, info.wait_semaphore_info_count);
-		let signals = read(
+	// SAFETY: the bindings pass one submission that lives across the call.
+	let info = unsafe { &*submits };
+	// SAFETY: its arrays live across the call, each as long as its count, or
+	// null and empty.
+	let buffers = unsafe { read(info.command_buffer_infos, info.command_buffer_info_count) };
+	// SAFETY: as above.
+	let waits = unsafe { read(info.wait_semaphore_infos, info.wait_semaphore_info_count) };
+	// SAFETY: as above.
+	let signals = unsafe {
+		read(
 			info.signal_semaphore_infos,
 			info.signal_semaphore_info_count,
-		);
-		(info, buffers, waits, signals)
+		)
 	};
 	with(|driver| {
 		let before = driver.invalid.len();
@@ -756,15 +752,18 @@ fn the_fake_driver_reports_broken_command_rules() {
 	let (mut semaphore, mut pool, mut other) = (0, 0, 0);
 	let (mut first, mut second) = (ptr::null_mut(), ptr::null_mut());
 	// SAFETY: the fake reads only what the pointers point to.
-	unsafe {
-		(functions.create_semaphore)(handle, &semaphore_info, ptr::null(), &mut semaphore);
-		// Unknown flags, another family, and a secondary buffer.
-		(functions.create_pool)(handle, &pool_info(4, 0), ptr::null(), &mut other);
-		(functions.create_pool)(handle, &pool_info(0, 1), ptr::null(), &mut other);
-		(functions.create_pool)(handle, &pool_info(TRANSIENT, 0), ptr::null(), &mut pool);
-		(functions.allocate_commands)(handle, &allocate_info(pool, 1), &mut first);
-		(functions.allocate_commands)(handle, &allocate_info(pool, 0), &mut second);
-	}
+	unsafe { (functions.create_semaphore)(handle, &semaphore_info, ptr::null(), &mut semaphore) };
+	// Unknown flags, another family, and a secondary buffer.
+	// SAFETY: as above.
+	unsafe { (functions.create_pool)(handle, &pool_info(4, 0), ptr::null(), &mut other) };
+	// SAFETY: as above.
+	unsafe { (functions.create_pool)(handle, &pool_info(0, 1), ptr::null(), &mut other) };
+	// SAFETY: as above.
+	unsafe { (functions.create_pool)(handle, &pool_info(TRANSIENT, 0), ptr::null(), &mut pool) };
+	// SAFETY: as above.
+	unsafe { (functions.allocate_commands)(handle, &allocate_info(pool, 1), &mut first) };
+	// SAFETY: as above.
+	unsafe { (functions.allocate_commands)(handle, &allocate_info(pool, 0), &mut second) };
 	let expected = [
 		"vkCreateCommandPool: flags",
 		"vkCreateCommandPool: the device's queue family",
@@ -803,28 +802,36 @@ fn the_fake_driver_reports_broken_command_rules() {
 	// A call that breaks a rule changes nothing and fails.
 	let invalid = VALIDATION_FAILED;
 	// SAFETY: as above.
-	unsafe {
-		// Ending and submitting a buffer never begun, then beginning one twice.
-		assert_eq!((functions.end)(first), invalid);
-		assert_eq!(submit_to(first, queue, 1, ALL_COMMANDS), invalid);
-		(functions.begin)(first, &begin_info);
-		assert_eq!((functions.begin)(first, &begin_info), invalid);
-		(functions.end)(first);
-		// Another queue, no stage, and a value the timeline is not above.
-		submit_to(first, (handle as usize + 2) as RawQueue, 1, ALL_COMMANDS);
-		submit_to(first, queue, 1, 0);
-		reach(3);
-		submit_to(first, queue, 3, ALL_COMMANDS);
-		// Raising it to 5, then to 5 again before the GPU gets there.
-		assert_eq!(submit_to(first, queue, 5, ALL_COMMANDS), 0);
-		(functions.begin)(second, &begin_info);
-		(functions.end)(second);
-		submit_to(second, queue, 5, ALL_COMMANDS);
-		// Resetting or destroying the pool or the timeline meanwhile.
-		(functions.reset_pool)(handle, pool, 0);
-		(functions.destroy_pool)(handle, pool, ptr::null());
-		(functions.destroy_semaphore)(handle, semaphore, ptr::null());
-	}
+	// Ending and submitting a buffer never begun, then beginning one twice.
+	unsafe { assert_eq!((functions.end)(first), invalid) };
+	assert_eq!(submit_to(first, queue, 1, ALL_COMMANDS), invalid);
+	// SAFETY: as above.
+	unsafe { (functions.begin)(first, &begin_info) };
+	// SAFETY: as above.
+	unsafe { assert_eq!((functions.begin)(first, &begin_info), invalid) };
+	// SAFETY: as above.
+	unsafe { (functions.end)(first) };
+	// Another queue, no stage, and a value the timeline is not above.
+	// SAFETY: as above.
+	submit_to(first, (handle as usize + 2) as RawQueue, 1, ALL_COMMANDS);
+	submit_to(first, queue, 1, 0);
+	reach(3);
+	submit_to(first, queue, 3, ALL_COMMANDS);
+	// Raising it to 5, then to 5 again before the GPU gets there.
+	// SAFETY: as above.
+	assert_eq!(submit_to(first, queue, 5, ALL_COMMANDS), 0);
+	// SAFETY: as above.
+	unsafe { (functions.begin)(second, &begin_info) };
+	// SAFETY: as above.
+	unsafe { (functions.end)(second) };
+	submit_to(second, queue, 5, ALL_COMMANDS);
+	// Resetting or destroying the pool or the timeline meanwhile.
+	// SAFETY: as above.
+	unsafe { (functions.reset_pool)(handle, pool, 0) };
+	// SAFETY: as above.
+	unsafe { (functions.destroy_pool)(handle, pool, ptr::null()) };
+	// SAFETY: as above.
+	unsafe { (functions.destroy_semaphore)(handle, semaphore, ptr::null()) };
 	let expected = [
 		"vkEndCommandBuffer: Some(Initial), not recording",
 		"vkQueueSubmit2: an executable buffer",

@@ -2,15 +2,13 @@
 //! what each is made with, reading and waiting for how far the GPU got,
 //! timeouts, failures, and the order things go in. The fake's semaphore
 //! functions live here and check the specification's valid usage rules.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	buffer_tests::{GARBAGE, INTEL, device},
 	call::Error,
 	choose::{Device as Described, GRAPHICS, Kind},
 	commands_tests::Stage,
 	device::Device,
+	driver_tests::erase,
 	driver_tests::{family, finish, install, with, with_devices},
 	timeline::Timeline,
 	types::*,
@@ -18,7 +16,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	ptr,
 	rc::Rc,
 	slice,
@@ -32,16 +29,13 @@ const DEVICE_LOST: i32 = -4;
 
 /// The fake's semaphore function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateSemaphore" => transmute::<CreateSemaphore, VoidFunction>(create),
-			b"vkDestroySemaphore" => transmute::<DestroySemaphore, VoidFunction>(destroy),
-			b"vkGetSemaphoreCounterValue" => transmute::<GetSemaphoreCounterValue, VoidFunction>(counter),
-			b"vkWaitSemaphores" => transmute::<WaitSemaphores, VoidFunction>(wait),
-			_ => return super::commands_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateSemaphore" => erase!(CreateSemaphore, create),
+		b"vkDestroySemaphore" => erase!(DestroySemaphore, destroy),
+		b"vkGetSemaphoreCounterValue" => erase!(GetSemaphoreCounterValue, counter),
+		b"vkWaitSemaphores" => erase!(WaitSemaphores, wait),
+		_ => return super::commands_tests::function(name),
+	})
 }
 
 /// The index of `semaphore` in `semaphores`, as the fake numbers them.
@@ -55,15 +49,15 @@ unsafe extern "system" fn create(
 	allocator: *const c_void,
 	semaphore: *mut RawSemaphore,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info that lives across the call,
-	// and a chain of structures of the types they name.
-	let (info, kind) = unsafe {
-		let info = &*info;
-		let chained = info.next.cast::<SemaphoreTypeCreateInfo>();
-		let typed =
-			!chained.is_null() && (*chained).s_type == STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-		(info, typed.then(|| &*chained))
-	};
+	// SAFETY: the bindings pass a create info that lives across the call.
+	let info = unsafe { &*info };
+	let chained = info.next.cast::<SemaphoreTypeCreateInfo>();
+	// SAFETY: a chain of structures of the types they name, so a non-null
+	// next is a structure with an `s_type` first.
+	let typed =
+		!chained.is_null() && unsafe { (*chained).s_type } == STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+	// SAFETY: as above; it is the type its `s_type` names.
+	let kind = typed.then(|| unsafe { &*chained });
 	with(|driver| {
 		driver.check_live_device(device, "vkCreateSemaphore");
 		let rules = [
@@ -137,18 +131,13 @@ unsafe extern "system" fn wait(
 	info: *const SemaphoreWaitInfo,
 	timeout: u64,
 ) -> i32 {
-	// SAFETY: the bindings pass a wait info that lives across the call, and
-	// `semaphore_count` of each.
-	let (info, semaphores, values) = unsafe {
-		let info = &*info;
-		let count = info.semaphore_count as usize;
-		let semaphores = slice::from_raw_parts(info.semaphores, count).to_vec();
-		(
-			info,
-			semaphores,
-			slice::from_raw_parts(info.values, count).to_vec(),
-		)
-	};
+	// SAFETY: the bindings pass a wait info that lives across the call.
+	let info = unsafe { &*info };
+	let count = info.semaphore_count as usize;
+	// SAFETY: they pass `semaphore_count` semaphores.
+	let semaphores = unsafe { slice::from_raw_parts(info.semaphores, count) }.to_vec();
+	// SAFETY: and as many values.
+	let values = unsafe { slice::from_raw_parts(info.values, count) }.to_vec();
 	with(|driver| {
 		driver.check_live_device(device, "vkWaitSemaphores");
 		let rules = [
@@ -409,12 +398,11 @@ fn the_fake_driver_reports_broken_semaphore_rules() {
 		driver.live_devices.push(handle);
 		driver.live_semaphores.clone()
 	});
-	// SAFETY: the fake only records the handles.
-	unsafe {
-		for &semaphore in &live {
-			destroy(handle, semaphore, ptr::null());
-			destroy(handle, semaphore, ptr::null());
-		}
+	for &semaphore in &live {
+		// SAFETY: the fake only records the handles.
+		unsafe { destroy(handle, semaphore, ptr::null()) };
+		// SAFETY: as above, so a second destroy is only reported.
+		unsafe { destroy(handle, semaphore, ptr::null()) };
 	}
 	assert_eq!(reported().len(), live.len());
 	// A destroyed timeline is no longer one to wait for.

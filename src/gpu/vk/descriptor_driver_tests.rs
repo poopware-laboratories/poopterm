@@ -2,11 +2,9 @@
 //! `descriptors_tests`: each checks the specification's valid usage rules,
 //! records the pools and sets made, runs out of room as a pool would, and
 //! frees a pool's sets with it.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	descriptor_types::*,
+	driver_tests::erase,
 	driver_tests::{Driver, with},
 	pipeline_driver_tests::SET_LAYOUTS,
 	pipeline_types::RawDescriptorSetLayout,
@@ -14,7 +12,6 @@ use super::{
 };
 use std::{
 	ffi::{CStr, c_void},
-	mem::transmute,
 	slice,
 };
 
@@ -28,17 +25,14 @@ const LAST_TYPE: i32 = 10;
 
 /// The fake's descriptor function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateDescriptorPool" => transmute::<CreateDescriptorPool, VoidFunction>(create_pool),
-			b"vkDestroyDescriptorPool" => transmute::<DestroyDescriptorPool, VoidFunction>(destroy_pool),
-			b"vkAllocateDescriptorSets" => {
-				transmute::<AllocateDescriptorSets, VoidFunction>(allocate_sets)
-			}
-			_ => return super::draw_driver_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateDescriptorPool" => erase!(CreateDescriptorPool, create_pool),
+		b"vkDestroyDescriptorPool" => erase!(DestroyDescriptorPool, destroy_pool),
+		b"vkAllocateDescriptorSets" => {
+			erase!(AllocateDescriptorSets, allocate_sets)
+		}
+		_ => return super::draw_driver_tests::function(name),
+	})
 }
 
 impl Driver {
@@ -88,16 +82,13 @@ pub(super) unsafe extern "system" fn create_pool(
 	allocator: *const c_void,
 	pool: *mut RawDescriptorPool,
 ) -> i32 {
-	// SAFETY: the bindings pass a create info whose sizes live across the
-	// call.
-	let (info, sizes) = unsafe {
-		let info = &*info;
-		let count = info.pool_size_count as usize;
-		let sizes = match count {
-			0 => &[][..],
-			_ => slice::from_raw_parts(info.pool_sizes, count),
-		};
-		(info, sizes)
+	// SAFETY: the bindings pass a create info that lives across the call.
+	let info = unsafe { &*info };
+	let count = info.pool_size_count as usize;
+	let sizes = match count {
+		0 => &[][..],
+		// SAFETY: its `count` sizes live across the call too.
+		_ => unsafe { slice::from_raw_parts(info.pool_sizes, count) },
 	};
 	with(|driver| {
 		let call = c"vkCreateDescriptorPool";
@@ -148,16 +139,13 @@ pub(super) unsafe extern "system" fn allocate_sets(
 	info: *const DescriptorSetAllocateInfo,
 	sets: *mut RawDescriptorSet,
 ) -> i32 {
-	// SAFETY: the bindings pass an allocate info whose layouts live across
-	// the call, one a set.
-	let (info, layouts) = unsafe {
-		let info = &*info;
-		let count = info.set_count as usize;
-		let layouts = match count {
-			0 => &[][..],
-			_ => slice::from_raw_parts(info.set_layouts, count),
-		};
-		(info, layouts)
+	// SAFETY: the bindings pass an allocate info that lives across the call.
+	let info = unsafe { &*info };
+	let count = info.set_count as usize;
+	let layouts = match count {
+		0 => &[][..],
+		// SAFETY: its layouts, one a set, live across the call too.
+		_ => unsafe { slice::from_raw_parts(info.set_layouts, count) },
 	};
 	with(|driver| {
 		driver.check_live_device(device, "vkAllocateDescriptorSets");
@@ -187,7 +175,7 @@ pub(super) unsafe extern "system" fn allocate_sets(
 			let handle = SETS + driver.pipeline_objects.sets.len() as u64 + 1;
 			driver.pipeline_objects.sets.push((info.pool, layout));
 			// SAFETY: the bindings pass room for one handle a layout.
-			unsafe { *sets.add(index) = handle };
+			unsafe { sets.wrapping_add(index).write(handle) };
 		}
 		0
 	})

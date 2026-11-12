@@ -1,11 +1,9 @@
 //! The fake driver's swapchain functions, for the tests of `driver_tests`:
 //! they check the specification's valid usage rules against what the
 //! surface reports, and hand out images the fake's views can be made of.
-// The fake driver's blocks still hold several operations each; a follow-up
-// splits them, as the bindings' own blocks already are.
-#![expect(clippy::multiple_unsafe_ops_per_block)]
 use super::{
 	device_tests::Made,
+	driver_tests::erase,
 	driver_tests::{Driver, answer, with},
 	image_tests::MadeImage,
 	surface_query_tests::{BGRA, BGRA_SRGB, mesa_wayland},
@@ -47,15 +45,12 @@ pub(super) struct LiveSwapchain {
 
 /// The fake's swapchain function `name`, if it has it.
 pub(super) fn function(name: &CStr) -> Option<VoidFunction> {
-	// SAFETY: the bindings cast each back to its own type.
-	unsafe {
-		Some(match name.to_bytes() {
-			b"vkCreateSwapchainKHR" => transmute::<CreateSwapchain, VoidFunction>(create_swapchain),
-			b"vkDestroySwapchainKHR" => transmute::<DestroySwapchain, VoidFunction>(destroy_swapchain),
-			b"vkGetSwapchainImagesKHR" => transmute::<GetSwapchainImages, VoidFunction>(images),
-			_ => return super::present_driver_tests::function(name),
-		})
-	}
+	Some(match name.to_bytes() {
+		b"vkCreateSwapchainKHR" => erase!(CreateSwapchain, create_swapchain),
+		b"vkDestroySwapchainKHR" => erase!(DestroySwapchain, destroy_swapchain),
+		b"vkGetSwapchainImagesKHR" => erase!(GetSwapchainImages, images),
+		_ => return super::present_driver_tests::function(name),
+	})
 }
 
 impl Driver {
