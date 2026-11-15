@@ -1,5 +1,6 @@
 //! Requests sent as device control strings, collected until the string
-//! ends: DECRQSS (`DCS $ q`) and XTGETTCAP (`DCS + q`).
+//! ends: DECRQSS (`DCS $ q`), XTGETTCAP (`DCS + q`) and DECRSPS
+//! (`DCS Ps $ t`).
 
 /// Longest request kept; longer ones are answered as invalid.
 pub(crate) const MAX_REQUEST: usize = 4096;
@@ -8,6 +9,8 @@ pub(crate) const MAX_REQUEST: usize = 4096;
 pub(crate) enum Kind {
 	Status,
 	Capabilities,
+	/// DECRSPS restoring the tab stops a DECTABSR reported.
+	Presentation(u16),
 }
 
 #[derive(Clone, Debug)]

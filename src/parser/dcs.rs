@@ -24,6 +24,12 @@ impl Term {
 				None => "\x1bP0$r\x1b\\".to_owned(),
 			}],
 			Kind::Capabilities => capability_replies(data.unwrap_or(b"")),
+			Kind::Presentation(which) => {
+				if let Some(report) = data {
+					self.restore_presentation(which, report);
+				}
+				Vec::new()
+			}
 		};
 		self
 			.responses
