@@ -156,10 +156,11 @@ fn an_oversized_restore_changes_nothing() {
 #[test]
 fn other_presentation_reports_are_not_answered() {
 	let mut t = terminal(20);
-	for request in ["\x1b[$w", "\x1b[0$w", "\x1b[1$w", "\x1b[3$w", "\x1b[?2$w"] {
+	for request in ["\x1b[$w", "\x1b[0$w", "\x1b[3$w", "\x1b[?2$w", "\x1b[?1$w"] {
 		assert!(ask(&mut t, request).is_empty(), "{request:?}");
 	}
-	// DECRSPS with another number, none, or more than one restores nothing.
+	// DECRSPS with another number, none, or more than one restores nothing,
+	// and a tab report given as cursor information is malformed.
 	for request in [
 		"\x1bP3$t1/2\x1b\\",
 		"\x1bP$t1/2\x1b\\",

@@ -108,7 +108,7 @@ impl Term {
 						}
 					}
 				}
-				// DECRQPSR: the tab stop report.
+				// DECRQPSR: the cursor information or tab stop report.
 				(b"$", 'w') => self.report_presentation(params.get(0).map_or(0, |p| p[0])),
 				// XTREPORTCOLORS: the current entry and the number saved.
 				(b"#", 'R') => {
@@ -459,7 +459,7 @@ impl Term {
 	/// clearing the screen or moving the cursor.
 	/// The cursor's row and column for CPR and DECXCPR, counted from 1: from
 	/// the scroll region's top in origin mode, and never past the last column.
-	fn reported_cursor(&self) -> (usize, usize) {
+	pub(super) fn reported_cursor(&self) -> (usize, usize) {
 		let top = if self.origin_mode { self.scroll_top } else { 0 };
 		let column = self
 			.cx

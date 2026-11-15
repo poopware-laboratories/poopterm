@@ -151,12 +151,14 @@ impl Term {
 		} else {
 			None
 		};
-		// DECRSPS takes which state to restore (only 2, the tab stops);
+		// DECRSPS takes which state to restore (1 or 2);
 		// DECRQSS and XTGETTCAP take no parameters.
 		let first = params.get(0).and_then(|p| p.first().copied()).unwrap_or(0);
 		let kind = match (intermediates, action) {
 			_ if ignore => None,
-			(b"$", 't') if params.group_count() == 1 && first == 2 => Some(Kind::Presentation(first)),
+			(b"$", 't') if params.group_count() == 1 && matches!(first, 1 | 2) => {
+				Some(Kind::Presentation(first))
+			}
 			_ if params
 				.iter()
 				.any(|param| param.iter().any(|&value| value != 0)) =>
