@@ -31,6 +31,13 @@ impl Term {
 				}
 				return;
 			}
+			// Tertiary DA: the unit ID, all zeros as xterm sends by default.
+			if action == 'c' && intermediates == b"=" {
+				if params.iter().all(|p| p.first().is_none_or(|&n| n == 0)) {
+					self.responses.push(b"\x1bP!|00000000\x1b\\".to_vec());
+				}
+				return;
+			}
 			if action == 'u' && intermediates == b"<" {
 				self.kitty_keyboard = false;
 				return;
