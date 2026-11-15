@@ -60,6 +60,8 @@ mod margins;
 #[cfg(test)]
 mod memory_lock_tests;
 #[cfg(test)]
+mod mode_report_tests;
+#[cfg(test)]
 mod mode_tests;
 #[cfg(test)]
 mod mouse_mode_tests;
@@ -295,6 +297,8 @@ pub(crate) struct Term {
 	/// DECLRMM (`?69`): `CSI Pl ; Pr s` sets the left and right margins
 	/// instead of saving the cursor.
 	pub(crate) lr_margin_mode: bool,
+	/// DEC private modes kept only for DECRQM and XTSAVE.
+	pub(crate) stored_modes: crate::parser::modes::StoredModes,
 	/// The top margin came from an HP memory lock (`ESC l`).
 	pub(crate) memory_locked: bool,
 	pub(crate) saved_cursor: Option<SavedCursor>,
@@ -521,6 +525,7 @@ impl Term {
 			left_margin: 0,
 			right_margin: cols.saturating_sub(1),
 			lr_margin_mode: false,
+			stored_modes: Default::default(),
 			memory_locked: false,
 			saved_cursor: None,
 			bracketed_paste: false,
