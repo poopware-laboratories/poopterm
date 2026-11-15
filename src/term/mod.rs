@@ -26,6 +26,8 @@ pub(crate) mod dcs;
 #[cfg(test)]
 mod dcs_tests;
 #[cfg(test)]
+mod dsr_tests;
+#[cfg(test)]
 mod esctest_tests;
 mod extras;
 mod fill;

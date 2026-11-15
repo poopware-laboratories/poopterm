@@ -193,13 +193,15 @@ impl Term {
 			self.responses.extend(reply.map(String::into_bytes));
 			return;
 		}
-		// DECXCPR: the cursor position with its page, which is always 1.
+		// DECDSR. DECXCPR: the cursor position with its page, which is always 1.
 		if private && action == 'n' {
 			if raw0 == 6 {
 				let (row, col) = self.reported_cursor();
 				self
 					.responses
 					.push(format!("\x1b[?{row};{col};1R").into_bytes());
+			} else if let Some(reply) = super::dsr::dec_status(raw0, leading[1]) {
+				self.responses.push(reply.into_bytes());
 			}
 			return;
 		}
