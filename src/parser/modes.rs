@@ -110,3 +110,29 @@ impl Term {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn stored_modes_ignore_other_numbers() {
+		let mut modes = StoredModes::default();
+		assert!(!modes.set(8, true), "DECARM is a keyboard mode");
+		assert!(!modes.set(60, true));
+		assert_eq!(modes, StoredModes::default());
+		assert_eq!(modes.get(8), None);
+		assert!(modes.set(42, true));
+		assert_eq!((modes.get(42), modes.get(4)), (Some(true), Some(false)));
+	}
+
+	#[test]
+	fn permanence_wins_over_the_state() {
+		assert_eq!(mode_status(Some(true), true), 4);
+		assert_eq!(mode_status(None, true), 4);
+		assert_eq!(
+			[Some(true), Some(false), None].map(|state| mode_status(state, false)),
+			[1, 2, 0]
+		);
+	}
+}

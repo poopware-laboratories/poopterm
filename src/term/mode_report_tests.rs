@@ -129,3 +129,40 @@ fn a_full_reset_clears_stored_modes() {
 		);
 	}
 }
+
+#[test]
+fn permanent_modes_belong_to_one_namespace_each() {
+	let mut t = terminal();
+	// ?1 is DECCKM, which works; ANSI 60 was never defined.
+	assert_eq!(
+		ask(&mut t, "\x1b[?1$p\x1b[60$p"),
+		["\x1b[?1;2$y", "\x1b[60;0$y"]
+	);
+	// ?18 is a stored DEC mode while ANSI 18 (TSM) is permanently reset.
+	assert_eq!(
+		ask(&mut t, "\x1b[?18h\x1b[18$p\x1b[?18$p"),
+		["\x1b[18;4$y", "\x1b[?18;1$y"]
+	);
+}
+
+#[test]
+fn decarm_stays_a_keyboard_mode() {
+	let mut t = terminal();
+	assert_eq!(ask(&mut t, "\x1b[?8l\x1b[?8$p"), ["\x1b[?8;2$y"]);
+	assert!(!t.keyboard.auto_repeat, "key repeats are dropped");
+}
+
+#[test]
+fn a_soft_reset_keeps_stored_modes() {
+	let mut t = terminal();
+	assert_eq!(ask(&mut t, "\x1b[?42h\x1b[!p\x1b[?42$p"), ["\x1b[?42;1$y"]);
+}
+
+#[test]
+fn restoring_a_permanently_reset_mode_leaves_it_reset() {
+	let mut t = terminal();
+	assert_eq!(
+		ask(&mut t, "\x1b[?60h\x1b[?60s\x1b[?60r\x1b[?60$p"),
+		["\x1b[?60;4$y"]
+	);
+}
