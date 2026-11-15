@@ -15,6 +15,7 @@ mod clipboard_tests;
 #[cfg(test)]
 mod color_tests;
 mod colors;
+pub(crate) use colors::STACK_DEPTH;
 #[cfg(test)]
 mod conemu_tests;
 #[cfg(test)]
@@ -99,6 +100,8 @@ mod screen;
 mod scrollback;
 #[cfg(test)]
 mod scrollback_tests;
+#[cfg(test)]
+mod sgr_stack_tests;
 mod shared;
 mod shell;
 pub(crate) mod status;
@@ -286,6 +289,8 @@ pub(crate) struct Term {
 	pub(crate) color_overrides: [Option<u32>; 256],
 	pub(crate) colors: Colors,
 	pub(crate) color_stack: Vec<colors::Saved>,
+	/// Renditions XTPUSHSGR saved, newest last.
+	pub(crate) sgr_stack: Vec<crate::parser::sgr_stack::SavedSgr>,
 	pub(crate) cx: usize,
 	pub(crate) cy: usize,
 	pub(crate) fg: u32,
@@ -526,6 +531,7 @@ impl Term {
 			color_overrides: [None; 256],
 			colors: Colors::default(),
 			color_stack: Vec::new(),
+			sgr_stack: Vec::new(),
 			fg: theme.fg,
 			fg_id: 0,
 			sgr_fg: theme.fg,

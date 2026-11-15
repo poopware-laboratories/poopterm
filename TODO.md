@@ -372,7 +372,7 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
 
 - **xterm.** Still missing, in the order planned: left and right margins
   (DECLRMM ?69, DECSLRM, DECIC/DECDC, SL/SR, DECBI/DECFI); reports (DA3,
-  DECXCPR, DECRQPSR, XTPUSHSGR/XTPOPSGR, XTSMTITLE, `CSI ? n` statuses);
+  DECXCPR, DECRQPSR, XTSMTITLE, `CSI ? n` statuses);
   cursor blink ?12; selective erase (DECSCA, DECSED, DECSEL), which DA1
   already claims; VT400 rectangle operations (DECRQCRA stays unanswered:
   its checksums leak the screen); G2/G3 charsets with single and locking

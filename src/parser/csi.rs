@@ -112,6 +112,8 @@ impl Term {
 						}
 					}
 				}
+				(b"#", '{') => self.push_sgr(params),
+				(b"#", '}') => self.pop_sgr(),
 				// DECRQPSR: the cursor information or tab stop report.
 				(b"$", 'w') => self.report_presentation(params.get(0).map_or(0, |p| p[0])),
 				// XTREPORTCOLORS: the current entry and the number saved.

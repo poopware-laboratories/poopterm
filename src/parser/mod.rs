@@ -30,6 +30,7 @@ mod params;
 mod presentation_state;
 mod print;
 mod sgr;
+pub(crate) mod sgr_stack;
 #[cfg(test)]
 mod sgr_tests;
 pub(crate) mod title_modes;

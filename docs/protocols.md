@@ -71,7 +71,9 @@ with `font_path` or `POOPTERM_FONT`.
   cannot read clipboard contents without consent.
 - **Colors:** every xterm and kitty color sequence, with queries: OSC 4,
   5/6, 10–19 and their resets, kitty's OSC 21, and the color stack
-  (XTPUSHCOLORS, XTPOPCOLORS, XTREPORTCOLORS).
+  (XTPUSHCOLORS, XTPOPCOLORS, XTREPORTCOLORS). XTPUSHSGR and XTPOPSGR save
+  and restore the rendition, all of it or the attributes chosen, ten levels
+  deep.
 - **Notifications:** OSC 9, OSC 777 and kitty's OSC 99 (with buttons,
   icons, closing and activation reports) become desktop notifications,
   through D-Bus on Linux and FreeBSD and `osascript` on macOS, rate limited
