@@ -53,7 +53,7 @@ fn other_settings_are_reported() {
 	assert_eq!(status(&mut t, " q"), "\x1bP1$r5 q\x1b\\");
 	send(&mut t, "\x1b[4 q");
 	assert_eq!(status(&mut t, " q"), "\x1bP1$r4 q\x1b\\");
-	assert_eq!(status(&mut t, "\"p"), "\x1bP1$r62;1\"p\x1b\\");
+	assert_eq!(status(&mut t, "\"p"), "\x1bP1$r65;1\"p\x1b\\");
 	assert_eq!(status(&mut t, "\"q"), "\x1bP1$r0\"q\x1b\\");
 	assert_eq!(status(&mut t, "t"), "\x1bP1$r24t\x1b\\");
 	assert_eq!(status(&mut t, "$|"), "\x1bP1$r80$|\x1b\\");

@@ -45,8 +45,8 @@ impl Term {
 				};
 				format!("{} q", steady - usize::from(self.cursor_blink))
 			}
-			// A VT220 (as primary DA says) with 7-bit controls.
-			b"\"p" => "62;1\"p".to_owned(),
+			// A VT525 (as primary DA says) with 7-bit controls.
+			b"\"p" => "65;1\"p".to_owned(),
 			// No characters are protected.
 			b"\"q" => "0\"q".to_owned(),
 			b"t" => format!("{}t", self.rows),

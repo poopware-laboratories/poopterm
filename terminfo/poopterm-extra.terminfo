@@ -14,7 +14,7 @@
 	kRIT7=\E[1;7C,
 	kUP7=\E[1;7A,
 	mgc=\E[?69l,
-	rv=\E\\[>0;[0-9]+;1c,
+	rv=\E\\[>64;[0-9][0-9][0-9][0-9][0-9]+;0c,
 	smglp=\E[?69h\E[%i%p1%ds,
 	smglr=\E[?69h\E[%i%p1%d;%p2%ds,
 	smgrp=\E[?69h\E[%i;%p1%ds,

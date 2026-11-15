@@ -713,7 +713,7 @@ fn secondary_device_attributes_are_answered() {
 	feed(&mut t, b"\x1b[>c");
 	let reply = String::from_utf8(t.responses.pop().unwrap()).unwrap();
 	assert!(
-		reply.starts_with("\x1b[>0;") && reply.ends_with(";1c"),
+		reply.starts_with("\x1b[>64;") && reply.ends_with(";0c"),
 		"{reply:?}"
 	);
 }

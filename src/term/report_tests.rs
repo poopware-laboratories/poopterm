@@ -21,10 +21,24 @@ fn ask(term: &mut Term, bytes: &str) -> Vec<String> {
 
 #[test]
 fn primary_device_attributes_claim_only_what_is_implemented() {
-	// VT220 with Sixel graphics. Selective erase (6) is not claimed until
-	// DECSCA, DECSED and DECSEL exist.
+	// A VT525 with Sixel graphics (4), horizontal scrolling (21) and ANSI
+	// color (22). Selective erase (6), rectangles (28) and the rest are not
+	// claimed until they exist.
 	let mut t = terminal();
-	assert_eq!(ask(&mut t, "\x1b[c\x1b[0c"), ["\x1b[?62;4c", "\x1b[?62;4c"]);
+	assert_eq!(
+		ask(&mut t, "\x1b[c\x1b[0c"),
+		["\x1b[?65;4;21;22c", "\x1b[?65;4;21;22c"]
+	);
+}
+
+#[test]
+fn device_attribute_requests_with_a_parameter_are_ignored() {
+	let mut t = terminal();
+	for request in ["\x1b[1c", "\x1b[65c", "\x1b[>1c", "\x1b[>41c", "\x1b[0;1c"] {
+		assert_eq!(ask(&mut t, request), Vec::<String>::new(), "{request:?}");
+	}
+	// An explicit 0 is the same as none.
+	assert_eq!(ask(&mut t, "\x1b[>0c").len(), 1);
 }
 
 #[test]
@@ -136,4 +150,32 @@ fn rectangle_checksums_are_never_answered() {
 	}
 	// The terminal still answers what it should afterwards.
 	assert_eq!(ask(&mut t, "\x1b[5n"), ["\x1b[0n"]);
+}
+
+#[test]
+fn every_report_claims_the_same_terminal() {
+	let mut t = terminal();
+	let replies = ask(&mut t, "\x1b[c\x1b[>c\x1bP$q\"p\x1b\\");
+	let level = |reply: &str, prefix: &str| -> u16 {
+		let rest = reply
+			.strip_prefix(prefix)
+			.unwrap_or_else(|| panic!("{reply:?}"));
+		rest.split([';', 'c']).next().unwrap().parse().unwrap()
+	};
+	// DA1 65 is a VT5xx, DA2 64 a VT520 family member, DECSCL 65 level 5.
+	assert_eq!(level(&replies[0], "\x1b[?"), 65);
+	assert_eq!(level(&replies[1], "\x1b[>"), 64);
+	assert_eq!(level(&replies[2], "\x1bP1$r"), 65);
+	// DA2's version is the crate version as MMmmpp, with no ROM cartridge.
+	let fields: Vec<&str> = replies[1][3..replies[1].len() - 1].split(';').collect();
+	let version: Vec<u32> = env!("CARGO_PKG_VERSION")
+		.split(['.', '-'])
+		.take(3)
+		.map(|part| part.parse().unwrap())
+		.collect();
+	assert_eq!(
+		fields[1],
+		(version[0] * 10_000 + version[1] * 100 + version[2]).to_string()
+	);
+	assert_eq!(fields[2], "0");
 }

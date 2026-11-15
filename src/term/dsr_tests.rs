@@ -31,6 +31,8 @@ fn hardware_status_reports_answer_as_a_terminal_without_it() {
 		("\x1b[?62n", "\x1b[0*{"),    // DECMSR: no macro space
 		("\x1b[?75n", "\x1b[?70n"),   // data integrity: no errors
 		("\x1b[?85n", "\x1b[?83n"),   // not set up for multiple sessions
+		// Keyboard: North American, ready, LK201, as xterm says at level 4+.
+		("\x1b[?26n", "\x1b[?27;1;0;0n"),
 	] {
 		assert_eq!(ask(&mut t, request), [reply], "{request:?}");
 	}

@@ -22,10 +22,13 @@ impl Term {
 				return;
 			}
 			if action == 'c' && intermediates == b">" {
-				// Secondary DA: terminal type 0, version as MMmmpp, ROM cartridge 1.
-				self
-					.responses
-					.push(format!("\x1b[>0;{};1c", version_number()).into_bytes());
+				// Secondary DA: a VT525 (64), the version as MMmmpp, no ROM
+				// cartridge. Requests with a parameter are not DA.
+				if params.iter().all(|p| p.first().is_none_or(|&n| n == 0)) {
+					self
+						.responses
+						.push(format!("\x1b[>64;{};0c", version_number()).into_bytes());
+				}
 				return;
 			}
 			if action == 'u' && intermediates == b"<" {
@@ -375,8 +378,10 @@ impl Term {
 				}
 				_ => {}
 			},
-			// VT220 with Sixel graphics.
-			'c' => self.responses.push(b"\x1b[?62;4c".to_vec()),
+			// A VT525 with Sixel graphics, horizontal scrolling and ANSI color.
+			'c' if params.iter().all(|p| p.first().is_none_or(|&n| n == 0)) => {
+				self.responses.push(PRIMARY_DA.to_vec());
+			}
 			't' if !private => self.window_op(leading[0], leading[1]),
 			'b' => {
 				if let Some(c) = self.last_printed {
@@ -426,6 +431,10 @@ impl Term {
 		})
 	}
 }
+
+/// Primary DA: a VT525 (65) with Sixel graphics (4), horizontal scrolling
+/// (21) and ANSI color (22), the extensions implemented in full.
+const PRIMARY_DA: &[u8] = b"\x1b[?65;4;21;22c";
 
 /// The crate version encoded as `major * 10000 + minor * 100 + patch`.
 fn version_number() -> u32 {

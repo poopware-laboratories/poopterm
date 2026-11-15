@@ -319,6 +319,8 @@ fn replies_match_the_advertised_patterns() {
 	}
 	// And nothing else: another terminal's replies do not match.
 	assert!(!matches(&entry.tput("rv", &[]), b"\x1b[>41;380;0c"));
+	assert!(!matches(&entry.tput("rv", &[]), b"\x1b[>64;380;0c"));
+	assert!(!matches(&entry.tput("rv", &[]), b"\x1b[>0;261184;1c"));
 	assert!(!matches(&entry.tput("xr", &[]), b"\x1bP>|XTerm(380)\x1b\\"));
 }
 
