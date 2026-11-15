@@ -333,7 +333,7 @@ fn decrqm_keeps_private_and_ansi_mode_numbers_apart() {
 	send(&mut t, "\x1b[20h\x1b[?20$p\x1b[20$p\x1b[?1h\x1b[1$p");
 	assert_eq!(
 		replies(&mut t),
-		["\x1b[?20;0$y", "\x1b[20;1$y", "\x1b[1;0$y"]
+		["\x1b[?20;0$y", "\x1b[20;1$y", "\x1b[1;4$y"]
 	);
 }
 

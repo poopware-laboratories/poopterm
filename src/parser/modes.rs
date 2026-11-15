@@ -2,6 +2,61 @@
 //! XTSAVE / XTRESTORE.
 use crate::term::Term;
 
+/// DEC private modes kept only so programs read back what they set: DECSCLM
+/// (smooth scrolling, ?4), DECPFF and DECPEX (printer form feed and extent,
+/// ?18, ?19), DECHEBM (Hebrew keyboard, ?35) and DECNRCM (national
+/// replacement characters, ?42). All start reset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StoredModes(u8);
+
+const STORED: [u16; 5] = [4, 18, 19, 35, 42];
+
+impl StoredModes {
+	fn bit(mode: u16) -> Option<u8> {
+		STORED.iter().position(|&m| m == mode).map(|i| 1 << i)
+	}
+
+	pub(crate) fn get(self, mode: u16) -> Option<bool> {
+		Self::bit(mode).map(|bit| self.0 & bit != 0)
+	}
+
+	/// Sets or resets `mode`; false if it is not a stored mode.
+	pub(crate) fn set(&mut self, mode: u16, enabled: bool) -> bool {
+		let Some(bit) = Self::bit(mode) else {
+			return false;
+		};
+		self.0 = if enabled { self.0 | bit } else { self.0 & !bit };
+		true
+	}
+}
+
+/// ANSI modes with no effect here, which DECRQM reports as permanently
+/// reset: GATM, SRTM, VEM, HEM, PUM, FEAM, FETM, MATM, TTM, SATM, TSM, EBM.
+const PERMANENT_ANSI: [u16; 12] = [1, 5, 7, 10, 11, 13, 14, 15, 16, 17, 18, 19];
+
+/// DEC private modes DECRQM reports as permanently reset: DECHCCM (?60),
+/// which only matters with horizontal scrolling.
+const PERMANENT_DEC: [u16; 1] = [60];
+
+/// A DECRQM status: 0 unrecognized, 1 set, 2 reset, 4 permanently reset.
+pub(super) fn mode_status(state: Option<bool>, permanent: bool) -> u8 {
+	match state {
+		_ if permanent => 4,
+		Some(true) => 1,
+		Some(false) => 2,
+		None => 0,
+	}
+}
+
+/// Whether DECRQM reports `mode` as permanently reset.
+pub(super) fn permanently_reset(mode: u16, private: bool) -> bool {
+	if private {
+		PERMANENT_DEC.contains(&mode)
+	} else {
+		PERMANENT_ANSI.contains(&mode)
+	}
+}
+
 impl Term {
 	pub(super) fn set_ansi_mode(&mut self, mode: u16, enabled: bool) {
 		match mode {
@@ -53,5 +108,31 @@ impl Term {
 		for (mode, set) in restored {
 			self.apply_csi_dispatch(&[mode][..], b"?", false, if set { 'h' } else { 'l' });
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn stored_modes_ignore_other_numbers() {
+		let mut modes = StoredModes::default();
+		assert!(!modes.set(8, true), "DECARM is a keyboard mode");
+		assert!(!modes.set(60, true));
+		assert_eq!(modes, StoredModes::default());
+		assert_eq!(modes.get(8), None);
+		assert!(modes.set(42, true));
+		assert_eq!((modes.get(42), modes.get(4)), (Some(true), Some(false)));
+	}
+
+	#[test]
+	fn permanence_wins_over_the_state() {
+		assert_eq!(mode_status(Some(true), true), 4);
+		assert_eq!(mode_status(None, true), 4);
+		assert_eq!(
+			[Some(true), Some(false), None].map(|state| mode_status(state, false)),
+			[1, 2, 0]
+		);
 	}
 }

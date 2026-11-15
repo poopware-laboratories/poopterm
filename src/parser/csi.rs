@@ -163,6 +163,7 @@ impl Term {
 						}
 					}
 					2004 => self.bracketed_paste = enabled,
+					_ if self.stored_modes.set(p, enabled) => {}
 					_ => self
 						.keyboard
 						.mode(p)
@@ -414,7 +415,12 @@ impl Term {
 			1005 | 1006 | 1015 | 1016 => self.mouse_encoding.mode() == Some(mode),
 			2004 => self.bracketed_paste,
 			69 => self.lr_margin_mode,
-			_ => return self.keyboard.clone().mode(mode).copied(),
+			_ => {
+				return self
+					.stored_modes
+					.get(mode)
+					.or_else(|| self.keyboard.clone().mode(mode).copied());
+			}
 		})
 	}
 }

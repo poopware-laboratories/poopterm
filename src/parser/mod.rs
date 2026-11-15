@@ -13,7 +13,7 @@ mod dcs;
 mod dispatch_tests;
 mod erase;
 mod esc;
-mod modes;
+pub(crate) mod modes;
 mod narrow;
 mod osc;
 mod osc_clipboard;
@@ -202,11 +202,7 @@ impl Term {
 				} else {
 					self.private_mode(mode)
 				};
-				let status = match state {
-					Some(true) => 1,
-					Some(false) => 2,
-					None => 0,
-				};
+				let status = modes::mode_status(state, modes::permanently_reset(mode, true));
 				self
 					.responses
 					.push(format!("\x1b[?{mode};{status}$y").into_bytes());
@@ -215,9 +211,7 @@ impl Term {
 		}
 		if intermediates == b"$" && action == 'p' {
 			let mode = params.get(0).map_or(0, |p| p[0]);
-			let status = self
-				.ansi_mode(mode)
-				.map_or(0, |set| if set { 1 } else { 2 });
+			let status = modes::mode_status(self.ansi_mode(mode), modes::permanently_reset(mode, false));
 			self
 				.responses
 				.push(format!("\x1b[{mode};{status}$y").into_bytes());
