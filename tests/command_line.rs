@@ -428,3 +428,74 @@ fn measuring_the_terminal_without_one_says_it_needs_one() {
 		assert!(run.stdout.is_empty());
 	}
 }
+
+/// Runs `poopterm` with no display to open a window on.
+fn without_display(args: &[&str]) -> Output {
+	Command::new(env!("CARGO_BIN_EXE_poopterm"))
+		.args(args)
+		.env_remove("WAYLAND_DISPLAY")
+		.env_remove("WAYLAND_SOCKET")
+		.env_remove("DISPLAY")
+		.output()
+		.expect("poopterm runs")
+}
+
+#[test]
+fn a_bad_app_id_fails_before_any_window_opens() {
+	for bad in ["a b", "a/b", ".hidden", "é", ""] {
+		let run = without_display(&["--app-id", bad]);
+		assert_eq!(run.status.code(), Some(1), "{bad:?}");
+		assert!(run.stdout.is_empty());
+		assert_eq!(
+			text(&run.stderr),
+			format!(
+				"error: --app-id {bad:?} is not an app id\n  Use 1 to 255 letters, digits, \
+				 dots, underscores and dashes, such as dropdown.\n"
+			)
+		);
+	}
+	let run = without_display(&["--app-id", &"a".repeat(256)]);
+	assert_eq!(run.status.code(), Some(1));
+	assert!(text(&run.stderr).contains("is not an app id"));
+}
+
+#[test]
+fn an_app_id_needs_a_name_and_nothing_after_it() {
+	let run = without_display(&["--app-id"]);
+	assert_eq!(run.status.code(), Some(1));
+	assert_eq!(
+		text(&run.stderr),
+		"error: --app-id needs a name\n  For example: poopterm --app-id dropdown\n"
+	);
+	let run = without_display(&["--app-id", "dropdown", "extra"]);
+	assert_eq!(run.status.code(), Some(1));
+	assert_eq!(
+		text(&run.stderr),
+		"error: unexpected argument extra after --app-id dropdown\n"
+	);
+}
+
+// macOS would open a real window: it needs no display variable.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn a_good_app_id_gets_as_far_as_opening_the_window() {
+	for args in [
+		&["--app-id", "dropdown"][..],
+		&["--app-id=org.example.Drop_2"],
+	] {
+		let run = without_display(args);
+		assert!(!run.status.success(), "{args:?}");
+		let error = text(&run.stderr);
+		// The display is missing; the arguments were fine.
+		assert!(error.contains("DISPLAY"), "{args:?}: {error}");
+		assert!(!error.contains("app id"), "{error}");
+	}
+}
+
+#[test]
+fn the_help_documents_the_app_id() {
+	let help = text(&poopterm(&["--help"]).stdout);
+	assert!(help.contains("      --app-id NAME"), "{help}");
+	assert!(help.contains("Wayland app id"));
+	assert!(help.contains("poopterm --app-id dropdown"));
+}

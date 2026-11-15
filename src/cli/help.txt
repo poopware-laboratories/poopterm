@@ -9,6 +9,9 @@ USAGE
 OPTIONS
   -h, --help	Show this help.
   -V, --version	Print the version number.
+      --app-id NAME	Open the window with this Wayland app id and
+	X11 class instead of poopterm, so compositor
+	rules can single it out, as for a dropdown.
       --print-terminfo [small]	Print Poopterm's terminfo entry, which tells
 	programs what it can draw. Shells get
 	TERM=xterm-poopterm once it is installed for
@@ -73,6 +76,8 @@ EXAMPLES
   `poopterm --benchmark --only log,tui --size 200x50`
   # Try the software renderer once
   `POOPTERM_RENDERER=software poopterm`
+  # A window that compositor rules match by its app id
+  `poopterm --app-id dropdown`
 
 Fonts, themes, shortcuts and the rest live in Settings.
 Documentation: https://github.com/poopware-laboratories/poopterm/tree/main/docs

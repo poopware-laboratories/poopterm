@@ -35,7 +35,7 @@ fn color_needs_a_terminal_and_no_no_color_or_dumb_term() {
 
 #[test]
 fn no_arguments_open_the_window() {
-	assert_eq!(parse(args(&[])), Ok(Command::Run));
+	assert_eq!(parse(args(&[])), Ok(Command::Run { app_id: None }));
 }
 
 #[test]
@@ -347,6 +347,7 @@ fn every_documented_option_is_accepted() {
 			"--help",
 			"-V",
 			"--version",
+			"--app-id",
 			"--print-terminfo",
 			"--print-shell-integration",
 			"--benchmark",
@@ -362,7 +363,7 @@ fn every_documented_option_is_accepted() {
 		};
 		let parsed = parse(args(&[option, value]));
 		assert!(
-			matches!(parsed, Ok(ref command) if *command != Command::Run),
+			matches!(parsed, Ok(ref command) if !matches!(command, Command::Run { app_id: None })),
 			"{option}"
 		);
 	}

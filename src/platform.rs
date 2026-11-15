@@ -5,9 +5,29 @@
 use winit::window::Window;
 use winit::window::WindowAttributes;
 
-/// Tags windows with Wayland app_id and X11 WM_CLASS `poopterm`. Desktops
-/// match it to `poopterm.desktop` for the window's icon, name, and dock
-/// pinning.
+/// The app id `--app-id` chose, set once at startup.
+static APP_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Sets the app id [`identify`] gives windows; only the first call counts.
+pub(crate) fn set_app_id(id: String) {
+	let _ = APP_ID.set(id);
+}
+
+/// The app id windows get: the one set, or `poopterm`.
+#[cfg(any(
+	target_os = "linux",
+	target_os = "dragonfly",
+	target_os = "freebsd",
+	target_os = "netbsd",
+	target_os = "openbsd"
+))]
+fn app_id() -> &'static str {
+	APP_ID.get().map_or("poopterm", String::as_str)
+}
+
+/// Tags windows with Wayland app_id and X11 WM_CLASS `poopterm`, or the
+/// `--app-id` given. Desktops match `poopterm` to `poopterm.desktop` for
+/// the window's icon, name, and dock pinning.
 #[cfg(any(
 	target_os = "linux",
 	target_os = "dragonfly",
@@ -17,9 +37,9 @@ use winit::window::WindowAttributes;
 ))]
 pub(crate) fn identify(attributes: WindowAttributes) -> WindowAttributes {
 	use winit::platform::{wayland::WindowAttributesExtWayland, x11::WindowAttributesExtX11};
-	const APP_ID: &str = "poopterm";
-	let attributes = WindowAttributesExtWayland::with_name(attributes, APP_ID, APP_ID);
-	WindowAttributesExtX11::with_name(attributes, APP_ID, APP_ID)
+	let id = app_id();
+	let attributes = WindowAttributesExtWayland::with_name(attributes, id, id);
+	WindowAttributesExtX11::with_name(attributes, id, id)
 }
 
 /// Other platforms identify windows by their app bundle.
@@ -72,3 +92,18 @@ pub(crate) fn held_mouse_buttons() -> Option<usize> {
 /// This process's real user ID, which names its runtime files and finds
 /// its account.
 pub(crate) use crate::sys::user::uid;
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+	use super::{app_id, set_app_id};
+
+	// The only test that sets the app id, so the order below holds.
+	#[test]
+	fn windows_take_the_first_app_id_set_or_poopterm() {
+		assert_eq!(app_id(), "poopterm", "nothing set yet");
+		set_app_id("dropdown".into());
+		assert_eq!(app_id(), "dropdown");
+		set_app_id("later".into());
+		assert_eq!(app_id(), "dropdown", "only the first call counts");
+	}
+}

@@ -193,6 +193,21 @@ main window translucent. This applies to the entire terminal window; the separat
 Settings window stays opaque. The default is 100%. This setting currently works
 on macOS only; blur is not implemented.
 
+On Linux and FreeBSD, windows carry the Wayland app id and X11 class
+`poopterm`, which matches `poopterm.desktop`. Start Poopterm with
+`--app-id NAME` to give one instance its own id, so compositor rules can
+single it out, for example a floating dropdown terminal on sway:
+
+```sh
+# ~/.config/sway/config
+for_window [app_id="dropdown"] floating enable, resize set 1200 600
+bindsym $mod+grave exec poopterm --app-id dropdown
+```
+
+The name is 1 to 255 letters, digits, dots, underscores and dashes. Windows
+opened with another id no longer match `poopterm.desktop`, so docks may show a
+generic icon for them.
+
 ## Environment variables
 
 Set `POOPTERM_CONFIG` to use a config file at another path. `POOPTERM_THEME`

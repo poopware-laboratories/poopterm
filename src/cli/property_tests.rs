@@ -5,10 +5,10 @@
 use super::{COLUMN, HELP, Paint, distance, documented, help, render, suggest};
 
 /// A small deterministic generator, so failures repeat.
-struct Random(u64);
+pub(super) struct Random(pub(super) u64);
 
 impl Random {
-	fn below(&mut self, n: usize) -> usize {
+	pub(super) fn below(&mut self, n: usize) -> usize {
 		self.0 ^= self.0 << 13;
 		self.0 ^= self.0 >> 7;
 		self.0 ^= self.0 << 17;

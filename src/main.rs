@@ -115,7 +115,12 @@ fn main() -> ExitCode {
 fn run() -> Result<(), Box<dyn Error>> {
 	let paint = Paint::of(&stdout());
 	match cli::parse(env::args().skip(1))? {
-		Command::Run => app::run()?,
+		Command::Run { app_id } => {
+			if let Some(id) = app_id {
+				platform::set_app_id(id);
+			}
+			app::run()?;
+		}
 		Command::Help => print!("{}", cli::help(paint)),
 		Command::Version => println!("{}", cli::version(paint)),
 		Command::PrintTerminfo(cli::Terminfo::Full) => print!("{}", terminfo::SOURCE),
