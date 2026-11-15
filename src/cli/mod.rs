@@ -1,6 +1,8 @@
 //! The command line: what `poopterm` accepts, its help and version text, and
 //! errors that suggest the option meant.
 #[cfg(test)]
+mod app_id_tests;
+#[cfg(test)]
 mod property_tests;
 #[cfg(test)]
 mod tests;
@@ -78,7 +80,10 @@ pub(crate) enum Terminfo {
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
-	Run,
+	/// Open a window, with this Wayland app id and X11 class if given.
+	Run {
+		app_id: Option<String>,
+	},
 	Help,
 	Version,
 	PrintTerminfo(Terminfo),
@@ -90,9 +95,13 @@ pub(crate) enum Command {
 /// The command `args`, without the program's name, ask for.
 pub(crate) fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
 	let Some(argument) = args.next() else {
-		return Ok(Command::Run);
+		return Ok(Command::Run { app_id: None });
 	};
+	if let Some(id) = argument.strip_prefix("--app-id=") {
+		return run_with_app_id(Some(id.to_owned()), args);
+	}
 	Ok(match argument.as_str() {
+		"--app-id" => return run_with_app_id(args.next(), args),
 		"--help" | "-h" => Command::Help,
 		"--version" | "-V" => Command::Version,
 		"--print-terminfo" => Command::PrintTerminfo(match args.next().as_deref() {
@@ -108,6 +117,30 @@ pub(crate) fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, S
 		"--bench-corpus" => Command::BenchCorpus(args.collect()),
 		_ => return Err(unknown("option", &argument, &documented("OPTIONS"))),
 	})
+}
+
+/// The longest app id `--app-id` takes.
+pub(crate) const MAX_APP_ID: usize = 255;
+
+/// `--app-id` followed by `id` and then `rest`, which must be empty.
+fn run_with_app_id(
+	id: Option<String>,
+	mut rest: impl Iterator<Item = String>,
+) -> Result<Command, String> {
+	let id = id.ok_or("--app-id needs a name\nFor example: `poopterm --app-id dropdown`")?;
+	let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-');
+	let valid =
+		(1..=MAX_APP_ID).contains(&id.len()) && id.chars().all(allowed) && !id.starts_with(['-', '.']);
+	if !valid {
+		return Err(format!(
+			"--app-id {id:?} is not an app id\n\
+			 Use 1 to {MAX_APP_ID} letters, digits, dots, underscores and dashes, such as `dropdown`."
+		));
+	}
+	if let Some(extra) = rest.next() {
+		return Err(format!("unexpected argument {extra} after --app-id {id}"));
+	}
+	Ok(Command::Run { app_id: Some(id) })
 }
 
 /// `poopterm` and the version, which packages compare exactly.
