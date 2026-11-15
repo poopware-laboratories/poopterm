@@ -21,6 +21,8 @@ mod conemu_tests;
 mod context_tests;
 pub(crate) mod contexts;
 #[cfg(test)]
+mod cursor_information_tests;
+#[cfg(test)]
 mod cwd_host_tests;
 pub(crate) mod dcs;
 #[cfg(test)]

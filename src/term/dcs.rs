@@ -9,7 +9,7 @@ pub(crate) const MAX_REQUEST: usize = 4096;
 pub(crate) enum Kind {
 	Status,
 	Capabilities,
-	/// DECRSPS restoring the tab stops a DECTABSR reported.
+	/// DECRSPS restoring the presentation state DECRQPSR reported.
 	Presentation(u16),
 }
 
