@@ -71,6 +71,7 @@ fn state(t: &Term) -> String {
 		t.active_charset,
 	);
 	let region = (t.scroll_top, t.scroll_bottom, t.memory_locked, &t.tab_stops);
+	let side_margins = (t.lr_margin_mode, t.left_margin, t.right_margin);
 	let saved = (t.saved_cursor.is_some(), t.primary_screen.is_some());
 	let modes = (
 		t.bracketed_paste,
@@ -90,7 +91,7 @@ fn state(t: &Term) -> String {
 	let host = (&t.title, &t.responses, t.bell, t.clipboard_writes.len());
 	let grid: Vec<_> = (0..t.rows).map(|row| t.grid[row].to_vec()).collect();
 	format!(
-		"{cursor:?} {style:?} {region:?} {saved:?} {modes:?} {colors:?} {host:?} {} {grid:?}",
+		"{cursor:?} {style:?} {region:?} {side_margins:?} {saved:?} {modes:?} {colors:?} {host:?} {} {grid:?}",
 		t.scrollback.len()
 	)
 }
@@ -154,6 +155,11 @@ const EFFECTS: &[(&str, &[&str], &str, &str)] = &[
 	("cuu", &["2"], "", ""),
 	("cuu1", &[], "", ""),
 	("csr", &["1", "3"], "", ""),
+	// tmux's left and right margins: on, set, cleared and off.
+	("Enmg", &[], "", ""),
+	("Cmg", &["1", "3"], "\x1b[?69h", ""),
+	("Clmg", &[], "\x1b[?69h\x1b[2;4s", ""),
+	("Dsmg", &[], "\x1b[?69h", ""),
 	("sc", &[], "", ""),
 	("rc", &[], "\x1b7\x1b[H", ""),
 	("civis", &[], "", ""),

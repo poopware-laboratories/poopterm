@@ -39,6 +39,7 @@ fn the_legacy_compiled_entry_fits_old_tic_with_room_to_grow() {
 		return;
 	}
 	let size = legacy_size().expect("tic wrote no entry");
-	// Leave room for a few more capabilities before the limit bites.
-	assert!(size <= LEGACY_LIMIT - 128, "{size} bytes");
+	// Leave room for one more short capability before the limit bites;
+	// tmux's margin capabilities took most of what was left.
+	assert!(size <= LEGACY_LIMIT - 64, "{size} bytes");
 }

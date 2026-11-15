@@ -2,7 +2,8 @@
 # (or: poopterm --print-terminfo | tic -x -). Only advertises sequences
 # poopterm implements; derived from xterm-256color minus unsupported
 # capabilities, plus truecolor, synchronized output, styled underlines,
-# focus events, title (status line) support, cursor color and overline.
+# focus events, title (status line) support, cursor color, overline and
+# left and right margins (tmux's Enmg, Dsmg, Clmg and Cmg).
 xterm-poopterm|poopterm|Poopterm terminal emulator,
 	am,
 	AX,
@@ -33,6 +34,8 @@ xterm-poopterm|poopterm|Poopterm terminal emulator,
 	cbt=\E[Z,
 	civis=\E[?25l,
 	clear=\E[H\E[2J,
+	Clmg=\E[s,
+	Cmg=\E[%i%p1%d;%p2%ds,
 	cnorm=\E[?25h,
 	Cr=\E]112\E\\,
 	cr=\r,
@@ -52,12 +55,14 @@ xterm-poopterm|poopterm|Poopterm terminal emulator,
 	dim=\E[2m,
 	dl=\E[%p1%dM,
 	dl1=\E[M,
+	Dsmg=\E[?69l,
 	dsl=\E]2;\007,
 	E3=\E[3J,
 	ech=\E[%p1%dX,
 	ed=\E[J,
 	el=\E[K,
 	el1=\E[1K,
+	Enmg=\E[?69h,
 	fd=\E[?1004l,
 	fe=\E[?1004h,
 	flash=\E[?5h$<100/>\E[?5l,
