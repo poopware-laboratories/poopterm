@@ -281,3 +281,11 @@ fn a_restored_underline_color_reaches_the_cells_and_keeps_the_link() {
 	assert_eq!((underline(0), underline(1)), (None, Some(0x010203)));
 	assert_eq!(t.hyperlink_uri(&t.grid[0][1]), Some("https://x"));
 }
+
+#[test]
+fn pushing_and_popping_reply_nothing_and_move_nothing() {
+	let mut t = terminal();
+	feed(&mut t, "ab\x1b[1;30#{\x1b[#}\x1b[#}");
+	assert!(t.responses.is_empty());
+	assert_eq!((t.cx, t.cy), (2, 0));
+}
