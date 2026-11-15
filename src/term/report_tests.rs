@@ -179,3 +179,14 @@ fn every_report_claims_the_same_terminal() {
 	);
 	assert_eq!(fields[2], "0");
 }
+
+#[test]
+fn tertiary_device_attributes_report_a_zero_unit_id() {
+	let mut t = terminal();
+	assert_eq!(
+		ask(&mut t, "\x1b[=c\x1b[=0c"),
+		["\x1bP!|00000000\x1b\\", "\x1bP!|00000000\x1b\\"]
+	);
+	// A parameter other than 0 is not DA3.
+	assert_eq!(ask(&mut t, "\x1b[=1c"), Vec::<String>::new());
+}

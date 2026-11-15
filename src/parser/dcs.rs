@@ -52,6 +52,10 @@ impl Term {
 			b"t" => format!("{}t", self.rows),
 			b"$|" => format!("{}$|", self.cols),
 			b"*|" => format!("{}*|", self.rows),
+			// DECSASD and DECSSDT: there is no status line, so output goes
+			// to the main display and the status display type is none.
+			b"$}" => "0$}".to_owned(),
+			b"$~" => "0$~".to_owned(),
 			_ => return None,
 		})
 	}

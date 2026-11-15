@@ -63,7 +63,7 @@ fn other_settings_are_reported() {
 #[test]
 fn unknown_or_oversized_requests_are_invalid() {
 	let mut t = terminal();
-	for setting in ["u", "", "x", "mm", "$}", &"m".repeat(5000)] {
+	for setting in ["u", "", "x", "mm", "+q", &"m".repeat(5000)] {
 		assert_eq!(status(&mut t, setting), "\x1bP0$r\x1b\\", "{setting}");
 	}
 }
@@ -122,4 +122,17 @@ fn an_unknown_capability_ends_the_list() {
 			"{bad}"
 		);
 	}
+}
+
+#[test]
+fn status_display_settings_report_a_terminal_without_a_status_line() {
+	let mut t = terminal();
+	// DECSASD: output goes to the main display. DECSSDT: no status line.
+	assert_eq!(status(&mut t, "$}"), "\x1bP1$r0$}\x1b\\");
+	assert_eq!(status(&mut t, "$~"), "\x1bP1$r0$~\x1b\\");
+	// Asking for a status line changes neither, and prints nothing.
+	send(&mut t, "\x1b[2$~\x1b[1$}x\x1b[0$}");
+	assert_eq!(status(&mut t, "$}"), "\x1bP1$r0$}\x1b\\");
+	assert_eq!(status(&mut t, "$~"), "\x1bP1$r0$~\x1b\\");
+	assert_eq!(t.grid[0][0].ch, 'x', "output stays on the main display");
 }
