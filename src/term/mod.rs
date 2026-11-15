@@ -109,6 +109,8 @@ mod tab_style_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod title_modes_tests;
+#[cfg(test)]
 mod underline_color_tests;
 #[cfg(test)]
 mod vertical_margin_tests;
@@ -388,6 +390,8 @@ pub(crate) struct Term {
 	/// Titles and icon names saved by XTWINOPS 22, newest last.
 	pub(crate) title_stack: Vec<String>,
 	pub(crate) icon_stack: Vec<String>,
+	/// XTSMTITLE features 0 to 3 as bits: hex and UTF-8 titles and queries.
+	pub(crate) title_modes: u8,
 	/// ConEmu's tab name (OSC 9;3), shown instead of the title.
 	pub(crate) tab_title: Option<String>,
 	/// iTerm2's tab color and session status.
@@ -582,6 +586,7 @@ impl Term {
 			icon_name: String::new(),
 			title_stack: Vec::new(),
 			icon_stack: Vec::new(),
+			title_modes: crate::parser::title_modes::DEFAULT_TITLE_MODES,
 			tab_title: None,
 			tab_style: tab_style::TabStyle::default(),
 			cwd,

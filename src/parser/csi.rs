@@ -38,6 +38,10 @@ impl Term {
 				}
 				return;
 			}
+			if matches!(action, 't' | 'T') && intermediates == b">" {
+				self.set_title_modes(params, action == 't');
+				return;
+			}
 			if action == 'u' && intermediates == b"<" {
 				self.kitty_keyboard = false;
 				return;

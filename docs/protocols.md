@@ -79,7 +79,9 @@ with `font_path` or `POOPTERM_FONT`.
 - **Program status:** OSC 7501 (working, blocked, done, failed) and OSC 9;4
   progress mark tabs and draw a progress bar.
 - **Titles and tabs:** OSC 0, 1 and 2 set the icon name and title, which
-  `CSI 22 t` / `CSI 23 t` save and restore. ConEmu's OSC 9;3 names a tab,
+  `CSI 22 t` / `CSI 23 t` save and restore. XTSMTITLE / XTRMTITLE
+  (`CSI > Pm t` / `CSI > Pm T`) take them as hexadecimal (0) and as UTF-8
+  rather than ISO-8859-1 (2, on by default). ConEmu's OSC 9;3 names a tab,
   9;9 reports the directory and 9;12 marks a prompt. OSC 22 sets the mouse
   pointer shape.
 - **Scaled text:** kitty's [text sizing protocol](https://sw.kovidgoyal.net/kitty/text-sizing-protocol/)
