@@ -96,7 +96,15 @@ fn shell_integration_prints_each_shells_hooks() {
 fn terminfo_prints_the_entry_to_compile() {
 	let run = poopterm(&["--print-terminfo"]);
 	assert!(run.status.success());
-	assert!(text(&run.stdout).contains("xterm-poopterm|"));
+	let full = text(&run.stdout);
+	assert!(full.contains("xterm-poopterm|"));
+	// The small entry, for macOS's tic, is the full one without the extras.
+	let run = poopterm(&["--print-terminfo", "small"]);
+	assert!(run.status.success());
+	let small = text(&run.stdout);
+	assert!(small.contains("xterm-poopterm|"));
+	assert!(full.starts_with(&small) && full.len() > small.len());
+	assert!(full.contains("\tsmglr=") && !small.contains("\tsmglr="));
 }
 
 #[test]

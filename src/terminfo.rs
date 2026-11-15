@@ -14,8 +14,16 @@ mod size_tests;
 
 /// The entry's primary name; `poopterm` is an alias.
 pub(crate) const NAME: &str = "xterm-poopterm";
-/// The terminfo source, also printed by `poopterm --print-terminfo`.
-pub(crate) const SOURCE: &str = include_str!("../terminfo/poopterm.terminfo");
+/// The small entry, which every `tic` compiles: macOS's (ncurses 6.0)
+/// refuses compiled entries over 4096 bytes. `--print-terminfo small`.
+pub(crate) const SMALL: &str = include_str!("../terminfo/poopterm.terminfo");
+/// The full entry, the small one with the capabilities only ncurses 6.1
+/// and later have room for; printed by `poopterm --print-terminfo` and read
+/// by XTGETTCAP.
+pub(crate) const SOURCE: &str = concat!(
+	include_str!("../terminfo/poopterm.terminfo"),
+	include_str!("../terminfo/poopterm-extra.terminfo")
+);
 
 /// `TERM` and further variables for spawned shells.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,6 +79,23 @@ fn search_dirs() -> Vec<PathBuf> {
 pub(super) mod tests {
 	use super::*;
 	use std::{env, fs, path::Path, process::Command};
+
+	/// The ncurses version a `tic -V` banner names, as (major, minor).
+	pub(super) fn ncurses_version(banner: &str) -> Option<(u32, u32)> {
+		let version = banner.trim().strip_prefix("ncurses ")?;
+		let mut parts = version.split('.').map(str::parse::<u32>);
+		Some((parts.next()?.ok()?, parts.next()?.ok()?))
+	}
+
+	/// Whether the `tic` on this machine compiles the full entry: ncurses
+	/// before 6.1 (macOS's `/usr/bin/tic` is 6.0) refuses entries over 4096
+	/// bytes.
+	pub(super) fn full_tic() -> bool {
+		let Ok(output) = Command::new("tic").arg("-V").output() else {
+			return false;
+		};
+		ncurses_version(&String::from_utf8_lossy(&output.stdout)).is_some_and(|v| v >= (6, 1))
+	}
 
 	/// Compiles [`SOURCE`] into `dir` with `tic -x`. Returns false if `tic`
 	/// is missing or fails.
@@ -147,8 +172,40 @@ pub(super) mod tests {
 	}
 
 	#[test]
+	fn tic_banners_give_the_ncurses_version() {
+		assert_eq!(ncurses_version("ncurses 6.0.20150808\n"), Some((6, 0)));
+		assert_eq!(ncurses_version("ncurses 6.5.20240427"), Some((6, 5)));
+		assert_eq!(ncurses_version("ncurses 5.7.20081102"), Some((5, 7)));
+		assert_eq!(ncurses_version("ncurses 10.12"), Some((10, 12)));
+		// Anything else is not a tic we know how to judge.
+		assert_eq!(ncurses_version("tic: illegal option -- V"), None);
+		assert_eq!(ncurses_version("ncurses six"), None);
+		assert_eq!(ncurses_version(""), None);
+	}
+
+	#[test]
+	fn the_full_entry_is_the_small_one_with_more_capabilities() {
+		assert!(SOURCE.starts_with(SMALL));
+		let extra = &SOURCE[SMALL.len()..];
+		// Only comments and capability lines, so they join the small entry.
+		for line in extra.lines() {
+			assert!(line.starts_with('#') || line.starts_with('\t'), "{line:?}");
+		}
+		assert!(extra.lines().any(|line| line.starts_with('\t')));
+		// None of them is already in the small entry.
+		for line in extra.lines().filter(|line| line.starts_with('\t')) {
+			let name = line.trim().split(['=', '#', ',']).next().unwrap();
+			let defined = |l: &str| {
+				let cap = l.trim();
+				cap.starts_with(name) && cap[name.len()..].starts_with(['=', '#', ','])
+			};
+			assert!(!SMALL.lines().any(defined), "{name} is in both");
+		}
+	}
+
+	#[test]
 	fn a_private_copy_can_be_compiled() {
-		if !have("tic") {
+		if !full_tic() {
 			return;
 		}
 		let dir = TempDir::new("compile");
@@ -157,28 +214,36 @@ pub(super) mod tests {
 	}
 
 	#[test]
-	fn the_entry_compiles_without_warnings() {
+	fn both_entries_compile_without_warnings() {
 		if !have("tic") {
 			return;
 		}
-		let dir = TempDir::new("warnings");
-		let source = dir.0.join("poopterm.terminfo");
-		fs::write(&source, SOURCE).unwrap();
-		let output = Command::new("tic")
-			.arg("-x")
-			.arg("-o")
-			.arg(&dir.0)
-			.arg(&source)
-			.output()
-			.unwrap();
-		assert!(output.status.success());
-		// Every install runs tic, so anything it prints is seen by users.
-		assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+		// Any tic takes the small entry; the full one needs ncurses 6.1.
+		let full = full_tic();
+		for (name, entry) in [("small", SMALL), ("full", SOURCE)] {
+			if name == "full" && !full {
+				continue;
+			}
+			let dir = TempDir::new(&format!("warnings-{name}"));
+			let source = dir.0.join("poopterm.terminfo");
+			fs::write(&source, entry).unwrap();
+			let output = Command::new("tic")
+				.arg("-x")
+				.arg("-o")
+				.arg(&dir.0)
+				.arg(&source)
+				.output()
+				.unwrap();
+			assert!(output.status.success(), "{name}");
+			// Every install runs tic, so anything it prints is seen by users.
+			assert_eq!(String::from_utf8_lossy(&output.stderr), "", "{name}");
+			assert!(installed_in(std::slice::from_ref(&dir.0)), "{name}");
+		}
 	}
 
 	#[test]
 	fn the_last_name_field_is_a_description_and_the_aliases_remain() {
-		let header = SOURCE.lines().find(|line| !line.starts_with('#')).unwrap();
+		let header = SMALL.lines().find(|line| !line.starts_with('#')).unwrap();
 		let names: Vec<&str> = header.trim_end_matches(',').split('|').collect();
 		assert_eq!(&names[..2], ["xterm-poopterm", "poopterm"]);
 		let description = names.last().unwrap();
@@ -244,7 +309,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn advertised_keys_match_what_poopterm_sends() {
-		if !have("tic") || !have("infocmp") {
+		if !full_tic() || !have("infocmp") {
 			return;
 		}
 		use crate::input::keys::{KeyModes, Modifiers, encode_key};
@@ -267,6 +332,11 @@ pub(super) mod tests {
 			ctrl: true,
 			..Default::default()
 		};
+		let ctrl_alt = Modifiers {
+			ctrl: true,
+			alt: true,
+			..Default::default()
+		};
 		let none = Modifiers::default();
 		for (cap, key, mods) in [
 			("kcuu1", NamedKey::ArrowUp, none),
@@ -287,6 +357,17 @@ pub(super) mod tests {
 			("kLFT5", NamedKey::ArrowLeft, ctrl),
 			("kf13", NamedKey::F1, shift),
 			("kcbt", NamedKey::Tab, shift),
+			// Ctrl+Alt: xterm's modifier parameter 7.
+			("kUP7", NamedKey::ArrowUp, ctrl_alt),
+			("kDN7", NamedKey::ArrowDown, ctrl_alt),
+			("kLFT7", NamedKey::ArrowLeft, ctrl_alt),
+			("kRIT7", NamedKey::ArrowRight, ctrl_alt),
+			("kHOM7", NamedKey::Home, ctrl_alt),
+			("kEND7", NamedKey::End, ctrl_alt),
+			("kIC7", NamedKey::Insert, ctrl_alt),
+			("kDC7", NamedKey::Delete, ctrl_alt),
+			("kPRV7", NamedKey::PageUp, ctrl_alt),
+			("kNXT7", NamedKey::PageDown, ctrl_alt),
 		] {
 			let sent = encode_key(&Key::Named(key), mods, app).unwrap();
 			assert_eq!(
@@ -325,7 +406,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn sequences_generated_from_the_entry_take_effect() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -372,7 +453,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn cursor_color_overline_and_single_insert_take_effect() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -412,7 +493,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn memory_lock_and_title_capabilities_take_effect() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -449,7 +530,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn cub1_in_the_first_column_wraps_as_bw_says() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -478,7 +559,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn flash_reverses_the_screen_and_puts_it_back() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -509,7 +590,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn meta_mode_capabilities_switch_alt_between_the_eighth_bit_and_escape() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{
@@ -554,7 +635,7 @@ pub(super) mod tests {
 
 	#[test]
 	fn setulc_and_setal_set_the_underline_color() {
-		if !have("tic") || !have("tput") {
+		if !full_tic() || !have("tput") {
 			return;
 		}
 		use crate::{

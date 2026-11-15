@@ -66,13 +66,22 @@ pub(crate) fn wants_color(
 	terminal && no_color.is_none_or(|value| value.is_empty()) && term.is_none_or(|t| t != "dumb")
 }
 
+/// Which terminfo entry `--print-terminfo` prints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Terminfo {
+	/// Every capability; needs ncurses 6.1 or later.
+	Full,
+	/// What macOS's `tic` (ncurses 6.0, 4096 bytes at most) compiles.
+	Small,
+}
+
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
 	Run,
 	Help,
 	Version,
-	PrintTerminfo,
+	PrintTerminfo(Terminfo),
 	ShellIntegration(String),
 	Benchmark(Vec<String>),
 	BenchCorpus(Vec<String>),
@@ -86,7 +95,11 @@ pub(crate) fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, S
 	Ok(match argument.as_str() {
 		"--help" | "-h" => Command::Help,
 		"--version" | "-V" => Command::Version,
-		"--print-terminfo" => Command::PrintTerminfo,
+		"--print-terminfo" => Command::PrintTerminfo(match args.next().as_deref() {
+			None | Some("full") => Terminfo::Full,
+			Some("small") => Terminfo::Small,
+			Some(other) => return Err(unknown("terminfo entry", other, &["full", "small"])),
+		}),
 		"--print-shell-integration" => Command::ShellIntegration(args.next().ok_or(
 			"--print-shell-integration needs a shell: zsh, bash or fish\n\
 			 For example: `poopterm --print-shell-integration zsh >> ~/.zshrc`",

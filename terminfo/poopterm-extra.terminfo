@@ -1,0 +1,23 @@
+# Capabilities only the full entry has: appended to poopterm.terminfo, they
+# form the entry ncurses 6.1 and later compile. Older tic (macOS's
+# /usr/bin/tic is ncurses 6.0) refuses compiled entries over 4096 bytes and
+# gets poopterm.terminfo alone. Lines here must be capabilities or comments.
+	cvvis=\E[?12;25h,
+	kDC7=\E[3;7~,
+	kDN7=\E[1;7B,
+	kEND7=\E[1;7F,
+	kHOM7=\E[1;7H,
+	kIC7=\E[2;7~,
+	kLFT7=\E[1;7D,
+	kNXT7=\E[6;7~,
+	kPRV7=\E[5;7~,
+	kRIT7=\E[1;7C,
+	kUP7=\E[1;7A,
+	mgc=\E[?69l,
+	rv=\E\\[>0;[0-9]+;1c,
+	smglp=\E[?69h\E[%i%p1%ds,
+	smglr=\E[?69h\E[%i%p1%d;%p2%ds,
+	smgrp=\E[?69h\E[%i;%p1%ds,
+	Su,
+	Sxl,
+	xr=\EP>[|]poopterm [[:print:]]+\E\\\\,

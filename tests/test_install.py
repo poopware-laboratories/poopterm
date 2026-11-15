@@ -63,6 +63,37 @@ class Install(unittest.TestCase):
         leftovers = [path for path in self.stage.rglob('*poopterm*')]
         self.assertEqual(leftovers, [])
 
+    def fake_tic(self, refuses_full):
+        # Writes its source as the compiled entry; like ncurses before 6.1,
+        # it can refuse the full entry for its size.
+        refusal = ('grep -q "smglr=" "$4" && { echo "error writing $3/x/xterm-poopterm" >&2; exit 1; }'
+                   if refuses_full else '')
+        (self.tools / 'tic').write_text(
+            f'#!/bin/sh\n{refusal}\nmkdir -p "$3/x" && cp "$4" "$3/x/xterm-poopterm"\n')
+        (self.tools / 'tic').chmod(0o755)
+
+    def installed_entry(self):
+        return (self.stage / 'usr/local/share/terminfo/x/xterm-poopterm').read_text()
+
+    def test_the_full_terminfo_entry_is_installed_where_tic_takes_it(self):
+        self.fake_tic(refuses_full=False)
+        result = self.run_script()
+        entry = self.installed_entry()
+        self.assertIn('xterm-poopterm|', entry)
+        self.assertIn('\tsmglr=', entry)
+        self.assertNotIn('small', result.stdout)
+
+    def test_a_tic_that_refuses_the_full_entry_gets_the_small_one(self):
+        # macOS's tic (ncurses 6.0) refuses entries over 4096 bytes.
+        self.fake_tic(refuses_full=True)
+        result = self.run_script()
+        entry = self.installed_entry()
+        self.assertIn('xterm-poopterm|', entry)
+        self.assertNotIn('\tsmglr=', entry)
+        self.assertIn('small terminfo entry', result.stdout)
+        # The refusal is explained, not shown as an error.
+        self.assertNotIn('error writing', result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('tic'), 'needs tic')
     def test_terminfo_goes_where_ncurses_looks(self):
         # Fedora's ncurses searches only these, not /usr/local/share/terminfo.
