@@ -108,6 +108,8 @@ impl Term {
 						}
 					}
 				}
+				// DECRQPSR: the tab stop report.
+				(b"$", 'w') => self.report_presentation(params.get(0).map_or(0, |p| p[0])),
 				// XTREPORTCOLORS: the current entry and the number saved.
 				(b"#", 'R') => {
 					let saved = self.color_stack.len();

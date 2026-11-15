@@ -27,6 +27,7 @@ mod osc_status;
 mod osc_tab;
 mod osc_text_size;
 mod params;
+mod presentation_state;
 mod print;
 mod sgr;
 #[cfg(test)]
@@ -150,12 +151,15 @@ impl Term {
 		} else {
 			None
 		};
+		// DECRSPS takes which state to restore (only 2, the tab stops);
 		// DECRQSS and XTGETTCAP take no parameters.
+		let first = params.get(0).and_then(|p| p.first().copied()).unwrap_or(0);
 		let kind = match (intermediates, action) {
-			_ if ignore
-				|| params
-					.iter()
-					.any(|param| param.iter().any(|&value| value != 0)) =>
+			_ if ignore => None,
+			(b"$", 't') if params.group_count() == 1 && first == 2 => Some(Kind::Presentation(first)),
+			_ if params
+				.iter()
+				.any(|param| param.iter().any(|&value| value != 0)) =>
 			{
 				None
 			}
