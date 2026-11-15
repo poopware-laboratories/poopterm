@@ -101,6 +101,8 @@ mod scrollback;
 #[cfg(test)]
 mod scrollback_tests;
 #[cfg(test)]
+mod selective_erase_tests;
+#[cfg(test)]
 mod sgr_stack_tests;
 mod shared;
 mod shell;
@@ -235,6 +237,7 @@ pub(crate) struct SavedCursor {
 	reverse: bool,
 	underline_color: Option<u32>,
 	origin: bool,
+	protected: bool,
 	wrap: bool,
 	charsets: [bool; 2],
 	active_charset: usize,
@@ -353,6 +356,8 @@ pub(crate) struct Term {
 	pub(crate) active_hyperlink: u16,
 	/// SGR 58: the color underlines are drawn in, instead of the text's.
 	pub(crate) underline_color: Option<u32>,
+	/// DECSCA: characters printed now are protected from selective erase.
+	pub(crate) protected: bool,
 	/// `extra` id applied to printed cells: the active hyperlink and
 	/// underline color.
 	pub(crate) active_extra: u16,
@@ -421,6 +426,7 @@ impl Term {
 			reverse: self.reverse,
 			underline_color: self.underline_color,
 			origin: self.origin_mode,
+			protected: self.protected,
 			wrap: self.wrap_pending,
 			charsets: self.charsets,
 			active_charset: self.active_charset,
@@ -437,7 +443,9 @@ impl Term {
 			self.attrs = saved.attrs;
 			self.bold = saved.bold;
 			self.reverse = saved.reverse;
-			self.set_underline_color(saved.underline_color);
+			self.protected = saved.protected;
+			self.underline_color = saved.underline_color;
+			self.update_active_extra();
 			self.origin_mode = saved.origin;
 			self.wrap_pending = saved.wrap && self.cx == self.cols - 1;
 			self.charsets = saved.charsets;
@@ -568,6 +576,7 @@ impl Term {
 			last_printed: None,
 			active_hyperlink: 0,
 			underline_color: None,
+			protected: false,
 			active_extra: extras::NONE,
 			extras: Arc::default(),
 			hyperlinks: vec![String::new()],

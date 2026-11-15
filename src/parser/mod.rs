@@ -29,6 +29,7 @@ mod osc_text_size;
 mod params;
 mod presentation_state;
 mod print;
+mod selective_erase;
 mod sgr;
 pub(crate) mod sgr_stack;
 #[cfg(test)]

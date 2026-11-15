@@ -18,6 +18,8 @@ struct Extra {
 	marks: Box<[char]>,
 	multicell: Option<Box<Multicell>>,
 	underline: Option<u32>,
+	/// DECSCA: selective erase leaves the character alone.
+	protected: bool,
 }
 
 // Entries are hashed for every combining mark printed. SipHash costs
@@ -29,7 +31,7 @@ impl Hash for Extra {
 		let mut bytes = [0u8; 8 + 4 * MAX_MARKS];
 		bytes[..2].copy_from_slice(&self.hyperlink.to_ne_bytes());
 		bytes[2] = marks.len() as u8;
-		bytes[3] = u8::from(self.multicell.is_some());
+		bytes[3] = u8::from(self.multicell.is_some()) | u8::from(self.protected) << 1;
 		// Colors are 24-bit; bit 24 tells black from none.
 		let underline = self.underline.map_or(0, |color| color | 1 << 24);
 		bytes[4..8].copy_from_slice(&underline.to_ne_bytes());
@@ -133,6 +135,7 @@ impl Extras {
 				marks: marks.into(),
 				multicell: current.multicell.clone(),
 				underline: current.underline,
+				protected: current.protected,
 			})?
 		};
 		self.memo[slot] = Memo {
@@ -186,6 +189,26 @@ impl Extras {
 		}
 		self.intern(Extra {
 			underline: color,
+			..current.clone()
+		})
+	}
+
+	/// Whether DECSCA protected `id`'s cell from selective erase.
+	pub(crate) fn protected(&self, id: u16) -> bool {
+		self
+			.entries
+			.get(id as usize)
+			.is_some_and(|extra| extra.protected)
+	}
+
+	/// The id for `id`'s content, protected or not, or `None` if the table is full.
+	pub(crate) fn with_protection(&mut self, id: u16, protected: bool) -> Option<u16> {
+		let current = self.entries.get(id as usize)?;
+		if current.protected == protected {
+			return Some(id);
+		}
+		self.intern(Extra {
+			protected,
 			..current.clone()
 		})
 	}

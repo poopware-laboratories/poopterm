@@ -370,11 +370,9 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
 
 ## Protocol gaps
 
-- **xterm.** Still missing, in the order planned: left and right margins
-  (DECLRMM ?69, DECSLRM, DECIC/DECDC, SL/SR, DECBI/DECFI); reports (DA3,
-  DECXCPR, DECRQPSR, XTSMTITLE, `CSI ? n` statuses);
-  cursor blink ?12; selective erase (DECSCA, DECSED, DECSEL), which DA1
-  already claims; VT400 rectangle operations (DECRQCRA stays unanswered:
+- **xterm.** Still missing, in the order planned: cursor blink ?12; ISO
+  guarded areas (SPA, EPA), which ED, EL and ECH respect; VT400 rectangle
+  operations, with DECSERA (DECRQCRA stays unanswered:
   its checksums leak the screen); G2/G3 charsets with single and locking
   shifts and national sets; double-size lines; S8C1T, VT52 mode, DECCOLM
   and DECARM. vttest and esctest2 measure the result.

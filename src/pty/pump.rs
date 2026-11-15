@@ -92,7 +92,7 @@ mod tests {
 			|| wakes += 1,
 		);
 		assert!(first_row(&term).starts_with("hello"));
-		assert_eq!(replies, [b"\x1b[?65;4;21;22c".to_vec()]);
+		assert_eq!(replies, [b"\x1b[?65;4;6;21;22c".to_vec()]);
 		assert_eq!(wakes, 1);
 	}
 

@@ -53,8 +53,7 @@ impl Term {
 			}
 			// A VT525 (as primary DA says) with 7-bit controls.
 			b"\"p" => "65;1\"p".to_owned(),
-			// No characters are protected.
-			b"\"q" => "0\"q".to_owned(),
+			b"\"q" => format!("{}\"q", u8::from(self.protected)),
 			b"t" => format!("{}t", self.rows),
 			b"$|" => format!("{}$|", self.cols),
 			b"*|" => format!("{}*|", self.rows),
