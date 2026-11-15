@@ -1,7 +1,7 @@
 //! Left and right margins (DECLRMM `?69`, DECSLRM `CSI Pl ; Pr s`): the
 //! columns the cursor and text stay between, and scrolling the rectangle
 //! they make with the top and bottom margins.
-use super::Term;
+use super::{Cell, Term};
 
 impl Term {
 	/// Whether left or right margins narrow the screen.
@@ -78,10 +78,96 @@ impl Term {
 		(self.left_margin, self.right_margin) = (0, self.cols - 1);
 	}
 
-	/// Scrolls the rectangle inside all four margins up (`up`) or down by
-	/// `count`, blanking what it leaves. Nothing goes to the scrollback.
-	pub(crate) fn scroll_rectangle(&mut self, count: usize, up: bool) {
-		let (top, bottom) = (self.scroll_top, self.scroll_bottom);
+	/// Whether the cursor is inside the rectangle all four margins make.
+	fn inside_margins(&self) -> bool {
+		self.inside_lr_margins() && (self.scroll_top..=self.scroll_bottom).contains(&self.cy)
+	}
+
+	/// ICH and DCH with left and right margins: the cells from the cursor to
+	/// the right margin, and nothing from outside the margins.
+	pub(crate) fn edit_characters(&mut self, count: usize, insert: bool) {
+		if self.inside_lr_margins() {
+			self.shift_columns(self.cy, self.cy, self.cx, count, insert);
+		}
+	}
+
+	/// IL and DL with left and right margins: the rectangle from the
+	/// cursor's row down, and nothing from outside it.
+	pub(crate) fn edit_lines(&mut self, count: usize, insert: bool) {
+		if self.inside_margins() {
+			self.scroll_rectangle(self.cy, count, !insert);
+		}
+	}
+
+	/// DECIC and DECDC: the columns from the cursor's to the right margin,
+	/// in every row of the scroll region, and nothing from outside it.
+	pub(crate) fn edit_columns(&mut self, count: usize, insert: bool) {
+		if self.inside_margins() {
+			self.shift_columns(self.scroll_top, self.scroll_bottom, self.cx, count, insert);
+		}
+	}
+
+	/// SL and SR: shifts the rectangle inside the margins left or right,
+	/// wherever the cursor is.
+	pub(crate) fn shift_region(&mut self, count: usize, right: bool) {
+		self.shift_columns(
+			self.scroll_top,
+			self.scroll_bottom,
+			self.left_margin,
+			count,
+			right,
+		);
+	}
+
+	/// DECBI: one column left, or at the left margin a column shift right
+	/// of the rectangle; nothing at the screen's edge left of the margins.
+	pub(crate) fn back_index(&mut self) {
+		if self.cx != self.left_margin {
+			self.cx = self.cx.saturating_sub(1);
+		} else if self.inside_margins() {
+			self.shift_region(1, true);
+		}
+	}
+
+	/// DECFI: one column right, or at the right margin a column shift left
+	/// of the rectangle; nothing at the screen's edge right of the margins.
+	pub(crate) fn forward_index(&mut self) {
+		if self.cx != self.right_margin {
+			self.cx = (self.cx + 1).min(self.cols - 1);
+		} else if self.inside_margins() {
+			self.shift_region(1, false);
+		}
+	}
+
+	/// Shifts cells `from` up to the right margin, in rows `top..=bottom`,
+	/// right (`right`) or left by `count`. Cells pushed past either end are
+	/// lost; the ones left behind are blanked.
+	fn shift_columns(&mut self, top: usize, bottom: usize, from: usize, count: usize, right: bool) {
+		let end = self.right_margin + 1;
+		let count = count.min(end - from);
+		let blank = self.blank();
+		for y in top..=bottom {
+			let base = y * self.cols;
+			self.erase_images(base + from, base + end);
+			self.erase_multicells_in_row(y, from, end);
+			let cells = &mut self.grid.row_upto(y, end)[from..end];
+			let kept = cells.len() - count;
+			if right {
+				cells.copy_within(..kept, count);
+				Cell::fill(&mut cells[..count], blank);
+			} else {
+				cells.copy_within(count.., 0);
+				Cell::fill(&mut cells[kept..], blank);
+			}
+		}
+		self.repair_wide_rows(top, bottom + 1);
+	}
+
+	/// Scrolls rows `top` to the bottom margin, between the left and right
+	/// margins, up (`up`) or down by `count`, blanking what they leave.
+	/// Nothing goes to the scrollback.
+	pub(crate) fn scroll_rectangle(&mut self, top: usize, count: usize, up: bool) {
+		let bottom = self.scroll_bottom;
 		let (left, end) = (self.left_margin, self.right_margin + 1);
 		let count = count.min(bottom - top + 1);
 		for y in top..=bottom {

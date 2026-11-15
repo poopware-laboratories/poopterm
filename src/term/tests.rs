@@ -851,6 +851,10 @@ fn batched_printing_matches_per_character_printing() {
 		b"\x1b[?69h\x1b[3;7s",
 		b"\x1b[?69h\x1b[2;5s\x1b[1;9H",
 		b"\x1b[?69l",
+		// Editing inside the margins: characters, lines, columns, DECBI
+		// and DECFI, SL and SR.
+		b"\x1b[2@\x1b[P\x1b[L\x1b[2M",
+		b"\x1b[2'}\x1b['~\x1b6\x1b9\x1b[ @\x1b[2 A",
 		b"\x1b[1\x18x",
 		b"\x1b]0;title\x1a",
 		b"\x1b[1<2mz",

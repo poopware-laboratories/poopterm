@@ -93,8 +93,13 @@ with `font_path` or `POOPTERM_FONT`.
   rectangle inside all four, and only when the cursor is inside it; SU and
   SD scroll that rectangle. Origin mode counts rows and columns from the
   margins. DECSTR, RIS, DECALN and resizing remove the left and right
-  margins. Insert and delete (ICH, DCH, IL, DL) do not respect the left
-  and right margins yet.
+  margins. Inside the margins ICH and DCH shift cells up to the right
+  margin, IL and DL move lines only between the left and right margins,
+  DECIC and DECDC (`CSI Pn ' }` / `CSI Pn ' ~`) insert and delete columns
+  in every row of the region, DECBI and DECFI (`ESC 6` / `ESC 9`) scroll
+  the region sideways at a margin, and SL and SR (`CSI Pn SP @` /
+  `CSI Pn SP A`) shift it wherever the cursor is; from outside the
+  margins, ICH, DCH, IL, DL, DECIC and DECDC do nothing.
 - **Queries:** DECRQSS (`DCS $ q`) reports SGR, margins, cursor style,
   conformance level and page size; XTGETTCAP (`DCS + q`) answers from
   poopterm's terminfo entry; XTWINOPS reports sizes in cells and pixels
