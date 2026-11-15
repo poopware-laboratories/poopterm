@@ -457,8 +457,8 @@ fn selection_color_queries_follow_the_theme() {
 	let queries = b"\x1b]17;?\x07\x1b]19;?\x07";
 	let mut dark = terminal(8, 2);
 	feed(&mut dark, queries);
-	assert_eq!(dark.responses[0], b"\x1b]17;rgb:89/b4/fa\x07");
-	assert_eq!(dark.responses[1], b"\x1b]19;rgb:1e/1e/2e\x07");
+	assert_eq!(dark.responses[0], b"\x1b]17;rgb:8989/b4b4/fafa\x07");
+	assert_eq!(dark.responses[1], b"\x1b]19;rgb:1e1e/1e1e/2e2e\x07");
 	let mut light = Term::new(
 		8,
 		2,
@@ -466,11 +466,11 @@ fn selection_color_queries_follow_the_theme() {
 		"/".into(),
 	);
 	feed(&mut light, queries);
-	assert_eq!(light.responses[0], b"\x1b]17;rgb:1e/66/f5\x07");
-	assert_eq!(light.responses[1], b"\x1b]19;rgb:ff/ff/ff\x07");
+	assert_eq!(light.responses[0], b"\x1b]17;rgb:1e1e/6666/f5f5\x07");
+	assert_eq!(light.responses[1], b"\x1b]19;rgb:ffff/ffff/ffff\x07");
 	// A program's own selection colors still win.
 	feed(&mut light, b"\x1b]17;#102030\x07\x1b]17;?\x07");
-	assert_eq!(light.responses[2], b"\x1b]17;rgb:10/20/30\x07");
+	assert_eq!(light.responses[2], b"\x1b]17;rgb:1010/2020/3030\x07");
 }
 
 #[test]
@@ -479,16 +479,10 @@ fn osc_palette_and_default_color_queries_are_answered() {
 	feed(&mut t, b"\x1b]4;1;#123456\x07\x1b[31mA");
 	assert_eq!(cell(&t, 0).fg, 0x123456);
 	feed(&mut t, b"\x1b]4;1;?\x1b\\\x1b]10;?\x07");
-	assert_eq!(t.responses[0], b"\x1b]4;1;rgb:12/34/56\x1b\\");
+	assert_eq!(t.responses[0], b"\x1b]4;1;rgb:1212/3434/5656\x1b\\");
 	assert_eq!(
 		t.responses[1],
-		format!(
-			"\x1b]10;rgb:{:02x}/{:02x}/{:02x}\x07",
-			t.default_fg >> 16,
-			(t.default_fg >> 8) & 0xff,
-			t.default_fg & 0xff
-		)
-		.as_bytes()
+		format!("\x1b]10;{}\x07", crate::parser::encode_color(t.default_fg)).as_bytes()
 	);
 	feed(&mut t, b"\x1b]11;#010203\x07");
 	assert_eq!(t.default_bg, 0x010203);

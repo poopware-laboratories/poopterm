@@ -1,6 +1,6 @@
 //! Color OSCs: xterm's 4, 5, 6, 10–19, 104–106 and 110–119, kitty's 21, and
 //! the color stack (30001/30101). Replies end like the query did.
-use super::color_spec::{encode, parse_color, parse_spec};
+use super::color_spec::{encode, encode16, parse_color, parse_spec};
 use crate::term::{Dynamic, Setting, Term};
 
 /// Special colors (bold, underline, blink, reverse, italic) follow the
@@ -27,7 +27,7 @@ impl Term {
 						break;
 					};
 					if *value == b"?" {
-						let color = encode(self.dynamic_color(which));
+						let color = encode16(self.dynamic_color(which));
 						let number = number as usize + offset;
 						self.osc_reply(format!("{number};{color}"), bell);
 					} else if let Some(color) = parse_color(value) {
@@ -73,7 +73,7 @@ impl Term {
 					self.colors.special[slot - 256].unwrap_or(self.default_fg)
 				};
 				let command = if special { 5 } else { 4 };
-				self.osc_reply(format!("{command};{index};{}", encode(color)), bell);
+				self.osc_reply(format!("{command};{index};{}", encode16(color)), bell);
 			} else if let Some(color) = parse_color(pair[1]) {
 				if slot < 256 {
 					self.color_overrides[slot] = Some(color);
