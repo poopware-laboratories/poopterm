@@ -10,7 +10,7 @@ use std::{
 	process::{Command, Stdio},
 	sync::mpsc,
 	thread,
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 fn cells(cols: u16, rows: u16) -> WindowSize {
@@ -363,8 +363,18 @@ fn a_closed_master_hangs_the_slave_up() {
 	let pair = open(cells(80, 24)).unwrap();
 	let mut slave = File::from(pair.slave);
 	drop(pair.master);
-	// What a program sees when its terminal goes away: writes fail.
-	let error = slave.write_all(b"anyone?").unwrap_err();
+	// What a program sees when its terminal goes away: writes fail. macOS
+	// may hang the slave up a moment after the close, so a write or two can
+	// still land in its queue first; keep writing one byte at a time (far
+	// below what the queue holds, so no write blocks) until one fails.
+	let deadline = Instant::now() + Duration::from_secs(5);
+	let error = loop {
+		match slave.write_all(b"?") {
+			Err(error) => break error,
+			Ok(()) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+			Ok(()) => panic!("writes still succeed 5 s after the master closed"),
+		}
+	};
 	let hung_up = [Some(libc::EIO), Some(libc::ENXIO)];
 	assert!(hung_up.contains(&error.raw_os_error()), "{error}");
 }
