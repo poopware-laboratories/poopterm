@@ -158,7 +158,7 @@ fn an_osc_4_color_survives_a_theme_switch_and_its_query() {
 	assert_eq!(
 		replies(&mut t),
 		[
-			"\x1b]4;1;rgb:12/34/56\x07".to_owned(),
+			"\x1b]4;1;rgb:1212/3434/5656\x07".to_owned(),
 			format!("\x1b]4;2;{}\x07", encode_color(0x50FA7B)),
 		]
 	);
@@ -175,7 +175,7 @@ fn osc_10_and_11_defaults_survive_and_reset_to_the_new_theme() {
 	assert_eq!((t.default_fg, t.default_bg), (0xABCDEF, 0x010101));
 	assert_eq!((fg_at(&t, 0, 0), t.grid[0][0].bg), (0xABCDEF, 0x010101));
 	send(&mut t, "\x1b]10;?\x07");
-	assert_eq!(replies(&mut t), ["\x1b]10;rgb:ab/cd/ef\x07"]);
+	assert_eq!(replies(&mut t), ["\x1b]10;rgb:abab/cdcd/efef\x07"]);
 	send(&mut t, "\x1b]110\x07\x1b]111\x07");
 	let gruvbox = theme(ThemeKind::GruvboxDark);
 	assert_eq!((t.default_fg, t.default_bg), (gruvbox.fg, gruvbox.bg));
@@ -192,8 +192,8 @@ fn only_the_changed_default_is_kept() {
 	assert_eq!(
 		replies(&mut t),
 		[
-			"\x1b]10;rgb:f8/f8/f2\x07".to_owned(),
-			"\x1b]11;rgb:01/01/01\x07".to_owned()
+			"\x1b]10;rgb:f8f8/f8f8/f2f2\x07".to_owned(),
+			"\x1b]11;rgb:0101/0101/0101\x07".to_owned()
 		]
 	);
 }
@@ -209,8 +209,8 @@ fn the_themes_cursor_is_drawn_and_reported_under_osc_12() {
 	assert_eq!(
 		replies(&mut t),
 		[
-			"\x1b]12;rgb:f5/e0/dc\x07".to_owned(),
-			"\x1b]12;rgb:00/ff/00\x07".to_owned()
+			"\x1b]12;rgb:f5f5/e0e0/dcdc\x07".to_owned(),
+			"\x1b]12;rgb:0000/ffff/0000\x07".to_owned()
 		]
 	);
 	t.set_theme(theme(ThemeKind::CatppuccinLatte));
@@ -229,7 +229,7 @@ fn a_theme_without_a_cursor_color_leaves_it_to_the_text() {
 	t.snapshot(&mut frame);
 	assert_eq!(frame.colors.cursor, Setting::Default);
 	send(&mut t, "\x1b]12;?\x07");
-	assert_eq!(replies(&mut t), ["\x1b]12;rgb:f8/f8/f2\x07"]);
+	assert_eq!(replies(&mut t), ["\x1b]12;rgb:f8f8/f8f8/f2f2\x07"]);
 }
 
 #[test]
@@ -244,8 +244,8 @@ fn the_themes_selection_is_drawn_and_reported_under_osc_17_and_19() {
 	assert_eq!(
 		replies(&mut t),
 		[
-			"\x1b]17;rgb:43/4c/5e\x07".to_owned(),
-			"\x1b]19;rgb:d8/de/e9\x07".to_owned()
+			"\x1b]17;rgb:4343/4c4c/5e5e\x07".to_owned(),
+			"\x1b]19;rgb:d8d8/dede/e9e9\x07".to_owned()
 		]
 	);
 	// A program's selection wins, and survives the next switch.
@@ -534,5 +534,5 @@ fn without_a_theme_selection_the_default_follows_a_program_background() {
 	// A theme's own selection does not move with the background.
 	let mut t = terminal(ThemeKind::Nord);
 	send(&mut t, "\x1b]11;#FFFFFF\x07\x1b]17;?\x07");
-	assert_eq!(replies(&mut t), ["\x1b]17;rgb:43/4c/5e\x07"]);
+	assert_eq!(replies(&mut t), ["\x1b]17;rgb:4343/4c4c/5e5e\x07"]);
 }

@@ -106,7 +106,14 @@ fn named(name: &str) -> Option<u32> {
 	u32::from_str_radix(lines[index].split(' ').nth(1)?, 16).ok()
 }
 
-/// `rgb:rr/gg/bb`, the form xterm and kitty reply with.
+/// `rgb:rrrr/gggg/bbbb`, xterm's reply to OSC 4, 5 and 10–19 queries: each
+/// 8-bit channel repeated to 16 bits, as XQueryColor scales it.
+pub(crate) fn encode16(color: u32) -> String {
+	let [_, r, g, b] = color.to_be_bytes();
+	format!("rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}")
+}
+
+/// `rgb:rr/gg/bb`, the form kitty's OSC 21 replies with.
 pub(crate) fn encode(color: u32) -> String {
 	format!(
 		"rgb:{:02x}/{:02x}/{:02x}",
@@ -194,7 +201,43 @@ mod tests {
 	}
 
 	#[test]
-	fn replies_use_two_digit_rgb() {
+	fn kitty_replies_use_two_digit_rgb() {
 		assert_eq!(encode(0x0a_ff_10), "rgb:0a/ff/10");
+	}
+
+	#[test]
+	fn xterm_replies_repeat_each_byte_into_sixteen_bits() {
+		assert_eq!(encode16(0x0a_ff_10), "rgb:0a0a/ffff/1010");
+		assert_eq!(encode16(0), "rgb:0000/0000/0000");
+		assert_eq!(encode16(0xff_ff_ff), "rgb:ffff/ffff/ffff");
+		// What xterm answers after each form sets the color (esctest).
+		for spec in [
+			"rgb:f0f0/f0f0/f0f0",
+			"#fff",
+			"#f0f0f0",
+			"#f00f00f00",
+			"#f000f000f000",
+		] {
+			assert_eq!(
+				encode16(parse_color(spec.as_bytes()).unwrap()),
+				"rgb:f0f0/f0f0/f0f0"
+			);
+		}
+		for spec in [
+			"rgb:8080/8080/8080",
+			"#888",
+			"#808080",
+			"#800800800",
+			"#800080008000",
+		] {
+			assert_eq!(
+				encode16(parse_color(spec.as_bytes()).unwrap()),
+				"rgb:8080/8080/8080"
+			);
+		}
+		// A reply read back sets the same color: queries round-trip.
+		for color in [0x12_34_56, 0xfe_01_80, 0x00_ff_7f] {
+			assert_eq!(parse_color(encode16(color).as_bytes()), Some(color));
+		}
 	}
 }

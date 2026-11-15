@@ -30,7 +30,7 @@ fn replies_end_like_the_query() {
 		replies(&mut t),
 		[
 			format!("\x1b]4;2;{}\x07", rgb(t.indexed_color(2))),
-			"\x1b]4;1;rgb:12/34/56\x1b\\".to_owned()
+			"\x1b]4;1;rgb:1212/3434/5656\x1b\\".to_owned()
 		]
 	);
 }
@@ -52,12 +52,12 @@ fn dynamic_colors_chain_from_the_first_number_and_reset() {
 	assert_eq!(t.colors.selection_background, Setting::Color(0xff0000));
 	assert_eq!(
 		replies(&mut t),
-		["\x1b]18;rgb:11/11/11\x07"],
+		["\x1b]18;rgb:1111/1111/1111\x07"],
 		"18 follows the fg"
 	);
 	send(&mut t, "\x1b]19;blue\x07\x1b]12;?\x07");
 	assert_eq!(t.colors.selection_foreground, Setting::Color(0xff));
-	assert_eq!(replies(&mut t), ["\x1b]12;rgb:33/33/33\x07"]);
+	assert_eq!(replies(&mut t), ["\x1b]12;rgb:3333/3333/3333\x07"]);
 	send(&mut t, "\x1b]110\x07\x1b]112\x07\x1b]117\x07\x1b]119\x07");
 	assert_eq!(t.default_fg, theme_fg);
 	assert_eq!(t.default_bg, 0x222222, "111 was not sent");
@@ -77,12 +77,12 @@ fn pointer_and_tektronix_colors_are_kept_for_queries() {
 	assert_eq!(
 		replies(&mut t),
 		[
-			"\x1b]13;rgb:01/01/01\x07",
-			"\x1b]14;rgb:02/02/02\x07",
-			"\x1b]15;rgb:03/03/03\x07",
-			"\x1b]16;rgb:04/04/04\x07",
+			"\x1b]13;rgb:0101/0101/0101\x07",
+			"\x1b]14;rgb:0202/0202/0202\x07",
+			"\x1b]15;rgb:0303/0303/0303\x07",
+			"\x1b]16;rgb:0404/0404/0404\x07",
 			&format!("\x1b]17;{}\x07", rgb(crate::theme::SELECTION_COLORS.1)),
-			"\x1b]18;rgb:05/05/05\x07",
+			"\x1b]18;rgb:0505/0505/0505\x07",
 		]
 	);
 	send(&mut t, "\x1b]113\x07\x1b]118\x07\x1b]13;?\x07\x1b]18;?\x07");
@@ -103,7 +103,10 @@ fn special_colors_are_set_queried_reset_and_used_when_enabled() {
 	);
 	assert_eq!(
 		replies(&mut t),
-		["\x1b]5;0;rgb:aa/00/00\x07", "\x1b]5;2;rgb:00/bb/00\x07"]
+		[
+			"\x1b]5;0;rgb:aaaa/0000/0000\x07",
+			"\x1b]5;2;rgb:0000/bbbb/0000\x07"
+		]
 	);
 	send(&mut t, "\x1b[1mA");
 	// Bold default text is brightened unless colorBDMode is on (off by
@@ -152,8 +155,10 @@ fn kitty_color_keys_set_query_reset_and_report_unknown_keys() {
 		[format!(
 			"\x1b]21;foreground=rgb:ff/00/00;cursor=;selection_background=rgb:00/ff/00;\
 			 5=rgb:11/22/33;unknown=bm9uc2Vuc2U;transparent_background_color2=rgb:ff/ff/ff@0.25;\
-			 background={}\x1b\\",
-			rgb(theme_bg)
+			 background=rgb:{:02x}/{:02x}/{:02x}\x1b\\",
+			theme_bg >> 16,
+			theme_bg >> 8 & 0xff,
+			theme_bg & 0xff
 		)]
 	);
 	// The 256-color table cannot be dynamic; a bare key resets it.

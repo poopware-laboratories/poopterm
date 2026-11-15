@@ -37,7 +37,7 @@ use crate::{
 	vt::{self, Handler, Text},
 };
 #[cfg(test)]
-pub(crate) use color_spec::encode as encode_color;
+pub(crate) use color_spec::encode16 as encode_color;
 use params::ParamList;
 
 /// Stateful parser for one PTY stream. Keep it beside `Term` in a session so
