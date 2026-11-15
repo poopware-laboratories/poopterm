@@ -222,3 +222,62 @@ fn pushes_and_pops_split_across_reads() {
 	}
 	assert!(t.bold);
 }
+
+#[test]
+fn overline_and_underline_color_return_only_with_everything() {
+	// No selector names them, so a chosen push leaves them as they are.
+	let mut t = terminal();
+	feed(&mut t, "\x1b[53;58;5;9m\x1b[1;4;30;31#{\x1b[55;59m\x1b[#}");
+	assert_eq!(t.attrs & OVERLINE, 0);
+	assert_eq!(t.underline_color, None);
+	let mut t = terminal();
+	feed(&mut t, "\x1b[53;58;5;9m\x1b[#{\x1b[55;59m\x1b[#}");
+	assert_ne!(t.attrs & OVERLINE, 0);
+	assert_eq!(t.underline_color, Some(t.indexed_color(9)));
+}
+
+#[test]
+fn direct_colors_come_back_exactly() {
+	let mut t = terminal();
+	feed(&mut t, "\x1b[38;2;1;2;3;48:2::4:5:6;58:2::7:8:9m");
+	let saved = style(&t);
+	feed(&mut t, "\x1b[#{\x1b[38;5;1;48;5;2;58;5;3m\x1b[#}");
+	assert_eq!(style(&t), saved);
+}
+
+#[test]
+fn a_selector_with_subparameters_counts_by_its_main_number() {
+	let mut t = terminal();
+	feed(&mut t, "\x1b[32m\x1b[30:2#{\x1b[33m\x1b[#}");
+	assert_eq!(t.fg, t.indexed_color(2));
+}
+
+#[test]
+fn huge_selectors_are_ignored_beside_known_ones() {
+	let mut t = terminal();
+	feed(&mut t, "\x1b[1;3m\x1b[65535;1;99999#{\x1b[22;23m\x1b[#}");
+	assert!(t.bold, "1 restored");
+	assert_eq!(t.attrs & ITALIC, 0, "3 was not chosen");
+}
+
+#[test]
+fn a_pop_frees_a_level_for_the_next_push() {
+	let mut t = terminal();
+	for _ in 0..10 {
+		feed(&mut t, "\x1b[#{");
+	}
+	feed(&mut t, "\x1b[#}\x1b[1m\x1b[#{\x1b[22m\x1b[#}");
+	assert!(t.bold, "the eleventh push found room after a pop");
+}
+
+#[test]
+fn a_restored_underline_color_reaches_the_cells_and_keeps_the_link() {
+	let mut t = terminal();
+	feed(
+		&mut t,
+		"\x1b[58;2;1;2;3m\x1b[#{\x1b[59m\x1b]8;;https://x\x1b\\A\x1b[#}B",
+	);
+	let underline = |column: usize| t.extras.underline_color(t.grid[0][column].extra);
+	assert_eq!((underline(0), underline(1)), (None, Some(0x010203)));
+	assert_eq!(t.hyperlink_uri(&t.grid[0][1]), Some("https://x"));
+}
