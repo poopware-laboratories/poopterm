@@ -21,10 +21,24 @@ fn ask(term: &mut Term, bytes: &str) -> Vec<String> {
 
 #[test]
 fn primary_device_attributes_claim_only_what_is_implemented() {
-	// VT220 with Sixel graphics. Selective erase (6) is not claimed until
-	// DECSCA, DECSED and DECSEL exist.
+	// A VT525 with Sixel graphics (4), horizontal scrolling (21) and ANSI
+	// color (22). Selective erase (6), rectangles (28) and the rest are not
+	// claimed until they exist.
 	let mut t = terminal();
-	assert_eq!(ask(&mut t, "\x1b[c\x1b[0c"), ["\x1b[?62;4c", "\x1b[?62;4c"]);
+	assert_eq!(
+		ask(&mut t, "\x1b[c\x1b[0c"),
+		["\x1b[?65;4;21;22c", "\x1b[?65;4;21;22c"]
+	);
+}
+
+#[test]
+fn device_attribute_requests_with_a_parameter_are_ignored() {
+	let mut t = terminal();
+	for request in ["\x1b[1c", "\x1b[65c", "\x1b[>1c", "\x1b[>41c", "\x1b[0;1c"] {
+		assert_eq!(ask(&mut t, request), Vec::<String>::new(), "{request:?}");
+	}
+	// An explicit 0 is the same as none.
+	assert_eq!(ask(&mut t, "\x1b[>0c").len(), 1);
 }
 
 #[test]

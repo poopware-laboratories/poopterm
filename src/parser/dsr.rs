@@ -7,6 +7,8 @@ pub(super) fn dec_status(code: u16, id: u16) -> Option<String> {
 	Some(match code {
 		// No printer.
 		15 => "\x1b[?13n".into(),
+		// Keyboard: North American, ready, an LK201 (xterm's answer).
+		26 => "\x1b[?27;1;0;0n".into(),
 		// User-defined keys are locked: DECUDK is not supported.
 		25 => "\x1b[?21n".into(),
 		// No DEC locator, so its type is unknown.
