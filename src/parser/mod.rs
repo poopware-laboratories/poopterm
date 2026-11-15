@@ -11,6 +11,7 @@ mod csi;
 mod dcs;
 #[cfg(all(test, target_arch = "x86_64"))]
 mod dispatch_tests;
+mod dsr;
 mod erase;
 mod esc;
 mod modes;
