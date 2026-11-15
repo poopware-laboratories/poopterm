@@ -47,8 +47,9 @@ impl Term {
 				);
 			}
 			b"0" | b"1" | b"2" if params.len() >= 2 => {
-				// The last arm: nothing after the match is skipped.
-				let Some(title) = self.decode_title(params[1]) else {
+				// The title is everything after the first `;`, semicolons
+				// included. The last arm: nothing after the match is skipped.
+				let Some(title) = self.decode_title(&params[1..].join(&b';')) else {
 					return;
 				};
 				if params[0] != b"2" {

@@ -1129,3 +1129,15 @@ fn a_string_terminator_keeps_a_pending_wrap() {
 	feed(&mut t, b"\x1bDq");
 	assert_eq!((t.grid[1][19].ch, t.grid[1][0].ch), ('q', ' '));
 }
+
+#[test]
+fn titles_keep_their_semicolons() {
+	let mut t = terminal(20, 3);
+	feed(&mut t, b"\x1b]2;make; run;\x1b\\");
+	assert_eq!(t.title, "make; run;");
+	feed(&mut t, b"\x1b]1;a;b\x07\x1b]0;;x;;\x07");
+	assert_eq!((t.title.as_str(), t.icon_name.as_str()), (";x;;", ";x;;"));
+	// The tokenizer keeps 16 fields, as vte does: the command and 15 more.
+	feed(&mut t, format!("\x1b]2;{}\x07", "a;".repeat(30)).as_bytes());
+	assert_eq!(t.title, ["a"; 15].join(";"));
+}
