@@ -10,6 +10,8 @@ const BOLD: u8 = 1;
 const UNDERLINED: u8 = 2;
 const BLINKING: u8 = 4;
 const REVERSED: u8 = 8;
+/// DECCIR's `Satt`: DECSCA protection.
+const PROTECTED: u8 = 1;
 /// Flags in DECCIR's `Sflag`: origin mode and a pending wrap.
 const ORIGIN: u8 = 1;
 const WRAP: u8 = 8;
@@ -47,12 +49,13 @@ impl Term {
 			(self.attrs & BLINK != 0, BLINKING),
 			(self.reverse, REVERSED),
 		]);
+		let protection = flags([(self.protected, PROTECTED)]);
 		let state = flags([(self.origin_mode, ORIGIN), (self.wrap_pending, WRAP)]);
 		let [g0, g1] = self
 			.charsets
 			.map(|graphics| if graphics { '0' } else { 'B' });
 		let gl = self.active_charset;
-		format!("{row};{col};1;{rendition};@;{state};{gl};2;@;{g0}{g1}BB")
+		format!("{row};{col};1;{rendition};{protection};{state};{gl};2;@;{g0}{g1}BB")
 	}
 
 	/// The columns with a tab stop, from 1, separated by `/`.
@@ -87,7 +90,10 @@ impl Term {
 		}
 		let (row, col, gl) = (number(fields[0])?, number(fields[1])?, number(fields[6])?);
 		let (rendition, state) = (flag_byte(fields[3])?, flag_byte(fields[5])?);
+		let protection = flag_byte(fields[4])?;
 		let sets = designators(fields[9])?;
+		self.protected = protection & PROTECTED != 0;
+		self.update_active_extra();
 		self.bold = rendition & BOLD != 0;
 		self.reverse = rendition & REVERSED != 0;
 		self.attrs &= !(UNDERLINE | DOUBLE_UNDERLINE | BLINK);

@@ -18,6 +18,8 @@ struct Extra {
 	marks: Box<[char]>,
 	multicell: Option<Box<Multicell>>,
 	underline: Option<u32>,
+	/// DECSCA: selective erase leaves the character alone.
+	protected: bool,
 }
 
 // Entries are hashed for every combining mark printed. SipHash costs
@@ -29,7 +31,7 @@ impl Hash for Extra {
 		let mut bytes = [0u8; 8 + 4 * MAX_MARKS];
 		bytes[..2].copy_from_slice(&self.hyperlink.to_ne_bytes());
 		bytes[2] = marks.len() as u8;
-		bytes[3] = u8::from(self.multicell.is_some());
+		bytes[3] = u8::from(self.multicell.is_some()) | u8::from(self.protected) << 1;
 		// Colors are 24-bit; bit 24 tells black from none.
 		let underline = self.underline.map_or(0, |color| color | 1 << 24);
 		bytes[4..8].copy_from_slice(&underline.to_ne_bytes());
@@ -133,6 +135,7 @@ impl Extras {
 				marks: marks.into(),
 				multicell: current.multicell.clone(),
 				underline: current.underline,
+				protected: current.protected,
 			})?
 		};
 		self.memo[slot] = Memo {
@@ -186,6 +189,26 @@ impl Extras {
 		}
 		self.intern(Extra {
 			underline: color,
+			..current.clone()
+		})
+	}
+
+	/// Whether DECSCA protected `id`'s cell from selective erase.
+	pub(crate) fn protected(&self, id: u16) -> bool {
+		self
+			.entries
+			.get(id as usize)
+			.is_some_and(|extra| extra.protected)
+	}
+
+	/// The id for `id`'s content, protected or not, or `None` if the table is full.
+	pub(crate) fn with_protection(&mut self, id: u16, protected: bool) -> Option<u16> {
+		let current = self.entries.get(id as usize)?;
+		if current.protected == protected {
+			return Some(id);
+		}
+		self.intern(Extra {
+			protected,
 			..current.clone()
 		})
 	}
@@ -408,5 +431,62 @@ mod tests {
 		let blue = extras.with_underline_color(linked, Some(0xff)).unwrap();
 		assert_eq!(extras.hyperlink(blue), 3);
 		assert_eq!(extras.marks(blue), ['\u{301}']);
+	}
+
+	#[test]
+	fn protection_is_its_own_entry_and_shared_when_equal() {
+		let mut extras = Extras::default();
+		assert!(!extras.protected(NONE));
+		assert_eq!(extras.with_protection(NONE, false), Some(NONE));
+		let protected = extras.with_protection(NONE, true).unwrap();
+		assert_ne!(protected, NONE);
+		assert!(extras.protected(protected));
+		assert_eq!(extras.with_protection(NONE, true), Some(protected));
+		assert_eq!(extras.with_protection(protected, true), Some(protected));
+		assert_eq!(extras.with_protection(protected, false), Some(NONE));
+	}
+
+	#[test]
+	fn protection_survives_marks_links_colors_and_scaled_text() {
+		let mut extras = Extras::default();
+		let protected = extras.with_protection(NONE, true).unwrap();
+		let marked = extras.with_mark(protected, '\u{301}').unwrap();
+		let linked = extras.with_hyperlink(marked, 2).unwrap();
+		let colored = extras.with_underline_color(linked, Some(0x10)).unwrap();
+		for id in [marked, linked, colored] {
+			assert!(extras.protected(id), "{id}");
+		}
+		assert_eq!(extras.marks(colored), ['\u{301}']);
+		assert_eq!(extras.hyperlink(colored), 2);
+		// Removing the protection keeps the rest.
+		let plain = extras.with_protection(colored, false).unwrap();
+		assert!(!extras.protected(plain));
+		assert_eq!(
+			(
+				extras.marks(plain),
+				extras.hyperlink(plain),
+				extras.underline_color(plain)
+			),
+			(&['\u{301}'][..], 2, Some(0x10))
+		);
+	}
+
+	#[test]
+	fn a_mark_on_a_protected_cell_differs_from_one_on_a_plain_cell() {
+		// The memo and the table key on the whole entry, protection included.
+		let mut extras = Extras::default();
+		let protected = extras.with_protection(NONE, true).unwrap();
+		let plain_mark = extras.with_mark(NONE, '\u{301}').unwrap();
+		let protected_mark = extras.with_mark(protected, '\u{301}').unwrap();
+		assert_ne!(plain_mark, protected_mark);
+		assert!(!extras.protected(plain_mark));
+		assert!(extras.protected(protected_mark));
+	}
+
+	#[test]
+	fn unknown_ids_are_neither_protected_nor_changed() {
+		let mut extras = Extras::default();
+		assert!(!extras.protected(999));
+		assert_eq!(extras.with_protection(999, true), None);
 	}
 }

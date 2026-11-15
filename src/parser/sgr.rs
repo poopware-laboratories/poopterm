@@ -161,14 +161,15 @@ impl Term {
 		}
 	}
 
-	/// Points [`Term::active_extra`] at the active hyperlink and underline
-	/// color; with the table full, printed cells go without both.
-	pub(super) fn update_active_extra(&mut self) {
-		if self.active_hyperlink == 0 && self.underline_color.is_none() {
+	/// Points [`Term::active_extra`] at the active hyperlink, underline
+	/// color and protection; with the table full, printed cells go without.
+	pub(crate) fn update_active_extra(&mut self) {
+		if self.active_hyperlink == 0 && self.underline_color.is_none() && !self.protected {
 			self.active_extra = NO_EXTRA;
 			return;
 		}
 		if self.underline_color.is_none()
+			&& !self.protected
 			&& let Some(id) = self.extras.remembered_link(self.active_hyperlink)
 		{
 			self.active_extra = id;
@@ -178,6 +179,7 @@ impl Term {
 		self.active_extra = extras
 			.with_hyperlink(NO_EXTRA, self.active_hyperlink)
 			.and_then(|id| extras.with_underline_color(id, self.underline_color))
+			.and_then(|id| extras.with_protection(id, self.protected))
 			.unwrap_or_default();
 	}
 

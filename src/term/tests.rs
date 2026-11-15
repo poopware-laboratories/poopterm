@@ -347,7 +347,7 @@ fn kitty_keyboard_mode_can_be_enabled_and_restored() {
 #[test]
 fn unsupported_private_sequences_do_not_execute_normal_commands() {
 	let mut t = terminal(4, 2);
-	feed(&mut t, b"abcd\x1b[?2J");
+	feed(&mut t, b"abcd\x1b[?2P");
 	assert_eq!(row(&t, 0), "abcd");
 }
 
@@ -822,6 +822,8 @@ fn batched_printing_matches_per_character_printing() {
 		b"\x1b[31m",
 		b"\x1b[1;7m",
 		b"\x1b[0m",
+		b"\x1b[1\"q",
+		b"\x1b[0\"q\x1b[?1K",
 		b"\x1b[2D",
 		b"\x1b[5G",
 		b"\x1b[K",

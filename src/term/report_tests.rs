@@ -27,7 +27,7 @@ fn primary_device_attributes_claim_only_what_is_implemented() {
 	let mut t = terminal();
 	assert_eq!(
 		ask(&mut t, "\x1b[c\x1b[0c"),
-		["\x1b[?65;4;21;22c", "\x1b[?65;4;21;22c"]
+		["\x1b[?65;4;6;21;22c", "\x1b[?65;4;6;21;22c"]
 	);
 }
 

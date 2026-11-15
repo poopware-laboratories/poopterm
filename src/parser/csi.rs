@@ -112,6 +112,7 @@ impl Term {
 						}
 					}
 				}
+				(b"\"", 'q') => self.set_protection(params.get(0).map_or(0, |p| p[0])),
 				(b"#", '{') => self.push_sgr(params),
 				(b"#", '}') => self.pop_sgr(),
 				// DECRQPSR: the cursor information or tab stop report.
@@ -231,6 +232,13 @@ impl Term {
 		}
 
 		if private {
+			// DECSED and DECSEL: erase in display or line, sparing what
+			// DECSCA protected.
+			match action {
+				'J' => self.selective_erase_display(params.get(0).map_or(0, |p| p[0])),
+				'K' => self.selective_erase_line(params.get(0).map_or(0, |p| p[0])),
+				_ => {}
+			}
 			return;
 		}
 		if matches!(action, 'h' | 'l') {
@@ -447,9 +455,10 @@ impl Term {
 	}
 }
 
-/// Primary DA: a VT525 (65) with Sixel graphics (4), horizontal scrolling
-/// (21) and ANSI color (22), the extensions implemented in full.
-const PRIMARY_DA: &[u8] = b"\x1b[?65;4;21;22c";
+/// Primary DA: a VT525 (65) with Sixel graphics (4), selective erase (6),
+/// horizontal scrolling (21) and ANSI color (22), the extensions
+/// implemented in full.
+const PRIMARY_DA: &[u8] = b"\x1b[?65;4;6;21;22c";
 
 /// The crate version encoded as `major * 10000 + minor * 100 + patch`.
 fn version_number() -> u32 {
@@ -500,7 +509,9 @@ impl Term {
 		self.reset_lr_margins();
 		self.charsets = [false; 2];
 		self.active_charset = 0;
+		self.protected = false;
 		self.reset_style();
+		self.update_active_extra();
 		self.saved_cursor = None;
 		self.wrap_pending = false;
 	}

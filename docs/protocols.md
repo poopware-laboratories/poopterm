@@ -104,6 +104,13 @@ with `font_path` or `POOPTERM_FONT`.
   the region sideways at a margin, and SL and SR (`CSI Pn SP @` /
   `CSI Pn SP A`) shift it wherever the cursor is; from outside the
   margins, ICH, DCH, IL, DL, DECIC and DECDC do nothing.
+- **Selective erase:** DECSCA (`CSI 1 " q`) protects the characters printed
+  after it, until `CSI 0 " q` or `CSI 2 " q`. DECSED (`CSI ? Ps J`) and
+  DECSEL (`CSI ? Ps K`) erase like ED and EL but skip protected characters.
+  Erased characters become spaces that keep their colors and attributes.
+  ED, EL, ECH and DCH erase protected characters as well, and the cells
+  they clear lose the protection. DECSC saves the protection, DECSTR and RIS
+  clear it, and DECRQSS and DECCIR report it.
 - **Queries:** DECRQSS (`DCS $ q`) reports SGR, margins, cursor style,
   conformance level and page size; XTGETTCAP (`DCS + q`) answers from
   poopterm's terminfo entry; XTWINOPS reports sizes in cells and pixels
