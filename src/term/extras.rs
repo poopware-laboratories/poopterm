@@ -432,4 +432,61 @@ mod tests {
 		assert_eq!(extras.hyperlink(blue), 3);
 		assert_eq!(extras.marks(blue), ['\u{301}']);
 	}
+
+	#[test]
+	fn protection_is_its_own_entry_and_shared_when_equal() {
+		let mut extras = Extras::default();
+		assert!(!extras.protected(NONE));
+		assert_eq!(extras.with_protection(NONE, false), Some(NONE));
+		let protected = extras.with_protection(NONE, true).unwrap();
+		assert_ne!(protected, NONE);
+		assert!(extras.protected(protected));
+		assert_eq!(extras.with_protection(NONE, true), Some(protected));
+		assert_eq!(extras.with_protection(protected, true), Some(protected));
+		assert_eq!(extras.with_protection(protected, false), Some(NONE));
+	}
+
+	#[test]
+	fn protection_survives_marks_links_colors_and_scaled_text() {
+		let mut extras = Extras::default();
+		let protected = extras.with_protection(NONE, true).unwrap();
+		let marked = extras.with_mark(protected, '\u{301}').unwrap();
+		let linked = extras.with_hyperlink(marked, 2).unwrap();
+		let colored = extras.with_underline_color(linked, Some(0x10)).unwrap();
+		for id in [marked, linked, colored] {
+			assert!(extras.protected(id), "{id}");
+		}
+		assert_eq!(extras.marks(colored), ['\u{301}']);
+		assert_eq!(extras.hyperlink(colored), 2);
+		// Removing the protection keeps the rest.
+		let plain = extras.with_protection(colored, false).unwrap();
+		assert!(!extras.protected(plain));
+		assert_eq!(
+			(
+				extras.marks(plain),
+				extras.hyperlink(plain),
+				extras.underline_color(plain)
+			),
+			(&['\u{301}'][..], 2, Some(0x10))
+		);
+	}
+
+	#[test]
+	fn a_mark_on_a_protected_cell_differs_from_one_on_a_plain_cell() {
+		// The memo and the table key on the whole entry, protection included.
+		let mut extras = Extras::default();
+		let protected = extras.with_protection(NONE, true).unwrap();
+		let plain_mark = extras.with_mark(NONE, '\u{301}').unwrap();
+		let protected_mark = extras.with_mark(protected, '\u{301}').unwrap();
+		assert_ne!(plain_mark, protected_mark);
+		assert!(!extras.protected(plain_mark));
+		assert!(extras.protected(protected_mark));
+	}
+
+	#[test]
+	fn unknown_ids_are_neither_protected_nor_changed() {
+		let mut extras = Extras::default();
+		assert!(!extras.protected(999));
+		assert_eq!(extras.with_protection(999, true), None);
+	}
 }

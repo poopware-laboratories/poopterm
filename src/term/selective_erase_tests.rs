@@ -245,3 +245,124 @@ fn selective_erase_split_across_reads() {
 	}
 	assert_eq!(screen(&t), ["  c  ", "  h  ", "  m  "]);
 }
+
+#[test]
+fn the_scrollback_is_left_alone_by_modes_0_to_2() {
+	let mut t = terminal();
+	feed(&mut t, "old\r\n\r\n\r\nnew");
+	let history = t.scrollback.len();
+	assert!(history > 0);
+	for mode in 0..=2 {
+		feed(&mut t, &format!("\x1b[?{mode}J"));
+		assert_eq!(t.scrollback.len(), history, "DECSED {mode}");
+	}
+	let first = t.scrollback.get(0).unwrap();
+	assert_eq!(
+		first.iter().take(3).map(|cell| cell.ch).collect::<String>(),
+		"old"
+	);
+}
+
+#[test]
+fn the_alternate_screen_erases_only_itself() {
+	let mut t = terminal();
+	feed(&mut t, "main\x1b[?1049h\x1b[1\"qk\x1b[0\"qx\x1b[?2J");
+	assert_eq!(screen(&t)[0], "k    ");
+	feed(&mut t, "\x1b[?1049l");
+	assert_eq!(screen(&t)[0], "main ");
+}
+
+#[test]
+fn margins_do_not_limit_selective_erase() {
+	let mut t = terminal();
+	feed(&mut t, "abcde\x1b[?69h\x1b[2;3s\x1b[1;3H\x1b[?2K");
+	assert_eq!(screen(&t)[0], "     ", "DECSEL");
+	let mut t = terminal();
+	feed(
+		&mut t,
+		"abcdefghij\x1b[?69h\x1b[2;3s\x1b[?6h\x1b[1;1H\x1b[?0J",
+	);
+	assert_eq!(
+		screen(&t)[..2],
+		["a    ", "     "],
+		"DECSED from the origin"
+	);
+}
+
+#[test]
+fn a_pending_wrap_erases_from_the_last_column() {
+	let mut t = terminal();
+	feed(&mut t, "abcde");
+	assert!(t.wrap_pending);
+	feed(&mut t, "\x1b[?0K");
+	assert_eq!(screen(&t)[0], "abcd ");
+	let mut t = terminal();
+	feed(&mut t, "abcde\x1b[?1K");
+	assert_eq!(screen(&t)[0], "     ");
+}
+
+#[test]
+fn erased_blanks_do_not_take_the_current_background() {
+	// Unlike EL, which fills with the current colors.
+	let mut t = terminal();
+	feed(&mut t, "ab\x1b[44m\x1b[?2K");
+	let default_bg = t.default_bg;
+	assert!(t.grid[0].iter().all(|cell| cell.bg == default_bg));
+	assert_eq!(t.grid.used(0), 2, "the padding stays padding");
+	feed(&mut t, "\x1b[2K");
+	assert!(t.grid[0].iter().all(|cell| cell.bg == t.indexed_color(4)));
+}
+
+#[test]
+fn scaled_text_is_erased_whole_or_kept_whole() {
+	let mut t = Term::new(8, 3, Theme::from_kind(ThemeKind::Poop), "/".into());
+	feed(
+		&mut t,
+		"\x1b]66;s=2;a\x07\x1b[1\"q\x1b]66;s=2;b\x07\x1b[0\"q\x1b[?2J",
+	);
+	let multicell = |x: usize, y: usize| t.extras.multicell(t.grid[y][x].extra).is_some();
+	for (x, y) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+		assert!(!multicell(x, y), "the plain block is gone at ({x}, {y})");
+		assert_eq!(t.grid[y][x].ch, ' ');
+	}
+	for (x, y) in [(2, 0), (3, 0), (2, 1), (3, 1)] {
+		assert!(multicell(x, y), "the protected block stays at ({x}, {y})");
+	}
+	// Erasing the top row of a block erases its lower half too.
+	let mut t = Term::new(8, 3, Theme::from_kind(ThemeKind::Poop), "/".into());
+	feed(&mut t, "\x1b]66;s=2;a\x07\x1b[1;1H\x1b[?2K");
+	let multicell = |x: usize, y: usize| t.extras.multicell(t.grid[y][x].extra).is_some();
+	assert!(
+		!multicell(0, 1) && !multicell(1, 1),
+		"no half block is left"
+	);
+}
+
+#[test]
+fn only_the_first_parameter_counts() {
+	let mut t = terminal();
+	feed(&mut t, "\x1b[1;0\"qp\x1b[0\"qx\x1b[?2;0J");
+	assert_eq!(
+		screen(&t)[0],
+		"p    ",
+		"DECSCA 1;0 protects, DECSED 2;0 erases all"
+	);
+	let mut t = terminal();
+	feed(&mut t, "\x1b[65535\"qx\x1b[?65535J\x1b[?65535K");
+	assert_eq!(screen(&t)[0], "x    ", "out of range values do nothing");
+	assert!(!t.protected);
+}
+
+#[test]
+fn the_cursor_stays_and_its_pending_wrap_ends_as_with_ed() {
+	for erase in ["\x1b[?2J", "\x1b[2J", "\x1b[?2K", "\x1b[2K"] {
+		let mut t = terminal();
+		feed(&mut t, &format!("\x1b[1\"qabcde{erase}"));
+		assert_eq!((t.cx, t.cy, t.wrap_pending), (4, 0, false), "{erase:?}");
+		feed(&mut t, "f");
+		assert_eq!(
+			t.grid[0][4].ch, 'f',
+			"{erase:?}: the next character overwrites"
+		);
+	}
+}
