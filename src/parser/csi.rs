@@ -251,27 +251,23 @@ impl Term {
 					},
 				);
 			}
-			'E' | 'F' => {
-				let top = if self.origin_mode { self.scroll_top } else { 0 };
-				let bottom = if self.origin_mode {
-					self.scroll_bottom
-				} else {
-					self.rows - 1
-				};
-				self.cy = if action == 'E' {
-					(self.cy + p(0, 1)).min(bottom)
-				} else {
-					self.cy.saturating_sub(p(0, 1)).max(top)
-				};
+			// CNL, CPL, CUU and CUD stop at the margins from inside the region.
+			'E' => {
+				self.cy = (self.cy + p(0, 1)).min(self.last_row());
 				self.carriage_return();
 			}
-			// CUU, and VPB from ECMA-48.
-			'A' | 'k' => {
+			'F' => {
+				self.cy = self.cy.saturating_sub(p(0, 1)).max(self.first_row());
+				self.carriage_return();
+			}
+			'A' => self.cy = self.cy.saturating_sub(p(0, 1)).max(self.first_row()),
+			'B' => self.cy = (self.cy + p(0, 1)).min(self.last_row()),
+			// VPB and VPR from ECMA-48 stop at the margins only in origin mode.
+			'k' => {
 				let top = if self.origin_mode { self.scroll_top } else { 0 };
 				self.cy = self.cy.saturating_sub(p(0, 1)).max(top);
 			}
-			// CUD and VPR.
-			'B' | 'e' => {
+			'e' => {
 				self.cy = (self.cy + p(0, 1)).min(if self.origin_mode {
 					self.scroll_bottom
 				} else {

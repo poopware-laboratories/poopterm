@@ -39,6 +39,26 @@ impl Term {
 		}
 	}
 
+	/// The first row the cursor may reach moving up: the top margin from
+	/// at or below it, else the screen's top.
+	pub(crate) fn first_row(&self) -> usize {
+		if self.cy >= self.scroll_top {
+			self.scroll_top
+		} else {
+			0
+		}
+	}
+
+	/// The last row the cursor may reach moving down: the bottom margin
+	/// from at or above it, else the screen's bottom.
+	pub(crate) fn last_row(&self) -> usize {
+		if self.cy <= self.scroll_bottom {
+			self.scroll_bottom
+		} else {
+			self.rows - 1
+		}
+	}
+
 	/// The column origin mode counts from.
 	#[inline(always)]
 	pub(crate) fn origin_column(&self) -> usize {

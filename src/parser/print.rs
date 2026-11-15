@@ -369,11 +369,7 @@ impl Term {
 	/// wraparound the line's start leads to the right margin of the line
 	/// above, stopping at the top margin as cursor up does.
 	fn backspace(&mut self) {
-		let top = if self.cy >= self.scroll_top {
-			self.scroll_top
-		} else {
-			0
-		};
+		let top = self.first_row();
 		let start = self.line_start();
 		if self.cx == start && self.reverse_wrap && self.auto_wrap && self.cy > top {
 			self.cy -= 1;
