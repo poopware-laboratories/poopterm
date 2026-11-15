@@ -252,6 +252,7 @@ fn fragment(rng: &mut Rng, out: &mut Vec<u8>) {
 	const PIECES: &[&[u8]] = &[
 		b"hello world ",
 		b"\x1b[?9h",
+		b"\x1b[?69h\x1b[2;5s",
 		b"\x1b[?1005;1015h",
 		b"\x1b[?1015$p",
 		b"\x1b[",

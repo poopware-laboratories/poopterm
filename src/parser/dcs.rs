@@ -35,6 +35,7 @@ impl Term {
 		Some(match setting {
 			b"m" => format!("{}m", self.rendition()),
 			b"r" => format!("{};{}r", self.scroll_top + 1, self.scroll_bottom + 1),
+			b"s" => format!("{};{}s", self.left_margin + 1, self.right_margin + 1),
 			// DECSCUSR's style: the steady one, or the blinking one before it.
 			b" q" => {
 				let steady = match self.cursor_shape {
