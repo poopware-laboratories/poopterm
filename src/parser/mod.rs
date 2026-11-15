@@ -32,6 +32,7 @@ mod print;
 mod sgr;
 #[cfg(test)]
 mod sgr_tests;
+pub(crate) mod title_modes;
 mod window_ops;
 
 use crate::{
