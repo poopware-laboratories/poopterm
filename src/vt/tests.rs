@@ -272,6 +272,7 @@ fn fragment(rng: &mut Rng, out: &mut Vec<u8>) {
 		b"\x1b[>4;2m",
 		b"\x1b[>0;1t\x1b]2;6869\x1b\\\x1b[>T",
 		b"\x1b[ q",
+		b"\x1b[1;31#{\x1b[#}",
 		b"\x1b[1;2;3$|",
 		b"\x1b[?$p",
 		b"\x1b]0;title\x07",
