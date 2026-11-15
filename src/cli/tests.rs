@@ -1,8 +1,8 @@
 //! Tests of the command line: what it accepts, how its help is laid out
 //! and colored, and the suggestions its errors make.
 use super::{
-	COLUMN, Command, Paint, distance, documented, error, help, parse, render, suggest, unknown,
-	version, wants_color,
+	COLUMN, Command, Paint, Terminfo, distance, documented, error, help, parse, render, suggest,
+	unknown, version, wants_color,
 };
 use std::ffi::OsString;
 
@@ -46,7 +46,7 @@ fn each_option_and_its_short_form_parse() {
 	assert_eq!(parse(args(&["-V"])), Ok(Command::Version));
 	assert_eq!(
 		parse(args(&["--print-terminfo"])),
-		Ok(Command::PrintTerminfo)
+		Ok(Command::PrintTerminfo(Terminfo::Full))
 	);
 	assert_eq!(
 		parse(args(&["--print-shell-integration", "fish"])),
@@ -54,6 +54,26 @@ fn each_option_and_its_short_form_parse() {
 	);
 	// Arguments after an option that takes none are ignored, as before.
 	assert_eq!(parse(args(&["--help", "--version"])), Ok(Command::Help));
+}
+
+#[test]
+fn print_terminfo_prints_the_full_entry_unless_asked_for_the_small_one() {
+	assert_eq!(
+		parse(args(&["--print-terminfo", "full"])),
+		Ok(Command::PrintTerminfo(Terminfo::Full))
+	);
+	assert_eq!(
+		parse(args(&["--print-terminfo", "small"])),
+		Ok(Command::PrintTerminfo(Terminfo::Small))
+	);
+	// Another word is a mistake, not a request for the full entry.
+	let message = parse(args(&["--print-terminfo", "smal"])).unwrap_err();
+	assert!(
+		message.starts_with("unknown terminfo entry smal\n"),
+		"{message}"
+	);
+	assert!(message.contains("Did you mean `small`?"), "{message}");
+	assert!(parse(args(&["--print-terminfo", "--help"])).is_err());
 }
 
 #[test]
@@ -334,7 +354,13 @@ fn every_documented_option_is_accepted() {
 		]
 	);
 	for option in options {
-		let parsed = parse(args(&[option, "zsh"]));
+		// A value each accepts: a shell, or which terminfo entry.
+		let value = if option == "--print-terminfo" {
+			"small"
+		} else {
+			"zsh"
+		};
+		let parsed = parse(args(&[option, value]));
 		assert!(
 			matches!(parsed, Ok(ref command) if *command != Command::Run),
 			"{option}"

@@ -114,9 +114,18 @@ done
 run install -d "$DESTDIR$datadir/icons/hicolor/scalable/apps"
 run install -m 644 "$root/assets/poopterm.svg" "$DESTDIR$datadir/icons/hicolor/scalable/apps/poopterm.svg"
 # Shells get TERM=xterm-poopterm only with this entry; see src/terminfo.rs.
+# The full entry needs ncurses 6.1; macOS's tic (6.0) refuses entries over
+# 4096 bytes, and gets the small entry instead.
 if command -v tic >/dev/null 2>&1; then
 	run install -d "$DESTDIR$terminfo"
-	run tic -x -o "$DESTDIR$terminfo" "$root/terminfo/poopterm.terminfo"
+	full=$(mktemp)
+	trap 'rm -f "$full"' EXIT
+	cat "$root/terminfo/poopterm.terminfo" "$root/terminfo/poopterm-extra.terminfo" >"$full"
+	chmod 644 "$full"
+	if ! run tic -x -o "$DESTDIR$terminfo" "$full" 2>/dev/null; then
+		echo "Note: this tic cannot compile the full entry; installing the small terminfo entry."
+		run tic -x -o "$DESTDIR$terminfo" "$root/terminfo/poopterm.terminfo"
+	fi
 else
 	echo "Note: tic not found; shells will use TERM=xterm-256color."
 fi

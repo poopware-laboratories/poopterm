@@ -1,6 +1,9 @@
-# Terminfo for Poopterm. Install with:  tic -x terminfo/poopterm.terminfo
-# (or: poopterm --print-terminfo | tic -x -). Only advertises sequences
-# poopterm implements; derived from xterm-256color minus unsupported
+# Terminfo for Poopterm, the small entry that every tic compiles (macOS's
+# ncurses 6.0 refuses entries over 4096 bytes); with poopterm-extra.terminfo
+# appended it is the full entry, for ncurses 6.1 and later. Install with
+# poopterm --print-terminfo | tic -x - (small: --print-terminfo small).
+# Only advertises sequences poopterm implements; derived from
+# xterm-256color minus unsupported
 # capabilities, plus truecolor, synchronized output, styled underlines,
 # focus events, title (status line) support, cursor color, overline and
 # left and right margins (tmux's Enmg, Dsmg, Clmg and Cmg).

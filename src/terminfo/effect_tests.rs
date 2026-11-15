@@ -9,7 +9,7 @@ use std::{
 
 use super::{
 	NAME,
-	tests::{TempDir, capabilities, compile_into, have},
+	tests::{TempDir, capabilities, compile_into, full_tic, have},
 };
 use crate::{
 	parser::Parser,
@@ -23,7 +23,7 @@ struct Entry(TempDir);
 
 impl Entry {
 	fn new(name: &str) -> Option<Self> {
-		if !have("tic") || !have("tput") || !have("infocmp") {
+		if !full_tic() || !have("tput") || !have("infocmp") {
 			return None;
 		}
 		let dir = TempDir::new(name);
@@ -59,7 +59,14 @@ fn feed(term: &mut Term, bytes: &[u8]) {
 
 /// Everything a capability may change, as text to compare.
 fn state(t: &Term) -> String {
-	let cursor = (t.cx, t.cy, t.wrap_pending, t.cursor_visible, t.cursor_shape);
+	let cursor = (
+		t.cx,
+		t.cy,
+		t.wrap_pending,
+		t.cursor_visible,
+		t.cursor_blink,
+		t.cursor_shape,
+	);
 	let style = (
 		t.fg,
 		t.bg,
@@ -160,6 +167,12 @@ const EFFECTS: &[(&str, &[&str], &str, &str)] = &[
 	("Cmg", &["1", "3"], "\x1b[?69h", ""),
 	("Clmg", &[], "\x1b[?69h\x1b[2;4s", ""),
 	("Dsmg", &[], "\x1b[?69h", ""),
+	// The standard margin capabilities, which turn the mode on themselves.
+	("smglr", &["1", "3"], "", ""),
+	("smglp", &["1"], "", ""),
+	("smgrp", &["3"], "", ""),
+	("mgc", &[], "\x1b[?69h\x1b[2;4s", ""),
+	("cvvis", &[], "", ""),
 	("sc", &[], "", ""),
 	("rc", &[], "\x1b7\x1b[H", ""),
 	("civis", &[], "", ""),
@@ -221,7 +234,7 @@ const EFFECTS: &[(&str, &[&str], &str, &str)] = &[
 ];
 
 /// Patterns for the replies to queries, checked against those replies.
-const REPLIES: &[&str] = &["u6", "u8"];
+const REPLIES: &[&str] = &["u6", "u8", "rv", "xr"];
 /// What Poopterm sends (pasted text's brackets, mouse reports), the
 /// character set mapping line drawing uses, and the visual bell.
 const OTHERS: &[&str] = &["PS", "PE", "xm", "acsc", "flash"];
@@ -295,6 +308,18 @@ fn replies_match_the_advertised_patterns() {
 	assert_eq!(reply("u7"), cup);
 	assert!(matches(b"\x1b\\[\\?[;0-9]+c", &reply("u9")));
 	assert_eq!(entry.tput("u8", &[]), b"\x1b[?%[;0123456789]c");
+	// rv and xr describe the replies to RV (secondary DA) and XR (XTVERSION).
+	for (pattern, query) in [("rv", "RV"), ("xr", "XR")] {
+		let answer = reply(query);
+		let shown = String::from_utf8_lossy(&answer).escape_debug().to_string();
+		assert!(
+			matches(&entry.tput(pattern, &[]), &answer),
+			"{query}: {shown}"
+		);
+	}
+	// And nothing else: another terminal's replies do not match.
+	assert!(!matches(&entry.tput("rv", &[]), b"\x1b[>41;380;0c"));
+	assert!(!matches(&entry.tput("xr", &[]), b"\x1bP>|XTerm(380)\x1b\\"));
 }
 
 #[test]
@@ -373,6 +398,17 @@ fn boolean_capabilities_hold() {
 	assert_eq!((term.cx, term.cy, term.wrap_pending), (9, 2, true));
 	feed(&mut term, b"y");
 	assert_eq!((term.cx, term.cy), (1, 3));
+	// Sxl: Sixel images are drawn.
+	assert!(flag("Sxl"));
+	let mut term = terminal();
+	feed(&mut term, b"\x1bPq#0;2;100;0;0#0~~\x1b\\");
+	assert_eq!(term.images.len(), 1);
+	// Su: underline styles and colors (Smulx, Setulc) take effect.
+	assert!(flag("Su"));
+	let mut term = terminal();
+	feed(&mut term, &entry.tput("Smulx", &["3"]));
+	feed(&mut term, &entry.tput("Setulc", &["66051"]));
+	assert_ne!(state(&term), state(&terminal()));
 	// OTbs: backspace moves left.
 	assert!(flag("OTbs"));
 	let mut term = terminal();

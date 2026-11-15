@@ -1,18 +1,20 @@
-//! Keeps the compiled entry small enough for macOS's ncurses 5.7 `tic`.
+//! Keeps the small entry small enough for macOS's `tic`: ncurses 6.0 on
+//! macOS 27 (5.7 before macOS 14), which refuses compiled entries over
+//! 4096 bytes. The full entry is for ncurses 6.1 and later.
 use std::{fs, process::Command};
 
-use super::{NAME, SOURCE, tests::TempDir, tests::have};
+use super::{NAME, SMALL, tests::TempDir, tests::have};
 
-/// ncurses 5 refuses to write a compiled entry larger than this; macOS
-/// still ships that `tic`, and the install script fails with "error writing".
+/// ncurses before 6.1 refuses to write a compiled entry larger than this
+/// ("error writing"); macOS still ships such a `tic`.
 const LEGACY_LIMIT: u64 = 4096;
 
 /// Compiles the entry in the legacy format, which ncurses 6 also writes
 /// when no number exceeds 16 bits, and returns its size in bytes.
 fn legacy_size() -> Option<u64> {
 	let dir = TempDir::new("legacy-size");
-	let source = SOURCE.replace("pairs#0x10000", "pairs#0x7fff");
-	assert_ne!(source, SOURCE, "the entry no longer sets pairs#0x10000");
+	let source = SMALL.replace("pairs#0x10000", "pairs#0x7fff");
+	assert_ne!(source, SMALL, "the entry no longer sets pairs#0x10000");
 	let path = dir.0.join("legacy.terminfo");
 	fs::write(&path, source).unwrap();
 	let status = Command::new("tic")
@@ -34,7 +36,7 @@ fn legacy_size() -> Option<u64> {
 }
 
 #[test]
-fn the_legacy_compiled_entry_fits_old_tic_with_room_to_grow() {
+fn the_small_entry_fits_old_tic_with_room_to_grow() {
 	if !have("tic") {
 		return;
 	}

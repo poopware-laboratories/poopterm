@@ -310,5 +310,14 @@ events, …), when it is installed system-wide; otherwise they get
 `TERM=xterm-256color`. A per-user copy (`~/.terminfo`) is not used, because
 `sudo` cannot see it and programs such as `sudo dmesg` would lose their
 colors. `make install` installs the entry system-wide, or run
-`poopterm --print-terminfo | sudo tic -x -`. Set `term = "xterm-256color"`
+`poopterm --print-terminfo | sudo tic -x -`.
+
+There are two entries under the same name. The full one advertises every
+capability Poopterm implements and needs ncurses 6.1 or later (Linux, the
+BSDs, Homebrew's ncurses). macOS's own `/usr/bin/tic` is ncurses 6.0, which
+refuses compiled entries over 4096 bytes ("error writing"); it gets the
+small entry, `poopterm --print-terminfo small`, which leaves out the
+standard margin capabilities, Ctrl+Alt keys, reply patterns and the Sixel
+and styled-underline flags. `make install` tries the full entry and falls
+back to the small one by itself. Set `term = "xterm-256color"`
 (or any name) in `config.toml` to override.

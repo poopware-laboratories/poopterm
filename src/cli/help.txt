@@ -9,10 +9,13 @@ USAGE
 OPTIONS
   -h, --help	Show this help.
   -V, --version	Print the version number.
-      --print-terminfo	Print Poopterm's terminfo entry, which tells
+      --print-terminfo [small]	Print Poopterm's terminfo entry, which tells
 	programs what it can draw. Shells get
 	TERM=xterm-poopterm once it is installed for
 	every user, and xterm-256color until then.
+	The full entry needs ncurses 6.1; print the
+	small one for macOS's tic, which answers
+	"error writing" to the full one.
       --print-shell-integration SHELL
 	Print the hooks for zsh, bash or fish that mark
 	prompts and commands (OSC 133) and report the
@@ -62,6 +65,8 @@ ENVIRONMENT
 EXAMPLES
   # Install the terminfo entry for every user
   `poopterm --print-terminfo | sudo tic -x -`
+  # The same with macOS's own tic
+  `poopterm --print-terminfo small | sudo /usr/bin/tic -x -`
   # Add the shell hooks to zsh by hand
   `poopterm --print-shell-integration zsh >> ~/.zshrc`
   # Benchmark two workloads in a bigger terminal
