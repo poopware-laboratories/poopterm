@@ -1107,3 +1107,25 @@ fn typing_scrolls_back_to_the_bottom() {
 	assert_eq!(t.scroll_offset, 0);
 	assert!(!t.scroll_to_bottom(), "nothing changes at the bottom");
 }
+
+#[test]
+fn a_string_terminator_keeps_a_pending_wrap() {
+	let mut t = terminal(20, 3);
+	// A title set with ST after the last column, then more text: it wraps.
+	let mut bytes = vec![b'x'; 20];
+	bytes.extend_from_slice(b"\x1b]2;title\x1b\\ab");
+	feed(&mut t, &bytes);
+	assert_eq!(
+		(t.grid[0][19].ch, t.grid[1][0].ch, t.grid[1][1].ch),
+		('x', 'a', 'b')
+	);
+	// A stray ST changes nothing either.
+	feed(&mut t, &[b'y'; 18]);
+	feed(&mut t, b"\x1b\\z");
+	assert_eq!((t.grid[1][19].ch, t.grid[2][0].ch), ('y', 'z'));
+	// Other ESC sequences still cancel the wrap: IND moves down instead.
+	let mut t = terminal(20, 3);
+	feed(&mut t, &[b'x'; 20]);
+	feed(&mut t, b"\x1bDq");
+	assert_eq!((t.grid[1][19].ch, t.grid[1][0].ch), ('q', ' '));
+}

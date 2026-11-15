@@ -21,7 +21,8 @@ impl Term {
 		if !intermediates.is_empty() {
 			return;
 		}
-		if !matches!(byte, b'7' | b'8' | b'=' | b'>') {
+		// ST (`ESC \`) only ends a string, so it keeps a pending wrap.
+		if !matches!(byte, b'7' | b'8' | b'=' | b'>' | b'\\') {
 			self.wrap_pending = false;
 		}
 		match byte {
