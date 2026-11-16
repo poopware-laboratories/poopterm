@@ -1,5 +1,57 @@
 # Changelog
 
+## 26.11.85 "Lunar Moth" — 2026-11-16
+
+### Breaking changes
+
+- Require x86-64-v2 on x86-64 (#333).
+
+### Added
+
+- Release weekly, and security fixes at once (#323) (release).
+- Let programs turn alternate scroll off with ?1007 (#328) (input).
+- Report the mouse in x10 compatibility, utf-8 and urxvt forms (#327) (input).
+- Report the mouse in pixels with ?1016 (#330) (input).
+- Support left and right margins (DECLRMM, DECSLRM) (#341) (parser).
+- Insert, delete and shift columns inside the margins (#342) (parser).
+- Advertise left and right margins for tmux (#345) (terminfo).
+- Add a full entry for ncurses 6.1 next to the small one for macOS (#346) (terminfo).
+- Report permanently reset and stored modes in DECRQM (#348) (parser).
+- Answer DECDSR printer, key, locator, macro and session reports (#349) (parser).
+- Identify as a VT525, as xterm does at its highest level (#350) (parser).
+- Answer DA3 and report the status display settings (#351) (parser).
+- Report and restore tab stops (DECTABSR, DECRSPS) (#353) (parser).
+- Report and restore the cursor information (DECCIR) (#354) (parser).
+- Set and reset the title modes (XTSMTITLE, XTRMTITLE) (#355) (parser).
+- Choose the window's app id with --app-id (#357) (cli).
+- Save and restore the rendition (XTPUSHSGR, XTPOPSGR) (#358) (parser).
+- Protect characters from selective erase (DECSCA, DECSED, DECSEL) (#359) (parser).
+
+### Fixed
+
+- Wait for a free pty instead of failing at once (#329) (pty).
+- Answer cursor reports as xterm does and block DECRQCRA (#338) (parser).
+- Stop cursor up and down at the margins outside origin mode (#344) (parser).
+- Answer color queries in xterm's 16-bit form (#347) (parser).
+- Keep a pending wrap across a string terminator (#352) (parser).
+- Keep semicolons in OSC 0, 1 and 2 titles (#356) (parser).
+- Stop freezing when a program tracks the mouse (#360) (input).
+
+### Maintenance
+
+- Move starting programs into sys (#322) (sys).
+- Give each call of a starting program its own unsafe block (#324) (sys).
+- Move opening shared libraries into sys (#326) (sys).
+- Read the whole line before closing the slave (#331) (pty).
+- Run every dispatched copy through one place (#332) (cpu).
+- Give each unsafe operation its own block (#334) (vk).
+- Give each vulkan handle a type of its own (#335) (vk).
+- List the parser hotspots and the xterm gaps (#336) (todo).
+- Drop the hotspots that measured flat (#337) (todo).
+- Run esctest2 and vttest headless on a real pty (#339) (term).
+- Let the vttest walk finish without typing into reports (#340) (term).
+- Wait for macOS to hang the slave up after the master closes (#343) (pty).
+
 ## 26.11.84 "Lunar Moth" — 2026-11-11
 
 ### Maintenance
