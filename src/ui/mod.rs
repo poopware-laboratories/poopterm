@@ -56,6 +56,9 @@ pub(crate) mod links;
 pub(crate) mod metrics;
 #[cfg(test)]
 mod metrics_tests;
+pub(crate) mod mouse_report;
+#[cfg(test)]
+mod mouse_report_tests;
 pub(crate) mod overlays;
 #[cfg(test)]
 mod overlays_tests;
