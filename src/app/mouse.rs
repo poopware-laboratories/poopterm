@@ -1,6 +1,6 @@
 //! Mouse events: selection, links, wheel scrolling and mouse reporting.
 use super::*;
-use crate::input::mouse::{MouseAction, MouseButtonCode, MouseReport, encode_mouse, tracked};
+use crate::input::mouse::{MouseAction, MouseButtonCode};
 use crate::input::{
 	paste::paste_bytes,
 	scroll::{WheelAction, alternate_scroll_bytes, wheel_action},
@@ -11,6 +11,7 @@ use crate::ui::{
 	header_target::{HeaderTarget, header_target},
 	hover::{GridPlace, Hover, hover},
 	links::{LinkAction, link_action},
+	mouse_report::{Report, mouse_report},
 	window_pointer::pointer_icon,
 };
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
@@ -157,23 +158,12 @@ impl App {
 		kind: MouseAction,
 		(x, y): (f64, f64),
 	) -> bool {
-		let Some(point) = self.point_at(x, y) else {
+		let place = self.grid_place();
+		let report = mouse_report(&self.active_term(), place, button, kind, (x, y), self.mods);
+		let Report::Program(bytes) = report else {
 			return false;
 		};
-		let term = self.active_term();
-		if !tracked(term.mouse_tracking, button, kind) {
-			return false;
-		}
-		let visible_start = term.scrollback.len().saturating_sub(term.scroll_offset);
-		let report = MouseReport {
-			button,
-			kind,
-			col: point.col + 1,
-			row: point.row.saturating_sub(visible_start) + 1,
-			pixel: self.grid_geometry().pixel_at(x, y).unwrap_or((1, 1)),
-			mods: self.mods,
-		};
-		if let Some(bytes) = encode_mouse(report, term.mouse_encoding, term.mouse_tracking) {
+		if let Some(bytes) = bytes {
 			self.active_session().write(&bytes);
 		}
 		true
