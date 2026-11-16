@@ -180,3 +180,15 @@ fn a_scrolled_view_reports_the_row_on_screen() {
 	let found = report(&term, MouseButtonCode::Left, MouseAction::Press, at(2, 0));
 	assert_eq!(found, sent("\x1b[<0;1;3M"));
 }
+
+#[test]
+fn urxvt_reports_name_far_cells_in_decimal() {
+	let term = terminal(300, 3, b"\x1b[?1000h\x1b[?1015h");
+	let found = report(
+		&term,
+		MouseButtonCode::Middle,
+		MouseAction::Press,
+		at(2, 250),
+	);
+	assert_eq!(found, sent("\x1b[33;251;3M"));
+}
