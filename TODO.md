@@ -293,10 +293,11 @@ least as fast.
     libc crate has it (Linux, macOS; not FreeBSD yet), DEL as erase, the
     usual control characters, line editing, `\n` out as `\r\n` and 38400
     baud, applied to every pair `device::open` makes.
-  - **Window size in cells and pixels.** `TIOCSWINSZ` with real
-    `ws_xpixel`/`ws_ypixel` (today they are 0), so Sixel, kitty graphics and
-    image viewers size images correctly; the kernel then sends `SIGWINCH` to
-    the foreground process group.
+  - **Done: window size in cells and pixels** (`src/pty/size.rs`).
+    `TIOCSWINSZ` carries the grid and its cells' pixels, so Sixel, kitty
+    graphics and image viewers size images correctly; it is set again
+    whenever the grid or the cell size changes (a zoom), never twice for
+    the same size, and the kernel sends `SIGWINCH` each time.
   - **Foreground process.** `tcgetpgrp` on the master for the foreground
     job: tab titles, working-directory discovery and "a program is running,
     close anyway?" prompts look at it instead of the shell.

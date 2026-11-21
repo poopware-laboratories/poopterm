@@ -99,6 +99,7 @@ impl App {
 		) {
 			Ok(session) => {
 				self.describe_window(&mut session.term());
+				session.resize((cols, rows), (self.cw, self.ch));
 				self.splits.push(super::panes::TabPanes::new(session.id));
 				self.sessions.push(session);
 				self.active = self.sessions.len() - 1;
