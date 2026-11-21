@@ -32,6 +32,9 @@ impl App {
 	}
 
 	pub(super) fn handle_key(&mut self, event_loop: &ActiveEventLoop, event: KeyEvent) {
+		if self.hint_key(&event.logical_key) {
+			return;
+		}
 		if self
 			.shortcuts
 			.command_palette
@@ -219,6 +222,7 @@ impl App {
 			Some(ShortcutAction::Paste) => return self.paste_clipboard(),
 			Some(ShortcutAction::PreviousTab) => return self.switch_tab(-1),
 			Some(ShortcutAction::NextTab) => return self.switch_tab(1),
+			Some(ShortcutAction::QuickSelect) => return self.start_hints(),
 			Some(_) => return,
 			None => {}
 		}

@@ -185,7 +185,7 @@ const SHORTCUT_TARGETS: [(usize, SettingsTarget); 10] = targets(SHORTCUT_ROWS);
 /// [`PANE_ROWS`] as click targets.
 const PANE_TARGETS: [(usize, SettingsTarget); 8] = targets(PANE_ROWS);
 /// [`CLIPBOARD_ROWS`] as click targets.
-const CLIPBOARD_TARGETS: [(usize, SettingsTarget); 4] = targets(CLIPBOARD_ROWS);
+const CLIPBOARD_TARGETS: [(usize, SettingsTarget); 5] = targets(CLIPBOARD_ROWS);
 
 /// Shortcut `rows` as click targets that record a new binding.
 const fn targets<const N: usize>(

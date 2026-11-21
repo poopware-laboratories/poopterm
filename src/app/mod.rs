@@ -13,6 +13,7 @@ mod frame_stats;
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 mod gpu;
 mod handler;
+mod hints;
 mod keyboard;
 mod mouse;
 mod mouse_tabs;
@@ -222,6 +223,8 @@ pub(crate) struct App {
 	/// The Settings control the keyboard has focused, in Tab order.
 	settings_focus: Option<usize>,
 	renaming_tab: bool,
+	/// Quick select's labels while they are shown.
+	hint_mode: Option<crate::ui::hint_mode::HintMode>,
 }
 
 impl App {
@@ -468,6 +471,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		command_selected: 0,
 		settings_focus: None,
 		renaming_tab: false,
+		hint_mode: None,
 	};
 
 	event_loop.run_app(&mut app)?;
