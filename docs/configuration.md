@@ -234,8 +234,16 @@ opens the command palette, **Ctrl+Shift+T** cycles themes, **Cmd+F** /
 **Ctrl+Shift+F** searches, **Cmd+W** / **Ctrl+Shift+W** closes a tab, and
 **Cmd+Up/Down** / **Ctrl+Shift+Up/Down** jumps between prompts, and **Cmd** /
 **Ctrl** with **=**, **-** or **0** zooms. The sample values
-above are for macOS. Tab cycling, direct tab selection, and clipboard shortcuts
-are fixed bindings.
+above are for macOS. Selecting tabs 1 to 9 with **Cmd** / **Ctrl** and a
+digit is a fixed binding.
+
+Copy, paste and tab cycling have their own keys, also on the **Settings →
+Clipboard** page: `shortcut_copy` and `shortcut_paste` (**Cmd+C** and
+**Cmd+V** / **Ctrl+Shift+C** and **Ctrl+Shift+V**), and
+`shortcut_next_tab` and `shortcut_previous_tab` (**Ctrl+Tab** and
+**Ctrl+Shift+Tab** everywhere). Paste works in the search bar too. A
+chord bound to one of them no longer reaches the program, and the old one
+does again: `shortcut_paste = "shift+insert"` frees **Ctrl+Shift+V**.
 
 Split panes have their own keys, also on the **Settings → Panes** page:
 `shortcut_split_right` (**Cmd+D** / **Ctrl+Shift+D**),

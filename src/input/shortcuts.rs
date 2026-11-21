@@ -164,6 +164,10 @@ pub(crate) enum ShortcutAction {
 	ZoomReset,
 	/// Splitting a tab into panes and moving between them.
 	Pane(PaneCommand),
+	Copy,
+	Paste,
+	PreviousTab,
+	NextTab,
 }
 
 impl ShortcutAction {
@@ -192,14 +196,23 @@ impl ShortcutAction {
 		panes
 	};
 
-	/// Every shortcut: the tab and window ones, then the pane ones.
-	pub(crate) const ALL: [Self; 18] = {
-		let mut all = [Self::NewTab; 18];
+	/// The clipboard and tab cycling shortcuts, on their own page.
+	pub(crate) const CLIPBOARD: [Self; 4] =
+		[Self::Copy, Self::Paste, Self::PreviousTab, Self::NextTab];
+
+	/// Every shortcut: the tab and window ones, the pane ones, then the
+	/// clipboard ones.
+	pub(crate) const ALL: [Self; 22] = {
+		let mut all = [Self::NewTab; 22];
+		let (tabs, panes) = (Self::TABS.len(), Self::PANES.len());
 		let mut i = 0;
 		while i < all.len() {
-			all[i] = match i < Self::TABS.len() {
-				true => Self::TABS[i],
-				false => Self::PANES[i - Self::TABS.len()],
+			all[i] = if i < tabs {
+				Self::TABS[i]
+			} else if i < tabs + panes {
+				Self::PANES[i - tabs]
+			} else {
+				Self::CLIPBOARD[i - tabs - panes]
 			};
 			i += 1;
 		}
@@ -219,6 +232,10 @@ impl ShortcutAction {
 			Self::ZoomOut => "Zoom out",
 			Self::ZoomReset => "Reset zoom",
 			Self::Pane(command) => command.label(),
+			Self::Copy => "Copy",
+			Self::Paste => "Paste",
+			Self::PreviousTab => "Previous tab",
+			Self::NextTab => "Next tab",
 		}
 	}
 
@@ -235,6 +252,10 @@ impl ShortcutAction {
 			Self::ZoomOut => "shortcut_zoom_out",
 			Self::ZoomReset => "shortcut_zoom_reset",
 			Self::Pane(command) => command.config_key(),
+			Self::Copy => "shortcut_copy",
+			Self::Paste => "shortcut_paste",
+			Self::PreviousTab => "shortcut_previous_tab",
+			Self::NextTab => "shortcut_next_tab",
 		}
 	}
 }
@@ -253,6 +274,10 @@ pub(crate) struct Shortcuts {
 	pub zoom_out: Shortcut,
 	pub zoom_reset: Shortcut,
 	pub panes: super::pane_shortcuts::PaneShortcuts,
+	pub copy: Shortcut,
+	pub paste: Shortcut,
+	pub previous_tab: Shortcut,
+	pub next_tab: Shortcut,
 }
 
 impl Shortcuts {
@@ -293,6 +318,16 @@ impl Shortcuts {
 			zoom_out: get("shortcut_zoom_out", &format!("{primary}+-")),
 			zoom_reset: get("shortcut_zoom_reset", &format!("{primary}+0")),
 			panes: super::pane_shortcuts::PaneShortcuts::from_config(text, mac),
+			copy: get(
+				"shortcut_copy",
+				if mac { "super+c" } else { "ctrl+shift+c" },
+			),
+			paste: get(
+				"shortcut_paste",
+				if mac { "super+v" } else { "ctrl+shift+v" },
+			),
+			previous_tab: get("shortcut_previous_tab", "ctrl+shift+tab"),
+			next_tab: get("shortcut_next_tab", "ctrl+tab"),
 		}
 	}
 
@@ -313,6 +348,10 @@ impl Shortcuts {
 			ShortcutAction::ZoomOut => &self.zoom_out,
 			ShortcutAction::ZoomReset => &self.zoom_reset,
 			ShortcutAction::Pane(command) => self.panes.get(command),
+			ShortcutAction::Copy => &self.copy,
+			ShortcutAction::Paste => &self.paste,
+			ShortcutAction::PreviousTab => &self.previous_tab,
+			ShortcutAction::NextTab => &self.next_tab,
 		}
 	}
 
@@ -329,7 +368,24 @@ impl Shortcuts {
 			ShortcutAction::ZoomOut => self.zoom_out = shortcut,
 			ShortcutAction::ZoomReset => self.zoom_reset = shortcut,
 			ShortcutAction::Pane(command) => self.panes.set(command, shortcut),
+			ShortcutAction::Copy => self.copy = shortcut,
+			ShortcutAction::Paste => self.paste = shortcut,
+			ShortcutAction::PreviousTab => self.previous_tab = shortcut,
+			ShortcutAction::NextTab => self.next_tab = shortcut,
 		}
+	}
+
+	/// The first of `actions` whose shortcut is `key` with exactly `mods`.
+	pub(crate) fn matching(
+		&self,
+		actions: &[ShortcutAction],
+		key: &Key,
+		mods: Modifiers,
+	) -> Option<ShortcutAction> {
+		actions
+			.iter()
+			.copied()
+			.find(|&action| self.get(action).matches(key, mods))
 	}
 
 	pub(crate) fn conflict(

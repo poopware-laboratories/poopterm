@@ -42,6 +42,8 @@ pub(super) const FRAME_ROW: usize = 440;
 pub(super) const SHORTCUT_ROWS: [(ShortcutAction, usize); 10] = rows(ShortcutAction::TABS);
 /// The pane shortcuts' rows, spaced as the Shortcuts page's.
 pub(super) const PANE_ROWS: [(ShortcutAction, usize); 8] = rows(ShortcutAction::PANES);
+/// The clipboard and tab cycling shortcuts' rows, spaced the same.
+pub(super) const CLIPBOARD_ROWS: [(ShortcutAction, usize); 4] = rows(ShortcutAction::CLIPBOARD);
 
 /// `actions` with the tops of their rows, 44 logical pixels apart.
 const fn rows<const N: usize>(actions: [ShortcutAction; N]) -> [(ShortcutAction, usize); N] {
@@ -254,6 +256,11 @@ impl App {
 				let hint = "Split a tab into panes and move between them. Click to change.";
 				let rows = &PANE_ROWS[..];
 				let page = ("Pane shortcuts", hint, rows);
+				compose_shortcuts(editor, page, style, p, &mut pen, &hovered);
+			}
+			SettingsPage::Clipboard => {
+				let hint = "Copy, paste and move between tabs. Click to change.";
+				let page = ("Clipboard and tab shortcuts", hint, &CLIPBOARD_ROWS[..]);
 				compose_shortcuts(editor, page, style, p, &mut pen, &hovered);
 			}
 			SettingsPage::Layout => compose_layout_settings(editor, style, p, &mut pen),

@@ -13,7 +13,7 @@ use winit::keyboard::Key;
 fn every_action_is_listed_once_tabs_first_then_panes() {
 	let all = ShortcutAction::ALL;
 	assert_eq!(all[..10], ShortcutAction::TABS);
-	assert_eq!(all[10..], ShortcutAction::PANES);
+	assert_eq!(all[10..18], ShortcutAction::PANES);
 	for (i, action) in all.iter().enumerate() {
 		assert!(!all[i + 1..].contains(action), "{action:?} twice");
 	}

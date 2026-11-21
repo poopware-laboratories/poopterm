@@ -284,15 +284,15 @@ mod pages {
 				.iter()
 				.filter(|t| matches!(t, SettingsTarget::Open(_)))
 				.count(),
-			7
+			8
 		);
-		// The seven sidebar items are the first seven, then the page.
+		// The eight sidebar items are the first eight, then the page.
 		assert!(
-			targets[..7]
+			targets[..8]
 				.iter()
 				.all(|t| matches!(t, SettingsTarget::Open(_)))
 		);
-		let page = &targets[7..];
+		let page = &targets[8..];
 		assert_eq!(page[0], SettingsTarget::Theme(-1));
 		assert_eq!(page[1], SettingsTarget::Theme(1));
 		assert_eq!(page[2], SettingsTarget::ChooseWallpaper);
