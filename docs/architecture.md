@@ -291,8 +291,12 @@ and position, and placeholder slices row by row.
   color bitmap; VS15 prefers an outline (`glyphs::Presentation`).
   `fonts::cbdt` reads `CBLC`/`CBDT` and `fonts::color` scales the PNG to the
   font size; `Glyph::color` holds those pixels, which the painter blends in
-  their own colors, unslanted by italic. sbix (#129) and COLR are not read
-  yet.
+  their own colors, unslanted by italic. `fonts::sbix` reads Apple's
+  strikes (#129). `fonts::colr` reads `COLR` version 0 layers with their
+  colors from palette 0 of `CPAL`; `Font` rasterizes each layer's outline
+  into one box and paints them bottom first. Layers in the text color are
+  drawn light, since glyphs are cached without the cell's color. The
+  version 1 paint graph and `SVG ` glyphs are not read yet.
 - Emoji sequences inside one cell (ZWJ sequences, keycaps, tag flags) are
   shaped by our own GSUB engine (`fonts::gsub`, `fonts::otl`) into the
   font's ligature (`glyphs::clusters`, cached per cluster and size). Flags
