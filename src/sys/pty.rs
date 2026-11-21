@@ -164,7 +164,11 @@ pub(crate) fn foreground(fd: &impl AsFd) -> io::Result<i32> {
 
 /// What `tcgetpgrp` returns for no foreground group: FreeBSD's `NO_PID`
 /// (`PID_MAX + 1`, from `<sys/proc.h>`); elsewhere no group is this.
-const NO_PID: i32 = if cfg!(target_os = "freebsd") { 100_000 } else { 0 };
+const NO_PID: i32 = if cfg!(target_os = "freebsd") {
+	100_000
+} else {
+	0
+};
 
 /// The window size of the terminal `fd` is a side of.
 #[cfg_attr(

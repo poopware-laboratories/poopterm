@@ -117,6 +117,20 @@ fn running(pair: &device::Pair, shell: &spawn::Child) -> Option<String> {
 	running_program(Some(shell.id()), foreground, process::name)
 }
 
+/// What `running` says once the job has `exec`ed `name`: its group takes
+/// the terminal as soon as it forks, still named as the shell, so this
+/// waits up to five seconds for the name to change.
+fn running_named(pair: &device::Pair, shell: &spawn::Child, name: &str) -> Option<String> {
+	let start = Instant::now();
+	loop {
+		let found = running(pair, shell);
+		if found.as_deref() == Some(name) || start.elapsed() > Duration::from_secs(5) {
+			return found;
+		}
+		std::thread::sleep(Duration::from_millis(10));
+	}
+}
+
 fn end(mut shell: spawn::Child) {
 	shell.hang_up().unwrap();
 	shell.wait().unwrap();
@@ -131,7 +145,7 @@ fn a_job_the_shell_starts_takes_the_foreground_from_it() {
 	let pid = shell.id() as i32;
 	let group = foreground_other_than(&pair.master, pid).expect("sleep took the terminal");
 	assert_ne!(group, pid);
-	let name = running(&pair, &shell);
+	let name = running_named(&pair, &shell, "sleep");
 	if NAMES {
 		assert_eq!(name.as_deref(), Some("sleep"));
 	} else {
@@ -165,7 +179,10 @@ fn a_pipeline_is_named_after_its_first_program() {
 	let pid = shell.id() as i32;
 	foreground_other_than(&pair.master, pid).expect("the pipeline took the terminal");
 	if NAMES {
-		assert_eq!(running(&pair, &shell).as_deref(), Some("sleep"));
+		assert_eq!(
+			running_named(&pair, &shell, "sleep").as_deref(),
+			Some("sleep")
+		);
 	}
 	end(shell);
 }
