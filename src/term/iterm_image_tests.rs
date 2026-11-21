@@ -197,3 +197,19 @@ fn multipart_files_arrive_in_pieces() {
 	assert_eq!(t.images.len(), 2);
 	assert!(t.iterm.upload.is_none());
 }
+
+#[test]
+fn a_gif_inline_image_shows_its_first_frame() {
+	// A 1×1 white GIF: one cell, as a PNG of that size would be.
+	let gif = "R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=";
+	let mut t = terminal(10, 5);
+	send(&mut t, &format!("\x1b]1337;File=inline=1:{gif}\x07"));
+	let shown = shown(&t);
+	assert_eq!(shown.len(), 1);
+	assert_eq!((shown[0].0, shown[0].2), ((0, 0), (1, 1)));
+	assert_eq!(t.images[0].bitmap.pixels, [0xffff_ffff]);
+	// A damaged GIF shows nothing, as a damaged PNG does.
+	let mut t = terminal(10, 5);
+	send(&mut t, "\x1b]1337;File=inline=1:R0lGODlhAQABAIAAAP\x07");
+	assert!(t.images.is_empty());
+}

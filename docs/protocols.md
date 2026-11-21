@@ -56,7 +56,7 @@ with `font_path` or `POOPTERM_FONT`.
   - `SetColors` and `ReportCellSize`;
   - `RequestUpload`, answered with `abort`;
   - inline images (`File=`, or `MultipartFile`/`FilePart`/`FileEnd`):
-    PNG, JPEG and WebP, sized in cells, pixels, percent or automatically,
+    PNG, JPEG, WebP and GIF (its first frame), sized in cells, pixels, percent or automatically,
     up to 32 MiB per file; files that are not inline (downloads) are
     ignored;
   - tab colors (OSC 6;1;bg) and OSC 21337 session status: an indicator
