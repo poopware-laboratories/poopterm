@@ -137,6 +137,8 @@ fn end(mut shell: spawn::Child) {
 }
 
 const NAMES: bool = cfg!(any(target_os = "linux", target_os = "macos"));
+/// What `sleep` is called where the system names programs, and otherwise.
+const SLEEP: &str = if NAMES { "sleep" } else { UNNAMED };
 
 #[test]
 fn a_job_the_shell_starts_takes_the_foreground_from_it() {
@@ -145,7 +147,7 @@ fn a_job_the_shell_starts_takes_the_foreground_from_it() {
 	let pid = shell.id() as i32;
 	let group = foreground_other_than(&pair.master, pid).expect("sleep took the terminal");
 	assert_ne!(group, pid);
-	let name = running_named(&pair, &shell, "sleep");
+	let name = running_named(&pair, &shell, SLEEP);
 	if NAMES {
 		assert_eq!(name.as_deref(), Some("sleep"));
 	} else {
@@ -180,7 +182,7 @@ fn a_pipeline_is_named_after_its_first_program() {
 	foreground_other_than(&pair.master, pid).expect("the pipeline took the terminal");
 	if NAMES {
 		assert_eq!(
-			running_named(&pair, &shell, "sleep").as_deref(),
+			running_named(&pair, &shell, SLEEP).as_deref(),
 			Some("sleep")
 		);
 	}
