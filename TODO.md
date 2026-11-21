@@ -79,7 +79,10 @@ match text throughput, within the explicit size limits on untrusted input.
 - **Kitty image decoding.** Raw RGBA parses at ~1.2 GB/s and zlib through
   our own inflate at ~304 MB/s (26.11.51); PNG, at ~144 MB/s, spent ~60%
   inflating and ~20% unfiltering inside the PNG crate when last profiled. Our own PNG decoder (our inflate plus a
-  SIMD unfilter) is the next step; the RGBA path could decode base64
+  SIMD unfilter, `src/png`) is written and matches the `image` crate on
+  every format, but waits on inflate: on the corpus's busy images our
+  inflate alone takes as long as the crate's whole decode (0.73× overall;
+  1.0–1.5× on screenshots). Speed up `src/inflate` first; the RGBA path could decode base64
   straight into pixels instead of through a byte buffer.
 - **Rendering during floods:** frames still write unchanged background pixels,
   competing with parsing for memory bandwidth. Evaluate skipping those pixels
