@@ -48,6 +48,15 @@ mod header_target_tests;
 mod header_tests;
 #[cfg(test)]
 mod header_window_tests;
+#[cfg_attr(
+	not(test),
+	expect(dead_code, reason = "quick select shows and picks them next")
+)]
+pub(crate) mod hints;
+#[cfg(test)]
+mod hints_property_tests;
+#[cfg(test)]
+mod hints_tests;
 pub(crate) mod hover;
 #[cfg(test)]
 mod hover_tests;
