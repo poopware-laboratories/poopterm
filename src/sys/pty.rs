@@ -149,6 +149,27 @@ pub(crate) fn set_size(fd: &impl AsFd, size: WindowSize) -> io::Result<()> {
 	Ok(())
 }
 
+/// The process group in the foreground of the terminal `fd` is a side of:
+/// the job that gets typed input, which is the shell while it waits at its
+/// prompt. A terminal with no foreground group fails.
+pub(crate) fn foreground(fd: &impl AsFd) -> io::Result<i32> {
+	// SAFETY: `tcgetpgrp` reads the terminal's foreground group; it takes no
+	// memory.
+	let group = check(unsafe { libc::tcgetpgrp(fd.as_fd().as_raw_fd()) })?;
+	// No foreground job is 0, or on FreeBSD `NO_PID`, one past any pid.
+	(group > 0 && group != NO_PID)
+		.then_some(group)
+		.ok_or_else(|| io::ErrorKind::NotFound.into())
+}
+
+/// What `tcgetpgrp` returns for no foreground group: FreeBSD's `NO_PID`
+/// (`PID_MAX + 1`, from `<sys/proc.h>`); elsewhere no group is this.
+const NO_PID: i32 = if cfg!(target_os = "freebsd") {
+	100_000
+} else {
+	0
+};
+
 /// The window size of the terminal `fd` is a side of.
 #[cfg_attr(
 	not(test),

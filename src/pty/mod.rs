@@ -6,6 +6,9 @@ pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
 pub(crate) mod reap;
+pub(crate) mod running;
+#[cfg(test)]
+mod running_tests;
 mod size;
 #[cfg(test)]
 mod size_tests;
@@ -116,6 +119,13 @@ impl Session {
 	/// (width, height), when that changed since it was last told.
 	pub(crate) fn resize(&self, grid: (usize, usize), cell: (usize, usize)) {
 		let _ = self.size.set(&self.master, grid, cell);
+	}
+
+	/// The name of the program that has the terminal, when it is not the
+	/// shell: closing the session would end it.
+	pub(crate) fn running_program(&self) -> Option<String> {
+		let foreground = device::foreground(&self.master).ok();
+		running::running_program(self.pid(), foreground, crate::sys::process::name)
 	}
 
 	/// Sends input bytes to the shell.

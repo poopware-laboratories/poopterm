@@ -48,7 +48,9 @@ impl App {
 			match sidebar_target(&layout, self.sessions.len(), (x, y)) {
 				Some(SidebarTarget::Button(Icon::Menu)) => self.open_settings_window(event_loop),
 				Some(SidebarTarget::Button(_)) => self.add_tab(),
-				Some(SidebarTarget::Tab { index, close: true }) => self.close_tab(index, event_loop),
+				Some(SidebarTarget::Tab { index, close: true }) => {
+					self.request_close_tab(index, event_loop)
+				}
 				Some(SidebarTarget::Tab { index, .. }) => self.activate_tab(index),
 				None if y < layout.tab_start_y as f64 => {
 					let _ = self.window.as_ref().map(|window| window.drag_window());

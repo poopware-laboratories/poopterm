@@ -1,5 +1,6 @@
 //! Application state and the winit event loop.
 mod canvas;
+mod closing;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod decorations;
 mod draw;
@@ -225,6 +226,8 @@ pub(crate) struct App {
 	renaming_tab: bool,
 	/// Quick select's labels while they are shown.
 	hint_mode: Option<crate::ui::hint_mode::HintMode>,
+	/// A close waiting for the user to say yes, shown in the palette's place.
+	closing: Option<crate::ui::close_prompt::CloseRequest>,
 }
 
 impl App {
@@ -472,6 +475,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		settings_focus: None,
 		renaming_tab: false,
 		hint_mode: None,
+		closing: None,
 	};
 
 	event_loop.run_app(&mut app)?;

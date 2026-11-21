@@ -5,6 +5,9 @@ mod about_tests;
 pub(crate) mod chrome_colors;
 #[cfg(test)]
 mod chrome_colors_tests;
+pub(crate) mod close_prompt;
+#[cfg(test)]
+mod close_prompt_tests;
 pub(crate) mod contrast;
 pub(crate) mod copy;
 #[cfg_attr(

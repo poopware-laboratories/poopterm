@@ -298,9 +298,10 @@ least as fast.
     graphics and image viewers size images correctly; it is set again
     whenever the grid or the cell size changes (a zoom), never twice for
     the same size, and the kernel sends `SIGWINCH` each time.
-  - **Foreground process.** `tcgetpgrp` on the master for the foreground
-    job: tab titles, working-directory discovery and "a program is running,
-    close anyway?" prompts look at it instead of the shell.
+  - **Done: foreground process for closing** (`pty/running.rs`).
+    `tcgetpgrp` on the master finds the foreground job; closing a pane or
+    tab where it is not the shell asks first, naming the program. Still to
+    do: tab titles and working-directory discovery from that job.
   - **Flow control.** Packet mode (`TIOCPKT`) to notice `^S`/`^Q` (`IXON`)
     stops and starts, so the UI can show that output is paused instead of
     looking frozen.

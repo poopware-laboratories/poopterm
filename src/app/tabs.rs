@@ -148,7 +148,8 @@ impl App {
 
 	/// Closes the active tab's focused pane, and the tab with its last.
 	pub(super) fn close_active_tab(&mut self, event_loop: &ActiveEventLoop) {
-		self.close_pane(self.sessions[self.active].id, event_loop);
+		let id = self.sessions[self.active].id;
+		self.request_close(crate::ui::close_prompt::CloseTarget::Pane(id), event_loop);
 	}
 
 	pub(super) fn close_tab(&mut self, index: usize, event_loop: &ActiveEventLoop) {
