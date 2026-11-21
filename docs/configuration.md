@@ -307,6 +307,10 @@ ssh, is not used for new tabs; the status bar names that host instead.
 Close the window to save its tabs; reopening starts fresh login shells in the
 saved directories. Running programs and terminal output are not restored.
 Closing a tab removes it from the saved list, including the last tab.
+When a program other than the shell has the terminal (an editor, a build,
+`top`), closing its pane or tab asks first, naming the program: **Enter**, or
+the close shortcut again, closes it and ends the program, and **Esc** keeps it.
+A shell waiting at its prompt closes at once.
 State is stored in `sessions.txt` in the state directory (`$XDG_STATE_HOME/poopterm`,
 or `~/Library/Application Support/poopterm` on macOS), with a limit of 12
 restored tabs. Missing directories fall back to the home directory.

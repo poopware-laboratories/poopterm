@@ -481,6 +481,7 @@ fn draw_models(
 			command_palette(place, ("", false), px, &theme),
 			command_palette(place, (&long, false), px, &theme),
 			command_palette(place, (&long, true), px, &theme),
+			crate::ui::close_prompt::close_prompt(place, &long, px, &theme),
 		] {
 			let mut pixels = vec![fill; window.0 * window.1];
 			let mut painter = Painter::new(&mut pixels, window.0, window.1);

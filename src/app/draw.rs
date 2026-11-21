@@ -17,6 +17,7 @@ use crate::{
 		status_bar::draw_status_bar,
 	},
 	ui::{
+		close_prompt::close_prompt,
 		overlays::{Place, command_palette, search_box, search_buttons, shortcut_hints},
 		status_bar::{StatusInput, status_bar},
 	},
@@ -285,7 +286,10 @@ impl App {
 		let place = self.overlay_place(p, scale);
 		// pr-check: window glue: hands the palette state to the tested palette model
 		let query = (self.command_query.as_str(), self.renaming_tab);
-		let mut popover = command_palette(place, query, ui.px * 0.86, &self.theme);
+		let mut popover = match &self.closing {
+			Some(request) => close_prompt(place, &request.message, ui.px * 0.86, &self.theme),
+			None => command_palette(place, query, ui.px * 0.86, &self.theme),
+		};
 		popover.add_hints(shortcut_hints(&self.shortcuts, cfg!(target_os = "macos")));
 		popover.select(self.command_selected);
 		paint(p, &mut self.ui_fonts, |s, f| draw_popover(s, f, &popover));

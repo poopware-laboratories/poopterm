@@ -353,7 +353,7 @@ impl App {
 				Some(HeaderTarget::NewTab) => self.add_tab(),
 				Some(HeaderTarget::ScrollLeft) => self.tab_scroll = self.tab_scroll.saturating_sub(1),
 				Some(HeaderTarget::ScrollRight) => self.tab_scroll += 1,
-				Some(HeaderTarget::Tab { index, close: true }) => self.close_tab(index, event_loop),
+				Some(HeaderTarget::Tab { index, close: true }) => self.request_close_tab(index, event_loop),
 				Some(HeaderTarget::Tab { index, .. }) => self.activate_tab(index),
 				Some(HeaderTarget::Bar) => self.press_bar(),
 				None => {}

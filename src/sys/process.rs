@@ -20,6 +20,39 @@ pub(crate) fn exists(pid: i32) -> bool {
 	pid > 0 && unsafe { libc::kill(pid, 0) } == 0
 }
 
+/// Process `pid`'s command name, as `ps -o comm` shows it without its
+/// directory; `None` when it has ended, or the system does not say.
+pub(crate) fn name(pid: i32) -> Option<String> {
+	command_name(pid).as_deref().and_then(short_name)
+}
+
+/// A command name as the system gave it, without a directory or the
+/// newline `/proc` ends it with; `None` when nothing is left.
+pub(crate) fn short_name(raw: &str) -> Option<String> {
+	let name = raw.rsplit('/').next().unwrap_or_default().trim();
+	(!name.is_empty()).then(|| name.to_owned())
+}
+
+#[cfg(target_os = "linux")]
+fn command_name(pid: i32) -> Option<String> {
+	std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()
+}
+
+#[cfg(target_os = "macos")]
+fn command_name(pid: i32) -> Option<String> {
+	let mut name = [0u8; 256];
+	// SAFETY: writes at most `name.len()` bytes into `name`, returning how
+	// many; 0 or less is an error.
+	let length = unsafe { libc::proc_name(pid, name.as_mut_ptr().cast(), name.len() as u32) };
+	let length = usize::try_from(length).ok().filter(|&n| n > 0)?;
+	Some(String::from_utf8_lossy(&name[..length.min(name.len())]).into_owned())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn command_name(_pid: i32) -> Option<String> {
+	None
+}
+
 /// Sends `SIGHUP` to process `pid`, as a terminal does when it closes.
 pub(crate) fn hang_up(pid: i32) -> io::Result<()> {
 	if pid <= 0 {

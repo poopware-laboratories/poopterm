@@ -32,6 +32,9 @@ impl App {
 	}
 
 	pub(super) fn handle_key(&mut self, event_loop: &ActiveEventLoop, event: KeyEvent) {
+		if self.answer_close(&event, event_loop) {
+			return;
+		}
 		if self.hint_key(&event.logical_key) {
 			return;
 		}
