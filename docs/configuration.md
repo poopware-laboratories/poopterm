@@ -245,6 +245,13 @@ Clipboard** page: `shortcut_copy` and `shortcut_paste` (**Cmd+C** and
 chord bound to one of them no longer reaches the program, and the old one
 does again: `shortcut_paste = "shift+insert"` frees **Ctrl+Shift+V**.
 
+`shortcut_quick_select` (**Ctrl+Shift+Space** everywhere) labels the URLs,
+paths, commit hashes and IPv4 addresses on the focused pane's screen with
+one or two letters, those nearest the bottom first and the same text with
+the same label. Typing a label copies its text; ending it with a capital
+opens it as a modifier-click on a link does (hashes and addresses are
+copied). **Backspace** takes back a letter and **Esc** leaves.
+
 Split panes have their own keys, also on the **Settings → Panes** page:
 `shortcut_split_right` (**Cmd+D** / **Ctrl+Shift+D**),
 `shortcut_split_down` (**Cmd+Shift+D** / **Ctrl+Shift+E**),

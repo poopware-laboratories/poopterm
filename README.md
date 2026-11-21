@@ -213,6 +213,7 @@ session restore and terminfo are described in
 | Go to tab 1–9 | Cmd+1–9 | Ctrl+1–9 |
 | Copy / paste | Cmd+C / Cmd+V | Ctrl+Shift+C / Ctrl+Shift+V |
 | Search scrollback | Cmd+F | Ctrl+Shift+F |
+| Quick select: copy a URL, path or hash by its label | Ctrl+Shift+Space | Ctrl+Shift+Space |
 | Previous / next prompt | Cmd+Up / Cmd+Down | Ctrl+Shift+Up / Ctrl+Shift+Down |
 | Zoom in / out / reset | Cmd+= / Cmd+- / Cmd+0 | Ctrl+= / Ctrl+- / Ctrl+0 |
 | Command palette | Ctrl+Shift+P | Ctrl+Shift+P |

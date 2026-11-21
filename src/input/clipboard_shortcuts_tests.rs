@@ -8,7 +8,7 @@ use super::{
 use winit::keyboard::{Key, NamedKey};
 
 const MAC: bool = cfg!(target_os = "macos");
-const CLIPBOARD: [ShortcutAction; 4] = ShortcutAction::CLIPBOARD;
+const CLIPBOARD: [ShortcutAction; 5] = ShortcutAction::CLIPBOARD;
 
 fn chr(value: &str) -> Key {
 	Key::Character(value.into())
@@ -144,6 +144,7 @@ fn the_clipboard_actions_come_last_with_their_own_labels_and_keys() {
 			("Paste", "shortcut_paste"),
 			("Previous tab", "shortcut_previous_tab"),
 			("Next tab", "shortcut_next_tab"),
+			("Quick select", "shortcut_quick_select"),
 		]
 	);
 }
@@ -181,4 +182,26 @@ fn matching_takes_the_first_action_listed_when_two_share_a_chord() {
 		Some(ShortcutAction::NextTab)
 	);
 	assert_eq!(shortcuts.matching(&[], &p, mods("alt")), None);
+}
+
+#[test]
+fn quick_select_is_ctrl_shift_space_everywhere_and_can_be_moved() {
+	let shortcuts = Shortcuts::from_config("");
+	let space = Key::Named(NamedKey::Space);
+	assert_eq!(
+		action(&shortcuts, &space, "ctrl+shift"),
+		Some(ShortcutAction::QuickSelect)
+	);
+	assert_eq!(
+		action(&shortcuts, &space, "ctrl"),
+		None,
+		"Ctrl+Space stays the program's"
+	);
+	assert_eq!(shortcuts.quick_select.display(false), "Ctrl+Shift+Space");
+	let moved = Shortcuts::from_config("shortcut_quick_select = \"alt+h\"\n");
+	assert_eq!(
+		action(&moved, &chr("h"), "alt"),
+		Some(ShortcutAction::QuickSelect)
+	);
+	assert_eq!(action(&moved, &space, "ctrl+shift"), None);
 }

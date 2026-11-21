@@ -112,6 +112,7 @@ fn the_page_shows_each_action_with_its_binding() {
 				"Next tab",
 				Shortcut::parse("alt+right").unwrap().display(mac)
 			),
+			("Quick select", binding(ShortcutAction::QuickSelect)),
 		]
 	);
 }

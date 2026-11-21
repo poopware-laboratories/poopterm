@@ -180,7 +180,7 @@ impl App {
 			focused: self.focused,
 			selection: self.selection_rows(),
 			search_match: self.search_matches.get(self.search_match_index).copied(),
-			overlay: self.search_active || self.command_palette,
+			overlay: self.search_active || self.command_palette || self.hint_mode.is_some(),
 		}
 	}
 
@@ -193,6 +193,7 @@ impl App {
 		let ui = self.ui_font(18.0 * scale as f32);
 		self.draw_tab_bar(p, ui);
 		self.draw_terminal(p, scale, rows);
+		self.draw_hints(p);
 		if self.search_active {
 			self.draw_search_box(p, scale, ui);
 		}

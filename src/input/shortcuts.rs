@@ -168,6 +168,8 @@ pub(crate) enum ShortcutAction {
 	Paste,
 	PreviousTab,
 	NextTab,
+	/// Labels what is worth copying on the screen, to pick by its letters.
+	QuickSelect,
 }
 
 impl ShortcutAction {
@@ -197,13 +199,18 @@ impl ShortcutAction {
 	};
 
 	/// The clipboard and tab cycling shortcuts, on their own page.
-	pub(crate) const CLIPBOARD: [Self; 4] =
-		[Self::Copy, Self::Paste, Self::PreviousTab, Self::NextTab];
+	pub(crate) const CLIPBOARD: [Self; 5] = [
+		Self::Copy,
+		Self::Paste,
+		Self::PreviousTab,
+		Self::NextTab,
+		Self::QuickSelect,
+	];
 
 	/// Every shortcut: the tab and window ones, the pane ones, then the
 	/// clipboard ones.
-	pub(crate) const ALL: [Self; 22] = {
-		let mut all = [Self::NewTab; 22];
+	pub(crate) const ALL: [Self; 23] = {
+		let mut all = [Self::NewTab; 23];
 		let (tabs, panes) = (Self::TABS.len(), Self::PANES.len());
 		let mut i = 0;
 		while i < all.len() {
@@ -236,6 +243,7 @@ impl ShortcutAction {
 			Self::Paste => "Paste",
 			Self::PreviousTab => "Previous tab",
 			Self::NextTab => "Next tab",
+			Self::QuickSelect => "Quick select",
 		}
 	}
 
@@ -256,6 +264,7 @@ impl ShortcutAction {
 			Self::Paste => "shortcut_paste",
 			Self::PreviousTab => "shortcut_previous_tab",
 			Self::NextTab => "shortcut_next_tab",
+			Self::QuickSelect => "shortcut_quick_select",
 		}
 	}
 }
@@ -278,6 +287,7 @@ pub(crate) struct Shortcuts {
 	pub paste: Shortcut,
 	pub previous_tab: Shortcut,
 	pub next_tab: Shortcut,
+	pub quick_select: Shortcut,
 }
 
 impl Shortcuts {
@@ -328,6 +338,7 @@ impl Shortcuts {
 			),
 			previous_tab: get("shortcut_previous_tab", "ctrl+shift+tab"),
 			next_tab: get("shortcut_next_tab", "ctrl+tab"),
+			quick_select: get("shortcut_quick_select", "ctrl+shift+space"),
 		}
 	}
 
@@ -352,6 +363,7 @@ impl Shortcuts {
 			ShortcutAction::Paste => &self.paste,
 			ShortcutAction::PreviousTab => &self.previous_tab,
 			ShortcutAction::NextTab => &self.next_tab,
+			ShortcutAction::QuickSelect => &self.quick_select,
 		}
 	}
 
@@ -372,6 +384,7 @@ impl Shortcuts {
 			ShortcutAction::Paste => self.paste = shortcut,
 			ShortcutAction::PreviousTab => self.previous_tab = shortcut,
 			ShortcutAction::NextTab => self.next_tab = shortcut,
+			ShortcutAction::QuickSelect => self.quick_select = shortcut,
 		}
 	}
 
