@@ -5,6 +5,7 @@ use super::{
 	cbdt::{Cbdt, ColorBitmap},
 	cff::Cff,
 	cmap::Cmap,
+	colr::{Colr, Layer},
 	data::Data,
 	glyf,
 	gsub::{Gsub, MAX_GLYPHS},
@@ -78,6 +79,7 @@ pub(crate) struct Face {
 	cff: Option<Cff>,
 	cbdt: Option<Cbdt>,
 	sbix: Option<Sbix>,
+	colr: Option<Colr>,
 	gsub: Option<Gsub>,
 	gdef: Option<Gdef>,
 }
@@ -168,6 +170,10 @@ impl Face {
 			cff,
 			cbdt,
 			sbix,
+			colr: find(b"COLR").map(|colr| Colr {
+				colr,
+				cpal: find(b"CPAL"),
+			}),
 			gsub: find(b"GSUB").and_then(|table| Gsub::parse(bytes, table)),
 			gdef: find(b"GDEF").and_then(|table| Gdef::parse(bytes, table)),
 			data: Data::Static(&[]),
@@ -223,6 +229,11 @@ impl Face {
 			let em = (self.advance(glyph), self.units_per_em);
 			self.sbix?.glyph(&self.data, glyph, self.glyphs, em)
 		})
+	}
+
+	/// `glyph`'s layers in `COLR`, if the face colors it that way.
+	pub(crate) fn color_layers(&self, glyph: u16) -> Option<Vec<Layer>> {
+		self.colr?.layers(&self.data, glyph, self.glyphs)
 	}
 
 	/// Sends `glyph`'s outline to `sink` and returns its bounds, or `None`

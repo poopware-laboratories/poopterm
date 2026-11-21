@@ -5,6 +5,9 @@ pub(crate) mod cbdt_tests;
 mod cff;
 mod cmap;
 mod color;
+mod colr;
+#[cfg(test)]
+mod colr_tests;
 pub(crate) mod coverage;
 #[cfg(test)]
 mod coverage_tests;

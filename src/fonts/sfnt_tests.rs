@@ -489,6 +489,28 @@ fn unreadable_cmaps_leave_the_face_without_coverage() {
 	assert_eq!(*covering(Some(cmap(3, 1, format6)), None).coverage, []);
 }
 
+/// A font with `maxp`, a name and empty tables of `tags`.
+fn with_tables(tags: &[&'static [u8; 4]]) -> FaceInfo {
+	let mut tables = vec![(b"name", name_table(&[(3, 1, 0x409, 1, "Glyphs")])), maxp()];
+	tables.extend(tags.iter().map(|&tag| (tag, vec![0; 4])));
+	tables.sort_by_key(|(tag, _)| **tag);
+	faces(&sfnt(&tables, 0)).unwrap().remove(0)
+}
+
+#[test]
+fn color_bitmaps_and_colr_with_its_palette_mark_color_fonts() {
+	assert!(with_tables(&[b"glyf", b"CBDT"]).color);
+	assert!(with_tables(&[b"sbix"]).color);
+	// Twemoji Mozilla and Segoe UI Emoji: layers of glyf outlines.
+	let colr = with_tables(&[b"glyf", b"COLR", b"CPAL"]);
+	assert!(colr.color && colr.drawable);
+	assert!(with_tables(&[b"CFF ", b"COLR", b"CPAL"]).color);
+	// Layers need the palette for their colors.
+	assert!(!with_tables(&[b"glyf", b"COLR"]).color);
+	assert!(!with_tables(&[b"glyf", b"CPAL"]).color);
+	assert!(!with_tables(&[b"glyf"]).color);
+}
+
 #[test]
 fn outline_and_color_bitmap_tables_mark_fonts_that_can_be_drawn() {
 	// Color bitmap fonts like Noto Color Emoji have only CBDT, Apple Color
@@ -496,7 +518,8 @@ fn outline_and_color_bitmap_tables_mark_fonts_that_can_be_drawn() {
 	for tag in [b"glyf", b"CFF ", b"CFF2", b"CBDT", b"sbix"] {
 		assert!(covering(None, Some(tag)).drawable, "{tag:?}");
 	}
-	// SVG and COLR emoji are not drawn yet.
+	// SVG emoji are not drawn yet; COLR layers are outlines from glyf or
+	// CFF, so a font with only COLR has nothing to draw.
 	assert!(!covering(None, Some(b"SVG ")).drawable);
 	assert!(!covering(None, Some(b"COLR")).drawable);
 	assert!(!covering(None, None).drawable);
