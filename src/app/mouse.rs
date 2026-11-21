@@ -5,6 +5,7 @@ use crate::input::{
 	paste::paste_bytes,
 	scroll::{WheelAction, alternate_scroll_bytes, wheel_action},
 };
+use crate::ui::click_select::{self, chars};
 use crate::ui::{
 	copy::selection_text,
 	drag::drag_after_move,
@@ -173,12 +174,36 @@ impl App {
 	/// pointer is dragged to another cell, so clicks leave no mark.
 	pub(super) fn begin_selection(&mut self, x: f64, y: f64) {
 		if let Some(point) = self.point_at(x, y) {
+			if self.select_by_clicks(point) {
+				return;
+			}
 			// Alt drags a rectangle, as in xterm and Alacritty.
 			self.drag_anchor = Some((self.to_line(point), self.mods.alt));
 			if self.selection.take().is_some() {
 				self.request_redraw();
 			}
 		}
+	}
+
+	/// A double click selects the word under `point`, a triple its row;
+	/// false for a single click, which starts a drag.
+	fn select_by_clicks(&mut self, point: CellPoint) -> bool {
+		let count = self.clicks.press(std::time::Instant::now(), point);
+		// pr-check: window glue: shows what the tested click model selected
+		let (chars, base) = {
+			let term = self.active_term();
+			(
+				term.row_cells(point.row).map(chars).unwrap_or_default(),
+				term.history_base,
+			)
+		};
+		let Some(selected) = click_select::selection(count, &chars, point) else {
+			return false;
+		};
+		(self.selection, self.drag_anchor) = (Some(selected.in_lines(base)), None);
+		// pr-check: end window glue
+		self.request_redraw();
+		true
 	}
 
 	/// A plain click in the line being edited moves the shell's cursor there

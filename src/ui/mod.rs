@@ -5,6 +5,11 @@ mod about_tests;
 pub(crate) mod chrome_colors;
 #[cfg(test)]
 mod chrome_colors_tests;
+pub(crate) mod click_select;
+#[cfg(test)]
+mod click_select_property_tests;
+#[cfg(test)]
+mod click_select_tests;
 pub(crate) mod close_prompt;
 #[cfg(test)]
 mod close_prompt_tests;

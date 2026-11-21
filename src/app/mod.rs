@@ -208,6 +208,8 @@ pub(crate) struct App {
 	/// Where the selection being dragged with the mouse started, in lines,
 	/// and whether it is a block.
 	drag_anchor: Option<(CellPoint, bool)>,
+	/// Presses in a row, for double and triple clicks.
+	clicks: crate::ui::click_select::Clicks,
 	search_active: bool,
 	search_dirty: bool,
 	search_query: String,
@@ -462,6 +464,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		frame_stats: frame_stats::Recorder::from_env(std::env::var_os(frame_stats::VARIABLE)),
 		selection: None,
 		drag_anchor: None,
+		clicks: Default::default(),
 		search_active: false,
 		search_dirty: false,
 		search_query: String::new(),
