@@ -3,6 +3,7 @@ use super::*;
 use crate::input::{
 	keypad::encode_keypad,
 	keys::{KeyModes, encode_key},
+	shortcuts::ShortcutAction,
 };
 use crate::ui::overlays::{palette_matches, selected_command, stays_open, step_selection};
 use winit::{event::KeyEvent, keyboard::KeyLocation};
@@ -144,9 +145,7 @@ impl App {
 			return;
 		}
 		if self.search_active {
-			if (self.mods.super_key || (self.mods.ctrl && self.mods.shift))
-				&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("v"))
-			{
+			if self.shortcuts.paste.matches(&event.logical_key, self.mods) {
 				if let Ok(text) = clipboard_read() {
 					let available = 128usize.saturating_sub(self.search_query.chars().count());
 					self
@@ -214,29 +213,14 @@ impl App {
 			self.run_pane_command(command);
 			return;
 		}
-		let copy_shortcut = self.mods.super_key
-			&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("c"))
-			|| self.mods.ctrl
-				&& self.mods.shift
-				&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("c"));
-		if copy_shortcut {
-			if self.selection.is_some() {
-				self.copy_selection();
-			}
-			return;
-		}
-		let paste_shortcut = self.mods.super_key
-			&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("v"))
-			|| self.mods.ctrl
-				&& self.mods.shift
-				&& matches!(&event.logical_key, Key::Character(s) if s.eq_ignore_ascii_case("v"));
-		if paste_shortcut {
-			self.paste_clipboard();
-			return;
-		}
-		if matches!(&event.logical_key, Key::Named(NamedKey::Tab)) && self.mods.ctrl {
-			self.switch_tab(if self.mods.shift { -1 } else { 1 });
-			return;
+		let clipboard = ShortcutAction::CLIPBOARD;
+		match (self.shortcuts).matching(&clipboard, &event.logical_key, self.mods) {
+			Some(ShortcutAction::Copy) if self.selection.is_some() => return self.copy_selection(),
+			Some(ShortcutAction::Paste) => return self.paste_clipboard(),
+			Some(ShortcutAction::PreviousTab) => return self.switch_tab(-1),
+			Some(ShortcutAction::NextTab) => return self.switch_tab(1),
+			Some(_) => return,
+			None => {}
 		}
 		if (self.mods.super_key || self.mods.ctrl)
 			&& !self.mods.shift

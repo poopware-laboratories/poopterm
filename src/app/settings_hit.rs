@@ -15,6 +15,8 @@ pub(crate) enum SettingsPage {
 	Shortcuts,
 	/// The split pane shortcuts, apart so each page fits the smallest window.
 	Panes,
+	/// Copy, paste and tab cycling shortcuts.
+	Clipboard,
 	About,
 	Fonts,
 	Diagnostics,
@@ -99,6 +101,7 @@ pub(super) fn settings_target(
 			SettingsPage::Layout => &LAYOUT_TOGGLES,
 			SettingsPage::Shortcuts => &SHORTCUT_TARGETS,
 			SettingsPage::Panes => &PANE_TARGETS,
+			SettingsPage::Clipboard => &CLIPBOARD_TARGETS,
 			SettingsPage::Fonts => &[],
 			_ => return None,
 		};
@@ -181,6 +184,8 @@ pub(super) fn settings_target(
 const SHORTCUT_TARGETS: [(usize, SettingsTarget); 10] = targets(SHORTCUT_ROWS);
 /// [`PANE_ROWS`] as click targets.
 const PANE_TARGETS: [(usize, SettingsTarget); 8] = targets(PANE_ROWS);
+/// [`CLIPBOARD_ROWS`] as click targets.
+const CLIPBOARD_TARGETS: [(usize, SettingsTarget); 4] = targets(CLIPBOARD_ROWS);
 
 /// Shortcut `rows` as click targets that record a new binding.
 const fn targets<const N: usize>(

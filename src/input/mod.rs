@@ -1,5 +1,7 @@
 //! Keyboard and mouse encoding for the PTY, plus configurable shortcuts.
 pub(crate) mod click;
+#[cfg(test)]
+mod clipboard_shortcuts_tests;
 pub(crate) mod keyboard_modes;
 #[cfg(test)]
 mod keyboard_modes_tests;

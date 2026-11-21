@@ -30,6 +30,8 @@ mod search;
 mod settings;
 #[cfg(test)]
 mod settings_about_tests;
+#[cfg(test)]
+mod settings_clipboard_tests;
 mod settings_diagnostics;
 #[cfg(test)]
 mod settings_diagnostics_property_tests;
