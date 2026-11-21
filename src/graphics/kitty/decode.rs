@@ -97,7 +97,8 @@ fn from_rgba(data: &[u8]) -> Vec<u32> {
 pub(crate) fn decode_file(data: &[u8]) -> Result<Bitmap, Error> {
 	use image::ImageFormat::{Jpeg, Png, WebP};
 	match image::guess_format(data) {
-		Ok(format @ (Png | Jpeg | WebP)) => decode_as(data, format, "EBADFILE"),
+		Ok(Png) => png_as(data, "EBADFILE"),
+		Ok(format @ (Jpeg | WebP)) => decode_as(data, format, "EBADFILE"),
 		_ => Err(Error::new("EBADFILE", "unsupported image format")),
 	}
 }
@@ -108,7 +109,15 @@ pub(crate) fn png(data: &[u8]) -> Option<Bitmap> {
 }
 
 fn decode_png(data: &[u8]) -> Result<Bitmap, Error> {
-	decode_as(data, image::ImageFormat::Png, "EBADPNG")
+	png_as(data, "EBADPNG")
+}
+
+/// Decodes a PNG with our own decoder, within the size limits; failures
+/// report `code`.
+fn png_as(data: &[u8], code: &'static str) -> Result<Bitmap, Error> {
+	let image =
+		crate::png::decode(data, MAX_SIDE, MAX_PIXELS).map_err(|why| Error::new(code, why))?;
+	Ok(Bitmap::new(image.width, image.height, image.pixels))
 }
 
 /// Decodes `data` as `format`, within the size limits; failures report `code`.
@@ -274,5 +283,61 @@ mod tests {
 		}
 		assert_eq!(code(decode_file(b"GIF89a\x01\x00")), "EBADFILE");
 		assert_eq!(code(decode_file(b"")), "EBADFILE");
+	}
+
+	/// A PNG of the `image` crate's encoder with an alpha gradient.
+	fn rgba_png(width: u32, height: u32) -> Vec<u8> {
+		use image::ImageEncoder;
+		let raw: Vec<u8> = (0..width * height)
+			.flat_map(|i| [i as u8, 2, 3, (i * 7) as u8])
+			.collect();
+		let mut png = Vec::new();
+		image::codecs::png::PngEncoder::new(&mut png)
+			.write_image(&raw, width, height, image::ExtendedColorType::Rgba8)
+			.unwrap();
+		png
+	}
+
+	#[test]
+	fn png_pixels_and_transparency_survive_the_protocol() {
+		let png = rgba_png(3, 2);
+		let bitmap = decode(&command("f=100"), &png).unwrap();
+		assert_eq!((bitmap.width, bitmap.height), (3, 2));
+		assert_eq!(bitmap.pixels[..2], [0x0000_0203, 0x0701_0203]);
+		assert!(!bitmap.opaque, "alpha below 255 is kept");
+		let zipped = miniz_oxide::deflate::compress_to_vec_zlib(&png, 6);
+		assert_eq!(
+			decode(&command("f=100,o=z"), &zipped).unwrap().pixels,
+			bitmap.pixels
+		);
+	}
+
+	#[test]
+	fn png_limits_and_damage_are_refused_with_ebadpng() {
+		// One side past MAX_SIDE, with an IHDR only: refused before decoding.
+		let mut png = rgba_png(1, 1);
+		png[16..20].copy_from_slice(&(MAX_SIDE as u32 + 1).to_be_bytes());
+		let crc = crate::png::crc_of_chunk(&png[12..29]);
+		png[29..33].copy_from_slice(&crc.to_be_bytes());
+		let error = decode(&command("f=100"), &png).unwrap_err();
+		assert_eq!(
+			(error.code, error.message.as_str()),
+			("EBADPNG", "image too large")
+		);
+		let mut damaged = rgba_png(2, 2);
+		let last = damaged.len() - 5;
+		damaged[last] ^= 0xff;
+		assert_eq!(code(decode(&command("f=100"), &damaged)), "EBADPNG");
+		assert_eq!(code(decode(&command("f=100"), &[])), "EBADPNG");
+	}
+
+	#[test]
+	fn png_files_from_iterm2_and_color_glyphs_use_the_same_decoder() {
+		let png = rgba_png(4, 1);
+		let protocol = decode(&command("f=100"), &png).unwrap();
+		assert_eq!(decode_file(&png).unwrap().pixels, protocol.pixels);
+		assert_eq!(super::png(&png).unwrap().pixels, protocol.pixels);
+		assert_eq!(code(decode_file(&png[..20])), "EBADFILE", "a cut file");
+		assert!(super::png(b"\x89PNG").is_none());
 	}
 }
