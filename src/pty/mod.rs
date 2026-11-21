@@ -6,6 +6,9 @@ pub(crate) mod pump;
 mod queue;
 pub(crate) mod reader;
 pub(crate) mod reap;
+mod size;
+#[cfg(test)]
+mod size_tests;
 mod writer;
 
 use std::{
@@ -61,6 +64,8 @@ pub(crate) struct Session {
 	pub(crate) seen: Seen,
 	pub(crate) custom_title: Option<String>,
 	master: OwnedFd,
+	/// The size `master` was last given.
+	size: size::SentSize,
 	writer: PtyWriter,
 	output: Arc<OutputQueue>,
 	/// The shell, until the session ends and hands it to the reaper.
@@ -107,9 +112,10 @@ impl Session {
 		self.child.as_ref().map(Child::id)
 	}
 
-	/// Tells the PTY, and so the shell, its new size in cells.
-	pub(crate) fn resize(&self, cols: usize, rows: usize) {
-		let _ = device::set_size(&self.master, WindowSize::of(cols, rows, (0, 0)));
+	/// Tells the PTY, and so the shell, its size in cells of `cell` pixels
+	/// (width, height), when that changed since it was last told.
+	pub(crate) fn resize(&self, grid: (usize, usize), cell: (usize, usize)) {
+		let _ = self.size.set(&self.master, grid, cell);
 	}
 
 	/// Sends input bytes to the shell.
@@ -157,7 +163,9 @@ pub(crate) fn spawn_session(
 	term_env: &TermEnv,
 ) -> Result<Session, Box<dyn Error>> {
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
-	let pair = device::open(WindowSize::of(cols, rows, (0, 0)))?;
+	// The cells' pixels come with the first resize.
+	let window = WindowSize::of(cols, rows, (0, 0));
+	let pair = device::open(window)?;
 	let shell = login_shell::login_shell();
 	let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
 	// The shell holds the slave now; ours would keep the PTY open after it
@@ -204,6 +212,7 @@ pub(crate) fn spawn_session(
 		seen: Seen::default(),
 		custom_title: None,
 		master: pair.master,
+		size: size::SentSize::new(window),
 		writer,
 		output,
 		child: Some(child),

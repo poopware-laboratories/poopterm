@@ -80,8 +80,9 @@ impl App {
 		// pr-check: window glue: a real PTY takes the size the tested layout gave
 		if (cols, rows) != (term.cols, term.rows) {
 			term.resize(cols, rows);
-			session.resize(cols, rows);
 		}
+		drop(term);
+		session.resize((cols, rows), (self.cw, self.ch));
 		// pr-check: end window glue
 	}
 
