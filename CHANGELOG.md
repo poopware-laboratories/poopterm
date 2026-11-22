@@ -1,5 +1,24 @@
 # Changelog
 
+## 26.11.86 "Lunar Moth" — 2026-11-22
+
+### Security
+
+- Check and open links by what they resolve to (#372).
+- Remove paste markers from pasted text in one pass (#374).
+- Bound replies waiting for a program to read them (#373).
+
+### Added
+
+- Draw layered COLR version 0 color glyphs (#363) (fonts).
+- Make copy, paste and tab cycling shortcuts configurable (#364) (input).
+- Tell programs the window size in pixels (#365) (pty).
+- Find URLs, paths, hashes and addresses on screen and label them (#367) (ui).
+- Quick select labels on screen to copy or open by letter (#368) (ui).
+- Ask before closing a pane or tab with a program running (#366) (pty).
+- Show GIF inline images through our own decoder (#370) (graphics).
+- Select a word with a double click and a row with a triple click (#371) (ui).
+
 ## 26.11.85 "Lunar Moth" — 2026-11-16
 
 ### Breaking changes
