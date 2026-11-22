@@ -64,6 +64,8 @@ pub(crate) mod hover;
 mod hover_tests;
 pub(crate) mod layout;
 pub(crate) mod links;
+#[cfg(all(test, unix))]
+mod links_resolve_tests;
 pub(crate) mod metrics;
 #[cfg(test)]
 mod metrics_tests;

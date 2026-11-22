@@ -178,7 +178,10 @@ fn opening_follows_links_and_copies_what_is_none() {
 	// A file:// link to a directory opens it; one to a program never runs.
 	let dir = std::env::temp_dir();
 	let url = format!("file://{}", dir.display());
-	assert_eq!(open_action(&url), LinkAction::OpenPath(dir.clone()));
+	assert_eq!(
+		open_action(&url),
+		LinkAction::OpenPath(dir.canonicalize().unwrap())
+	);
 	assert!(matches!(
 		open_action("file:///bin/sh"),
 		LinkAction::CopyPath(_)
