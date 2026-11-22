@@ -15,6 +15,8 @@ mod clipboard_tests;
 #[cfg(test)]
 mod color_tests;
 mod colors;
+#[cfg(test)]
+mod fuzz_tests;
 pub(crate) use colors::STACK_DEPTH;
 #[cfg(test)]
 mod conemu_tests;

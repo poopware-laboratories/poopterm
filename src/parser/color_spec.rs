@@ -28,8 +28,9 @@ pub(crate) fn parse_color(value: &[u8]) -> Option<u32> {
 	let text = std::str::from_utf8(value).ok()?;
 	if let Some(channels) = text.strip_prefix("rgb:") {
 		return rgb(channels.split('/'), |part| {
-			let max = (1u32 << (4 * part.len())) - 1;
+			// One to four digits, checked before they scale anything.
 			let value = hex(part)?;
+			let max = (1u32 << (4 * part.len())) - 1;
 			Some((value * 255 + max / 2) / max)
 		});
 	}
@@ -139,6 +140,10 @@ mod tests {
 			"rgb:12345/0/0",
 			"rgb:g/0/0",
 			"rgb://",
+			// Long enough that scaling by the digit count before checking it
+			// would shift past 32 bits.
+			"rgb:12345678/0/0",
+			"rgb:0/0/0000000000000000000000000000000000000000",
 		] {
 			assert_eq!(parse_color(bad.as_bytes()), None, "{bad}");
 		}
