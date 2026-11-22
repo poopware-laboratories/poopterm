@@ -123,6 +123,7 @@ mod tests {
 			padding_top: 40,
 			status_height: 26,
 			left: 0,
+			bottom: 0,
 		};
 		assert_eq!(linux(&unpadded()), expected);
 	}
