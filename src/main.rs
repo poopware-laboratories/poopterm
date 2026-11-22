@@ -33,6 +33,7 @@ mod cpu_baseline;
 #[cfg(not(target_os = "macos"))]
 mod dbus;
 mod fonts;
+mod gif;
 #[cfg_attr(
 	not(test),
 	expect(dead_code, reason = "the GPU renderers read it next (#30)")

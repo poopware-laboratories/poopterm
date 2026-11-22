@@ -380,10 +380,10 @@ gain), `image` (wallpapers and iTerm2 inline images need JPEG and WebP), and `rf
   its checksums leak the screen); G2/G3 charsets with single and locking
   shifts and national sets; double-size lines; S8C1T, VT52 mode, DECCOLM
   and DECARM. vttest and esctest2 measure the result.
-- **GIF inline images.** iTerm2 inline images accept PNG, JPEG and WebP;
-  GIF (often animated) needs our own decoder, since enabling the `image`
-  crate's GIF support would add a dependency. Animated GIFs can reuse the
-  kitty animation frames.
+- **Animated GIF inline images.** iTerm2 inline images show a GIF's first
+  frame through our own decoder (`src/gif`), which already composes every
+  frame with its delay and disposal; play them through the kitty
+  animation frames.
 - **OSC 176 (application id)** is ignored: a Wayland app id is fixed once
   the window exists, so it cannot follow a program's request.
 

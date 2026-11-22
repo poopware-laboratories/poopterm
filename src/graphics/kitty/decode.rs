@@ -93,10 +93,11 @@ fn from_rgba(data: &[u8]) -> Vec<u32> {
 		.collect()
 }
 
-/// Decodes a PNG, JPEG or WebP file, as its first bytes say it is.
+/// Decodes a PNG, JPEG, WebP or GIF file, as its first bytes say it is.
 pub(crate) fn decode_file(data: &[u8]) -> Result<Bitmap, Error> {
-	use image::ImageFormat::{Jpeg, Png, WebP};
+	use image::ImageFormat::{Gif, Jpeg, Png, WebP};
 	match image::guess_format(data) {
+		Ok(Gif) => gif_first_frame(data),
 		Ok(format @ (Png | Jpeg | WebP)) => decode_as(data, format, "EBADFILE"),
 		_ => Err(Error::new("EBADFILE", "unsupported image format")),
 	}
@@ -109,6 +110,23 @@ pub(crate) fn png(data: &[u8]) -> Option<Bitmap> {
 
 fn decode_png(data: &[u8]) -> Result<Bitmap, Error> {
 	decode_as(data, image::ImageFormat::Png, "EBADPNG")
+}
+
+/// A GIF's first frame, within the size limits. Later frames are not
+/// shown yet.
+fn gif_first_frame(data: &[u8]) -> Result<Bitmap, Error> {
+	let limits = crate::gif::Limits {
+		max_side: MAX_SIDE,
+		max_pixels: MAX_PIXELS,
+		max_frames: 1,
+	};
+	let gif = crate::gif::decode(data, limits).map_err(|why| Error::new("EBADFILE", why))?;
+	let frame = gif
+		.frames
+		.into_iter()
+		.next()
+		.ok_or_else(|| Error::new("EBADFILE", "no image"))?;
+	Ok(Bitmap::new(gif.width, gif.height, frame.pixels))
 }
 
 /// Decodes `data` as `format`, within the size limits; failures report `code`.
@@ -274,5 +292,40 @@ mod tests {
 		}
 		assert_eq!(code(decode_file(b"GIF89a\x01\x00")), "EBADFILE");
 		assert_eq!(code(decode_file(b"")), "EBADFILE");
+	}
+
+	#[test]
+	fn gif_files_show_their_first_frame_within_the_limits() {
+		// A 1×1 white GIF, then the same with a screen past MAX_SIDE.
+		let white =
+			crate::graphics::base64::decode(b"R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=").unwrap();
+		let bitmap = decode_file(&white).unwrap();
+		assert_eq!(
+			(bitmap.width, bitmap.height, bitmap.pixels.as_slice()),
+			(1, 1, &[0xffff_ffff][..])
+		);
+		assert!(bitmap.opaque);
+		let mut wide = white.clone();
+		wide[6..8].copy_from_slice(&(MAX_SIDE as u16 + 1).to_le_bytes());
+		let error = decode_file(&wide).unwrap_err();
+		assert_eq!(
+			(error.code, error.message.as_str()),
+			("EBADFILE", "image too large")
+		);
+		assert_eq!(
+			code(decode_file(&white[..13])),
+			"EBADFILE",
+			"no image in it"
+		);
+	}
+
+	#[test]
+	fn a_gif_shows_its_first_frame_even_when_a_later_one_is_damaged() {
+		// The white 1×1 GIF with a second image whose data is cut off.
+		let mut gif =
+			crate::graphics::base64::decode(b"R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=").unwrap();
+		gif.pop();
+		gif.extend([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 5, 0xff]);
+		assert_eq!(decode_file(&gif).unwrap().pixels, [0xffff_ffff]);
 	}
 }

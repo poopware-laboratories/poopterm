@@ -52,7 +52,7 @@ output, or a file Poopterm is asked to open. In particular:
   data such as clipboard contents, files, or environment variables);
 - image protocols: Sixel, the kitty graphics protocol (including its file,
   temporary file and shared memory transfers) and iTerm2 inline images, and
-  the PNG, JPEG and WebP decoders behind them;
+  the PNG, JPEG, WebP and GIF decoders behind them;
 - clipboard access (OSC 52 and OSC 5522), hyperlinks (OSC 8) and opening
   links or files;
 - notifications, window titles, and shell integration (OSC 7, OSC 133);
