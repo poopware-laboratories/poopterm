@@ -15,6 +15,8 @@ pub(crate) mod pane_shortcuts;
 #[cfg(test)]
 mod pane_shortcuts_tests;
 pub(crate) mod paste;
+#[cfg(test)]
+mod paste_tests;
 pub(crate) mod scroll;
 #[cfg(test)]
 mod shortcut_actions_tests;

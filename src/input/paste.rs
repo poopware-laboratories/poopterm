@@ -10,12 +10,23 @@ const PASTE_END: &str = "\x1b[201~";
 pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
 	let mut text = text.replace("\r\n", "\r").replace('\n', "\r");
 	if bracketed {
-		while text.contains(PASTE_START) || text.contains(PASTE_END) {
-			text = text.replace(PASTE_START, "").replace(PASTE_END, "");
-		}
-		text = format!("{PASTE_START}{text}{PASTE_END}");
+		text = format!("{PASTE_START}{}{PASTE_END}", without_markers(&text));
 	}
 	text.into_bytes()
+}
+
+/// `text` without paste markers, also those that removing others forms
+/// (`ESC [ 20` `ESC [ 201 ~` `1 ~`), in one pass: each marker is cut as
+/// soon as it ends what was kept, so the work grows with the text.
+fn without_markers(text: &str) -> String {
+	let mut kept = String::with_capacity(text.len());
+	for ch in text.chars() {
+		kept.push(ch);
+		if kept.ends_with(PASTE_START) || kept.ends_with(PASTE_END) {
+			kept.truncate(kept.len() - PASTE_END.len());
+		}
+	}
+	kept
 }
 
 #[cfg(test)]
