@@ -127,7 +127,20 @@ impl App {
 								self.close_active_tab(event_loop);
 							}
 							"Copy last command output" => self.copy_last_command_output(),
-							_ => {}
+							"Save scrollback to file" => {
+								self.command_palette = false;
+								self.save_scrollback();
+							}
+							"Broadcast input to all panes" => {
+								self.command_palette = false;
+								self.toggle_broadcast();
+							}
+							other => {
+								if let Some(action) = crate::ui::overlays::command_action(other) {
+									self.command_palette = false;
+									self.run_action(action, event_loop);
+								}
+							}
 						}
 					}
 				}
@@ -260,7 +273,7 @@ impl App {
 			.then(|| encode_keypad(&event.logical_key, self.mods, modes))
 			.flatten();
 		if let Some(bytes) = keypad.or_else(|| encode_key(&event.logical_key, self.mods, modes)) {
-			self.active_session().write(&bytes);
+			self.write_input(&bytes);
 			// Typing means finished work reported in this session was seen,
 			// and shows the live screen the input goes to.
 			let mut term = self.active_term();

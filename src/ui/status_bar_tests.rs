@@ -16,6 +16,7 @@ fn input(shell: &ShellIntegration) -> StatusInput<'_> {
 		shell,
 		size: (80, 24),
 		theme: "poop",
+		broadcast: false,
 	}
 }
 
@@ -75,6 +76,7 @@ fn control_characters_never_reach_the_bar() {
 		place: Some("ro\not"),
 		cwd: "di\r\x1br",
 		theme: "po\top",
+		broadcast: false,
 		..input(&shell)
 	};
 	let (left, right) = status_text(&input);
@@ -102,6 +104,7 @@ fn the_right_shows_the_grid_size_and_theme() {
 	let input = StatusInput {
 		size: (132, 43),
 		theme: "catppuccin-latte",
+		broadcast: false,
 		..input(&shell)
 	};
 	assert_eq!(
@@ -232,4 +235,20 @@ fn a_directory_alone_loses_its_control_characters_too() {
 		..input(&shell)
 	};
 	assert_eq!(status_text(&input).0, "]8;;evilsrc");
+}
+
+#[test]
+fn broadcasting_is_said_first_on_the_right_and_nowhere_else() {
+	let shell = ShellIntegration::default();
+	let quiet = status_text(&input(&shell));
+	let loud = status_text(&StatusInput {
+		broadcast: true,
+		..input(&shell)
+	});
+	assert_eq!(loud.0, quiet.0, "the left is unchanged");
+	assert_eq!(
+		loud.1,
+		format!("broadcasting to all panes{SEPARATOR}{}", quiet.1)
+	);
+	assert!(!quiet.1.contains("broadcasting"));
 }

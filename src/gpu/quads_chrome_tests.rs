@@ -280,6 +280,7 @@ fn the_window_chrome_draws_as_software_paints_it_in_every_theme() {
 				shell: &shell,
 				size: (80, 24),
 				theme: theme.kind.name(),
+				broadcast: false,
 			};
 			let rect = (0, height - 26 * scale, width, 26 * scale);
 			draw_status_bar(

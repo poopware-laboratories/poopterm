@@ -317,6 +317,7 @@ impl App {
 			shell: &term.shell,
 			size: (term.cols, term.rows),
 			theme: self.theme.kind.name(),
+			broadcast: self.broadcast,
 		};
 		let rect = (0, y, width, self.status_height);
 		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);

@@ -21,6 +21,8 @@ pub(crate) struct StatusInput<'a> {
 	/// Columns and rows.
 	pub size: (usize, usize),
 	pub theme: &'a str,
+	/// Whether typing goes to every pane of the tab.
+	pub broadcast: bool,
 }
 
 /// The most characters of a running command line shown.
@@ -54,6 +56,9 @@ pub(crate) fn status_text(input: &StatusInput) -> (String, String) {
 	};
 	let (cols, rows) = input.size;
 	let mut right = format!("{cols} × {rows}{SEPARATOR}{}", printable(input.theme));
+	if input.broadcast {
+		right = format!("broadcasting to all panes{SEPARATOR}{right}");
+	}
 	if let Some(command) = command {
 		right.push_str(SEPARATOR);
 		right.push_str(&command);

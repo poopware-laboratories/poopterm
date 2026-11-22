@@ -1,4 +1,5 @@
 //! Application state and the winit event loop.
+mod actions;
 mod canvas;
 mod closing;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -226,6 +227,8 @@ pub(crate) struct App {
 	/// The Settings control the keyboard has focused, in Tab order.
 	settings_focus: Option<usize>,
 	renaming_tab: bool,
+	/// Whether typing goes to every pane of the active tab.
+	broadcast: bool,
 	/// Light or dark, as the desktop last said; `None` until it has.
 	appearance: Option<crate::theme_follow::Appearance>,
 	/// Quick select's labels while they are shown.
@@ -492,6 +495,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		command_selected: 0,
 		settings_focus: None,
 		renaming_tab: false,
+		broadcast: false,
 		appearance: None,
 		hint_mode: None,
 		closing: None,

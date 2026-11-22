@@ -130,7 +130,7 @@ impl ApplicationHandler<UserEvent> for App {
 			WindowEvent::MouseWheel { delta, .. } => self.handle_mouse_wheel(delta),
 			WindowEvent::Ime(Ime::Commit(text)) => {
 				let bytes = text.into_bytes();
-				self.active_session().write(&bytes);
+				self.write_input(&bytes);
 			}
 			WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
 				if let Some(recorder) = &mut self.frame_stats {

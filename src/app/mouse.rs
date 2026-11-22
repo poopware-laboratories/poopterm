@@ -144,7 +144,7 @@ impl App {
 		match clipboard_read() {
 			Ok(text) => {
 				let bytes = paste_bytes(&text, self.active_term().bracketed_paste);
-				self.active_session().write(&bytes);
+				self.write_input(&bytes);
 			}
 			Err(error) => crate::warnings::warning!("clipboard paste failed: {error}"),
 		}
