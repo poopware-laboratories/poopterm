@@ -276,10 +276,6 @@ pub fn read_config_value(key: &str) -> Option<String> {
 	value(&fs::read_to_string(config_path()).ok()?, key)
 }
 
-pub fn read_config_theme() -> Option<ThemeKind> {
-	ThemeKind::parse(&read_config_value("theme")?)
-}
-
 pub fn save_config_theme(kind: ThemeKind) -> io::Result<()> {
 	save(&config_path(), &[("theme", format!("\"{}\"", kind.name()))])
 }

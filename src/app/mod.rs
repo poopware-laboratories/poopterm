@@ -224,6 +224,8 @@ pub(crate) struct App {
 	/// The Settings control the keyboard has focused, in Tab order.
 	settings_focus: Option<usize>,
 	renaming_tab: bool,
+	/// Light or dark, as the desktop last said; `None` until it has.
+	appearance: Option<crate::theme_follow::Appearance>,
 	/// Quick select's labels while they are shown.
 	hint_mode: Option<crate::ui::hint_mode::HintMode>,
 	/// A close waiting for the user to say yes, shown in the palette's place.
@@ -248,14 +250,27 @@ impl App {
 		if let Err(error) = save_config_theme(kind) {
 			crate::warnings::warning!("could not save theme config: {error}");
 		}
-		self.theme = Theme::load();
+		self.show_theme(Theme::load_for(self.appearance));
+	}
+
+	/// Shows the theme for the desktop's new `appearance`.
+	pub(super) fn follow_appearance(&mut self, appearance: Option<crate::theme_follow::Appearance>) {
+		// pr-check: window glue: shows what the tested choice picks for the desktop
+		self.appearance = appearance;
+		self.show_theme(Theme::load_for(appearance));
+		// pr-check: end window glue
+	}
+
+	/// Draws every terminal and the window in `theme`.
+	fn show_theme(&mut self, theme: Theme) {
+		// pr-check: window glue: hands the loaded theme to every terminal and the window
+		self.theme = theme;
 		for session in self.all_sessions() {
 			session.term().set_theme(self.theme);
 		}
 		self.canvas.invalidate();
-		if let Some(window) = &self.window {
-			window.request_redraw();
-		}
+		self.request_redraw();
+		// pr-check: end window glue
 	}
 
 	pub(super) fn request_redraw(&self) {
@@ -474,6 +489,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		command_selected: 0,
 		settings_focus: None,
 		renaming_tab: false,
+		appearance: None,
 		hint_mode: None,
 		closing: None,
 	};

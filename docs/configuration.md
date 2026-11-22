@@ -27,6 +27,17 @@ selection. Switching themes recolors text already on screen and in scrollback;
 colors a program set with OSC 4, 10–12, 17 or 19 stay on top of the new theme.
 On light themes, bright colors 8–15 are darkened only as far as needed to read.
 
+To follow the desktop's light or dark appearance, name a theme for each:
+
+```toml
+theme_light = "catppuccin-latte"
+theme_dark = "catppuccin-mocha"
+```
+
+The window switches as soon as the desktop does. While the desktop has not
+said, or for an appearance without its own key, `theme` shows; and
+`POOPTERM_THEME` wins over all three.
+
 | Theme | Author | License | Source |
 |-------|--------|---------|--------|
 | Nord | Arctic Ice Studio & Sven Greb | MIT | nordtheme.com |
