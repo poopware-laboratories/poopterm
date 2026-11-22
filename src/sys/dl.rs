@@ -1,4 +1,5 @@
-//! A shared library opened at run time: the Vulkan loader, libwayland-client.
+//! A shared library opened at run time: the Vulkan loader, libwayland-client,
+//! the in-process shell's command libraries.
 use std::{
 	ffi::{CStr, c_void},
 	ptr::NonNull,

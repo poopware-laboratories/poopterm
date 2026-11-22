@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>Poopterm</string>
+  <key>CFBundleIdentifier</key><string>labs.poopterm.ios</string>
+  <key>CFBundleName</key><string>Poopterm</string>
+  <key>CFBundleDisplayName</key><string>Poopterm</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>26.11.85</string>
+  <key>MinimumOSVersion</key><string>17.0</string>
+  <key>LSRequiresIPhoneOS</key><true/>
+  <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+  <key>UILaunchScreen</key><dict/>
+  <key>UIRequiresFullScreen</key><false/>
+  <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+</dict>
+</plist>

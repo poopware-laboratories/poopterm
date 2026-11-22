@@ -59,6 +59,9 @@ pub(crate) enum UserEvent {
 	/// The app menu's About item was chosen.
 	#[cfg(target_os = "macos")]
 	About,
+	/// The on-screen keyboard moved (`ios_keyboard`).
+	#[cfg(target_os = "ios")]
+	Keyboard,
 }
 
 pub(crate) struct Session {
@@ -71,6 +74,8 @@ pub(crate) struct Session {
 	master: OwnedFd,
 	/// The size `master` was last given.
 	size: size::SentSize,
+	/// The in-process device's size, which no `ioctl` reaches.
+	device_size: Option<Arc<crate::inproc::Size>>,
 	writer: PtyWriter,
 	output: Arc<OutputQueue>,
 	/// The shell, until the session ends and hands it to the reaper.
@@ -120,6 +125,10 @@ impl Session {
 	/// Tells the PTY, and so the shell, its size in cells of `cell` pixels
 	/// (width, height), when that changed since it was last told.
 	pub(crate) fn resize(&self, grid: (usize, usize), cell: (usize, usize)) {
+		if let Some(size) = &self.device_size {
+			size.set(grid.0, grid.1);
+			return;
+		}
 		let _ = self.size.set(&self.master, grid, cell);
 	}
 
@@ -177,10 +186,12 @@ pub(crate) fn spawn_session(
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
 	// The cells' pixels come with the first resize.
 	let window = WindowSize::of(cols, rows, (0, 0));
+	let mut device_size = None;
 	let (master, reader, input, child) = if in_process() {
 		// No program may run: a built-in shell in this process stands in.
 		let home = std::env::var_os("HOME").map_or_else(|| cwd.clone(), PathBuf::from);
-		let device = crate::inproc::spawn(id, cwd.clone(), home)?;
+		let device = crate::inproc::spawn(id, cwd.clone(), home, (cols, rows))?;
+		device_size = Some(device.size.clone());
 		let master = OwnedFd::from(device.output.try_clone()?);
 		let reader: Box<dyn std::io::Read + Send> = Box::new(device.output);
 		let input: Box<dyn std::io::Write + Send> = Box::new(device.input);
@@ -236,6 +247,7 @@ pub(crate) fn spawn_session(
 		custom_title: None,
 		master,
 		size: size::SentSize::new(window),
+		device_size,
 		writer,
 		output,
 		child,

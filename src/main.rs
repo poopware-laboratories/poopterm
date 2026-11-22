@@ -43,11 +43,13 @@ mod graphics;
 mod inflate;
 mod inproc;
 mod input;
+#[cfg(target_os = "ios")]
+mod ios_keyboard;
 mod mapped;
 mod notifier;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[cfg_attr(
-	not(test),
+	all(not(test), target_os = "macos"),
 	expect(
 		dead_code,
 		reason = "the Metal renderer draws windows with it next (#26)"

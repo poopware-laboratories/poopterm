@@ -1,6 +1,7 @@
 //! The in-process device: the line discipline's editing keys, the shell's
 //! words and built-ins, and the device loop end to end through pipes.
 use super::{
+	Size, command_path,
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
@@ -179,19 +180,20 @@ fn ran(shell: &mut Shell, line: &str) -> String {
 }
 
 #[test]
-fn files_and_directories_can_be_made_listed_read_and_removed() {
+fn cd_moves_the_shell_and_its_prompt_and_pwd_says_where() {
 	let (mut sh, home) = shell();
-	assert_eq!(ran(&mut sh, "mkdir -p a/b && touch a/f && echo hi > x"), "");
-	assert_eq!(ran(&mut sh, "ls a"), "b/\nf\n");
+	fs::create_dir_all(home.join("a/b")).unwrap();
 	assert_eq!(ran(&mut sh, "cd a; pwd"), format!("{}/a\n", home.display()));
 	assert_eq!(sh.prompt(), "\x1b[1;34m~/a\x1b[0m $ ");
-	assert_eq!(ran(&mut sh, "cp f g && mv g b && ls b"), "g\n");
-	fs::write(home.join("a/b/g"), "content\n").unwrap();
-	assert_eq!(ran(&mut sh, "cat b/g ~/a/b/g"), "content\ncontent\n");
-	assert_eq!(ran(&mut sh, "rm -r b; ls"), "f\n");
+	assert_eq!(
+		ran(&mut sh, "cd b && cd .. && pwd"),
+		format!("{}/a\n", home.display())
+	);
 	assert_eq!(ran(&mut sh, "cd; pwd"), format!("{}\n", home.display()));
 	assert_eq!(sh.prompt(), "\x1b[1;34m~\x1b[0m $ ");
-	assert!(ran(&mut sh, "ls -a").contains(".\n") || !ran(&mut sh, "ls -a").is_empty());
+	fs::write(home.join("file"), "").unwrap();
+	assert!(ran(&mut sh, "cd file").contains("not a directory"));
+	assert_eq!(sh.cwd, home, "a failed cd stays put");
 }
 
 #[test]
@@ -201,9 +203,8 @@ fn failures_set_the_status_and_stop_and_chains() {
 	assert_eq!(sh.status, 127);
 	assert_eq!(ran(&mut sh, "echo $?"), "127\n");
 	assert_eq!(ran(&mut sh, "false && echo no; echo yes"), "yes\n");
-	assert!(ran(&mut sh, "cat missing").starts_with("cat: missing: "));
-	assert_eq!(sh.status, 1);
 	assert!(ran(&mut sh, "cd missing").starts_with("cd: "));
+	assert_eq!(sh.status, 1);
 	assert_eq!(ran(&mut sh, "true && echo ok"), "ok\n");
 }
 
@@ -211,15 +212,16 @@ fn failures_set_the_status_and_stop_and_chains() {
 fn the_small_built_ins_do_what_their_names_say() {
 	let (mut sh, _) = shell();
 	assert_eq!(ran(&mut sh, "echo -n a b"), "a b");
-	assert_eq!(ran(&mut sh, "seq 3"), "1\n2\n3\n");
-	assert_eq!(ran(&mut sh, "seq 2 4"), "2\n3\n4\n");
 	assert_eq!(ran(&mut sh, "export A=1 B=two; echo $A$B"), "1two\n");
-	assert!(ran(&mut sh, "env").contains("A=1\n"));
+	assert_eq!(sh.env["A"], "1");
 	assert_eq!(ran(&mut sh, "unset A; echo [$A]"), "[]\n");
 	assert_eq!(ran(&mut sh, "clear"), "\x1b[H\x1b[2J\x1b[3J");
-	assert!(ran(&mut sh, "help").contains("ls"));
-	let date = ran(&mut sh, "date");
-	assert!(date.ends_with(" UTC\n") && date.len() == 24, "{date:?}");
+	let help = ran(&mut sh, "help");
+	assert!(help.contains(" cd ") && !help.contains(" ls "), "{help}");
+	assert!(
+		help.contains("$PATH"),
+		"says where the rest come from: {help}"
+	);
 	let exit = sh.run("exit 4");
 	assert!(exit.exit && sh.status == 4);
 }
@@ -228,7 +230,12 @@ fn the_small_built_ins_do_what_their_names_say() {
 fn the_device_shows_a_prompt_answers_lines_and_ends_on_exit() {
 	let (shell, _) = shell();
 	let mut out = Vec::new();
-	run(shell, &b"echo hi\rnope\rexit\r"[..], &mut out);
+	run(
+		shell,
+		&Size::new(80, 24),
+		&b"echo hi\rnope\rexit\r"[..],
+		&mut out,
+	);
 	let shown = String::from_utf8(out).unwrap();
 	assert!(shown.starts_with("Poopterm in-process shell."), "{shown:?}");
 	assert!(
@@ -244,7 +251,7 @@ fn the_device_ends_on_end_of_file_or_a_closed_input() {
 	for input in [&b"\x04ignored\r"[..], &b"echo partial"[..]] {
 		let (shell, _) = shell();
 		let mut out = Vec::new();
-		run(shell, input, &mut out);
+		run(shell, &Size::new(80, 24), input, &mut out);
 		let shown = String::from_utf8(out).unwrap();
 		assert!(
 			!shown.contains("ignored") && !shown.contains("\r\npartial"),
@@ -300,7 +307,8 @@ fn output_redirects_to_files_replacing_or_appending() {
 		fs::read_to_string(home.join("f")).unwrap(),
 		"one\ntwo\nthree\n"
 	);
-	assert_eq!(ran(&mut sh, "echo new >f && cat f"), "new\n");
+	assert_eq!(ran(&mut sh, "echo new >f && echo done"), "done\n");
+	assert_eq!(fs::read_to_string(home.join("f")).unwrap(), "new\n");
 	assert_eq!(
 		words("echo a>b >> c"),
 		[
@@ -314,7 +322,7 @@ fn output_redirects_to_files_replacing_or_appending() {
 	);
 	assert_eq!(
 		ran(&mut sh, "echo x >"),
-		"poopsh: a file must follow > or >>\n"
+		"poopsh: a file must follow <, > or >>\n"
 	);
 	assert_eq!(sh.status, 2);
 	assert!(ran(&mut sh, "echo x > missing/dir/f").starts_with("poopsh: "));
@@ -327,34 +335,26 @@ fn output_redirects_to_files_replacing_or_appending() {
 }
 
 #[test]
-fn uname_answers_as_the_kernel_does_with_its_flags() {
-	use super::shell::uname_line;
-	let names = crate::sys::user::uname().unwrap();
-	let line = |args: &[&str]| {
-		uname_line(
-			&names,
-			&args.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
-		)
-	};
-	assert_eq!(line(&[]), Ok(names.sysname.clone()));
-	assert_eq!(line(&["-m"]), Ok(names.machine.clone()));
+fn a_size_reads_back_as_set_and_clamps_to_what_a_terminal_holds() {
+	let size = Size::new(80, 24);
+	assert_eq!(size.get(), (80, 24));
+	size.set(200, 50);
+	assert_eq!(size.get(), (200, 50));
+	size.set(100_000, 0);
+	assert_eq!(size.get(), (u16::MAX, 0));
+}
+
+#[test]
+fn programs_come_from_beside_the_app_then_from_packages_unless_chosen() {
+	let home = PathBuf::from("/home/me");
+	let exe = PathBuf::from("/App.app");
 	assert_eq!(
-		line(&["-sr"]),
-		Ok(format!("{} {}", names.sysname, names.release))
+		command_path(Some(&exe), &home, None),
+		"/App.app/commands:/home/me/Library/poopterm/packages/bin"
 	);
-	let all = [
-		&names.sysname,
-		&names.nodename,
-		&names.release,
-		&names.version,
-		&names.machine,
-	];
-	assert_eq!(line(&["-a"]), Ok(all.map(String::as_str).join(" ")));
-	assert_eq!(line(&["-x"]), Err('x'));
-	assert_eq!(line(&["-"]), Err('?'));
 	assert_eq!(
-		names.sysname,
-		"Darwin".to_owned().replace("Darwin", &names.sysname)
+		command_path(None, &home, None),
+		"/home/me/Library/poopterm/packages/bin"
 	);
-	assert!(!names.release.is_empty() && !names.machine.is_empty());
+	assert_eq!(command_path(Some(&exe), &home, Some("/x:/y")), "/x:/y");
 }

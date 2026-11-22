@@ -1,20 +1,20 @@
 //! A small shell for the in-process device, where iOS lets no other
 //! program run: words with quotes, escapes, `~` and `$VAR`, commands
-//! joined by `;` and `&&`, and built-in commands over the app's own files.
+//! joined by `;` and `&&`, pipelines and redirections, the built-ins a shell
+//! needs itself, and every other command a real program found on `$PATH`
+//! (`native`).
 use std::{
 	collections::BTreeMap,
-	fmt::Write as _,
 	fs,
 	path::{Path, PathBuf},
 };
 
-/// Most bytes a command may print, so `cat` of a huge file stays bounded.
-pub(crate) const MAX_OUTPUT: usize = 16 << 20;
+use super::{native, pipeline};
 
-/// The built-in commands, for `help`.
-pub(crate) const COMMANDS: [&str; 22] = [
-	"cat", "cd", "clear", "cp", "date", "echo", "env", "exit", "export", "false", "help", "ls",
-	"mkdir", "mv", "pwd", "rm", "rmdir", "seq", "touch", "true", "uname", "unset",
+/// The built-in commands, for `help`: what changes the shell itself, and
+/// the few a shell answers on its own, as `sh` does.
+pub(crate) const COMMANDS: [&str; 10] = [
+	"cd", "clear", "echo", "exit", "export", "false", "help", "pwd", "true", "unset",
 ];
 
 /// What the shell remembers between lines.
@@ -25,6 +25,8 @@ pub(crate) struct Shell {
 	pub env: BTreeMap<String, String>,
 	/// The exit status of the last command, for `$?`.
 	pub status: i32,
+	/// The terminal's columns and rows, as programs are told.
+	pub size: (u16, u16),
 }
 
 /// What running a line did.
@@ -32,6 +34,9 @@ pub(crate) struct Shell {
 pub(crate) struct Ran {
 	/// What the commands printed, with `\n` line ends.
 	pub output: Vec<u8>,
+	/// What a program wrote to standard error while its output went to a
+	/// file; shown after `output`.
+	pub errors: Vec<u8>,
 	/// `exit` was run.
 	pub exit: bool,
 }
@@ -47,6 +52,7 @@ impl Shell {
 			home,
 			env,
 			status: 0,
+			size: (80, 24),
 		}
 	}
 
@@ -82,58 +88,98 @@ impl Shell {
 		ran
 	}
 
-	/// Expands and runs one command, now that those before it ran, with
-	/// its output sent to a file for `>` (or `>>`, to its end).
+	/// Expands and runs one command or pipeline, now that those before it
+	/// ran. Stages run in turn, each reading what the one before printed
+	/// (or a `<` file) and printing to the next (or a `>` file); the last
+	/// prints to the terminal. Its status is the last stage's.
 	fn segment(&mut self, command: &str, ran: &mut Ran) -> i32 {
 		let Some(words) = split(command, self) else {
 			ran.output.extend(b"poopsh: unfinished quote\n");
 			return 2;
 		};
-		let (mut argv, mut target) = (Vec::new(), None);
-		let mut words = words.into_iter();
-		while let Some(word) = words.next() {
-			match word {
-				Word::Text(text) => argv.push(text),
-				Word::Op(op) => match words.next() {
-					Some(Word::Text(file)) => target = Some((self.path(&file), op == ">>")),
-					_ => {
-						ran.output.extend(b"poopsh: a file must follow > or >>\n");
-						return 2;
-					}
-				},
-			}
-		}
-		if argv.is_empty() {
-			return self.status;
-		}
-		let Some((file, append)) = target else {
-			return self.command(&argv, ran);
-		};
-		let mut captured = Ran::default();
-		let status = self.command(&argv, &mut captured);
-		ran.exit = captured.exit;
-		let mut options = fs::OpenOptions::new();
-		options
-			.create(true)
-			.write(true)
-			.append(append)
-			.truncate(!append);
-		let written = options
-			.open(&file)
-			.and_then(|mut f| std::io::Write::write_all(&mut f, &captured.output));
-		match written {
-			Ok(()) => status,
-			Err(error) => {
+		let stages = match pipeline::stages(words) {
+			Ok(stages) if stages.is_empty() => return self.status,
+			Ok(stages) => stages,
+			Err(message) => {
 				ran
 					.output
-					.extend(format!("poopsh: {}: {error}\n", file.display()).into_bytes());
-				1
+					.extend(format!("poopsh: {message}\n").into_bytes());
+				return 2;
+			}
+		};
+		let (last, mut piped, mut status) = (stages.len() - 1, None::<Vec<u8>>, 0);
+		for (index, stage) in stages.into_iter().enumerate() {
+			let failed = |ran: &mut Ran, file: &str, error: std::io::Error| {
+				ran
+					.output
+					.extend(format!("poopsh: {file}: {error}\n").into_bytes());
+			};
+			let input = match &stage.input {
+				Some(file) => match fs::read(self.path(file)) {
+					Ok(bytes) => Some(bytes),
+					Err(error) => {
+						failed(ran, file, error);
+						(piped, status) = (Some(Vec::new()), 1);
+						continue;
+					}
+				},
+				None => piped.take(),
+			};
+			// A file is opened before its command runs, as a shell opens
+			// it first (`ls > list` lists `list`).
+			let file = match &stage.output {
+				Some((file, append)) => {
+					let mut options = fs::OpenOptions::new();
+					options
+						.create(true)
+						.write(true)
+						.append(*append)
+						.truncate(!append);
+					match options.open(self.path(file)) {
+						Ok(opened) => Some((opened, file)),
+						Err(error) => {
+							failed(ran, file, error);
+							(piped, status) = (Some(Vec::new()), 1);
+							continue;
+						}
+					}
+				}
+				None => None,
+			};
+			if stage.argv.is_empty() {
+				continue;
+			}
+			let to_terminal = index == last && file.is_none();
+			let mut captured = Ran::default();
+			status = self.command(&stage.argv, input.as_deref(), &mut captured, to_terminal);
+			ran.exit |= captured.exit;
+			if to_terminal {
+				ran.output.extend(captured.output);
+				ran.output.extend(captured.errors);
+			} else {
+				ran.output.extend(captured.errors);
+				match file {
+					Some((mut opened, name)) => {
+						if let Err(error) = std::io::Write::write_all(&mut opened, &captured.output) {
+							failed(ran, name, error);
+							status = 1;
+						}
+						piped = Some(Vec::new());
+					}
+					None => piped = Some(captured.output),
+				}
+			}
+			if ran.exit {
+				break;
 			}
 		}
+		status
 	}
 
-	/// Runs one built-in command and returns its exit status.
-	fn command(&mut self, argv: &[String], ran: &mut Ran) -> i32 {
+	/// Runs one command and returns its exit status, with `input` as its
+	/// standard input (none: empty); `tty` when its output goes to the
+	/// terminal.
+	fn command(&mut self, argv: &[String], input: Option<&[u8]>, ran: &mut Ran, tty: bool) -> i32 {
 		let out = &mut ran.output;
 		let (name, args) = (argv[0].as_str(), &argv[1..]);
 		let fail = |out: &mut Vec<u8>, message: String| {
@@ -151,7 +197,10 @@ impl Shell {
 					.unwrap_or(self.status)
 			}
 			"help" => {
-				out.extend(format!("Built-in commands: {}\n", COMMANDS.join(" ")).into_bytes());
+				let list = COMMANDS.join(" ");
+				let text =
+					format!("Built-in commands: {list}\nEvery other command is a program on $PATH.\n");
+				out.extend(text.into_bytes());
 				0
 			}
 			"echo" => {
@@ -186,12 +235,6 @@ impl Shell {
 				out.extend(b"\x1b[H\x1b[2J\x1b[3J");
 				0
 			}
-			"env" => {
-				for (key, value) in &self.env {
-					out.extend(format!("{key}={value}\n").into_bytes());
-				}
-				0
-			}
 			"export" => {
 				for pair in args {
 					if let Some((key, value)) = pair.split_once('=') {
@@ -204,149 +247,41 @@ impl Shell {
 				args.iter().for_each(|key| drop(self.env.remove(key)));
 				0
 			}
-			"uname" => match crate::sys::user::uname() {
-				Some(names) => match uname_line(&names, args) {
-					Ok(line) => {
-						out.extend(format!("{line}\n").into_bytes());
-						0
-					}
-					Err(flag) => fail(
-						out,
-						format!("illegal option -- {flag}\nusage: uname [-amnrsv]"),
-					),
-				},
-				None => fail(out, "the system did not say".to_owned()),
-			},
-			"date" => {
-				let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
-				let [y, mo, d, h, mi, se] = crate::ui::export::utc(now.map_or(0, |since| since.as_secs()));
-				out.extend(format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{se:02} UTC\n").into_bytes());
-				0
-			}
-			"seq" => {
-				let numbers: Vec<i64> = args.iter().filter_map(|arg| arg.parse().ok()).collect();
-				let (first, last) = match numbers[..] {
-					[last] => (1, last),
-					[first, last] => (first, last),
-					_ => return fail(out, "usage: seq [first] last".to_owned()),
-				};
-				for number in first..=last {
-					if out.len() > MAX_OUTPUT {
-						break;
-					}
-					let _ = writeln!(Printed(out), "{number}");
-				}
-				0
-			}
-			"ls" => self.ls(args, out),
-			"cat" => {
-				let mut status = 0;
-				for file in args {
-					match fs::read(self.path(file)) {
-						Ok(bytes) => {
-							out.extend(&bytes[..bytes.len().min(MAX_OUTPUT.saturating_sub(out.len()))])
-						}
-						Err(error) => status = fail(out, format!("{file}: {error}")),
-					}
-				}
-				status
-			}
-			"mkdir" | "rmdir" | "touch" | "rm" => {
-				let (parents, files): (Vec<&String>, Vec<&String>) =
-					args.iter().partition(|arg| arg.starts_with('-'));
-				let recursive = parents
-					.iter()
-					.any(|flag| flag.contains('p') || flag.contains('r'));
-				let mut status = 0;
-				for file in files {
-					let path = self.path(file);
-					let result = match name {
-						"mkdir" if recursive => fs::create_dir_all(&path),
-						"mkdir" => fs::create_dir(&path),
-						"rmdir" => fs::remove_dir(&path),
-						"touch" => fs::OpenOptions::new()
-							.create(true)
-							.append(true)
-							.open(&path)
-							.map(drop),
-						_ if recursive && path.is_dir() => fs::remove_dir_all(&path),
-						_ => fs::remove_file(&path),
-					};
-					if let Err(error) = result {
-						status = fail(out, format!("{file}: {error}"));
-					}
-				}
-				status
-			}
-			"cp" | "mv" => match args {
-				[from, to] => {
-					let (from_path, mut to_path) = (self.path(from), self.path(to));
-					if to_path.is_dir() {
-						to_path.push(from_path.file_name().unwrap_or_default());
-					}
-					let result = match name {
-						"cp" => fs::copy(&from_path, &to_path).map(drop),
-						_ => fs::rename(&from_path, &to_path),
-					};
-					result.map_or_else(|error| fail(out, format!("{from}: {error}")), |()| 0)
-				}
-				_ => fail(out, format!("usage: {name} from to")),
-			},
-			_ => {
-				out.extend(format!("poopsh: {name}: command not found\n").into_bytes());
-				127
-			}
+			_ => self.native(argv, input, ran, tty),
 		}
 	}
 
-	/// `ls`: the entries of each directory given (the current one by
-	/// default), sorted, directories marked with `/`; `-a` shows hidden ones.
-	fn ls(&self, args: &[String], out: &mut Vec<u8>) -> i32 {
-		let all = args
-			.iter()
-			.any(|arg| arg.starts_with('-') && arg.contains('a'));
-		let dirs: Vec<&String> = args.iter().filter(|arg| !arg.starts_with('-')).collect();
-		let dirs = if dirs.is_empty() {
-			vec![None]
-		} else {
-			dirs.into_iter().map(Some).collect()
+	/// Runs a real program: the command library `argv[0]` names on `$PATH`.
+	fn native(&mut self, argv: &[String], input: Option<&[u8]>, ran: &mut Ran, tty: bool) -> i32 {
+		let name = argv[0].as_str();
+		let Some(library) = native::find(name, self.env.get("PATH").map(String::as_str), &self.cwd)
+		else {
+			ran
+				.output
+				.extend(format!("poopsh: {name}: command not found\n").into_bytes());
+			return 127;
 		};
-		let mut status = 0;
-		for dir in &dirs {
-			let path = dir.map_or_else(|| self.cwd.clone(), |dir| self.path(dir));
-			let entries = match fs::read_dir(&path) {
-				Ok(entries) => entries,
-				Err(_) if path.is_file() => {
-					out.extend(format!("{}\n", dir.map_or("", String::as_str)).into_bytes());
-					continue;
-				}
-				Err(error) => {
-					out.extend(format!("ls: {}: {error}\n", path.display()).into_bytes());
-					status = 1;
-					continue;
-				}
-			};
-			let mut names: Vec<String> = entries
-				.flatten()
-				.map(|entry| {
-					let name = entry.file_name().to_string_lossy().into_owned();
-					if entry.path().is_dir() {
-						format!("{name}/")
-					} else {
-						name
-					}
-				})
-				.filter(|name| all || !name.starts_with('.'))
-				.collect();
-			names.sort();
-			if dirs.len() > 1 {
-				out.extend(format!("{}:\n", dir.map_or("", String::as_str)).into_bytes());
+		let run = native::Run {
+			argv,
+			env: &self.env,
+			cwd: &self.cwd,
+			input,
+			tty: tty.then_some(self.size),
+			merge: tty,
+		};
+		match native::run(&library, &run) {
+			Ok(done) => {
+				ran.output.extend(done.output);
+				ran.errors.extend(done.errors);
+				done.status
 			}
-			for name in names {
-				out.extend(format!("{name}\n").into_bytes());
+			Err(error) => {
+				ran
+					.errors
+					.extend(format!("poopsh: {name}: {error}\n").into_bytes());
+				126
 			}
 		}
-		status
 	}
 
 	/// `path` from the current directory, `~` for home.
@@ -355,54 +290,6 @@ impl Shell {
 			Some(rest) => self.home.join(rest.trim_start_matches('/')),
 			None => self.cwd.join(Path::new(path)),
 		}
-	}
-}
-
-/// What `uname` prints for `args`: by default the kernel name; with flags,
-/// the fields they name in the usual order (`-a` all of them). `Err` names
-/// a flag that is not one.
-pub(crate) fn uname_line(names: &crate::sys::user::Uname, args: &[String]) -> Result<String, char> {
-	let mut wanted = [false; 5];
-	for arg in args {
-		let flags = arg.strip_prefix('-').filter(|f| !f.is_empty()).ok_or('?')?;
-		for flag in flags.chars() {
-			match flag {
-				'a' => wanted = [true; 5],
-				's' => wanted[0] = true,
-				'n' => wanted[1] = true,
-				'r' => wanted[2] = true,
-				'v' => wanted[3] = true,
-				'm' | 'p' => wanted[4] = true,
-				other => return Err(other),
-			}
-		}
-	}
-	if !wanted.contains(&true) {
-		wanted[0] = true;
-	}
-	let fields = [
-		&names.sysname,
-		&names.nodename,
-		&names.release,
-		&names.version,
-		&names.machine,
-	];
-	let shown: Vec<&str> = fields
-		.iter()
-		.zip(wanted)
-		.filter(|(_, on)| *on)
-		.map(|(f, _)| f.as_str())
-		.collect();
-	Ok(shown.join(" "))
-}
-
-/// Formats into a byte buffer.
-struct Printed<'a>(&'a mut Vec<u8>);
-
-impl std::fmt::Write for Printed<'_> {
-	fn write_str(&mut self, text: &str) -> std::fmt::Result {
-		self.0.extend_from_slice(text.as_bytes());
-		Ok(())
 	}
 }
 
@@ -502,6 +389,14 @@ pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 				*kept |= quote.is_some() || name.is_empty();
 			}
 			(None, ' ' | '\t') => finish(&mut word, &mut words),
+			(None, '|') => {
+				finish(&mut word, &mut words);
+				words.push(Word::Op("|"));
+			}
+			(None, '<') => {
+				finish(&mut word, &mut words);
+				words.push(Word::Op("<"));
+			}
 			(None, '>') => {
 				finish(&mut word, &mut words);
 				let append = chars.peek() == Some(&'>');

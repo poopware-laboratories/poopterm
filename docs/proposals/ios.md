@@ -3,7 +3,7 @@
 A terminal for iPhone and iPad that builds on what a-Shell proved works,
 and goes further: with JIT enabled through StikDebug, it runs real programs
 at close to native speed instead of only built-in commands and interpreted
-WebAssembly. This is a proposal; nothing of it is built yet. (Issue #150,
+WebAssembly. Parts of it are built on the local `local/ios` branch (the terminal, the in-process shell and Apple's commands, in the simulator). (Issue #150,
 jailbroken iOS 12, is a separate target: there `fork`, `exec` and PTYs
 exist, and Poopterm's macOS code mostly applies.)
 
@@ -74,54 +74,48 @@ end of file, window size and `SIGWINCH`, raw mode on request. Programs see
 runtime's replacements. Poopterm's own termios defaults (`src/pty/termios.rs`)
 become the line discipline's.
 
-### Three ways to run programs
+### Running programs: a shell, not Linux
 
-1. **Built-in commands (always).** a-Shell's model: tools compiled into the
-   app as frameworks run on threads through an `ios_system`-style layer.
-   A small core (a shell, coreutils, `ssh`, `curl`, `git`, an editor) works
-   on any install, App Store included.
-2. **WebAssembly (always; fast with JIT).** WASI programs run in a runtime
-   that interprets them without JIT and compiles them to native code with
-   JIT. With JIT, Python, compilers and anything built for WASI run at a
-   large fraction of native speed. WASI threads and sockets extensions
-   cover servers and parallel tools.
-3. **Native Linux arm64 programs (JIT only).** The part that runs "actual
-   programs": ELF binaries built for Linux on arm64, such as Alpine's
-   packages, unmodified.
-   - **Loader.** An in-process ELF loader maps the program and its
-     libraries (musl or glibc) at addresses of its own; JIT permission is
-     what lets these pages become executable.
-   - **System calls.** iOS has no Linux system calls, so each `svc #0` is
-     rewritten, as the code is first mapped, into a call to a Rust
-     implementation of the Linux system call it names, run on the same
-     thread: files and directories (through the app's sandbox and a
-     root file system image), sockets, `mmap`, `futex`, signals,
-     `clone` for threads, the terminal device above. Everything else
-     runs as the program's own native instructions, with no emulation of
-     the CPU, so it is close to native speed.
-   - **Processes.** There is still one address space. A "process" is a
-     set of threads with their own file descriptors, memory regions,
-     signal state and identity. `execve` loads the new program in place;
-     `posix_spawn`, and `fork` followed by `exec` (what shells and build
-     tools do), become "start a new virtual process"; programs that `fork`
-     and keep running without `exec` (some servers) get a copy of their
-     memory regions mapped elsewhere only where the program allows it, and
-     otherwise fail with `ENOSYS`, which most handle.
-   - **Packages.** A package manager over Alpine's arm64 repositories
-     fills a root image in the app's container.
-   x86-64 binaries could later run through a JIT translator in the same
-   framework (QEMU's user mode or a box64-like translator), much slower.
+The app is a shell, as a-Shell is, and every program it runs is a native
+iOS program: no Linux binaries, no system call translation.
+
+1. **Commands in the app (always).** The in-process shell (`src/inproc`)
+   has a line discipline, words, quotes, variables, `;`, `&&`, pipelines
+   and redirections, and keeps as built-ins only what a shell must
+   (`cd`, `export`, `exit`…). Every other command is a real program:
+   `uname`, `ls`, `cat`, `sort`… are built from Apple's own sources
+   (shell_cmds, file_cmds, text_cmds) as libraries by
+   `ios/commands/build.sh`, bundled in `Poopterm.app/commands` and found on
+   `$PATH`. Bundled with the app, they are signed with it, so they run
+   without JIT. A pipeline runs its stages one after another, each reading
+   what the one before printed.
+2. **Packages (with JIT).** A command is a dynamic library built for iOS
+   arm64 from the program's own source, its `main` renamed to an entry the
+   shell calls with `argc`/`argv`, built with a small compatibility header
+   (`exit` ends the command, not the app; `fork`/`exec` go through the
+   shell). Darwin programs (fastfetch, htop, jq, ripgrep, git…) port with
+   little change, since iOS is Darwin.
+   - **`pkg`** (`pkg install fastfetch`, `pkg list`, `pkg remove`) reads a
+     signed index, downloads packages through the system's own HTTP stack
+     (`NSURLSession`), checks each archive's hash and signature, and
+     unpacks it into the app's container (`~/Library/poopterm/packages`).
+   - **Loading:** iOS loads only code signed by Apple or the developer.
+     While StikDebug has the app attached (`CS_DEBUGGED`), unsigned
+     libraries load; without it, `pkg` says JIT is needed and the
+     built-ins still work. The simulator does not enforce signing, which
+     is how packages are developed and tested.
+   - **Input and output:** while a command runs, its standard input,
+     output and error are the tab's terminal device. Commands run one at a
+     time per app, since file descriptors are shared by the process.
+3. **WebAssembly (later).** WASI programs for what is not ported yet,
+   interpreted without JIT and compiled with it.
 
 ### Where it stops
 
-- Programs that need a real kernel: `ptrace` debuggers, containers, raw
-  network devices, kernel modules.
-- `fork` without `exec` in programs that depend on separate address
-  spaces.
-- Background work: iOS suspends apps it does not show; long jobs need the
-  app in front or iOS's limited background modes.
-- Without JIT (App Store build, or StikDebug not attached), only built-in
-  commands and interpreted WebAssembly.
+- Programs that need `fork` without `exec`, `ptrace`, or other processes.
+- Background work: iOS suspends apps it does not show.
+- Without JIT (App Store build, or StikDebug not attached), only the
+  built-in commands (and later WebAssembly).
 
 ## Risks
 
@@ -129,9 +123,8 @@ become the line discipline's.
   users; the App Store build would ship only tiers 1 and 2 (interpreted).
 - **iOS changes.** Apple has narrowed JIT twice (iOS 17, iOS 26); the app
   must keep working, at a-Shell's level, if JIT stops being possible.
-- **Correctness of the Linux layer.** Each system call is new code that
-  untrusted programs exercise; it needs the same fuzzing and limits as the
-  escape-sequence parser.
+- **Package trust.** Packages run inside the app with its access; the index
+  and every archive are signed, and `pkg` refuses what does not verify.
 - **Licenses.** a-Shell and `ios_system` are BSD-licensed and Poopterm
   writes its own code (clean room, per AGENTS.md); bundled tools keep their
   own licenses.
@@ -143,7 +136,7 @@ become the line discipline's.
 2. The `ios_system`-style layer with a shell, coreutils and `ssh`.
 3. WebAssembly: interpreted first, then compiled when JIT is present.
 4. Detecting JIT (StikDebug attached, executable memory available).
-5. The ELF loader and the system call layer, starting with static musl
-   binaries (BusyBox), then dynamic ones and Alpine's package manager.
-6. Fuzzing of the system call layer; sideloading builds through
-   AltStore/SideStore.
+5. `pkg` and the package format; the first ports (fastfetch, jq,
+   ripgrep) built as command libraries.
+6. A scene delegate for iOS 27, keyboard avoidance, the Metal renderer on
+   iOS; sideloading builds through AltStore/SideStore.

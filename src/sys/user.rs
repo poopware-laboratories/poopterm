@@ -51,43 +51,6 @@ pub(crate) fn hostname() -> Option<String> {
 	Some(String::from_utf8_lossy(&buffer[..end]).into_owned())
 }
 
-/// What `uname(3)` says of this system: kernel name, host name, kernel
-/// release and version, and machine (an iPhone's model on iOS).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Uname {
-	pub sysname: String,
-	pub nodename: String,
-	pub release: String,
-	pub version: String,
-	pub machine: String,
-}
-
-/// This system's `uname(3)`, or None if it cannot say.
-pub(crate) fn uname() -> Option<Uname> {
-	// SAFETY: all zeroes is a valid `utsname` (arrays of C characters).
-	let mut names: libc::utsname = unsafe { std::mem::zeroed() };
-	// SAFETY: `uname` fills the `utsname` we own and pass by pointer.
-	if unsafe { libc::uname(&mut names) } != 0 {
-		return None;
-	}
-	// Each field is a NUL-terminated string inside its fixed array.
-	let field = |chars: &[libc::c_char]| {
-		let bytes: Vec<u8> = chars
-			.iter()
-			.map(|&c| c as u8)
-			.take_while(|&b| b != 0)
-			.collect();
-		String::from_utf8_lossy(&bytes).into_owned()
-	};
-	Some(Uname {
-		sysname: field(&names.sysname),
-		nodename: field(&names.nodename),
-		release: field(&names.release),
-		version: field(&names.version),
-		machine: field(&names.machine),
-	})
-}
-
 #[cfg(test)]
 #[path = "user_tests.rs"]
 mod tests;

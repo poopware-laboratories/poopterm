@@ -6,6 +6,8 @@ use super::*;
 const LIBC: &CStr = c"libc.so.6";
 #[cfg(target_os = "freebsd")]
 const LIBC: &CStr = c"libc.so.7";
+#[cfg(target_vendor = "apple")]
+const LIBC: &CStr = c"/usr/lib/libSystem.B.dylib";
 
 #[test]
 fn the_c_library_has_its_functions_and_not_made_up_ones() {
