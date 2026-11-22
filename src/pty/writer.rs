@@ -6,36 +6,74 @@
 //! the only consumer of that output, waits on the write.
 use std::{
 	io::Write,
-	sync::mpsc::{self, Sender},
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+		mpsc::{self, Sender},
+	},
 	thread,
 };
+
+/// Most bytes of replies to queries that may wait to be written. A program
+/// that sends queries but never reads its input would otherwise grow the
+/// queue until memory runs out; past this its replies are dropped, as a
+/// terminal whose reader is not listening loses them anyway.
+pub(crate) const MAX_PENDING_REPLIES: usize = 1 << 20;
 
 /// Cloneable: the UI thread sends input and the parser thread sends replies.
 #[derive(Clone)]
 pub(crate) struct PtyWriter {
-	sender: Sender<Vec<u8>>,
+	sender: Sender<(Vec<u8>, bool)>,
+	/// Bytes of replies sent to the writer thread and not yet written.
+	pending: Arc<AtomicUsize>,
 }
 
 impl PtyWriter {
 	pub(crate) fn spawn(mut sink: Box<dyn Write + Send>) -> Self {
-		let (sender, receiver) = mpsc::channel::<Vec<u8>>();
+		let (sender, receiver) = mpsc::channel::<(Vec<u8>, bool)>();
+		let pending = Arc::new(AtomicUsize::new(0));
+		let written = pending.clone();
 		thread::Builder::new()
 			.name("pty-writer".into())
 			.spawn(move || {
-				for bytes in receiver {
-					if sink.write_all(&bytes).and_then(|()| sink.flush()).is_err() {
+				for (bytes, reply) in receiver {
+					let result = sink.write_all(&bytes).and_then(|()| sink.flush());
+					if reply {
+						written.fetch_sub(bytes.len(), Ordering::AcqRel);
+					}
+					if result.is_err() {
 						break;
 					}
 				}
 			})
 			.expect("spawn PTY writer thread");
-		Self { sender }
+		Self { sender, pending }
 	}
 
-	/// Queues `bytes` for the shell without waiting for it to read them.
+	/// Queues `bytes` for the shell without waiting for it to read them:
+	/// what the user typed or pasted, which is never dropped.
 	pub(crate) fn write(&self, bytes: &[u8]) {
 		if !bytes.is_empty() {
-			let _ = self.sender.send(bytes.to_vec());
+			let _ = self.sender.send((bytes.to_vec(), false));
+		}
+	}
+
+	/// Queues a reply to a query, unless [`MAX_PENDING_REPLIES`] bytes of
+	/// replies already wait: then it is dropped whole.
+	pub(crate) fn reply(&self, bytes: &[u8]) {
+		let fits = |pending: usize| {
+			(pending + bytes.len() <= MAX_PENDING_REPLIES).then_some(pending + bytes.len())
+		};
+		if bytes.is_empty()
+			|| self
+				.pending
+				.try_update(Ordering::AcqRel, Ordering::Acquire, fits)
+				.is_err()
+		{
+			return;
+		}
+		if self.sender.send((bytes.to_vec(), true)).is_err() {
+			self.pending.fetch_sub(bytes.len(), Ordering::AcqRel);
 		}
 	}
 }

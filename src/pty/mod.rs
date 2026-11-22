@@ -13,6 +13,8 @@ mod size;
 #[cfg(test)]
 mod size_tests;
 mod writer;
+#[cfg(test)]
+mod writer_tests;
 
 use std::{
 	error::Error,
@@ -209,7 +211,7 @@ pub(crate) fn spawn_session(
 				&queue,
 				&shared,
 				&flag,
-				|bytes| replies.write(bytes),
+				|bytes| replies.reply(bytes),
 				&mut wake,
 			);
 			let _ = proxy.send_event(UserEvent::Closed(id));
