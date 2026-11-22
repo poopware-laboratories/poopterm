@@ -66,6 +66,19 @@ impl Selection {
 			.is_some_and(|(left, right)| (left..=right).contains(&point.col))
 	}
 
+	/// A selection in rows of the current scrollback and screen as one in
+	/// lines, which count every line since the terminal started:
+	/// `history_base` lines have been evicted before row 0. The inverse of
+	/// [`Self::in_rows`] for what was not evicted.
+	pub(crate) fn in_lines(self, history_base: usize) -> Selection {
+		let line = |point: CellPoint| CellPoint::new(point.row + history_base, point.col);
+		Selection {
+			start: line(self.start),
+			end: line(self.end),
+			..self
+		}
+	}
+
 	/// Converts a selection in lines, which count every line since the
 	/// terminal started and so keep naming the same text while full history
 	/// evicts lines, into rows of the current scrollback and screen, ordered.

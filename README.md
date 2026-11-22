@@ -35,7 +35,7 @@ implementation; see [protocols and compatibility](docs/protocols.md).
 | **Images** | Sixel and the kitty graphics protocol, including animation and Unicode placeholders, within explicit memory limits. |
 | **Tabs** | Independent shells with activity and bell indicators, renaming, a command palette, and restore of up to 12 tabs and their directories. |
 | **Shell integration** | OSC 133 and OSC 7, loaded automatically for zsh, fish and bash: prompt jumps, copy the last command's output, and a notice when a long command finishes. |
-| **Input** | The kitty keyboard protocol, SGR mouse reporting, bracketed paste, drag and rectangle selection, and the system clipboard. |
+| **Input** | The kitty keyboard protocol, SGR mouse reporting, bracketed paste, drag and rectangle selection, double-click word and triple-click row selection, and the system clipboard. |
 | **Links** | Modifier-click opens HTTP(S), OSC 8 and `file://` links; executables and launchers are copied, never opened. |
 | **Search** | Scrollback search with highlighted matches and next/previous navigation. |
 | **Look** | 13 built-in themes plus a custom one, PNG/JPEG/WebP wallpapers, padding, compact or vertical tabs, and window opacity on macOS. |
