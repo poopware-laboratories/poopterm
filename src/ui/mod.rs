@@ -71,6 +71,7 @@ mod hints_tests;
 pub(crate) mod hover;
 #[cfg(test)]
 mod hover_tests;
+pub(crate) mod insets;
 pub(crate) mod layout;
 pub(crate) mod links;
 #[cfg(all(test, unix))]

@@ -53,18 +53,6 @@ pub(crate) struct Chrome {
 	pub(crate) safe: (usize, usize),
 }
 
-/// The top and bottom of the screen the system keeps for itself, from a
-/// window `outer` pixels tall whose safe area starts `inner_top` pixels
-/// down and is `inner_height` pixels tall.
-#[cfg_attr(
-	not(target_os = "ios"),
-	expect(dead_code, reason = "only iOS reports insets")
-)]
-pub(crate) fn safe_insets(outer: usize, inner_top: usize, inner_height: usize) -> (usize, usize) {
-	let top = inner_top.min(outer);
-	(top, outer.saturating_sub(top + inner_height))
-}
-
 pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 	let scale = chrome_scale(factor);
 	// No rim is drawn: macOS draws its own, which follows the rounded

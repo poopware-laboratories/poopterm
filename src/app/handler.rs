@@ -64,7 +64,10 @@ impl ApplicationHandler<UserEvent> for App {
 		self.start_decorations();
 		// On iOS typing needs the on-screen keyboard, which this shows.
 		#[cfg(target_os = "ios")]
-		self.window.as_ref().unwrap().set_ime_allowed(true);
+		{
+			self.window.as_ref().unwrap().set_ime_allowed(true);
+			crate::ios_keyboard::observe(self.proxy.clone());
+		}
 		// pr-check: end window glue
 		// pr-check: window glue: AppKit has built the app menu once the app launched
 		#[cfg(target_os = "macos")]
@@ -150,6 +153,7 @@ impl ApplicationHandler<UserEvent> for App {
 			WindowEvent::MouseInput { state, button, .. } => {
 				self.handle_mouse_input(event_loop, state, button)
 			}
+			WindowEvent::Touch(touch) => self.handle_touch(event_loop, touch),
 			WindowEvent::Resized(size) => self.resize(size.width, size.height),
 			// pr-check: window glue: winit sends this when the window moves to another output or its scale changes
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -209,6 +213,10 @@ impl ApplicationHandler<UserEvent> for App {
 			// pr-check: window glue: only a real app menu sends this
 			#[cfg(target_os = "macos")]
 			UserEvent::About => self.open_about(event_loop),
+			// pr-check: end window glue
+			// pr-check: window glue: only UIKit's keyboard notifications send this
+			#[cfg(target_os = "ios")]
+			UserEvent::Keyboard => self.resize(self.width, self.height),
 			// pr-check: end window glue
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]

@@ -177,6 +177,10 @@ pub(crate) struct App {
 	settings_mods: Modifiers,
 	shortcuts: Shortcuts,
 	cursor_pos: (f64, f64),
+	/// The finger being followed, on touch screens.
+	touches: crate::input::touch::Touches,
+	/// The finger being followed in the Settings window.
+	settings_touches: crate::input::touch::Touches,
 	held_button: Option<MouseButtonCode>,
 	/// `TERM` and terminfo path for new shells.
 	term_env: crate::terminfo::TermEnv,
@@ -370,7 +374,12 @@ impl App {
 		if let Some(window) = &self.window {
 			let top = window.inner_position().map_or(0, |at| at.y.max(0) as usize);
 			let (outer, inner) = (window.outer_size().height, window.inner_size().height);
-			let safe = crate::ui::scale::safe_insets(outer as usize, top, inner as usize);
+			let (top, bottom) = crate::ui::insets::safe_insets(outer as usize, top, inner as usize);
+			let keyboard = crate::ios_keyboard::covered();
+			let safe = (
+				top,
+				crate::ui::insets::bottom_inset(bottom, keyboard, self.factor()),
+			);
 			if safe != self.safe {
 				self.safe = safe;
 				self.apply_scale();
@@ -481,6 +490,8 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		settings_mods: Modifiers::default(),
 		shortcuts: Shortcuts::load(),
 		cursor_pos: (0.0, 0.0),
+		touches: Default::default(),
+		settings_touches: Default::default(),
 		held_button: None,
 		term_env,
 		scroll: ScrollAccumulator::default(),

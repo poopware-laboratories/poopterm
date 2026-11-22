@@ -1,4 +1,4 @@
-//! Keyboard and mouse encoding for the PTY, plus configurable shortcuts.
+//! Keyboard, mouse and touch input for the PTY, plus configurable shortcuts.
 pub(crate) mod click;
 #[cfg(test)]
 mod clipboard_shortcuts_tests;
@@ -21,3 +21,4 @@ pub(crate) mod scroll;
 #[cfg(test)]
 mod shortcut_actions_tests;
 pub(crate) mod shortcuts;
+pub(crate) mod touch;

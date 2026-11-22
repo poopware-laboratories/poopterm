@@ -137,6 +137,18 @@ impl App {
 				(MIN_SIZE.0 + NAV_WIDTH) as f64,
 				MIN_SIZE.1 as f64,
 			));
+		// pr-check: window glue: a phone shows Settings as a sheet under the status bar
+		#[cfg(target_os = "ios")]
+		let attributes = {
+			let size = (self.width, self.height);
+			let frame =
+				crate::ui::insets::sheet_frame(size, self.safe, self.factor(), DEFAULT_SIZE.1 as f64);
+			let ((x, y), (width, height)) = frame;
+			attributes
+				.with_position(winit::dpi::LogicalPosition::new(x, y))
+				.with_inner_size(LogicalSize::new(width, height))
+		};
+		// pr-check: end window glue
 		let window = Arc::new(
 			event_loop
 				.create_window(attributes)
@@ -168,6 +180,13 @@ impl App {
 	pub(super) fn close_settings_window(&mut self) {
 		self.settings_window = None;
 		self.settings_surface = None;
+		// pr-check: window glue: the terminal takes the keyboard back on a phone
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			window.focus_window();
+			window.set_ime_allowed(true);
+		}
+		// pr-check: end window glue
 	}
 
 	pub(super) fn redraw_settings(&self) {
@@ -291,6 +310,17 @@ impl App {
 				button: MouseButton::Left,
 				..
 			} => self.settings_click(),
+			WindowEvent::Touch(touch) => {
+				use crate::input::touch::{Action, phase};
+				let at = (touch.location.x, touch.location.y);
+				let action = self
+					.settings_touches
+					.event(phase(touch.phase), touch.id, at);
+				if let Some(Action::Click(x, y)) = action {
+					self.settings_cursor_pos = (x, y);
+					self.settings_click();
+				}
+			}
 			WindowEvent::MouseWheel { delta, .. } if self.settings_editor.page == SettingsPage::Fonts => {
 				let scale = self.settings_scale();
 				let lines = match delta {

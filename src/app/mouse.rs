@@ -18,6 +18,37 @@ use crate::ui::{
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
 impl App {
+	/// A touch: a tap clicks, a drag scrolls (`input::touch`).
+	pub(super) fn handle_touch(&mut self, event_loop: &ActiveEventLoop, touch: winit::event::Touch) {
+		use crate::input::touch::{Action, phase};
+		// A tap outside a sheet (Settings on a phone) closes it, as there
+		// is no window button to.
+		if cfg!(target_os = "ios") && self.settings_window.is_some() {
+			if self
+				.touches
+				.event(phase(touch.phase), touch.id, (0.0, 0.0))
+				.is_some()
+			{
+				self.close_settings_window();
+			}
+			return;
+		}
+		let at = (touch.location.x, touch.location.y);
+		// pr-check: window glue: replays a tap or drag as the mouse events a window sends
+		match self.touches.event(phase(touch.phase), touch.id, at) {
+			Some(Action::Click(x, y)) => {
+				self.handle_cursor_moved(PhysicalPosition::new(x, y));
+				self.handle_mouse_input(event_loop, ElementState::Pressed, MouseButton::Left);
+				self.handle_mouse_input(event_loop, ElementState::Released, MouseButton::Left);
+			}
+			Some(Action::Scroll(dy)) => {
+				self.handle_mouse_wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, dy)))
+			}
+			None => {}
+		}
+		// pr-check: end window glue
+	}
+
 	/// Where the active terminal's grid sits in the window, without the
 	/// terminal's own size and scrolling, so it is found without its lock.
 	pub(super) fn grid_place(&self) -> GridPlace {
