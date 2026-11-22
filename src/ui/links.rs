@@ -17,8 +17,9 @@ pub(crate) enum LinkAction {
 
 /// File extensions that desktop openers may treat as programs to launch.
 const LAUNCHABLE: &[&str] = &[
-	"app", "appimage", "bat", "cmd", "command", "desktop", "exe", "jar", "msi", "pkg", "ps1", "run",
-	"scpt", "sh", "terminal", "tool", "workflow",
+	"action", "app", "appimage", "bat", "cmd", "command", "desktop", "dmg", "exe", "fileloc",
+	"inetloc", "jar", "jnlp", "mpkg", "msi", "pkg", "prefpane", "ps1", "run", "scpt", "scptd", "sh",
+	"terminal", "tool", "url", "webloc", "workflow",
 ];
 
 /// Decides what a modifier-click on `target` (a hyperlink URI or a word
@@ -30,10 +31,11 @@ pub(crate) fn link_action(target: &str) -> Option<LinkAction> {
 	if let Some(uri) = target.strip_prefix("file://") {
 		let path = uri.strip_prefix("localhost").unwrap_or(uri);
 		let path = path.starts_with('/').then(|| decode_uri_path(path))??;
-		return Some(if safe_to_open(&path) {
-			LinkAction::OpenPath(path)
-		} else {
-			LinkAction::CopyPath(path.display().to_string())
+		// Checked and opened as what it resolves to: a link's own name may
+		// say nothing of its target (`readme.txt` to an app bundle).
+		return Some(match path.canonicalize() {
+			Ok(real) if safe_to_open(&real) => LinkAction::OpenPath(real),
+			_ => LinkAction::CopyPath(path.display().to_string()),
 		});
 	}
 	target
@@ -42,6 +44,7 @@ pub(crate) fn link_action(target: &str) -> Option<LinkAction> {
 }
 
 /// Directories and ordinary documents; never executables or launchers.
+/// `path` is resolved: no symlink stands between the check and its target.
 fn safe_to_open(path: &Path) -> bool {
 	let Ok(metadata) = path.metadata() else {
 		return false;
@@ -109,10 +112,12 @@ mod tests {
 		let dir = guard.0.clone();
 		let doc = dir.join("notes.txt");
 		fs::write(&doc, "hi").unwrap();
+		// What opens is the resolved path (macOS's /var is /private/var).
 		let uri = format!("file://{}", doc.display());
-		assert_eq!(link_action(&uri), Some(LinkAction::OpenPath(doc)));
+		let real = |path: &PathBuf| path.canonicalize().unwrap();
+		assert_eq!(link_action(&uri), Some(LinkAction::OpenPath(real(&doc))));
 		let uri = format!("file://localhost{}", dir.display());
-		assert_eq!(link_action(&uri), Some(LinkAction::OpenPath(dir)));
+		assert_eq!(link_action(&uri), Some(LinkAction::OpenPath(real(&dir))));
 	}
 
 	#[test]
