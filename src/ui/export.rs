@@ -30,10 +30,22 @@ pub(crate) fn history_text(term: &Term) -> String {
 /// The file name for a scrollback saved at `unix` seconds, in UTC:
 /// `poopterm-scrollback-20261122-180501.txt`.
 pub(crate) fn file_name(unix: u64) -> String {
+	let [year, month, day, hour, minute, second] = utc(unix);
+	format!("poopterm-scrollback-{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}.txt")
+}
+
+/// `unix` seconds as UTC year, month, day, hour, minute and second.
+pub(crate) fn utc(unix: u64) -> [u64; 6] {
 	let (days, seconds) = (unix / 86_400, unix % 86_400);
 	let (year, month, day) = civil(days);
-	let (hour, minute, second) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
-	format!("poopterm-scrollback-{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}.txt")
+	[
+		year,
+		month,
+		day,
+		seconds / 3600,
+		seconds / 60 % 60,
+		seconds % 60,
+	]
 }
 
 /// The Gregorian date `days` after 1970-01-01.

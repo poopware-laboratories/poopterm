@@ -19,9 +19,12 @@ miniz_oxide = "^0.9"
 # shm_open/mmap and O_NONBLOCK opens for kitty graphics media.
 libc = "^0.2"
 image = { version = "^0.25", default-features = false, features = ["png", "jpeg", "webp"] }
-rfd = { version = "^0.17", default-features = false, features = ["xdg-portal"] }
 # Global allocator: the system ones (musl above all) cost throughput.
 mimalloc = { version = "^0.1", default-features = false }
+
+# File dialogs: desktop platforms only; iOS has no such dialogs.
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+rfd = { version = "^0.17", default-features = false, features = ["xdg-portal"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"

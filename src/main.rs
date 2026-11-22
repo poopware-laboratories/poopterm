@@ -41,6 +41,7 @@ mod gif;
 mod gpu;
 mod graphics;
 mod inflate;
+mod inproc;
 mod input;
 mod mapped;
 mod notifier;

@@ -177,17 +177,28 @@ pub(crate) fn spawn_session(
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
 	// The cells' pixels come with the first resize.
 	let window = WindowSize::of(cols, rows, (0, 0));
-	let pair = device::open(window)?;
-	let shell = login_shell::login_shell();
-	let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
-	// The shell holds the slave now; ours would keep the PTY open after it
-	// exits, and the reader would never see the end.
-	drop(pair.slave);
-	#[cfg(target_os = "linux")]
-	crate::cgroup::place(child.id());
-
-	let reader = File::from(pair.master.try_clone()?);
-	let writer = PtyWriter::spawn(Box::new(File::from(pair.master.try_clone()?)));
+	let (master, reader, input, child) = if in_process() {
+		// No program may run: a built-in shell in this process stands in.
+		let home = std::env::var_os("HOME").map_or_else(|| cwd.clone(), PathBuf::from);
+		let device = crate::inproc::spawn(id, cwd.clone(), home)?;
+		let master = OwnedFd::from(device.output.try_clone()?);
+		let reader: Box<dyn std::io::Read + Send> = Box::new(device.output);
+		let input: Box<dyn std::io::Write + Send> = Box::new(device.input);
+		(master, reader, input, None)
+	} else {
+		let pair = device::open(window)?;
+		let shell = login_shell::login_shell();
+		let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
+		// The shell holds the slave now; ours would keep the PTY open after
+		// it exits, and the reader would never see the end.
+		drop(pair.slave);
+		#[cfg(target_os = "linux")]
+		crate::cgroup::place(child.id());
+		let reader: Box<dyn std::io::Read + Send> = Box::new(File::from(pair.master.try_clone()?));
+		let input: Box<dyn std::io::Write + Send> = Box::new(File::from(pair.master.try_clone()?));
+		(pair.master, reader, input, Some(child))
+	};
+	let writer = PtyWriter::spawn(input);
 	let output = Arc::new(OutputQueue::new(OUTPUT_LIMIT));
 	let mut term = Term::new(cols, rows, theme, cwd);
 	term.scrollback_limit = Preferences::load().scrollback_lines;
@@ -223,13 +234,19 @@ pub(crate) fn spawn_session(
 		flags,
 		seen: Seen::default(),
 		custom_title: None,
-		master: pair.master,
+		master,
 		size: size::SentSize::new(window),
 		writer,
 		output,
-		child: Some(child),
+		child,
 		activity: false,
 	})
+}
+
+/// Whether tabs run the in-process shell: always on iOS, where no other
+/// program may run, and on request (`POOPTERM_IN_PROCESS`) elsewhere.
+pub(crate) fn in_process() -> bool {
+	cfg!(target_os = "ios") || std::env::var_os("POOPTERM_IN_PROCESS").is_some()
 }
 
 /// How a tab starts `shell` in `cwd`: with its integration arguments, and

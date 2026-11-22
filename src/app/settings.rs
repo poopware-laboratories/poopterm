@@ -419,6 +419,10 @@ impl App {
 	// pr-check: end window glue
 
 	fn choose_wallpaper(&mut self) {
+		// iOS has no file dialogs; wallpapers come from the config there.
+		#[cfg(target_os = "ios")]
+		let picked: Option<std::path::PathBuf> = None;
+		#[cfg(not(target_os = "ios"))]
 		let picked = self.settings_window.as_ref().and_then(|window| {
 			rfd::FileDialog::new()
 				.set_title("Choose a terminal wallpaper")
