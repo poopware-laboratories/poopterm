@@ -17,7 +17,7 @@ impl App {
 		if self.preferences.show_tabs && self.preferences.vertical_tabs {
 			return self.vertical_tab_layout().tab_start_y;
 		}
-		tab_bar_top(self.titlebar_height, self.tab_height)
+		self.safe.0 + tab_bar_top(self.titlebar_height, self.tab_height)
 	}
 
 	/// Where the window buttons sit in the header.

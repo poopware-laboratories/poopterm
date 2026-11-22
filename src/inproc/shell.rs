@@ -204,18 +204,19 @@ impl Shell {
 				args.iter().for_each(|key| drop(self.env.remove(key)));
 				0
 			}
-			"uname" => {
-				let all = args.iter().any(|arg| arg == "-a");
-				out.extend(
-					if all {
-						"Poopterm iOS arm64\n"
-					} else {
-						"Poopterm\n"
+			"uname" => match crate::sys::user::uname() {
+				Some(names) => match uname_line(&names, args) {
+					Ok(line) => {
+						out.extend(format!("{line}\n").into_bytes());
+						0
 					}
-					.as_bytes(),
-				);
-				0
-			}
+					Err(flag) => fail(
+						out,
+						format!("illegal option -- {flag}\nusage: uname [-amnrsv]"),
+					),
+				},
+				None => fail(out, "the system did not say".to_owned()),
+			},
 			"date" => {
 				let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
 				let [y, mo, d, h, mi, se] = crate::ui::export::utc(now.map_or(0, |since| since.as_secs()));
@@ -355,6 +356,44 @@ impl Shell {
 			None => self.cwd.join(Path::new(path)),
 		}
 	}
+}
+
+/// What `uname` prints for `args`: by default the kernel name; with flags,
+/// the fields they name in the usual order (`-a` all of them). `Err` names
+/// a flag that is not one.
+pub(crate) fn uname_line(names: &crate::sys::user::Uname, args: &[String]) -> Result<String, char> {
+	let mut wanted = [false; 5];
+	for arg in args {
+		let flags = arg.strip_prefix('-').filter(|f| !f.is_empty()).ok_or('?')?;
+		for flag in flags.chars() {
+			match flag {
+				'a' => wanted = [true; 5],
+				's' => wanted[0] = true,
+				'n' => wanted[1] = true,
+				'r' => wanted[2] = true,
+				'v' => wanted[3] = true,
+				'm' | 'p' => wanted[4] = true,
+				other => return Err(other),
+			}
+		}
+	}
+	if !wanted.contains(&true) {
+		wanted[0] = true;
+	}
+	let fields = [
+		&names.sysname,
+		&names.nodename,
+		&names.release,
+		&names.version,
+		&names.machine,
+	];
+	let shown: Vec<&str> = fields
+		.iter()
+		.zip(wanted)
+		.filter(|(_, on)| *on)
+		.map(|(f, _)| f.as_str())
+		.collect();
+	Ok(shown.join(" "))
 }
 
 /// Formats into a byte buffer.

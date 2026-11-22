@@ -16,6 +16,8 @@ pub(crate) struct Layout {
 	pub(crate) status_height: usize,
 	/// The grid's first pixel column, right of a vertical tab `sidebar`.
 	pub(crate) left: usize,
+	/// Pixels at the bottom the system keeps (iOS's home indicator).
+	pub(crate) bottom: usize,
 }
 
 /// Lays out the window for `chrome`, drawn at the whole-number `scale`.
@@ -23,17 +25,20 @@ pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar
 	let margin = chrome.border + prefs.padding * scale;
 	// With a title bar (macOS), the tab strip sits in it.
 	let tab_bar = prefs.show_tabs && !prefs.vertical_tabs && chrome.titlebar_height == 0;
-	let top = chrome.titlebar_height + if tab_bar { chrome.tab_height } else { 0 } + margin;
+	let (safe_top, safe_bottom) = chrome.safe;
+	let top =
+		safe_top + chrome.titlebar_height + if tab_bar { chrome.tab_height } else { 0 } + margin;
 	Layout {
 		margin,
 		top,
 		padding_top: if tab_bar {
 			top
 		} else {
-			chrome.titlebar_height + chrome.border
+			safe_top + chrome.titlebar_height + chrome.border
 		},
 		status_height: if prefs.show_bottom_bar { 26 * scale } else { 0 },
 		left: margin + sidebar,
+		bottom: safe_bottom,
 	}
 }
 
@@ -43,7 +48,7 @@ impl Layout {
 		let width = window.0.saturating_sub(self.left + self.margin);
 		let height = window
 			.1
-			.saturating_sub(self.top + self.margin + self.status_height);
+			.saturating_sub(self.top + self.margin + self.status_height + self.bottom);
 		(
 			(width / cell.0.max(1)).max(2),
 			(height / cell.1.max(1)).max(2),
@@ -56,7 +61,7 @@ impl Layout {
 			x: self.left,
 			y: self.top,
 			width: width.saturating_sub(self.left + self.margin),
-			height: height.saturating_sub(self.top + self.margin + self.status_height),
+			height: height.saturating_sub(self.top + self.margin + self.status_height + self.bottom),
 		}
 	}
 

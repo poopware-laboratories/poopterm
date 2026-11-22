@@ -48,6 +48,17 @@ pub(crate) struct Chrome {
 	/// holds the tab strip.
 	pub(crate) titlebar_height: usize,
 	pub(crate) tab_height: usize,
+	/// What the system keeps for itself at the top and bottom (iOS's
+	/// status bar, sensor housing and home indicator); 0 on desktops.
+	pub(crate) safe: (usize, usize),
+}
+
+/// The top and bottom of the screen the system keeps for itself, from a
+/// window `outer` pixels tall whose safe area starts `inner_top` pixels
+/// down and is `inner_height` pixels tall.
+pub(crate) fn safe_insets(outer: usize, inner_top: usize, inner_height: usize) -> (usize, usize) {
+	let top = inner_top.min(outer);
+	(top, outer.saturating_sub(top + inner_height))
 }
 
 pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
@@ -59,6 +70,7 @@ pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 		border: 0,
 		titlebar_height: titlebar * scale,
 		tab_height: tab * scale,
+		safe: (0, 0),
 	}
 }
 
@@ -137,6 +149,7 @@ mod tests {
 				border: 0,
 				titlebar_height: 0,
 				tab_height: 40,
+				safe: (0, 0),
 			}
 		);
 	}
@@ -151,6 +164,7 @@ mod tests {
 				border: 0,
 				titlebar_height: 40,
 				tab_height: 40,
+				safe: (0, 0),
 			}
 		);
 	}

@@ -128,6 +128,8 @@ pub(crate) struct App {
 	/// The first pixel row of the padding above the grid, under the chrome.
 	padding_top: usize,
 	titlebar_height: usize,
+	/// Top and bottom pixels the system keeps (iOS); see `Chrome::safe`.
+	safe: (usize, usize),
 	tab_height: usize,
 	status_height: usize,
 	border: usize,
@@ -302,10 +304,11 @@ impl App {
 		let factor = self.factor();
 		// pr-check: window glue: copies the sizes ui::scale computed into App
 		self.sized_for = factor;
-		let chrome = chrome(
+		let mut chrome = chrome(
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
+		chrome.safe = self.safe;
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -317,10 +320,11 @@ impl App {
 
 	/// The grid's place in the window with the current chrome and settings.
 	pub(super) fn layout(&self) -> Layout {
-		let chrome = chrome(
+		let mut chrome = chrome(
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
+		chrome.safe = self.safe;
 		layout(
 			&chrome,
 			self.scale(),
@@ -361,6 +365,18 @@ impl App {
 		self.canvas.invalidate();
 		self.width = w.max(1);
 		self.height = h.max(1);
+		// pr-check: window glue: the system's insets as the real window reports them
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			let top = window.inner_position().map_or(0, |at| at.y.max(0) as usize);
+			let (outer, inner) = (window.outer_size().height, window.inner_size().height);
+			let safe = crate::ui::scale::safe_insets(outer as usize, top, inner as usize);
+			if safe != self.safe {
+				self.safe = safe;
+				self.apply_scale();
+			}
+		}
+		// pr-check: end window glue
 		self.ensure_active_tab_visible();
 		self.fit_panes();
 
@@ -431,6 +447,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		top: 8,
 		padding_top: 0,
 		titlebar_height: 0,
+		safe: (0, 0),
 		tab_height: 46,
 		status_height: 26,
 		border: 1,

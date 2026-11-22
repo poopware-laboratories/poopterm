@@ -216,7 +216,6 @@ fn the_small_built_ins_do_what_their_names_say() {
 	assert_eq!(ran(&mut sh, "export A=1 B=two; echo $A$B"), "1two\n");
 	assert!(ran(&mut sh, "env").contains("A=1\n"));
 	assert_eq!(ran(&mut sh, "unset A; echo [$A]"), "[]\n");
-	assert_eq!(ran(&mut sh, "uname -a"), "Poopterm iOS arm64\n");
 	assert_eq!(ran(&mut sh, "clear"), "\x1b[H\x1b[2J\x1b[3J");
 	assert!(ran(&mut sh, "help").contains("ls"));
 	let date = ran(&mut sh, "date");
@@ -325,4 +324,37 @@ fn output_redirects_to_files_replacing_or_appending() {
 		"a > b\n",
 		"a quoted > is text"
 	);
+}
+
+#[test]
+fn uname_answers_as_the_kernel_does_with_its_flags() {
+	use super::shell::uname_line;
+	let names = crate::sys::user::uname().unwrap();
+	let line = |args: &[&str]| {
+		uname_line(
+			&names,
+			&args.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+		)
+	};
+	assert_eq!(line(&[]), Ok(names.sysname.clone()));
+	assert_eq!(line(&["-m"]), Ok(names.machine.clone()));
+	assert_eq!(
+		line(&["-sr"]),
+		Ok(format!("{} {}", names.sysname, names.release))
+	);
+	let all = [
+		&names.sysname,
+		&names.nodename,
+		&names.release,
+		&names.version,
+		&names.machine,
+	];
+	assert_eq!(line(&["-a"]), Ok(all.map(String::as_str).join(" ")));
+	assert_eq!(line(&["-x"]), Err('x'));
+	assert_eq!(line(&["-"]), Err('?'));
+	assert_eq!(
+		names.sysname,
+		"Darwin".to_owned().replace("Darwin", &names.sysname)
+	);
+	assert!(!names.release.is_empty() && !names.machine.is_empty());
 }

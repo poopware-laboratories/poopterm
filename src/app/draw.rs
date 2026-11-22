@@ -301,7 +301,7 @@ impl App {
 			return;
 		}
 		let (width, height) = p.size();
-		let y = height.saturating_sub(self.status_height + self.border);
+		let y = height.saturating_sub(self.status_height + self.border + self.safe.1);
 		let term = self.sessions[self.active].term();
 		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
 		// Say when the user acts as someone else or somewhere else.
