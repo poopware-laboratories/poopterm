@@ -1,10 +1,7 @@
 //! Built-in color themes and the xterm 256-color palette.
 use std::env;
 
-use crate::{
-	config::{read_config_theme, read_config_value},
-	ui::contrast::{TEXT, luminance, readable},
-};
+use crate::ui::contrast::{TEXT, luminance, readable};
 
 // ---- Built-in themes --------------------------------------------------------
 
@@ -304,11 +301,33 @@ impl Theme {
 	}
 
 	pub(crate) fn load() -> Self {
-		let kind = env::var("POOPTERM_THEME")
-			.ok()
-			.and_then(|s| ThemeKind::parse(&s))
-			.or_else(read_config_theme)
-			.unwrap_or(ThemeKind::Poop);
+		Self::load_for(None)
+	}
+
+	/// The theme to show for `appearance`, with the configured colors over
+	/// it (see `theme_follow`).
+	pub(crate) fn load_for(appearance: Option<crate::theme_follow::Appearance>) -> Self {
+		let text = std::fs::read_to_string(crate::config::config_path()).unwrap_or_default();
+		let env = env::var("POOPTERM_THEME").ok();
+		Self::from_config(&text, env.as_deref(), appearance)
+	}
+
+	/// [`Self::load_for`] from the config file's `text` and the
+	/// environment's `POOPTERM_THEME`.
+	pub(crate) fn from_config(
+		text: &str,
+		env: Option<&str>,
+		appearance: Option<crate::theme_follow::Appearance>,
+	) -> Self {
+		let value = |key: &str| crate::config::value(text, key);
+		let (theme, light, dark) = (value("theme"), value("theme_light"), value("theme_dark"));
+		let choices = crate::theme_follow::Choices {
+			env,
+			theme: theme.as_deref(),
+			light: light.as_deref(),
+			dark: dark.as_deref(),
+		};
+		let kind = crate::theme_follow::chosen(choices, appearance);
 		let mut theme = Self::from_kind(kind);
 		if kind == ThemeKind::AmoledBlack {
 			return theme;
@@ -318,14 +337,11 @@ impl Theme {
 			("background", &mut theme.bg),
 			("border", &mut theme.border),
 		] {
-			if let Some(color) = read_config_value(key).and_then(|value| parse_color(&value)) {
+			if let Some(color) = value(key).and_then(|value| parse_color(&value)) {
 				*target = color;
 			}
 		}
-		let config = |index: usize| {
-			read_config_value(&format!("color{index}")).and_then(|value| parse_color(&value))
-		};
-		theme.override_colors(config);
+		theme.override_colors(|index| value(&format!("color{index}")).and_then(|v| parse_color(&v)));
 		theme
 	}
 

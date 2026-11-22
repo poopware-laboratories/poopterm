@@ -55,6 +55,12 @@ impl ApplicationHandler<UserEvent> for App {
 		self.window = Some(window);
 		// pr-check: window glue: runs once the real window exists
 		self.apply_scale();
+		let appearance = self
+			.window
+			.as_ref()
+			.and_then(|w| w.theme())
+			.map(crate::theme_follow::of_window);
+		self.follow_appearance(appearance);
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		self.start_decorations();
 		// pr-check: end window glue
@@ -116,6 +122,11 @@ impl ApplicationHandler<UserEvent> for App {
 				self.request_redraw();
 			}
 			WindowEvent::Occluded(occluded) => self.occluded = occluded,
+			// pr-check: window glue: winit sends this when the desktop's appearance changes
+			WindowEvent::ThemeChanged(theme) => {
+				self.follow_appearance(Some(crate::theme_follow::of_window(theme)))
+			}
+			// pr-check: end window glue
 			WindowEvent::MouseWheel { delta, .. } => self.handle_mouse_wheel(delta),
 			WindowEvent::Ime(Ime::Commit(text)) => {
 				let bytes = text.into_bytes();
