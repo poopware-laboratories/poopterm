@@ -212,7 +212,11 @@ fn every_override_applies_and_values_that_are_no_color_are_ignored() {
 	let theme = Theme::from_config(config, None, Some(Appearance::Dark));
 	let plain = Theme::from_kind(ThemeKind::GruvboxDark);
 	assert_eq!((theme.bg, theme.border), (0x00_0001, 0x00_0002));
-	assert_eq!(theme.bright.map(|b| b[1]), Some(0x00_0003), "a bright color, 9");
+	assert_eq!(
+		theme.bright.map(|b| b[1]),
+		Some(0x00_0003),
+		"a bright color, 9"
+	);
 	assert_eq!(theme.fg, plain.fg, "not a color: the theme's own");
 	assert_eq!(
 		theme.palette[2], plain.palette[2],
