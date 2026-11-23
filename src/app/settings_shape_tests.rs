@@ -29,14 +29,18 @@ fn center((x, y, w, h): Rect) -> (usize, usize) {
 fn a_window_wide_enough_for_the_page_beside_the_list_keeps_the_sidebar() {
 	let wide = MIN_SIZE.0 + NAV_WIDTH;
 	for scale in [1, 2, 3] {
-		assert_eq!(shape(wide * scale, scale, (0, 0)), Shape::Side, "{scale}x");
 		assert_eq!(
-			shape(wide * scale, scale, (40, 20)),
+			shape(wide * scale, scale, (0, 0), true),
 			Shape::Side,
 			"{scale}x"
 		);
 		assert_eq!(
-			shape((wide - 1) * scale, scale, (40, 20)),
+			shape(wide * scale, scale, (40, 20), true),
+			Shape::Side,
+			"{scale}x"
+		);
+		assert_eq!(
+			shape((wide - 1) * scale, scale, (40, 20), true),
 			Shape::Top { inset: (40, 20) },
 			"one logical pixel too narrow at {scale}x"
 		);
@@ -44,10 +48,23 @@ fn a_window_wide_enough_for_the_page_beside_the_list_keeps_the_sidebar() {
 }
 
 #[test]
+fn a_window_the_system_gives_no_close_button_always_has_the_list_on_top() {
+	// An iPad on its side is wide enough for the sidebar, but iOS gives
+	// Settings no close button, so only the list on top offers Done, and
+	// only it keeps clear of the status bar.
+	let ipad = (2420, 3);
+	let sideways = shape(ipad.0, ipad.1, (72, 60), false);
+	assert_eq!(sideways, Shape::Top { inset: (72, 60) });
+	assert!(sideways.done(ipad.0, ipad.1).is_some());
+	let wide = (MIN_SIZE.0 + NAV_WIDTH) * 4;
+	assert_eq!(shape(wide, 1, (0, 0), false), Shape::Top { inset: (0, 0) });
+}
+
+#[test]
 fn a_phone_gets_the_list_on_top_with_the_systems_insets() {
-	assert_eq!(shape(PHONE.0, PHONE_SCALE, PHONE_INSET), TOP);
+	assert_eq!(shape(PHONE.0, PHONE_SCALE, PHONE_INSET, false), TOP);
 	assert_eq!(
-		shape(400, 0, PHONE_INSET),
+		shape(400, 0, PHONE_INSET, false),
 		Shape::Top { inset: PHONE_INSET },
 		"a scale of nought counts as one"
 	);
@@ -314,4 +331,71 @@ fn the_head_is_a_panel_from_the_top_edge_to_the_page_with_a_line_under_it() {
 			((0, page_top - 1, 900, 1), colors.hairline)
 		]
 	);
+}
+
+/// An iPad Pro 11-inch on its side: 2420×1668 at 2×, 48 of status bar and
+/// 40 of home indicator.
+const IPAD: (usize, usize) = (2420, 1668);
+const IPAD_TOP: Shape = Shape::Top { inset: (48, 40) };
+
+#[test]
+fn on_an_ipad_the_list_spreads_across_the_width_and_done_closes() {
+	let rects: Vec<_> = (0..ITEMS.len())
+		.map(|index| IPAD_TOP.item(index, IPAD.0, 2))
+		.collect();
+	assert!(rects.iter().all(|&(_, _, w, _)| w / 2 > 250), "{rects:?}");
+	let done = IPAD_TOP.done(IPAD.0, 2).unwrap();
+	assert_eq!(
+		IPAD_TOP.target(center(done), IPAD, 2, SettingsPage::Main),
+		Some(SettingsTarget::Done)
+	);
+	let (px, py, pw, ph) = IPAD_TOP.page(IPAD, 2);
+	assert_eq!((px, pw), (0, IPAD.0));
+	assert_eq!(py + ph, IPAD.1 - 40);
+}
+
+#[test]
+fn an_ipads_page_is_wide_so_its_controls_sit_where_a_desktops_do() {
+	let (px, py, pw, ph) = IPAD_TOP.page(IPAD, 2);
+	for page in [
+		SettingsPage::Main,
+		SettingsPage::Layout,
+		SettingsPage::Shortcuts,
+	] {
+		for y in (0..ph).step_by(37) {
+			for x in (0..pw).step_by(41) {
+				let alone = settings_target((x, y), (pw, ph), 2, page);
+				assert_eq!(
+					IPAD_TOP.target((px + x, py + y), IPAD, 2, page),
+					alone,
+					"{x},{y}"
+				);
+			}
+		}
+	}
+	let row = py + (FONT_ROW + ROW_HEIGHT / 2) * 2;
+	let minus = IPAD_TOP.target((pw - 220 * 2, row), IPAD, 2, SettingsPage::Main);
+	assert_eq!(
+		minus,
+		Some(SettingsTarget::Step(FONT_ROW, -1)),
+		"240 from the edge"
+	);
+}
+
+#[test]
+fn a_small_ipad_window_still_offers_done_and_every_page() {
+	// A window dragged down to 500×700 points, its controls 30 deep.
+	let (size, shape) = ((1000, 1400), Shape::Top { inset: (60, 0) });
+	let done = shape.done(size.0, 2).unwrap();
+	assert!(done.0 + done.2 <= size.0);
+	for (index, &(page, _)) in ITEMS.iter().enumerate() {
+		let at = center(shape.item(index, size.0, 2));
+		assert_eq!(
+			shape.target(at, size, 2, SettingsPage::About),
+			Some(SettingsTarget::Open(page))
+		);
+	}
+	// The page gets what is left under the list; shorter than the 600
+	// points the Appearance rows need, it does not scroll yet.
+	assert_eq!(shape.page(size, 2).3, 1400 - 60 - HEAD * 2);
 }

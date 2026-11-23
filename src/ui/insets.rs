@@ -47,20 +47,41 @@ pub(crate) struct Insets {
 	pub(crate) sides: (usize, usize),
 }
 
-/// The insets of a window `outer` large whose safe area, `inner` large,
-/// starts at `at`, with a keyboard covering `keyboard` points at `factor`.
+/// The insets of a window `outer` large whose safe area is `inner` large,
+/// with `(safe area, window)` at `at` on the screen, and the keyboard's top
+/// edge `keyboard` points down the screen (infinite when it is away), at
+/// `factor` pixels a point. An iPad window need not start at the screen's
+/// corner, so everything is measured from the window's own.
 pub(crate) fn window_insets(
 	outer: winit::dpi::PhysicalSize<u32>,
 	inner: winit::dpi::PhysicalSize<u32>,
-	at: (i32, i32),
+	((inner_x, inner_y), (outer_x, outer_y)): ((i32, i32), (i32, i32)),
 	keyboard: f64,
 	factor: f64,
 ) -> Insets {
-	let start = |offset: i32| usize::try_from(offset).unwrap_or(0);
-	let (top, home) = safe_insets(outer.height as usize, start(at.1), inner.height as usize);
-	let sides = safe_insets(outer.width as usize, start(at.0), inner.width as usize);
+	let start = |inner: i32, outer: i32| usize::try_from(inner.saturating_sub(outer)).unwrap_or(0);
+	let (top, home) = safe_insets(
+		outer.height as usize,
+		start(inner_y, outer_y),
+		inner.height as usize,
+	);
+	let sides = safe_insets(
+		outer.width as usize,
+		start(inner_x, outer_x),
+		inner.width as usize,
+	);
+	let factor = if factor.is_finite() && factor > 0.0 {
+		factor
+	} else {
+		1.0
+	};
+	let (window_top, tall) = (
+		f64::from(outer_y) / factor,
+		f64::from(outer.height) / factor,
+	);
+	let covered = covered_points(window_top + tall, keyboard).min(tall);
 	Insets {
-		safe: (top, bottom_inset(home, keyboard, factor)),
+		safe: (top, bottom_inset(home, covered, factor)),
 		home,
 		sides,
 	}

@@ -1,7 +1,8 @@
 //! Where the on-screen keyboard is (iOS), so the terminal stays above it:
 //! an observer of UIKit's keyboard notifications reads the frame the
-//! keyboard is moving to, keeps how many points of the screen's bottom it
-//! covers, and wakes the event loop to lay the window out again.
+//! keyboard is moving to, keeps its top edge in screen points (what it
+//! covers depends on where the window is: `ui::insets::window_insets`),
+//! and wakes the event loop to lay the window out again.
 // Calls into C or the kernel; docs/unsafe.md lists each block.
 #![allow(unsafe_code)]
 use std::sync::{
@@ -16,8 +17,9 @@ use crate::{
 	pty::UserEvent,
 };
 
-/// Points of the screen's bottom the keyboard covers, as `f64` bits.
-static COVERED: AtomicU64 = AtomicU64::new(0);
+/// The keyboard's top edge in screen points, as `f64` bits; infinite while
+/// none has shown.
+static TOP: AtomicU64 = AtomicU64::new(f64::INFINITY.to_bits());
 /// Where the observer sends word of a change.
 static PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);
 
@@ -31,9 +33,10 @@ struct Rect {
 	height: f64,
 }
 
-/// Points of the screen's bottom the keyboard covers now.
-pub(crate) fn covered() -> f64 {
-	f64::from_bits(COVERED.load(Ordering::Relaxed))
+/// The keyboard's top edge in screen points now; off the bottom of the
+/// screen when it is away.
+pub(crate) fn top() -> f64 {
+	f64::from_bits(TOP.load(Ordering::Relaxed))
 }
 
 /// Starts following the keyboard; each change sends `UserEvent::Keyboard`.
@@ -82,13 +85,8 @@ pub(crate) fn observe(proxy: EventLoopProxy<UserEvent>) {
 
 /// The observer's method: a keyboard notification arrived.
 extern "C" fn changed(_: Raw, _: Sel, notification: Raw) {
-	let top = keyboard_top(notification);
-	let screen = screen_height();
-	if let (Some(top), Some(screen)) = (top, screen) {
-		COVERED.store(
-			crate::ui::insets::covered_points(screen, top).to_bits(),
-			Ordering::Relaxed,
-		);
+	if let Some(top) = keyboard_top(notification) {
+		TOP.store(top.to_bits(), Ordering::Relaxed);
 	}
 	let proxy = PROXY.lock().unwrap_or_else(|poison| poison.into_inner());
 	if let Some(proxy) = proxy.as_ref() {
@@ -118,17 +116,4 @@ fn keyboard_top(notification: Raw) -> Option<f64> {
 	// `CGRectValue` returns.
 	let frame: Rect = unsafe { objc::Arguments::send((), value, objc::sel(c"CGRectValue")) };
 	Some(frame.y)
-}
-
-/// The main screen's height in points.
-fn screen_height() -> Option<f64> {
-	let screen = objc::class(c"UIScreen").ok()?;
-	// SAFETY: `mainScreen` takes nothing and returns the screen.
-	let main: Raw = unsafe { screen.send(c"mainScreen", ()) };
-	if main.is_null() {
-		return None;
-	}
-	// SAFETY: `bounds` takes nothing and returns a `CGRect`.
-	let bounds: Rect = unsafe { objc::Arguments::send((), main, objc::sel(c"bounds")) };
-	Some(bounds.height)
 }

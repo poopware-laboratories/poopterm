@@ -348,7 +348,14 @@ impl App {
 	/// clear of what the system keeps of the screen.
 	pub(super) fn settings_shape(&self) -> Shape {
 		let width = self.settings_width as usize;
-		shape(width, self.settings_scale(), (self.safe.0, self.home))
+		// iOS gives the window no close button; Done is ours to draw.
+		let closable = !cfg!(target_os = "ios");
+		shape(
+			width,
+			self.settings_scale(),
+			(self.safe.0, self.home),
+			closable,
+		)
 	}
 
 	pub(super) fn settings_scale(&self) -> usize {

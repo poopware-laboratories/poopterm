@@ -384,10 +384,7 @@ impl App {
 		// pr-check: window glue: the system's insets as the real window reports them
 		#[cfg(target_os = "ios")]
 		if let Some(window) = &self.window {
-			let at = window.inner_position().map_or((0, 0), |at| (at.x, at.y));
-			let (outer, inner) = (window.outer_size(), window.inner_size());
-			let keyboard = crate::ios_keyboard::covered();
-			let insets = crate::ui::insets::window_insets(outer, inner, at, keyboard, self.factor());
+			let insets = crate::ios_window::insets(window, self.factor());
 			self.home = insets.home;
 			if (insets.safe, insets.sides) != (self.safe, self.sides) {
 				(self.safe, self.sides) = (insets.safe, insets.sides);

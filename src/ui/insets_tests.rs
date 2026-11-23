@@ -68,31 +68,117 @@ fn a_phone_on_its_side_keeps_both_sides_and_the_home_indicator() {
 	use winit::dpi::PhysicalSize;
 	// 2622×1206 at 3×; the safe area starts 186 in and is 2250 wide, 1143 tall.
 	let (outer, inner) = (PhysicalSize::new(2622, 1206), PhysicalSize::new(2250, 1143));
-	let insets = window_insets(outer, inner, (186, 0), 0.0, 3.0);
+	let insets = window_insets(outer, inner, ((186, 0), (0, 0)), f64::INFINITY, 3.0);
 	assert_eq!(insets.sides, (186, 186));
 	assert_eq!(insets.safe, (0, 63));
 	assert_eq!(insets.home, 63);
 }
 
 #[test]
-fn upright_a_phone_keeps_its_top_and_bottom_only() {
+fn upright_a_phone_keeps_its_top_and_bottom_and_the_keyboards_height() {
 	use winit::dpi::PhysicalSize;
 	let (outer, inner) = (PhysicalSize::new(1206, 2622), PhysicalSize::new(1206, 2370));
-	let insets = window_insets(outer, inner, (0, 186), 336.0, 3.0);
+	// The keyboard's top is 538 points down a screen 874 points tall.
+	let insets = window_insets(outer, inner, ((0, 186), (0, 0)), 538.0, 3.0);
 	assert_eq!(insets.sides, (0, 0));
+	assert_eq!(insets.safe, (186, 1008), "336 points of keyboard");
+	assert_eq!(insets.home, 66);
+}
+
+#[test]
+fn an_ipad_window_measures_its_insets_from_its_own_corner() {
+	use winit::dpi::PhysicalSize;
+	// A window 1100×1400 pixels at 2×, 716 in and 114 down the screen, its
+	// safe area starting 60 below its top (the window controls).
+	let (outer, inner) = (PhysicalSize::new(1100, 1400), PhysicalSize::new(1100, 1340));
+	let at = ((716, 174), (716, 114));
+	let hidden = window_insets(outer, inner, at, f64::INFINITY, 2.0);
+	assert_eq!(
+		(hidden.safe, hidden.sides, hidden.home),
+		((60, 0), (0, 0), 0)
+	);
+	// The keyboard's top is 447 points down; the window ends at 757.
+	let typing = window_insets(outer, inner, at, 447.0, 2.0);
+	assert_eq!(typing.safe, (60, 620), "only what covers the window");
+}
+
+#[test]
+fn a_keyboard_below_the_window_covers_none_of_it() {
+	use winit::dpi::PhysicalSize;
+	let (outer, inner) = (PhysicalSize::new(800, 600), PhysicalSize::new(800, 600));
+	let insets = window_insets(outer, inner, ((100, 50), (100, 50)), 400.0, 2.0);
 	assert_eq!(
 		insets.safe,
-		(186, 1008),
-		"the keyboard reaches higher than the home indicator"
+		(0, 0),
+		"the window ends at 325 points, above the keyboard"
 	);
-	assert_eq!(insets.home, 66);
+	let all = window_insets(outer, inner, ((100, 50), (100, 50)), -10.0, 2.0);
+	assert_eq!(all.safe, (0, 600), "never more than the window");
 }
 
 #[test]
 fn a_safe_area_reported_outside_the_window_is_clamped() {
 	use winit::dpi::PhysicalSize;
 	let (outer, inner) = (PhysicalSize::new(100, 100), PhysicalSize::new(400, 400));
-	let insets = window_insets(outer, inner, (-20, 300), 0.0, 1.0);
+	let insets = window_insets(outer, inner, ((-20, 300), (0, 0)), f64::NAN, 1.0);
 	assert_eq!(insets.sides, (0, 0));
 	assert_eq!(insets.safe, (100, 0));
+}
+
+#[test]
+fn a_phone_turned_the_other_way_keeps_its_housing_on_the_right() {
+	use winit::dpi::PhysicalSize;
+	let (outer, inner) = (PhysicalSize::new(2622, 1206), PhysicalSize::new(2250, 1143));
+	// Turned right, the safe area starts at the left edge and stops 186
+	// short of the right.
+	let insets = window_insets(outer, inner, ((186, 0), (0, 0)), f64::INFINITY, 3.0);
+	let other = window_insets(
+		outer,
+		PhysicalSize::new(2436, 1143),
+		((0, 0), (0, 0)),
+		f64::INFINITY,
+		3.0,
+	);
+	assert_eq!(insets.sides, (186, 186));
+	assert_eq!(other.sides, (0, 186));
+}
+
+#[test]
+fn a_window_reaching_past_the_screens_bottom_counts_the_keyboard_from_its_own_end() {
+	use winit::dpi::PhysicalSize;
+	// 1000 pixels tall at 2×, starting 300 points down: it ends at 800.
+	let (outer, inner) = (PhysicalSize::new(800, 1000), PhysicalSize::new(800, 1000));
+	let at = ((40, 600), (40, 600));
+	assert_eq!(window_insets(outer, inner, at, 700.0, 2.0).safe, (0, 200));
+	assert_eq!(
+		window_insets(outer, inner, at, 800.0, 2.0).safe,
+		(0, 0),
+		"just below"
+	);
+	assert_eq!(
+		window_insets(outer, inner, at, 300.0, 2.0).safe,
+		(0, 1000),
+		"all of it"
+	);
+}
+
+#[test]
+fn a_floating_keyboard_above_the_windows_end_still_reserves_from_its_top_down() {
+	use winit::dpi::PhysicalSize;
+	// The iPad's small floating keyboard reports its own frame; the
+	// terminal keeps clear of everything below its top, the simple choice
+	// that never hides the line being typed.
+	let (outer, inner) = (PhysicalSize::new(1668, 2420), PhysicalSize::new(1668, 2380));
+	let insets = window_insets(outer, inner, ((0, 40), (0, 0)), 900.0, 2.0);
+	assert_eq!(insets.safe, (40, 620));
+}
+
+#[test]
+fn a_scale_out_of_reason_counts_as_one() {
+	use winit::dpi::PhysicalSize;
+	let (outer, inner) = (PhysicalSize::new(400, 800), PhysicalSize::new(400, 760));
+	for factor in [0.0, -2.0, f64::NAN, f64::INFINITY] {
+		let insets = window_insets(outer, inner, ((0, 20), (0, 0)), 700.0, factor);
+		assert_eq!(insets.safe, (20, 100), "{factor}");
+	}
 }

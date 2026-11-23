@@ -45,6 +45,8 @@ mod inproc;
 mod input;
 #[cfg(target_os = "ios")]
 mod ios_keyboard;
+#[cfg(target_os = "ios")]
+mod ios_window;
 mod mapped;
 mod notifier;
 #[cfg(any(target_os = "macos", target_os = "ios"))]

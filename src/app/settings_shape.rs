@@ -45,9 +45,11 @@ pub(super) enum Shape {
 
 /// The shape of a window `width` physical pixels wide at `scale`, where
 /// the system keeps `inset`: the list goes on top when the smallest page
-/// would not fit beside it.
-pub(super) fn shape(width: usize, scale: usize, inset: (usize, usize)) -> Shape {
-	if width / scale.max(1) >= MIN_SIZE.0 + NAV_WIDTH {
+/// would not fit beside it, or when the system gives the window no close
+/// button of its own (`closable` false, as on iOS), since only the list on
+/// top offers Done.
+pub(super) fn shape(width: usize, scale: usize, inset: (usize, usize), closable: bool) -> Shape {
+	if closable && width / scale.max(1) >= MIN_SIZE.0 + NAV_WIDTH {
 		Shape::Side
 	} else {
 		Shape::Top { inset }
