@@ -31,6 +31,21 @@ const COMMAND_CHARS: usize = 32;
 /// Gaps between the right-hand items.
 pub(crate) const SEPARATOR: &str = "  ·  ";
 
+/// The name the status bar gives the working directory `cwd`: `~` for the
+/// home directory (on iOS an app container named by a UUID), `/` for the
+/// root, else its last component.
+pub(crate) fn cwd_label<'a>(cwd: &'a std::path::Path, home: Option<&std::path::Path>) -> &'a str {
+	let home = home.filter(|home| !home.as_os_str().is_empty());
+	if home.is_some_and(|home| cwd.components().eq(home.components())) {
+		return "~";
+	}
+	match cwd.file_name() {
+		Some(name) => name.to_str().unwrap_or("?"),
+		None if cwd.has_root() => "/",
+		None => "~",
+	}
+}
+
 fn printable(text: &str) -> String {
 	text.chars().filter(|ch| !ch.is_control()).collect()
 }

@@ -310,7 +310,8 @@ impl App {
 			self.sides,
 		);
 		let term = self.sessions[self.active].term();
-		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
+		let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+		let cwd = crate::ui::status_bar::cwd_label(&term.cwd, home.as_deref());
 		// Say when the user acts as someone else or somewhere else.
 		let place = term.contexts.label().or_else(|| {
 			let local = crate::term::iterm::hostname();
@@ -320,7 +321,7 @@ impl App {
 		let input = StatusInput {
 			link: self.hovered_link.as_deref(),
 			place: place.as_deref(),
-			cwd: cwd.unwrap_or("~"),
+			cwd,
 			shell: &term.shell,
 			size: (term.cols, term.rows),
 			theme: self.theme.kind.name(),

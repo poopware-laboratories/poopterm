@@ -274,3 +274,66 @@ fn a_window_too_small_for_its_insets_gives_the_bar_no_room() {
 	use super::status_bar::status_rect;
 	assert_eq!(status_rect((100, 50), 26, 0, 80, (60, 60)), (60, 0, 0, 26));
 }
+
+mod cwd_names {
+	use crate::ui::status_bar::cwd_label;
+	use std::path::Path;
+
+	const HOME: &str = "/var/mobile/Containers/Data/Application/09523DB6-6F8F-4A1F-A45C-FD8104F9AD1E";
+
+	#[test]
+	fn the_home_directory_is_a_tilde_not_its_name() {
+		assert_eq!(cwd_label(Path::new(HOME), Some(Path::new(HOME))), "~");
+		let slash = format!("{HOME}/");
+		assert_eq!(
+			cwd_label(Path::new(&slash), Some(Path::new(HOME))),
+			"~",
+			"a trailing slash is the same place"
+		);
+	}
+
+	#[test]
+	fn elsewhere_is_named_by_its_last_component() {
+		let docs = format!("{HOME}/Documents");
+		assert_eq!(
+			cwd_label(Path::new(&docs), Some(Path::new(HOME))),
+			"Documents"
+		);
+		assert_eq!(
+			cwd_label(Path::new("/usr/bin"), Some(Path::new(HOME))),
+			"bin"
+		);
+		assert_eq!(
+			cwd_label(Path::new("/var/mobile"), Some(Path::new(HOME))),
+			"mobile",
+			"above home is not home"
+		);
+	}
+
+	#[test]
+	fn the_root_is_a_slash() {
+		assert_eq!(cwd_label(Path::new("/"), Some(Path::new(HOME))), "/");
+		assert_eq!(cwd_label(Path::new("/"), None), "/");
+	}
+
+	#[test]
+	fn without_a_home_nothing_is_named_tilde_but_an_empty_path() {
+		assert_eq!(cwd_label(Path::new("/Users/me"), None), "me");
+		assert_eq!(
+			cwd_label(Path::new("/Users/me"), Some(Path::new(""))),
+			"me",
+			"an empty HOME is no home"
+		);
+		assert_eq!(
+			cwd_label(Path::new(""), None),
+			"~",
+			"as before: no directory yet"
+		);
+	}
+
+	#[test]
+	fn a_home_of_the_root_names_the_root_tilde() {
+		assert_eq!(cwd_label(Path::new("/"), Some(Path::new("/"))), "~");
+		assert_eq!(cwd_label(Path::new("/tmp"), Some(Path::new("/"))), "tmp");
+	}
+}
