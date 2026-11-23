@@ -157,6 +157,8 @@ fn real_commands_alone() {
 	text_tools_work_on_files();
 	pipes_feed_each_stage_what_the_one_before_printed();
 	a_command_pkg_installed_runs_from_the_path();
+	the_new_text_tools_match_the_systems();
+	xargs_and_find_start_other_commands();
 }
 
 fn real_shell(name: &str) -> Option<(Shell, PathBuf)> {
@@ -373,4 +375,73 @@ fn a_command_pkg_installed_runs_from_the_path() {
 	assert_eq!(ran(&mut sh, "echo stressed | backwards"), "desserts\n");
 	assert_eq!(ran(&mut sh, "pkg remove backwards"), "removed backwards\n");
 	assert!(ran(&mut sh, "backwards").contains("not found"));
+}
+
+/// grep, sed and the other text tools against the system's own copies.
+fn the_new_text_tools_match_the_systems() {
+	let Some((mut sh, home)) = real_shell("text-tools") else {
+		return;
+	};
+	let text = "pear\napple pie\nfig\n\tgrape\n";
+	fs::write(home.join("words"), text).unwrap();
+	let file = home.join("words").display().to_string();
+	for (line, program, args) in [
+		("grep -n p words", "/usr/bin/grep", vec!["-n", "p", &file]),
+		("grep -vc a words", "/usr/bin/grep", vec!["-vc", "a", &file]),
+		("sed -n 2p words", "/usr/bin/sed", vec!["-n", "2p", &file]),
+		("sed s/p/P/g words", "/usr/bin/sed", vec!["s/p/P/g", &file]),
+		("expand words", "/usr/bin/expand", vec![&file]),
+		("fmt -w 10 words", "/usr/bin/fmt", vec!["-w", "10", &file]),
+		("column -t words", "/usr/bin/column", vec!["-t", &file]),
+		("hexdump -C words", "/usr/bin/hexdump", vec!["-C", &file]),
+		("cksum words", "/usr/bin/cksum", vec![&file]),
+	] {
+		let expected = system(program, &args).replace(&file, "words");
+		assert_eq!(ran(&mut sh, line), expected, "{line}");
+	}
+	assert_eq!(ran(&mut sh, "test -f words && echo file"), "file\n");
+	assert_eq!(ran(&mut sh, "test -d words"), "");
+	assert_eq!(sh.status, 1, "not a directory");
+	assert_eq!(ran(&mut sh, "jot 3 5"), "5\n6\n7\n");
+	assert_eq!(
+		ran(&mut sh, "gzip -k words && gzip -dc words.gz"),
+		text,
+		"through a compressed copy and back"
+	);
+}
+
+/// Commands that start others run them inside the shell too.
+fn xargs_and_find_start_other_commands() {
+	let Some((mut sh, home)) = real_shell("starting") else {
+		return;
+	};
+	assert_eq!(ran(&mut sh, "seq 3 | xargs echo"), "1 2 3\n");
+	assert_eq!(ran(&mut sh, "seq 4 | xargs -n 2 echo +"), "+ 1 2\n+ 3 4\n");
+	assert_eq!(
+		ran(&mut sh, "echo a | xargs -I % cat"),
+		"",
+		"the child's input is /dev/null, not the rest of xargs's"
+	);
+	fs::create_dir(home.join("d")).unwrap();
+	fs::write(home.join("d/one"), "1\n").unwrap();
+	fs::write(home.join("d/two"), "2\n").unwrap();
+	assert_eq!(
+		ran(&mut sh, "find d -type f -exec cat {} \\; | sort"),
+		"1\n2\n"
+	);
+	assert_eq!(ran(&mut sh, "find d -name one -exec ls {} +"), "d/one\n");
+	assert_eq!(
+		ran(&mut sh, "find d -name one -exec test -f {} \\; -print"),
+		"d/one\n",
+		"a child's status decides find's test"
+	);
+	let missing = ran(&mut sh, "echo x | xargs no-such-tool");
+	assert!(missing.contains("no-such-tool"), "{missing}");
+	assert_eq!(sh.status, 127);
+	assert_eq!(
+		ran(&mut sh, "seq 2 | xargs xargs"),
+		"xargs: cannot run inside itself\n",
+		"refused, with no harm done"
+	);
+	assert_eq!(ran(&mut sh, "echo still here"), "still here\n");
 }

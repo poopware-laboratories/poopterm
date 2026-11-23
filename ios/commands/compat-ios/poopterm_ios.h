@@ -8,4 +8,6 @@
 #include <time.h>
 /* An app may not set the clock (`date 0101…`). */
 #define clock_settime(clock, time) (errno = EPERM, -1)
+/* Nor start a process: ed's `!command` and the like fail. */
+#define system(command) (errno = ENOSYS, -1)
 #endif

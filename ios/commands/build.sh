@@ -76,6 +76,40 @@ nl:text_cmds/nl
 fold:text_cmds/fold
 paste:text_cmds/paste
 comm:text_cmds/comm
+grep:text_cmds/grep
+sed:text_cmds/sed
+find:shell_cmds/find
+xargs:shell_cmds/xargs
+test:shell_cmds/test
+mktemp:shell_cmds/mktemp
+hexdump:shell_cmds/hexdump
+getopt:shell_cmds/getopt
+hostname:shell_cmds/hostname
+logname:shell_cmds/logname
+jot:shell_cmds/jot
+what:shell_cmds/what
+column:text_cmds/column
+expand:text_cmds/expand
+unexpand:text_cmds/unexpand
+fmt:text_cmds/fmt
+join:text_cmds/join
+split:text_cmds/split
+csplit:text_cmds/csplit
+col:text_cmds/col
+colrm:text_cmds/colrm
+lam:text_cmds/lam
+look:text_cmds/look
+rs:text_cmds/rs
+vis:text_cmds/vis
+unvis:text_cmds/unvis
+ed:text_cmds/ed
+banner:text_cmds/banner
+cksum:file_cmds/cksum
+gzip:file_cmds/gzip
+dd:file_cmds/dd
+truncate:file_cmds/truncate
+pathchk:file_cmds/pathchk
+mkfifo:file_cmds/mkfifo
 "
 
 all=${POOPTERM_COMMANDS_LIST:-$all}
@@ -91,23 +125,39 @@ for entry in $all; do
 		echo "missing $dir: clone apple-oss-distributions sources into target/ios-ports" >&2
 		exit 1
 	fi
-	# Test programs and other tools that share the directory are left out.
-	sources=$(find "$dir" -maxdepth 1 -name '*.c' ! -name '*test*' | sort)
+	# Test programs and other tools that share the directory are left out
+	# (but `test` itself is not).
+	sources=$(find "$dir" -maxdepth 1 -name '*.c' \( ! -name '*test*' -o -name "$name.c" \) | sort)
 	# Grammars become C first.
 	for grammar in $(find "$dir" -maxdepth 1 -name '*.y'); do
 		generated="$logs/$(basename "$grammar" .y).c"
 		yacc -o "$generated" "$grammar"
 		sources="$sources $generated"
 	done
-	extra=""
+	extra="" libraries=""
 	case $name in
 	ls) extra='-DCOLORLS' ;;
 	sort) extra='-DSORT_VERSION="2.3-Apple" -DWITHOUT_NLS' ;;
+	# grep reads compressed files through the system's libraries.
+	grep) libraries='-lz -lbz2 -llzma' ;;
+	# gzip includes its decoders' files itself; .xz and .lz are left out.
+	gzip)
+		sources="$dir/gzip.c"
+		extra='-DNO_XZ_SUPPORT -DNO_LZ_SUPPORT -DGZIP_APPLE_VERSION="poopterm" -include stdbool.h'
+		libraries='-lz -lbz2'
+		;;
+	join) extra='-include stdbool.h' ;;
+	# The system's humanize_number has no IEC prefixes (KiB): plain K.
+	# gen.c is a program that builds dd's tables, not part of dd.
+	dd)
+		sources=$(printf '%s\n' $sources | grep -v '/gen\.c$')
+		extra='-DHN_IEC_PREFIXES=0'
+		;;
 	esac
 	if xcrun -sdk "$sdk" clang -target "$target" -dynamiclib -Os -w \
 		-include "$here/poopterm_cmd.h" $ios -I "$here/compat" -I "$dir" \
 		-D__FBSDID\(x\)= -D_DARWIN_C_SOURCE $extra \
-		-Wl,-dead_strip_dylibs -lutil -lxo -lncurses \
+		-Wl,-dead_strip_dylibs -lutil -lxo -lncurses $libraries \
 		-install_name "@rpath/$name" \
 		-o "$out/$name" "$here/poopterm_cmd.c" $sources 2>"$logs/$name.log"; then
 		echo "built $name"

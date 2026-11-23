@@ -3,9 +3,11 @@
 //! other process run. The entry, `poopterm_entry` in
 //! `ios/commands/poopterm_cmd.c`, points the standard descriptors at the
 //! ones given for the run, sets the environment, calls the program's
-//! `main` and returns its status, `exit` included.
+//! `main` and returns its status, `exit` included. A command that starts
+//! another (xargs, find -exec) does so through `spawn`, which runs it the
+//! same way on the descriptors it is given.
 use std::{
-	ffi::{CString, c_char, c_int, c_void},
+	ffi::{CStr, CString, c_char, c_int, c_void},
 	os::fd::{AsRawFd, BorrowedFd},
 };
 
@@ -21,7 +23,15 @@ struct Tty {
 	cols: u16,
 	rows: u16,
 	envp: *const *mut c_char,
+	spawn: Option<Spawn>,
 }
+
+/// The `spawn` member's type.
+type Spawn = extern "C" fn(*const c_char, *const *mut c_char, *const Tty) -> c_int;
+
+/// Darwin's errno values `spawn` answers with.
+const ENOENT: c_int = 2;
+const ENOEXEC: c_int = 8;
 
 /// `poopterm_entry`'s type.
 type Entry = unsafe extern "C" fn(c_int, *const *mut c_char, *const Tty) -> c_int;
@@ -73,6 +83,7 @@ pub(crate) fn call(
 		cols,
 		rows,
 		envp: env_pointers.as_ptr(),
+		spawn: Some(spawn),
 	};
 	let argc = c_int::try_from(args.len()).ok()?;
 	// SAFETY: every command library exports `poopterm_entry` with this type
@@ -83,6 +94,88 @@ pub(crate) fn call(
 	// through the call; the descriptors are borrowed and open throughout, and
 	// the entry puts back the standard ones before it returns.
 	Some(unsafe { entry(argc, argv_pointers.as_ptr(), &tty) })
+}
+
+/// The `$PATH` of an environment of `NAME=value` strings.
+fn search_path(env: &[CString]) -> Option<&str> {
+	env
+		.iter()
+		.rev()
+		.find_map(|var| var.to_bytes().strip_prefix(b"PATH="))
+		.and_then(|path| std::str::from_utf8(path).ok())
+}
+
+/// Runs the command `file` names, from inside another, with `argv`, `env`
+/// and `stdio`: its status (the low byte, as a process's), or minus
+/// ENOENT when there is none and ENOEXEC when it is no command.
+pub(super) fn run_nested(file: &str, argv: &[CString], env: &[CString], stdio: &Stdio) -> c_int {
+	let cwd = std::env::current_dir().unwrap_or_default();
+	let Some(found) = crate::inproc::native::find(file, search_path(env), &cwd) else {
+		return -ENOENT;
+	};
+	let Ok(name) = CString::new(found.as_os_str().as_encoded_bytes()) else {
+		return -ENOENT;
+	};
+	let Ok(library) = Library::open(&name) else {
+		return -ENOEXEC;
+	};
+	call(&library, argv, env, stdio).map_or(-ENOEXEC, |status| status & 0xff)
+}
+
+/// NUL-terminated strings from a null-terminated array.
+///
+/// # Safety
+///
+/// `list` is null or a null-terminated array of NUL-terminated strings.
+unsafe fn strings_of(list: *const *mut c_char) -> Vec<CString> {
+	let mut strings = Vec::new();
+	if list.is_null() {
+		return strings;
+	}
+	for index in 0.. {
+		// SAFETY: the array goes on up to and including its null entry, so
+		// `index` is inside it.
+		let at = unsafe { list.add(index) };
+		// SAFETY: `at` points at one of the array's entries.
+		let item = unsafe { *at };
+		if item.is_null() {
+			break;
+		}
+		// SAFETY: each entry is a NUL-terminated string.
+		strings.push(unsafe { CStr::from_ptr(item) }.to_owned());
+	}
+	strings
+}
+
+/// The shim's `spawn`: a command asked to start `file`.
+extern "C" fn spawn(file: *const c_char, argv: *const *mut c_char, tty: *const Tty) -> c_int {
+	if file.is_null() || tty.is_null() {
+		return -ENOENT;
+	}
+	// SAFETY: the shim passes a NUL-terminated name.
+	let Ok(file) = unsafe { CStr::from_ptr(file) }.to_str() else {
+		return -ENOENT;
+	};
+	// SAFETY: the shim passes its own `tty`, alive through the call.
+	let tty = unsafe { &*tty };
+	// SAFETY: `argv` and `envp` are C's null-terminated string arrays.
+	let argv = unsafe { strings_of(argv) };
+	// SAFETY: as above.
+	let env = unsafe { strings_of(tty.envp) };
+	// SAFETY: the descriptors are the calling command's, open while it
+	// waits for this one.
+	let input = unsafe { BorrowedFd::borrow_raw(tty.input) };
+	// SAFETY: as above.
+	let output = unsafe { BorrowedFd::borrow_raw(tty.output) };
+	// SAFETY: as above.
+	let error = unsafe { BorrowedFd::borrow_raw(tty.error) };
+	let stdio = Stdio {
+		input,
+		output,
+		error,
+		tty: (tty.is_tty != 0).then_some((tty.cols, tty.rows)),
+	};
+	run_nested(file, &argv, &env, &stdio)
 }
 
 #[cfg(test)]

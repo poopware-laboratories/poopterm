@@ -20,6 +20,64 @@ use super::*;
 /// time (as the shell runs commands).
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
+fn vars(words: &[&str]) -> Vec<CString> {
+	strings(words)
+}
+
+#[test]
+fn the_path_is_read_from_the_commands_environment() {
+	assert_eq!(
+		search_path(&vars(&["HOME=/h", "PATH=/a:/b"])),
+		Some("/a:/b")
+	);
+	assert_eq!(search_path(&vars(&["HOME=/h"])), None);
+	assert_eq!(
+		search_path(&vars(&["MYPATH=/x", "PATHS=/y"])),
+		None,
+		"only PATH itself"
+	);
+	assert_eq!(search_path(&vars(&["PATH="])), Some(""));
+	assert_eq!(
+		search_path(&vars(&["PATH=/old", "PATH=/new"])),
+		Some("/new"),
+		"the last setting wins, as getenv's does after a later putenv"
+	);
+}
+
+#[test]
+fn a_path_that_is_not_utf8_finds_nothing() {
+	let env = [CString::new(b"PATH=/\xff".to_vec()).unwrap()];
+	assert_eq!(search_path(&env), None);
+}
+
+#[test]
+fn nothing_to_run_is_enoent_and_a_non_command_is_enoexec() {
+	let dir = std::env::temp_dir().join(format!("poopterm-nested-{}", std::process::id()));
+	fs::create_dir_all(&dir).unwrap();
+	fs::write(dir.join("script"), "#!/bin/sh\n").unwrap();
+	let (_reader, writer) = io::pipe().unwrap();
+	let stdio = Stdio {
+		input: writer.as_fd(),
+		output: writer.as_fd(),
+		error: writer.as_fd(),
+		tty: None,
+	};
+	let env = vars(&[&format!("PATH={}", dir.display())]);
+	assert_eq!(
+		run_nested("missing", &strings(&["missing"]), &env, &stdio),
+		-ENOENT
+	);
+	assert_eq!(
+		run_nested("script", &strings(&["script"]), &env, &stdio),
+		-ENOEXEC
+	);
+	assert_eq!(
+		run_nested("script", &[], &[], &stdio),
+		-ENOENT,
+		"no PATH, no commands"
+	);
+}
+
 /// While a command runs, what the test harness prints about other tests
 /// would land in its output: the tests below run in a process of their
 /// own, one at a time.
@@ -31,7 +89,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("13 passed"), "{shown}");
+	assert!(shown.contains("21 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -39,7 +97,15 @@ const PROGRAM: &str = r#"
 #include <getopt.h>
 #include <string.h>
 #include <termios.h>
+#include <fcntl.h>
+extern char **environ;
 static int runs;
+/* Waits for `pid` and prints how it ended. */
+static void reap(pid_t pid) {
+	int status = -1;
+	pid_t got = waitpid(pid, &status, 0);
+	printf("[%d %d]", got == pid, WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+}
 int main(int argc, char **argv) {
 	const char *mode = argc > 1 ? argv[1] : "";
 	if (!strcmp(mode, "return")) return 7;
@@ -75,6 +141,57 @@ int main(int argc, char **argv) {
 	}
 	if (!strcmp(mode, "stderr")) { fprintf(stderr, "to error"); return 0; }
 	if (!strcmp(mode, "runs")) { printf("%d", ++runs); return 0; }
+	if (!strcmp(mode, "spawn") || !strcmp(mode, "quiet") || !strcmp(mode, "joined")) {
+		posix_spawn_file_actions_t actions;
+		posix_spawn_file_actions_init(&actions);
+		if (!strcmp(mode, "quiet"))
+			posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+		if (!strcmp(mode, "joined"))
+			posix_spawn_file_actions_adddup2(&actions, 1, 2);
+		pid_t pid = 0;
+		int failed = posix_spawnp(&pid, argv[2], &actions, NULL, argv + 2, environ);
+		posix_spawn_file_actions_destroy(&actions);
+		if (failed) { printf("[failed %s]", strerror(failed)); return 0; }
+		printf("<");
+		reap(pid);
+		return 0;
+	}
+	if (!strcmp(mode, "fork")) {
+		char before[1024], after[1024];
+		getcwd(before, sizeof before);
+		pid_t pid = fork();
+		if (pid == 0) {
+			chdir("/");
+			dup2(2, 1);
+			execvp(argv[2], argv + 2);
+			_exit(42);
+		}
+		getcwd(after, sizeof after);
+		printf("<");
+		reap(pid);
+		printf("[%s]", strcmp(before, after) ? "moved" : "stayed");
+		return 0;
+	}
+	if (!strcmp(mode, "readahead")) {
+		/* One character read buffers the rest; the child then reads its own. */
+		putchar(getchar());
+		pid_t pid;
+		posix_spawn_file_actions_t actions;
+		posix_spawn_file_actions_init(&actions);
+		posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+		char *child[] = {"helper", "upper", NULL};
+		posix_spawnp(&pid, "helper", &actions, NULL, child, environ);
+		waitpid(pid, NULL, 0);
+		int c;
+		while ((c = getchar()) != EOF) putchar(c);
+		return 0;
+	}
+	if (!strcmp(mode, "orphan")) {
+		int status;
+		pid_t got = waitpid(-1, &status, 0);
+		printf("[%d %s]", got, strerror(errno));
+		return 0;
+	}
 	return 1;
 }
 "#;
@@ -99,6 +216,8 @@ fn library_path() -> &'static PathBuf {
 			.status()
 			.unwrap();
 		assert!(status.success(), "cc failed");
+		// A second copy, a command of its own the first can start.
+		fs::copy(&out, dir.join("helper")).unwrap();
 		out
 	})
 }
@@ -274,4 +393,109 @@ fn a_library_without_an_entry_is_refused() {
 		tty: None,
 	};
 	assert_eq!(call(&libc, &strings(&["x"]), &[], &stdio), None);
+}
+
+/// The test program's directory as a `$PATH`.
+fn path() -> String {
+	format!("PATH={}", library_path().parent().unwrap().display())
+}
+
+fn spawned(args: &[&str], stdin: &[u8]) -> (i32, String, String) {
+	run_with(args, &[&path()], stdin, None)
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn a_command_starts_another_and_waits_for_its_status() {
+	let (status, out, _) = spawned(&["spawn", "helper", "return"], b"");
+	assert_eq!((status, out.as_str()), (0, "<[1 7]"));
+	let (_, out, _) = spawned(&["spawn", "helper", "args", "x"], b"");
+	assert_eq!(out, "[helper][args][x]<[1 0]", "its output comes first");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn the_child_ending_with_exit_or_err_does_not_end_the_parent() {
+	assert_eq!(
+		spawned(&["spawn", "helper", "exit"], b"").1,
+		"before\n<[1 9]"
+	);
+	let (status, out, err) = spawned(&["spawn", "helper", "err"], b"");
+	assert_eq!((status, out.as_str()), (0, "<[1 4]"));
+	assert!(err.contains("gone"), "{err}");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn file_actions_point_the_childs_descriptors() {
+	assert_eq!(
+		spawned(&["spawn", "helper", "upper"], b"shared").1,
+		"SHARED<[1 0]",
+		"without actions it reads the parent's input"
+	);
+	assert_eq!(
+		spawned(&["quiet", "helper", "upper"], b"shared").1,
+		"<[1 0]",
+		"opened on /dev/null"
+	);
+	let (_, out, err) = spawned(&["joined", "helper", "stderr"], b"");
+	assert_eq!((out.as_str(), err.as_str()), ("to error<[1 0]", ""));
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn starting_what_is_not_on_the_path_fails_with_enoent() {
+	let (status, out, _) = spawned(&["spawn", "no-such-command"], b"");
+	assert_eq!(
+		(status, out.as_str()),
+		(0, "[failed No such file or directory]")
+	);
+	let (_, out, _) = run_with(&["spawn", "helper"], &["PATH=/nowhere"], b"", None);
+	assert_eq!(out, "[failed No such file or directory]");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn a_command_cannot_start_itself() {
+	let (status, out, err) = spawned(&["spawn", "program", "return"], b"");
+	assert_eq!((status, out.as_str()), (0, "<[1 126]"));
+	assert!(err.contains("cannot run inside itself"), "{err}");
+	assert_eq!(run(&["return"]).0, 7, "and still runs after");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn fork_and_exec_run_the_child_then_return_as_the_parent() {
+	let (status, out, err) = spawned(&["fork", "helper", "args", "y"], b"");
+	assert_eq!(status, 0);
+	assert_eq!(
+		err, "[helper][args][y]",
+		"the child's own dup2 applied to it"
+	);
+	assert_eq!(
+		out, "<[1 0][stayed]",
+		"and was undone for the parent, as was its chdir"
+	);
+	let (_, out, err) = spawned(&["fork", "no-such-command"], b"");
+	assert_eq!(
+		(out.as_str(), err.as_str()),
+		("<[1 42][stayed]", ""),
+		"exec failed: _exit"
+	);
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn waiting_without_children_fails_with_echild() {
+	let (_, out, _) = spawned(&["orphan"], b"");
+	assert_eq!(out, "[-1 No child processes]");
+	// Children of a run are forgotten by the next.
+	spawned(&["spawn", "helper", "return"], b"");
+	assert_eq!(spawned(&["orphan"], b"").1, "[-1 No child processes]");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn input_read_ahead_before_a_child_is_still_there_after_it() {
+	assert_eq!(spawned(&["readahead"], b"abc\ndef\n").1, "abc\ndef\n");
 }
