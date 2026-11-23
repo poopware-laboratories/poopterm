@@ -8,7 +8,7 @@ use super::{
 	settings_hit::{SettingsPage, font_list_rows},
 	settings_nav::{NAV_WIDTH, compose_nav},
 	settings_pen::Pen,
-	settings_shape::{Shape, compose_top},
+	settings_shape::{Shape, clamp_scroll, compose_top},
 };
 use crate::input::shortcuts::ShortcutAction;
 use crate::render::{
@@ -144,12 +144,16 @@ impl App {
 			self.theme.bg,
 		);
 		// The page is drawn as if it stood alone, then moved beside or under the list.
+		// A page taller than the room for it shows the band it is scrolled to.
 		let shape = self.settings_shape();
 		let (px, py, pw, ph) = shape.page((width, height), scale);
-		let mut page = Scene::new(pw, ph);
-		self.compose_page(&mut page, scale, (px, py));
+		let extent = shape.extent(ph, scale);
+		let scroll = clamp_scroll(self.settings_scroll, ph, extent);
+		let mut page = Scene::new(pw, extent);
+		self.compose_page(&mut page, scale, (px as f64, py as f64 - scroll as f64));
 		self.compose_list(p, scale, shape);
-		p.commands.extend(page.moved((px, py)).commands);
+		p.commands
+			.extend(page.band(scroll, ph).moved((px, py)).commands);
 		// The focused control gets a ring in the accent, last so nothing covers it.
 		let focused = self
 			.settings_focus
@@ -163,7 +167,7 @@ impl App {
 	/// The focusable rectangles of `scene`, drawn at `scale`, in Tab order.
 	fn settings_focus_order(&self, scene: &Scene, scale: usize) -> Vec<Rect> {
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let page = self.settings_editor.page;
+		let (page, scroll) = (self.settings_editor.page, self.settings_scroll);
 		let shape = self.settings_shape();
 		// Across the top, the list comes first by position alone.
 		let nav = if shape == Shape::Side {
@@ -172,7 +176,7 @@ impl App {
 			0
 		};
 		focus_order(scene, nav, |point| {
-			shape.target(point, size, scale, page).is_some()
+			shape.target(point, size, scale, (page, scroll)).is_some()
 		})
 	}
 
@@ -217,7 +221,7 @@ impl App {
 	}
 
 	/// The open page, as if it stood alone; it goes at `origin` in the window.
-	fn compose_page(&mut self, p: &mut Scene, scale: usize, origin: (usize, usize)) {
+	fn compose_page(&mut self, p: &mut Scene, scale: usize, origin: (f64, f64)) {
 		let px = 18.0 * scale as f32;
 		let ascent = self
 			.ui_fonts
@@ -226,8 +230,8 @@ impl App {
 			.map_or(self.ascent, |metrics| metrics.ascent.round() as i32);
 		let style = self.button_style(scale);
 		let cursor = (
-			self.settings_cursor_pos.0 - origin.0 as f64,
-			self.settings_cursor_pos.1 - origin.1 as f64,
+			self.settings_cursor_pos.0 - origin.0,
+			self.settings_cursor_pos.1 - origin.1,
 		);
 		let hovered = |x: usize, y: usize, w: usize, h: usize| {
 			cursor.0 >= x as f64

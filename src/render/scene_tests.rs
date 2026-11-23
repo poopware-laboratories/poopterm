@@ -691,3 +691,124 @@ fn a_scene_moved_down_paints_the_same_pixels_lower_and_leaves_the_top_alone() {
 	}
 	assert!(lower[..11 * 100].iter().all(|&pixel| pixel == 0));
 }
+
+mod bands {
+	use super::{ButtonStyle, Command, Scene};
+
+	const STYLE: ButtonStyle = ButtonStyle {
+		scale: 1,
+		background: 1,
+		border: 2,
+		accent: 3,
+	};
+
+	fn text(y: usize, clip: (usize, usize, usize, usize)) -> Command {
+		Command::Text {
+			at: (5, y),
+			text: "row".into(),
+			px: 18.0,
+			ascent: 14,
+			color: 7,
+			clip,
+			mono: false,
+		}
+	}
+
+	/// A page 100 wide and 300 tall with things at the top, middle and end.
+	fn page() -> Scene {
+		let mut scene = Scene::new(100, 300);
+		scene.fill(9);
+		scene.rect(0, 40, 100, 30, 1);
+		scene.button((10, 120, 80, 30), STYLE, false);
+		scene.commands.push(text(130, (0, 0, 100, 300)));
+		scene.button((10, 260, 80, 30), STYLE, true);
+		scene
+	}
+
+	#[test]
+	fn the_top_band_is_the_page_cut_off_below() {
+		let band = page().band(0, 150);
+		assert_eq!((band.width, band.height), (100, 150));
+		assert_eq!(
+			band.commands,
+			[
+				Command::Rect((0, 0, 100, 150), 9),
+				Command::Rect((0, 40, 100, 30), 1),
+				Command::Button((10, 120, 80, 30), STYLE, false),
+				text(130, (0, 0, 100, 150)),
+			],
+			"the button at 260 is below the band"
+		);
+	}
+
+	#[test]
+	fn a_lower_band_moves_everything_up_by_its_top() {
+		let band = page().band(110, 190);
+		assert_eq!(
+			band.commands,
+			[
+				Command::Rect((0, 0, 100, 190), 9),
+				Command::Button((10, 10, 80, 30), STYLE, false),
+				text(20, (0, 0, 100, 190)),
+				Command::Button((10, 150, 80, 30), STYLE, true),
+			],
+			"the rectangle at 40..70 is above the band"
+		);
+	}
+
+	#[test]
+	fn a_rectangle_across_the_top_edge_is_cut_to_its_lower_part() {
+		let band = page().band(55, 100);
+		assert_eq!(band.commands[1], Command::Rect((0, 0, 100, 15), 1));
+	}
+
+	#[test]
+	fn what_cannot_be_cut_is_dropped_once_it_starts_above_the_band() {
+		let band = page().band(125, 100);
+		assert!(
+			!band
+				.commands
+				.iter()
+				.any(|c| matches!(c, Command::Button(..))),
+			"the button from 120 is half gone: {:?}",
+			band.commands
+		);
+		assert_eq!(
+			band
+				.commands
+				.iter()
+				.filter(|c| matches!(c, Command::Text { .. }))
+				.count(),
+			1,
+			"text from 130 starts inside the band: kept"
+		);
+	}
+
+	#[test]
+	fn text_is_clipped_to_the_band() {
+		let band = page().band(100, 40);
+		let Some(Command::Text { at, clip, .. }) = band
+			.commands
+			.iter()
+			.find(|c| matches!(c, Command::Text { .. }))
+		else {
+			panic!("{:?}", band.commands);
+		};
+		assert_eq!((*at, *clip), ((5, 30), (0, 0, 100, 40)));
+	}
+
+	#[test]
+	fn a_band_past_the_end_holds_only_the_fill() {
+		let band = page().band(400, 50);
+		assert_eq!(band.commands, [Command::Rect((0, 0, 100, 50), 9)]);
+	}
+
+	#[test]
+	fn the_whole_page_as_a_band_is_the_page() {
+		let original = page();
+		let commands = original.commands.clone();
+		let band = original.band(0, 300);
+		assert_eq!(band.commands[1..], commands[1..]);
+		assert_eq!(band.commands[0], Command::Rect((0, 0, 100, 300), 9));
+	}
+}

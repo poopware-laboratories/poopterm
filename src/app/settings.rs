@@ -3,7 +3,7 @@ use super::{
 	settings_fonts::FontPicker,
 	settings_hit::{SettingsPage, SettingsTarget, font_list_rows},
 	settings_nav::NAV_WIDTH,
-	settings_shape::{Shape, shape},
+	settings_shape::{Shape, scrolled, shape},
 	settings_view::*,
 	*,
 };
@@ -312,9 +312,14 @@ impl App {
 				let action = self
 					.settings_touches
 					.event(phase(touch.phase), touch.id, at);
-				if let Some(Action::Click(x, y)) = action {
-					self.settings_cursor_pos = (x, y);
-					self.settings_click();
+				match action {
+					Some(Action::Click(x, y)) => {
+						self.settings_cursor_pos = (x, y);
+						self.settings_click();
+					}
+					// A finger moving up shows more of the page below.
+					Some(Action::Scroll(pixels)) => self.scroll_settings(-pixels),
+					None => {}
 				}
 			}
 			WindowEvent::MouseWheel { delta, .. } if self.settings_editor.page == SettingsPage::Fonts => {
@@ -328,6 +333,13 @@ impl App {
 				let visible = font_list_rows(self.settings_height as usize, scale);
 				self.settings_editor.fonts.scroll_by(lines, visible);
 				self.redraw_settings();
+			}
+			WindowEvent::MouseWheel { delta, .. } => {
+				let pixels = match delta {
+					MouseScrollDelta::LineDelta(_, y) => -f64::from(y) * 40.0 * self.settings_scale() as f64,
+					MouseScrollDelta::PixelDelta(position) => -position.y,
+				};
+				self.scroll_settings(pixels);
 			}
 			WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
 				self.settings_key(&event)
@@ -343,6 +355,21 @@ impl App {
 			}
 			WindowEvent::RedrawRequested => self.draw_settings(),
 			_ => {}
+		}
+	}
+
+	/// Scrolls the Settings page `pixels` further down (up when negative),
+	/// as far as it goes.
+	fn scroll_settings(&mut self, pixels: f64) {
+		let scale = self.settings_scale();
+		let size = (self.settings_width as usize, self.settings_height as usize);
+		let shape = self.settings_shape();
+		let visible = shape.page(size, scale).3;
+		let extent = shape.extent(visible, scale);
+		let scroll = scrolled(self.settings_scroll, pixels, visible, extent);
+		if scroll != self.settings_scroll {
+			self.settings_scroll = scroll;
+			self.redraw_settings();
 		}
 	}
 
@@ -382,9 +409,11 @@ impl App {
 	pub(super) fn settings_press(&mut self, point: (usize, usize)) {
 		let scale = self.settings_scale();
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let target = (self.settings_shape()).target(point, size, scale, self.settings_editor.page);
+		let page = (self.settings_editor.page, self.settings_scroll);
+		let target = (self.settings_shape()).target(point, size, scale, page);
 		if matches!(target, Some(SettingsTarget::Open(_))) {
-			self.settings_focus = None;
+			// Another page starts at its top.
+			(self.settings_focus, self.settings_scroll) = (None, 0);
 		}
 		// pr-check: window glue: puts the report on the real clipboard
 		if target == Some(SettingsTarget::CopyReport) {

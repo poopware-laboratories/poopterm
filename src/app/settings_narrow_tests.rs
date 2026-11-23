@@ -249,7 +249,7 @@ fn taps_on_a_window_too_small_for_its_page_never_panic() {
 				for page in pages {
 					for y in (0..size.1 + 5).step_by(3) {
 						for x in (0..size.0 + 5).step_by(3) {
-							let _ = shape.target((x, y), size, scale, page);
+							let _ = shape.target((x, y), size, scale, (page, 0));
 							let _ = settings_target((x, y), size, scale, page);
 						}
 					}

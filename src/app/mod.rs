@@ -63,6 +63,8 @@ mod settings_pen_tests;
 mod settings_phone_tests;
 #[cfg(test)]
 mod settings_rows_tests;
+#[cfg(test)]
+mod settings_scroll_tests;
 mod settings_shape;
 #[cfg(test)]
 mod settings_shape_tests;
@@ -195,6 +197,9 @@ pub(crate) struct App {
 	touches: crate::input::touch::Touches,
 	/// The finger being followed in the Settings window.
 	settings_touches: crate::input::touch::Touches,
+	/// How far the Settings page is scrolled down, in pixels, where the
+	/// window is shorter than the page (a phone on its side).
+	settings_scroll: usize,
 	held_button: Option<MouseButtonCode>,
 	/// `TERM` and terminfo path for new shells.
 	term_env: crate::terminfo::TermEnv,
@@ -506,6 +511,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		cursor_pos: (0.0, 0.0),
 		touches: Default::default(),
 		settings_touches: Default::default(),
+		settings_scroll: 0,
 		held_button: None,
 		term_env,
 		scroll: ScrollAccumulator::default(),

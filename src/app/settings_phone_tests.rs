@@ -47,7 +47,7 @@ fn at((x, y): (usize, usize), from_right: bool) -> (usize, usize) {
 }
 
 fn tap(point: (usize, usize), page: SettingsPage) -> Option<SettingsTarget> {
-	TOP.target(point, PHONE, S, page)
+	TOP.target(point, PHONE, S, (page, 0))
 }
 
 /// Where a physical rectangle of the page is in the window.

@@ -236,6 +236,76 @@ impl Scene {
 		}
 	}
 
+	/// The band `height` pixels tall from row `top` of the scene, as a
+	/// scene of its own (a page scrolled by `top`). Rectangles are cut to
+	/// the band; what cannot be cut (rounded shapes, buttons, text and
+	/// icons) is kept whole when it starts inside it, and dropped when it
+	/// starts above it, as only its lower part would show.
+	pub(crate) fn band(self, top: usize, height: usize) -> Scene {
+		let width = self.width;
+		let bottom = top + height;
+		// The part of `rect` inside the band, moved up by `top`.
+		let cut = |(x, y, w, h): Rect| -> Option<Rect> {
+			let (from, to) = (y.max(top), (y + h).min(bottom));
+			(from < to).then(|| (x, from - top, w, to - from))
+		};
+		// `rect` moved up, when it starts inside the band.
+		let whole = |(x, y, w, h): Rect| (top..bottom).contains(&y).then(|| (x, y - top, w, h));
+		let commands = self
+			.commands
+			.into_iter()
+			.filter_map(|command| match command {
+				Command::Fill(color) => Some(Command::Rect((0, 0, width, height), color)),
+				Command::Rect(rect, color) => cut(rect).map(|rect| Command::Rect(rect, color)),
+				Command::Focusable(rect) => whole(rect).map(Command::Focusable),
+				Command::RoundRect(rect, radius, color) => {
+					whole(rect).map(|rect| Command::RoundRect(rect, radius, color))
+				}
+				Command::Button(rect, style, lit) => {
+					whole(rect).map(|rect| Command::Button(rect, style, lit))
+				}
+				Command::Text {
+					at: (x, y),
+					text,
+					px,
+					ascent,
+					color,
+					clip,
+					mono,
+				} => {
+					let y = y.checked_sub(top).filter(|&y| y < height)?;
+					Some(Command::Text {
+						at: (x, y),
+						text,
+						px,
+						ascent,
+						color,
+						clip: cut(clip)?,
+						mono,
+					})
+				}
+				Command::Icon {
+					at: (x, y),
+					icon,
+					scale,
+					color,
+				} => {
+					let y = y.checked_sub(top).filter(|&y| y < height)?;
+					Some(Command::Icon {
+						at: (x, y),
+						icon,
+						scale,
+						color,
+					})
+				}
+			});
+		Scene {
+			width,
+			height,
+			commands: commands.collect(),
+		}
+	}
+
 	/// Draws the scene with `p`, pixel for pixel as drawing each operation
 	/// with a [`Painter`] directly would.
 	pub(crate) fn replay(&self, p: &mut impl Pen, fonts: &mut FontSet) {

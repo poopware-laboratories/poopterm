@@ -8,6 +8,10 @@ use super::{
 	settings_pen::Pen,
 	settings_view::MIN_SIZE,
 };
+
+/// The height a page is laid out for, in logical pixels: its rows and its
+/// footer fit in this much. A shorter page across the top scrolls.
+pub(super) const PAGE_HEIGHT: usize = MIN_SIZE.1;
 use crate::{
 	render::{
 		blend::blend,
@@ -124,15 +128,27 @@ impl Shape {
 		Some((x, top + DONE_TOP * s, DONE * s, ITEM_HEIGHT * s))
 	}
 
+	/// How tall the page is drawn, when `visible` pixels of it show: as
+	/// tall as it is laid out for across the top, where a short window
+	/// (a phone on its side) scrolls it; beside the list, the window is
+	/// never shorter than that.
+	pub(super) fn extent(self, visible: usize, s: usize) -> usize {
+		match self {
+			Shape::Side => visible,
+			Shape::Top { .. } => visible.max(PAGE_HEIGHT * s),
+		}
+	}
+
 	/// What a click at physical `point` does in a window `size` large with
-	/// `page` open: the list opens pages, Done closes, and the page sees
-	/// the click as if it stood alone.
+	/// `page` open and scrolled down by `scroll` pixels: the list opens
+	/// pages, Done closes, and the page sees the click as if it stood
+	/// alone, unscrolled.
 	pub(super) fn target(
 		self,
 		point: (usize, usize),
 		size: (usize, usize),
 		s: usize,
-		page: SettingsPage,
+		(page, scroll): (SettingsPage, usize),
 	) -> Option<SettingsTarget> {
 		if self == Shape::Side {
 			return window_target(point, size, s, page);
@@ -149,8 +165,23 @@ impl Shape {
 		if !(py..py + ph).contains(&y) || !(px..px + pw).contains(&x) {
 			return None;
 		}
-		settings_target((x - px, y - py), (pw, ph), s, page)
+		let extent = self.extent(ph, s);
+		let scroll = clamp_scroll(scroll, ph, extent);
+		settings_target((x - px, y - py + scroll), (pw, extent), s, page)
 	}
+}
+
+/// `scroll` kept between the top and where the page's end, `extent` tall,
+/// meets the bottom of the `visible` part.
+pub(super) fn clamp_scroll(scroll: usize, visible: usize, extent: usize) -> usize {
+	scroll.min(extent.saturating_sub(visible))
+}
+
+/// `scroll` moved by `pixels` (positive scrolls further down the page),
+/// kept inside the page.
+pub(super) fn scrolled(scroll: usize, pixels: f64, visible: usize, extent: usize) -> usize {
+	let moved = scroll as f64 + if pixels.is_finite() { pixels } else { 0.0 };
+	clamp_scroll(moved.max(0.0).round() as usize, visible, extent)
 }
 
 /// Draws the list across the top of a window: its panel down to the page

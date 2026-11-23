@@ -181,12 +181,12 @@ fn done_sits_at_the_right_of_the_bar_under_the_status_bar() {
 fn a_tap_on_an_item_opens_its_page_and_on_done_closes() {
 	for (index, &(page, _)) in ITEMS.iter().enumerate() {
 		let at = center(TOP.item(index, PHONE.0, PHONE_SCALE));
-		let target = TOP.target(at, PHONE, PHONE_SCALE, SettingsPage::About);
+		let target = TOP.target(at, PHONE, PHONE_SCALE, (SettingsPage::About, 0));
 		assert_eq!(target, Some(SettingsTarget::Open(page)), "{page:?}");
 	}
 	let done = center(TOP.done(PHONE.0, PHONE_SCALE).unwrap());
 	for page in [SettingsPage::Main, SettingsPage::Fonts] {
-		let target = TOP.target(done, PHONE, PHONE_SCALE, page);
+		let target = TOP.target(done, PHONE, PHONE_SCALE, (page, 0));
 		assert_eq!(target, Some(SettingsTarget::Done));
 	}
 }
@@ -200,7 +200,11 @@ fn taps_on_the_status_bar_the_bars_title_or_the_home_indicator_do_nothing() {
 		(PHONE.0 / 2, PHONE.1 - PHONE_INSET.1 / 2),
 		(PHONE.0 / 2, PHONE.1 + 10),
 	] {
-		assert_eq!(TOP.target(at, PHONE, PHONE_SCALE, page), None, "{at:?}");
+		assert_eq!(
+			TOP.target(at, PHONE, PHONE_SCALE, (page, 0)),
+			None,
+			"{at:?}"
+		);
 	}
 }
 
@@ -215,7 +219,7 @@ fn a_tap_in_the_page_reaches_it_as_if_the_page_stood_alone() {
 		for y in (0..ph).step_by(29) {
 			for x in (0..pw).step_by(31) {
 				let alone = settings_target((x, y), (pw, ph), PHONE_SCALE, page);
-				let tapped = TOP.target((px + x, py + y), PHONE, PHONE_SCALE, page);
+				let tapped = TOP.target((px + x, py + y), PHONE, PHONE_SCALE, (page, 0));
 				assert_eq!(tapped, alone, "{page:?} at {x},{y}");
 			}
 		}
@@ -228,7 +232,7 @@ fn beside_the_list_taps_land_where_the_sidebar_sends_them() {
 	for page in [SettingsPage::Main, SettingsPage::Clipboard] {
 		for y in (0..size.1).step_by(23) {
 			for x in (0..size.0).step_by(37) {
-				let side = Shape::Side.target((x, y), size, 1, page);
+				let side = Shape::Side.target((x, y), size, 1, (page, 0));
 				assert_eq!(side, window_target((x, y), size, 1, page), "{x},{y}");
 			}
 		}
@@ -241,7 +245,7 @@ fn the_appearance_pages_controls_fit_a_phone_above_the_save_button() {
 	let s = PHONE_SCALE;
 	let row = |row: usize| py + (row + ROW_HEIGHT / 2) * s;
 	let page = SettingsPage::Main;
-	let at = |x, y| TOP.target((x, y), PHONE, s, page);
+	let at = |x, y| TOP.target((x, y), PHONE, s, (page, 0));
 	assert_eq!(
 		at(px + 30 * s, row(THEME_ROW)),
 		Some(SettingsTarget::Theme(-1))
@@ -386,7 +390,7 @@ fn on_an_ipad_the_list_spreads_across_the_width_and_done_closes() {
 	assert!(rects.iter().all(|&(_, _, w, _)| w / 2 > 250), "{rects:?}");
 	let done = IPAD_TOP.done(IPAD.0, 2).unwrap();
 	assert_eq!(
-		IPAD_TOP.target(center(done), IPAD, 2, SettingsPage::Main),
+		IPAD_TOP.target(center(done), IPAD, 2, (SettingsPage::Main, 0)),
 		Some(SettingsTarget::Done)
 	);
 	let (px, py, pw, ph) = IPAD_TOP.page(IPAD, 2);
@@ -406,7 +410,7 @@ fn an_ipads_page_is_wide_so_its_controls_sit_where_a_desktops_do() {
 			for x in (0..pw).step_by(41) {
 				let alone = settings_target((x, y), (pw, ph), 2, page);
 				assert_eq!(
-					IPAD_TOP.target((px + x, py + y), IPAD, 2, page),
+					IPAD_TOP.target((px + x, py + y), IPAD, 2, (page, 0)),
 					alone,
 					"{x},{y}"
 				);
@@ -414,7 +418,7 @@ fn an_ipads_page_is_wide_so_its_controls_sit_where_a_desktops_do() {
 		}
 	}
 	let row = py + (FONT_ROW + ROW_HEIGHT / 2) * 2;
-	let minus = IPAD_TOP.target((pw - 220 * 2, row), IPAD, 2, SettingsPage::Main);
+	let minus = IPAD_TOP.target((pw - 220 * 2, row), IPAD, 2, (SettingsPage::Main, 0));
 	assert_eq!(
 		minus,
 		Some(SettingsTarget::Step(FONT_ROW, -1)),
@@ -437,7 +441,7 @@ fn a_small_ipad_window_still_offers_done_and_every_page() {
 	for (index, &(page, _)) in ITEMS.iter().enumerate() {
 		let at = center(shape.item(index, size.0, 2));
 		assert_eq!(
-			shape.target(at, size, 2, SettingsPage::About),
+			shape.target(at, size, 2, (SettingsPage::About, 0)),
 			Some(SettingsTarget::Open(page))
 		);
 	}
@@ -472,7 +476,7 @@ fn done_the_list_and_the_page_keep_clear_of_the_side_insets() {
 	let (px, _, pw, _) = shape.page(DUO, 3);
 	assert_eq!((px, px + pw), (0, DUO.0 - 270));
 	assert_eq!(
-		shape.target(center(done), DUO, 3, SettingsPage::Main),
+		shape.target(center(done), DUO, 3, (SettingsPage::Main, 0)),
 		Some(SettingsTarget::Done)
 	);
 }
@@ -503,7 +507,7 @@ fn taps_in_the_side_insets_do_nothing_and_never_panic() {
 	for y in (0..size.1).step_by(7) {
 		for x in (0..150).chain(910..1000).step_by(3) {
 			assert_eq!(
-				shape.target((x, y), size, 1, SettingsPage::Main),
+				shape.target((x, y), size, 1, (SettingsPage::Main, 0)),
 				None,
 				"{x},{y}"
 			);
