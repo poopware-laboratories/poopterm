@@ -358,3 +358,44 @@ fn programs_come_from_beside_the_app_then_from_packages_unless_chosen() {
 	);
 	assert_eq!(command_path(Some(&exe), &home, Some("/x:/y")), "/x:/y");
 }
+
+#[test]
+fn pkg_is_a_built_in_that_installs_under_the_users_library() {
+	let (mut sh, home) = shell();
+	let help = ran(&mut sh, "help");
+	assert!(help.contains(" pkg "), "{help}");
+	let usage = ran(&mut sh, "pkg");
+	assert!(usage.contains("install NAME"), "{usage}");
+	assert_eq!(sh.status, 0);
+	let none = ran(&mut sh, "pkg update");
+	assert!(none.contains("pkg source"), "{none}");
+	assert_eq!(sh.status, 1);
+	let repo = home.join("repo");
+	let set = ran(
+		&mut sh,
+		&format!("pkg source file://{}/index", repo.display()),
+	);
+	assert!(set.contains("packages now come from"), "{set}");
+	let saved = home.join("Library/poopterm/packages/source");
+	assert_eq!(
+		fs::read_to_string(saved).unwrap(),
+		format!("file://{}/index", repo.display())
+	);
+	fs::create_dir_all(&repo).unwrap();
+	fs::write(repo.join("index"), "# empty\n").unwrap();
+	assert_eq!(ran(&mut sh, "pkg update"), "0 packages available\n");
+}
+
+#[test]
+fn the_environment_can_point_pkg_elsewhere() {
+	let (mut sh, home) = shell();
+	let repo = home.join("other");
+	fs::create_dir_all(&repo).unwrap();
+	fs::write(repo.join("index"), "# none\n").unwrap();
+	let url = format!("file://{}/index", repo.display());
+	ran(&mut sh, &format!("export POOPTERM_PKG_SOURCE={url}"));
+	assert_eq!(ran(&mut sh, "pkg source"), format!("{url}\n"));
+	assert_eq!(ran(&mut sh, "pkg update"), "0 packages available\n");
+	let saved = home.join("Library/poopterm/packages/source");
+	assert!(!saved.exists(), "the environment's source is not saved");
+}

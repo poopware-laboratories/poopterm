@@ -156,6 +156,7 @@ fn real_commands_alone() {
 	programs_see_the_shells_environment_and_directory();
 	text_tools_work_on_files();
 	pipes_feed_each_stage_what_the_one_before_printed();
+	a_command_pkg_installed_runs_from_the_path();
 }
 
 fn real_shell(name: &str) -> Option<(Shell, PathBuf)> {
@@ -316,4 +317,60 @@ fn pipes_feed_each_stage_what_the_one_before_printed() {
 		"poopsh: nope: No such file or directory (os error 2)\n"
 	);
 	assert_eq!(sh.status, 1);
+}
+
+/// Apple's `rev`, published in a `file://` repository as the package
+/// `backwards`, installed with `pkg` and run by its new name from `$PATH`.
+fn a_command_pkg_installed_runs_from_the_path() {
+	let Some((mut sh, home)) = real_shell("pkg") else {
+		return;
+	};
+	let repo = home.join("repo");
+	fs::create_dir_all(repo.join("tree/bin")).unwrap();
+	fs::copy(
+		PathBuf::from(COMMANDS).join("rev"),
+		repo.join("tree/bin/backwards"),
+	)
+	.unwrap();
+	let archive = std::process::Command::new("tar")
+		.env("COPYFILE_DISABLE", "1")
+		.args(["-czf", "-", "-C"])
+		.arg(repo.join("tree"))
+		.arg("bin")
+		.output()
+		.unwrap()
+		.stdout;
+	fs::write(repo.join("backwards-1.tar.gz"), &archive).unwrap();
+	let hash = system(
+		"shasum",
+		&[
+			"-a",
+			"256",
+			repo.join("backwards-1.tar.gz").to_str().unwrap(),
+		],
+	);
+	let index = format!(
+		"backwards 1 {} {} backwards-1.tar.gz Reverse lines\n",
+		&hash[..64],
+		archive.len()
+	);
+	fs::write(repo.join("index"), index).unwrap();
+	let packages = home.join("Library/poopterm/packages/bin");
+	let path = format!("{}:{}", packages.display(), COMMANDS);
+	sh.env.insert("PATH".into(), path);
+	assert_eq!(
+		ran(&mut sh, "backwards"),
+		"poopsh: backwards: command not found\n"
+	);
+	ran(
+		&mut sh,
+		&format!("pkg source file://{}/index", repo.display()),
+	);
+	assert_eq!(
+		ran(&mut sh, "pkg install backwards"),
+		"installed backwards 1: backwards\n"
+	);
+	assert_eq!(ran(&mut sh, "echo stressed | backwards"), "desserts\n");
+	assert_eq!(ran(&mut sh, "pkg remove backwards"), "removed backwards\n");
+	assert!(ran(&mut sh, "backwards").contains("not found"));
 }

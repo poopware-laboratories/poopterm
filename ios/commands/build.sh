@@ -16,7 +16,9 @@ root=$(cd "$here/../.." && pwd)
 ports="$root/target/ios-ports"
 sdk=${1:-iphonesimulator}
 [ $# -gt 0 ] && shift
-out="$root/target/ios-commands/$sdk"
+# POOPTERM_COMMANDS_OUT and POOPTERM_COMMANDS_LIST (name:directory entries)
+# let ios/packages/build.sh build packages' commands the same way.
+out=${POOPTERM_COMMANDS_OUT:-$root/target/ios-commands/$sdk}
 logs="$root/target/ios-commands/logs-$sdk"
 mkdir -p "$out" "$logs"
 
@@ -76,6 +78,7 @@ paste:text_cmds/paste
 comm:text_cmds/comm
 "
 
+all=${POOPTERM_COMMANDS_LIST:-$all}
 wanted=${*:-}
 failed=""
 for entry in $all; do

@@ -13,8 +13,8 @@ use super::{native, pipeline};
 
 /// The built-in commands, for `help`: what changes the shell itself, and
 /// the few a shell answers on its own, as `sh` does.
-pub(crate) const COMMANDS: [&str; 10] = [
-	"cd", "clear", "echo", "exit", "export", "false", "help", "pwd", "true", "unset",
+pub(crate) const COMMANDS: [&str; 11] = [
+	"cd", "clear", "echo", "exit", "export", "false", "help", "pkg", "pwd", "true", "unset",
 ];
 
 /// What the shell remembers between lines.
@@ -242,6 +242,14 @@ impl Shell {
 					}
 				}
 				0
+			}
+			"pkg" => {
+				let root = crate::pkg::root(&self.home);
+				let source = self.env.get("POOPTERM_PKG_SOURCE").map(String::as_str);
+				let fetch = |url: &str| crate::pkg::fetch::fetch(url, crate::pkg::DOWNLOAD_LIMIT);
+				let (text, status) = crate::pkg::command::run(args, &root, source, &fetch);
+				out.extend(text.into_bytes());
+				status
 			}
 			"unset" => {
 				args.iter().for_each(|key| drop(self.env.remove(key)));

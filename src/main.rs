@@ -57,6 +57,7 @@ mod notifier;
 )]
 mod objc;
 mod parser;
+mod pkg;
 mod platform;
 #[cfg(not(target_os = "macos"))]
 mod portal;

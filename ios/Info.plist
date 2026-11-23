@@ -15,5 +15,10 @@
   <key>UILaunchScreen</key><dict/>
   <key>UIRequiresFullScreen</key><false/>
   <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

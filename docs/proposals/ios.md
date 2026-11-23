@@ -95,10 +95,20 @@ iOS program: no Linux binaries, no system call translation.
    (`exit` ends the command, not the app; `fork`/`exec` go through the
    shell). Darwin programs (fastfetch, htop, jq, ripgrep, git…) port with
    little change, since iOS is Darwin.
-   - **`pkg`** (`pkg install fastfetch`, `pkg list`, `pkg remove`) reads a
-     signed index, downloads packages through the system's own HTTP stack
-     (`NSURLSession`), checks each archive's hash and signature, and
-     unpacks it into the app's container (`~/Library/poopterm/packages`).
+   - **`pkg`** (`src/pkg`), a shell built-in: `pkg source URL` sets
+     where packages come from (`POOPTERM_PKG_SOURCE` overrides it), and
+     `update`, `list`, `search`, `install`, `upgrade` and `remove` work
+     on an index of one line per package (name, version, SHA-256 and
+     size of its archive, archive path, summary). An archive is a
+     `tar.gz` of command libraries in `bin/`, built by
+     `ios/packages/build.sh` the way the bundled commands are. `pkg`
+     fetches over HTTPS only (or `file://`, or this machine for testing)
+     through Foundation's URL loading, checks size and SHA-256 before
+     unpacking with its own gzip and tar readers (no links, nothing
+     outside the package), unpacks beside the old version and swaps it
+     in, and links the commands into
+     `~/Library/poopterm/packages/bin`, which is on `$PATH`. Still to
+     come: an Ed25519 signature on the index, and hosting for it.
    - **Loading:** iOS loads only code signed by Apple or the developer.
      While StikDebug has the app attached (`CS_DEBUGGED`), unsigned
      libraries load; without it, `pkg` says JIT is needed and the
