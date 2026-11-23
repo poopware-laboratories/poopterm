@@ -23,7 +23,7 @@ impl App {
 		let scale = self.scale();
 		let (top, ch, width) = (self.top, self.ch, p.width);
 		// With vertical tabs, grid rows are redrawn right of the sidebar only.
-		let sidebar = self.sidebar_width();
+		let sidebar = self.sidebar_extent();
 		let grid_bottom = (top + self.frame.rows * ch).min(p.height);
 		let mut bands = self.redraw_bars(p, scale);
 		if damage.scroll > 0 {

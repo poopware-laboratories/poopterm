@@ -46,7 +46,12 @@ pub(crate) struct SidebarInput<'a> {
 pub(crate) fn row_rect(layout: &VerticalTabLayout, index: usize) -> Rect {
 	let scale = layout.scale;
 	let height = layout.row_height_for(index).saturating_sub(4 * scale);
-	(6 * scale, layout.row_y(index), layout.tab_width, height)
+	(
+		layout.left + 6 * scale,
+		layout.row_y(index),
+		layout.tab_width,
+		height,
+	)
 }
 
 /// The close button of the tab whose surface is `row`.

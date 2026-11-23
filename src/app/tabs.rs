@@ -48,7 +48,7 @@ impl App {
 	}
 
 	pub(super) fn vertical_tab_layout(&self) -> VerticalTabLayout {
-		vertical_tab_layout(
+		crate::ui::tabs::inset_vertical_tab_layout(
 			self.height as usize,
 			self.sessions.len(),
 			self.scale(),
@@ -57,9 +57,14 @@ impl App {
 				status_height: self.status_height + self.border,
 				scroll: self.tab_scroll,
 				active_tab: self.active,
-				compact_tabs: self.preferences.compact_tabs,
+				compact_tabs: self.sidebar_is_rail(),
 				show_plus: self.preferences.show_new_tab_button,
 				show_settings: self.preferences.show_settings_button,
+			},
+			crate::ui::tabs::SidebarInsets {
+				top: self.safe.0,
+				bottom: self.bottom_inset(),
+				left: self.sides.0,
 			},
 		)
 	}

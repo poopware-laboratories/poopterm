@@ -236,7 +236,7 @@ impl App {
 	/// The space around the grid, inside the border and between the chrome,
 	/// that edge cell backgrounds extend into.
 	pub(super) fn padding_area(&self, width: usize, height: usize) -> crate::graphics::Rect {
-		let x = self.border + self.sidebar_width();
+		let x = self.border + self.sidebar_extent();
 		let y = self.padding_top;
 		let bottom = height.saturating_sub(self.status_height + self.border);
 		crate::graphics::Rect {

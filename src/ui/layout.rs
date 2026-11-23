@@ -53,6 +53,12 @@ pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar
 	}
 }
 
+/// How far a sidebar `width` wide reaches with the system keeping `inset`
+/// at the left: it fills the inset too. Nothing when there is no sidebar.
+pub(crate) fn sidebar_extent(width: usize, inset: usize) -> usize {
+	if width == 0 { 0 } else { width + inset }
+}
+
 impl Layout {
 	/// How many `cell`-sized cells fit in a `window`, at least 2 by 2.
 	pub(crate) fn grid_size(&self, window: (usize, usize), cell: (usize, usize)) -> (usize, usize) {
@@ -92,6 +98,18 @@ mod sides_tests;
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn a_sidebar_reaches_over_the_left_inset_and_none_reaches_nowhere() {
+		assert_eq!(sidebar_extent(0, 0), 0);
+		assert_eq!(
+			sidebar_extent(0, 177),
+			0,
+			"no sidebar: the grid's padding fills the inset"
+		);
+		assert_eq!(sidebar_extent(220, 0), 220);
+		assert_eq!(sidebar_extent(220, 177), 397);
+	}
 	use crate::ui::scale::{chrome, chrome_scale};
 
 	/// Horizontal tabs, hidden tabs and vertical tabs.

@@ -106,7 +106,7 @@ use crate::{
 		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
-			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
+			sidebar_width, tab_layout_with_compaction,
 		},
 		window_controls::{ButtonLayout, Placement, place},
 		window_pointer::Presses,
@@ -369,7 +369,7 @@ impl App {
 	/// Width of the vertical tab sidebar, or 0 when it is not shown.
 	pub(super) fn sidebar_width(&self) -> usize {
 		if self.preferences.show_tabs && self.preferences.vertical_tabs {
-			if self.preferences.compact_tabs {
+			if self.sidebar_is_rail() {
 				compact_sidebar_width(self.scale())
 			} else {
 				sidebar_width(self.scale())
@@ -377,6 +377,18 @@ impl App {
 		} else {
 			0
 		}
+	}
+
+	/// Whether the vertical tabs show as the icon rail (`ui::tabs::sidebar_is_rail`).
+	pub(super) fn sidebar_is_rail(&self) -> bool {
+		let compact = self.preferences.compact_tabs;
+		crate::ui::tabs::sidebar_is_rail(compact, self.width as usize, self.scale())
+	}
+
+	/// From the window's left edge to the sidebar's right one, the system's
+	/// left inset included (a phone on its side); 0 without a sidebar.
+	pub(super) fn sidebar_extent(&self) -> usize {
+		crate::ui::layout::sidebar_extent(self.sidebar_width(), self.sides.0)
 	}
 
 	pub(super) fn grid_left(&self) -> usize {
