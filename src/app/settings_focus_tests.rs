@@ -267,7 +267,7 @@ mod pages {
 			compose_nav(pen, p, (page, (-1.0, -1.0)), (&colors, theme.fg));
 		});
 		window.commands = nav_commands;
-		window.commands.extend(content.shifted(nav).commands);
+		window.commands.extend(content.moved((nav, 0)).commands);
 		let reaches = |point| window_target(point, size, scale, page);
 		focus_order(&window, nav, |point| reaches(point).is_some())
 			.into_iter()

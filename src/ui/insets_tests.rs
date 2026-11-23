@@ -64,28 +64,20 @@ fn a_keyboard_inset_out_of_reason_is_none() {
 }
 
 #[test]
-fn a_sheet_spans_the_width_below_the_status_bar() {
-	// 1206×2622 pixels at 3×, 186 pixels of status bar, 66 of home indicator.
-	let ((x, y), (width, height)) = sheet_frame((1206, 2622), (186, 66), 3.0, 560.0);
-	assert_eq!((x, y, width, height), (0.0, 62.0, 402.0, 560.0));
+fn the_system_keeps_the_status_bar_and_the_keyboard_or_home_indicator() {
+	// 2622 pixels tall at 3×, the safe area 186 down and 2370 tall.
+	let heights = (2622, 2370);
+	assert_eq!(system_insets(heights, 186, 0.0, 3.0), ((186, 66), 66));
+	assert_eq!(
+		system_insets(heights, 186, 336.0, 3.0),
+		((186, 1008), 66),
+		"the keyboard reaches higher; the home indicator stays known"
+	);
+	assert_eq!(system_insets(heights, 186, 10.0, 3.0), ((186, 66), 66));
 }
 
 #[test]
-fn a_sheet_taller_than_the_room_left_is_cut_to_it() {
-	let (_, (_, height)) = sheet_frame((1206, 2622), (186, 66), 3.0, 5000.0);
-	assert_eq!(height, 790.0);
-	let (_, (_, height)) = sheet_frame((300, 300), (150, 150), 1.0, 100.0);
-	assert_eq!(height, 0.0, "no room at all");
-}
-
-#[test]
-fn a_factor_out_of_reason_counts_as_one() {
-	assert_eq!(
-		sheet_frame((400, 800), (0, 0), 0.0, 100.0),
-		((0.0, 0.0), (400.0, 100.0))
-	);
-	assert_eq!(
-		sheet_frame((400, 800), (0, 0), f64::NAN, 100.0),
-		((0.0, 0.0), (400.0, 100.0))
-	);
+fn a_window_without_insets_keeps_nothing() {
+	assert_eq!(system_insets((800, 800), 0, 0.0, 2.0), ((0, 0), 0));
+	assert_eq!(system_insets((800, 800), 0, f64::NAN, 2.0), ((0, 0), 0));
 }

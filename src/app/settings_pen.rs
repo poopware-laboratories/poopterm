@@ -5,7 +5,11 @@ use crate::render::{
 	painter::ButtonStyle,
 	scene::{Rect, Scene},
 };
-use crate::ui::{metrics::Corner, settings_layout::FOOTER, ui_font::ellipsize_to_width};
+use crate::ui::{
+	metrics::Corner,
+	settings_layout::{FOOTER, controls},
+	ui_font::ellipsize_to_width,
+};
 
 /// The switch of `row` in a window `width` physical pixels wide: 34 by 20,
 /// 24 from the right edge, centered on the row's 40 pixels.
@@ -180,8 +184,9 @@ impl Pen<'_> {
 		hovered: &dyn Fn(usize, usize, usize, usize) -> bool,
 	) {
 		let s = self.scale;
-		let x = p.width.saturating_sub(240 * s);
-		let (y, w, h) = (row * s, 216 * s, ROW_HEIGHT * s);
+		let from_right = controls(p.width / s.max(1));
+		let x = p.width.saturating_sub(from_right * s);
+		let (y, w, h) = (row * s, (from_right - 24) * s, ROW_HEIGHT * s);
 		p.button((x, y, w, h), style, active || hovered(x, y, w, h));
 		self.text(p, x + 12 * s, row + 10, label, 0.76);
 	}
@@ -189,12 +194,14 @@ impl Pen<'_> {
 	/// `−` and `+` buttons at the right of `row` with `value` between them.
 	pub(super) fn stepper(&mut self, p: &mut Scene, style: ButtonStyle, row: usize, value: &str) {
 		let s = self.scale;
-		for (offset, sign) in [(240, "−"), (72, "+")] {
+		let from_right = controls(p.width / s.max(1));
+		for (offset, sign) in [(from_right, "−"), (72, "+")] {
 			let x = p.width.saturating_sub(offset * s);
 			p.button((x, row * s, 48 * s, ROW_HEIGHT * s), style, false);
 			self.text(p, x + 16 * s, row + 7, sign, 1.0);
 		}
-		self.text(p, p.width.saturating_sub(180 * s), row + 8, value, 0.82);
+		let value_x = p.width.saturating_sub((from_right - 60) * s);
+		self.text(p, value_x, row + 8, value, 0.82);
 	}
 
 	/// A switch at the right of `row`: a pill track and a round knob that
@@ -254,6 +261,32 @@ impl Pen<'_> {
 		})
 	}
 
+	/// A page's hint under its title: one line, or on a page too narrow for
+	/// it, wrapped at a word onto a second line, cut with an ellipsis when
+	/// two lines are not enough.
+	pub(super) fn hint(&mut self, p: &mut Scene, text: &str) {
+		const SIZE: f32 = 0.72;
+		let (s, x) = (self.scale, 24 * self.scale);
+		let room = p.width.saturating_sub(48 * s);
+		if self.width(text, SIZE) <= room {
+			return self.text(p, x, 68, text, SIZE);
+		}
+		let mut split = None;
+		for (at, _) in text.match_indices(' ') {
+			if self.width(&text[..at], SIZE) > room {
+				break;
+			}
+			split = Some(at);
+		}
+		let Some(split) = split else {
+			let line = self.fit(text, room, SIZE);
+			return self.text(p, x, 68, &line, SIZE);
+		};
+		self.text(p, x, 68, &text[..split], SIZE);
+		let rest = self.fit(&text[split + 1..], room, SIZE);
+		self.text(p, x, 85, &rest, SIZE);
+	}
+
 	/// The footer at the bottom of every page: its `button`, labelled and
 	/// as wide as given, at the right, and the status line at the left.
 	pub(super) fn footer(
@@ -283,11 +316,12 @@ impl Pen<'_> {
 			self.color,
 		);
 		let status_y = p.height.saturating_sub(40 * s);
+		let status = self.fit(status, save_x.saturating_sub(32 * s), 0.68);
 		p.text(
 			self.fonts,
 			24 * s,
 			status_y,
-			status,
+			&status,
 			self.px * 0.68,
 			self.ascent,
 			self.color,

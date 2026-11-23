@@ -2,7 +2,8 @@
 use super::{
 	settings_fonts::FontPicker,
 	settings_hit::{SettingsPage, SettingsTarget, font_list_rows},
-	settings_nav::{NAV_WIDTH, window_target},
+	settings_nav::NAV_WIDTH,
+	settings_shape::{Shape, shape},
 	settings_view::*,
 	*,
 };
@@ -137,17 +138,10 @@ impl App {
 				(MIN_SIZE.0 + NAV_WIDTH) as f64,
 				MIN_SIZE.1 as f64,
 			));
-		// pr-check: window glue: a phone shows Settings as a sheet under the status bar
+		// pr-check: window glue: on a phone Settings covers the screen and lays out round its insets
 		#[cfg(target_os = "ios")]
-		let attributes = {
-			let size = (self.width, self.height);
-			let frame =
-				crate::ui::insets::sheet_frame(size, self.safe, self.factor(), DEFAULT_SIZE.1 as f64);
-			let ((x, y), (width, height)) = frame;
-			attributes
-				.with_position(winit::dpi::LogicalPosition::new(x, y))
-				.with_inner_size(LogicalSize::new(width, height))
-		};
+		let attributes =
+			attributes.with_inner_size(winit::dpi::PhysicalSize::new(self.width, self.height));
 		// pr-check: end window glue
 		let window = Arc::new(
 			event_loop
@@ -350,6 +344,13 @@ impl App {
 		}
 	}
 
+	/// How the Settings window is shared between its list and its page,
+	/// clear of what the system keeps of the screen.
+	pub(super) fn settings_shape(&self) -> Shape {
+		let width = self.settings_width as usize;
+		shape(width, self.settings_scale(), (self.safe.0, self.home))
+	}
+
 	pub(super) fn settings_scale(&self) -> usize {
 		self
 			.settings_window
@@ -371,7 +372,7 @@ impl App {
 	pub(super) fn settings_press(&mut self, point: (usize, usize)) {
 		let scale = self.settings_scale();
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let target = window_target(point, size, scale, self.settings_editor.page);
+		let target = (self.settings_shape()).target(point, size, scale, self.settings_editor.page);
 		if matches!(target, Some(SettingsTarget::Open(_))) {
 			self.settings_focus = None;
 		}
@@ -396,6 +397,7 @@ impl App {
 				editor.status = format!("Press a key chord for {}. Esc cancels.", action.label());
 			}
 			Some(SettingsTarget::Save) => return self.save_settings_config(),
+			Some(SettingsTarget::Done) => return self.close_settings_window(),
 			Some(SettingsTarget::ChooseWallpaper) => self.choose_wallpaper(),
 			Some(SettingsTarget::ClearWallpaper) => {
 				editor.wallpaper_path = None;

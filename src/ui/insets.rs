@@ -37,25 +37,19 @@ pub(crate) fn bottom_inset(safe_bottom: usize, keyboard: f64, factor: f64) -> us
 	safe_bottom.max(keyboard)
 }
 
-/// Where a sheet such as Settings goes on a phone, in points: the whole
-/// width of a window `size` pixels at `factor`, from below the top inset
-/// (`safe`, pixels, top and bottom) down to at most `height` points, so
-/// what is under it shows and a tap there can close it.
-pub(crate) fn sheet_frame(
-	size: (u32, u32),
-	safe: (usize, usize),
+/// What the system keeps of a window `heights` (outer, safe area) pixels
+/// tall whose safe area starts `top` down, with a keyboard covering
+/// `keyboard` points at `factor`: the top and bottom insets, the bottom
+/// being the keyboard's while it reaches higher, and the home indicator's
+/// own bottom inset.
+pub(crate) fn system_insets(
+	(outer, inner): (u32, u32),
+	top: usize,
+	keyboard: f64,
 	factor: f64,
-	height: f64,
-) -> ((f64, f64), (f64, f64)) {
-	let factor = if factor.is_finite() && factor > 0.0 {
-		factor
-	} else {
-		1.0
-	};
-	let (width, tall) = (f64::from(size.0) / factor, f64::from(size.1) / factor);
-	let (top, bottom) = (safe.0 as f64 / factor, safe.1 as f64 / factor);
-	let room = (tall - top - bottom).max(0.0);
-	((0.0, top.min(tall)), (width, height.clamp(0.0, room)))
+) -> ((usize, usize), usize) {
+	let (top, home) = safe_insets(outer as usize, top, inner as usize);
+	((top, bottom_inset(home, keyboard, factor)), home)
 }
 
 #[cfg(test)]

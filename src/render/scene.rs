@@ -188,20 +188,20 @@ impl Scene {
 		});
 	}
 
-	/// This scene moved `dx` pixels right, on a target `dx` wider, to paste
-	/// its operations into a wider scene. A fill becomes a rectangle over
-	/// the area it covered.
-	pub(crate) fn shifted(self, dx: usize) -> Scene {
+	/// This scene moved `dx` pixels right and `dy` down, on a target that
+	/// much wider and taller, to paste its operations into a larger scene.
+	/// A fill becomes a rectangle over the area it covered.
+	pub(crate) fn moved(self, (dx, dy): (usize, usize)) -> Scene {
 		let (width, height) = (self.width, self.height);
-		let right = |(x, y, w, h): Rect| (x + dx, y, w, h);
+		let at = |(x, y, w, h): Rect| (x + dx, y + dy, w, h);
 		let commands = self.commands.into_iter().map(|command| match command {
-			Command::Fill(color) => Command::Rect((dx, 0, width, height), color),
-			Command::Rect(rect, color) => Command::Rect(right(rect), color),
-			Command::RoundRect(rect, radius, color) => Command::RoundRect(right(rect), radius, color),
-			Command::Button(rect, style, lit) => Command::Button(right(rect), style, lit),
-			Command::Focusable(rect) => Command::Focusable(right(rect)),
+			Command::Fill(color) => Command::Rect((dx, dy, width, height), color),
+			Command::Rect(rect, color) => Command::Rect(at(rect), color),
+			Command::RoundRect(rect, radius, color) => Command::RoundRect(at(rect), radius, color),
+			Command::Button(rect, style, lit) => Command::Button(at(rect), style, lit),
+			Command::Focusable(rect) => Command::Focusable(at(rect)),
 			Command::Text {
-				at,
+				at: (x, y),
 				text,
 				px,
 				ascent,
@@ -209,21 +209,21 @@ impl Scene {
 				clip,
 				mono,
 			} => Command::Text {
-				at: (at.0 + dx, at.1),
+				at: (x + dx, y + dy),
 				text,
 				px,
 				ascent,
 				color,
-				clip: right(clip),
+				clip: at(clip),
 				mono,
 			},
 			Command::Icon {
-				at,
+				at: (x, y),
 				icon,
 				scale,
 				color,
 			} => Command::Icon {
-				at: (at.0 + dx, at.1),
+				at: (x + dx, y + dy),
 				icon,
 				scale,
 				color,
@@ -231,7 +231,7 @@ impl Scene {
 		});
 		Scene {
 			width: width + dx,
-			height,
+			height: height + dy,
 			commands: commands.collect(),
 		}
 	}

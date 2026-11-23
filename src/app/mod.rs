@@ -49,6 +49,8 @@ mod settings_fonts;
 mod settings_header_tests;
 mod settings_hit;
 mod settings_keys;
+#[cfg(test)]
+mod settings_narrow_tests;
 pub(super) mod settings_nav;
 #[cfg(test)]
 mod settings_nav_tests;
@@ -58,7 +60,12 @@ mod settings_pen;
 #[cfg(test)]
 mod settings_pen_tests;
 #[cfg(test)]
+mod settings_phone_tests;
+#[cfg(test)]
 mod settings_rows_tests;
+mod settings_shape;
+#[cfg(test)]
+mod settings_shape_tests;
 mod settings_view;
 mod tabs;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -130,6 +137,9 @@ pub(crate) struct App {
 	titlebar_height: usize,
 	/// Top and bottom pixels the system keeps (iOS); see `Chrome::safe`.
 	safe: (usize, usize),
+	/// The home indicator's pixels at the bottom (iOS), which `safe` leaves
+	/// out while the keyboard reaches higher.
+	home: usize,
 	tab_height: usize,
 	status_height: usize,
 	border: usize,
@@ -373,13 +383,10 @@ impl App {
 		#[cfg(target_os = "ios")]
 		if let Some(window) = &self.window {
 			let top = window.inner_position().map_or(0, |at| at.y.max(0) as usize);
-			let (outer, inner) = (window.outer_size().height, window.inner_size().height);
-			let (top, bottom) = crate::ui::insets::safe_insets(outer as usize, top, inner as usize);
+			let heights = (window.outer_size().height, window.inner_size().height);
 			let keyboard = crate::ios_keyboard::covered();
-			let safe = (
-				top,
-				crate::ui::insets::bottom_inset(bottom, keyboard, self.factor()),
-			);
+			let (safe, home) = crate::ui::insets::system_insets(heights, top, keyboard, self.factor());
+			self.home = home;
 			if safe != self.safe {
 				self.safe = safe;
 				self.apply_scale();
@@ -457,6 +464,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		padding_top: 0,
 		titlebar_height: 0,
 		safe: (0, 0),
+		home: 0,
 		tab_height: 46,
 		status_height: 26,
 		border: 1,

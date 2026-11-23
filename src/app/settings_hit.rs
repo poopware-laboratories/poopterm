@@ -4,7 +4,10 @@ use super::{
 	settings_pen::{segment_at, switch_hit},
 	settings_view::*,
 };
-use crate::{input::shortcuts::ShortcutAction, ui::diagnostics_page::Section};
+use crate::{
+	input::shortcuts::ShortcutAction,
+	ui::{diagnostics_page::Section, settings_layout::controls},
+};
 
 /// The page the Settings window shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -49,6 +52,8 @@ pub(super) enum SettingsTarget {
 	/// A Diagnostics section's switch button.
 	Section(Section),
 	CopyReport,
+	/// Closes Settings, from the phone's Done button.
+	Done,
 }
 
 /// How many font list rows fit above the footer of a window `height`
@@ -77,6 +82,8 @@ pub(super) fn settings_target(
 	let s = scale;
 	let in_row = |row: usize| (row * s..(row + ROW_HEIGHT) * s).contains(&y);
 	let right = |offset: usize| width.saturating_sub(offset * s);
+	// Where the minus buttons and the shortcut buttons start.
+	let start = controls(width / s.max(1));
 	let (save_x, save_y) = (right(140), height.saturating_sub(52 * s));
 	let on_save = (save_x..save_x + 120 * s).contains(&x) && (save_y..save_y + 36 * s).contains(&y);
 	if page == SettingsPage::Diagnostics {
@@ -106,7 +113,7 @@ pub(super) fn settings_target(
 			_ => return None,
 		};
 		if page == SettingsPage::Layout && in_row(PADDING_ROW) {
-			if (right(240)..right(192)).contains(&x) {
+			if (right(start)..right(start - 48)).contains(&x) {
 				return Some(SettingsTarget::Step(PADDING_ROW, -1));
 			}
 			if (right(72)..right(24)).contains(&x) {
@@ -122,7 +129,7 @@ pub(super) fn settings_target(
 			let (sx, sy, sw, sh) = switch_hit(width, row, s);
 			(sx..sx + sw).contains(&x) && (sy..sy + sh).contains(&y)
 		};
-		let wide = |row: usize| in_row(row) && (right(240)..right(24)).contains(&x);
+		let wide = |row: usize| in_row(row) && (right(start)..right(24)).contains(&x);
 		// The Layout page's rows are switches; the Shortcuts page's are wide buttons.
 		let hit = rows.iter().find(|&&(row, _)| {
 			if page == SettingsPage::Layout {
@@ -151,7 +158,7 @@ pub(super) fn settings_target(
 	if in_row(RESTORE_ROW) && (rx..rx + rw).contains(&x) {
 		return Some(SettingsTarget::ToggleRestore);
 	}
-	let step = if (right(240)..right(192)).contains(&x) {
+	let step = if (right(start)..right(start - 48)).contains(&x) {
 		-1
 	} else if (right(72)..right(24)).contains(&x) {
 		1

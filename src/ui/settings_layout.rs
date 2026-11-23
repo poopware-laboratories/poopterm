@@ -63,3 +63,14 @@ pub(crate) const fn main_rows() -> MainRows {
 		restore,
 	}
 }
+
+/// Pages narrower than this, in logical pixels (a phone's), keep the
+/// controls at the right of their rows closer to the edge.
+pub(crate) const NARROW: usize = 560;
+
+/// How far from the right edge of a page `width` logical pixels wide the
+/// controls at the right of a row (steppers, shortcut buttons) start, in
+/// logical pixels: closer on a narrow page, so its labels keep their room.
+pub(crate) const fn controls(width: usize) -> usize {
+	if width >= NARROW { 240 } else { 176 }
+}

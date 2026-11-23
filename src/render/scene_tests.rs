@@ -415,13 +415,13 @@ fn every_kind() -> Scene {
 
 #[test]
 fn a_shifted_scene_is_wider_by_the_shift_and_as_tall() {
-	let shifted = every_kind().shifted(30);
+	let shifted = every_kind().moved((30, 0));
 	assert_eq!((shifted.width, shifted.height), (130, 50));
 }
 
 #[test]
 fn a_shifted_scene_moves_every_operation_right_and_keeps_its_row() {
-	let shifted = every_kind().shifted(30);
+	let shifted = every_kind().moved((30, 0));
 	let kinds: Vec<_> = shifted.commands.iter().collect();
 	assert_eq!(kinds[0], &Command::Rect((30, 0, 100, 50), 0x111111));
 	assert_eq!(kinds[1], &Command::Rect((31, 2, 3, 4), 0x222222));
@@ -448,7 +448,7 @@ fn every_kind_clip() -> (usize, usize, usize, usize) {
 #[test]
 fn shifting_by_nothing_keeps_every_operation_but_a_fill_becomes_a_rect() {
 	let plain = every_kind();
-	let shifted = every_kind().shifted(0);
+	let shifted = every_kind().moved((0, 0));
 	assert_eq!(
 		shifted.commands[0],
 		Command::Rect((0, 0, 100, 50), 0x111111)
@@ -458,7 +458,7 @@ fn shifting_by_nothing_keeps_every_operation_but_a_fill_becomes_a_rect() {
 
 #[test]
 fn a_shifted_scene_keeps_the_order_and_count_of_its_operations() {
-	let (plain, shifted) = (every_kind(), every_kind().shifted(7));
+	let (plain, shifted) = (every_kind(), every_kind().moved((7, 0)));
 	assert_eq!(plain.commands.len(), shifted.commands.len());
 	for (a, b) in plain.commands.iter().zip(&shifted.commands) {
 		assert_eq!(
@@ -470,7 +470,7 @@ fn a_shifted_scene_keeps_the_order_and_count_of_its_operations() {
 
 #[test]
 fn an_empty_scene_shifts_to_an_empty_wider_scene() {
-	let shifted = Scene::new(10, 5).shifted(4);
+	let shifted = Scene::new(10, 5).moved((4, 0));
 	assert!(shifted.commands.is_empty());
 	assert_eq!((shifted.width, shifted.height), (14, 5));
 }
@@ -479,7 +479,7 @@ fn an_empty_scene_shifts_to_an_empty_wider_scene() {
 fn a_shifted_scene_pastes_into_a_wider_one_where_drawing_directly_would_paint() {
 	let mut wide = Scene::new(130, 50);
 	wide.fill(0x000000);
-	wide.commands.extend(every_kind().shifted(30).commands);
+	wide.commands.extend(every_kind().moved((30, 0)).commands);
 	let mut direct = Scene::new(130, 50);
 	direct.fill(0x000000);
 	direct.rect(30, 0, 100, 50, 0x111111);
@@ -508,7 +508,7 @@ fn a_shifted_scene_paints_the_same_pixels_further_right() {
 		let mut wide = Scene::new(100 + dx, 50);
 		wide
 			.commands
-			.extend(every_kind_without_fill().shifted(dx).commands);
+			.extend(every_kind_without_fill().moved((dx, 0)).commands);
 		let wide = pixels_of(&wide, 100 + dx);
 		for y in 0..50 {
 			for x in 0..100 {
@@ -538,8 +538,8 @@ fn every_kind_without_fill() -> Scene {
 #[test]
 fn shifting_twice_is_shifting_once_by_the_sum() {
 	for (a, b) in [(3, 4), (0, 9), (10, 0), (25, 25)] {
-		let twice = every_kind_without_fill().shifted(a).shifted(b);
-		let once = every_kind_without_fill().shifted(a + b);
+		let twice = every_kind_without_fill().moved((a, 0)).moved((b, 0));
+		let once = every_kind_without_fill().moved((a + b, 0));
 		assert_eq!(twice.commands, once.commands, "{a} then {b}");
 		assert_eq!((twice.width, twice.height), (once.width, once.height));
 	}
@@ -548,7 +548,7 @@ fn shifting_twice_is_shifting_once_by_the_sum() {
 #[test]
 fn shifting_keeps_every_size_style_and_color_it_does_not_move() {
 	let plain = every_kind_without_fill();
-	let shifted = every_kind_without_fill().shifted(12);
+	let shifted = every_kind_without_fill().moved((12, 0));
 	for (a, b) in plain.commands.iter().zip(&shifted.commands) {
 		match (a, b) {
 			(Command::Rect(r, c), Command::Rect(s, d)) => assert_eq!((r.2, r.3, c), (s.2, s.3, d)),
@@ -633,7 +633,7 @@ fn shifting_moves_the_focusable_rectangles_with_the_rest() {
 	let mut scene = Scene::new(100, 50);
 	scene.focusable((5, 6, 7, 8));
 	scene.button((1, 2, 3, 4), STYLE, false);
-	let shifted = scene.shifted(30);
+	let shifted = scene.moved((30, 0));
 	assert_eq!(shifted.focus_rects(), [(35, 6, 7, 8), (31, 2, 3, 4)]);
 }
 
@@ -641,8 +641,53 @@ fn shifting_moves_the_focusable_rectangles_with_the_rest() {
 fn shifting_keeps_each_focusables_size_and_row() {
 	let mut scene = Scene::new(100, 50);
 	scene.focusable((5, 6, 7, 8));
-	let Command::Focusable((x, y, w, h)) = scene.shifted(12).commands[0].clone() else {
+	let Command::Focusable((x, y, w, h)) = scene.moved((12, 0)).commands[0].clone() else {
 		panic!("a focusable");
 	};
 	assert_eq!((x - 12, y, w, h), (5, 6, 7, 8));
+}
+
+#[test]
+fn a_moved_scene_goes_right_and_down_and_grows_by_both() {
+	let moved = every_kind().moved((30, 20));
+	assert_eq!((moved.width, moved.height), (130, 70));
+	let kinds: Vec<_> = moved.commands.iter().collect();
+	assert_eq!(kinds[0], &Command::Rect((30, 20, 100, 50), 0x111111));
+	assert_eq!(kinds[1], &Command::Rect((31, 22, 3, 4), 0x222222));
+	assert_eq!(kinds[2], &Command::RoundRect((35, 26, 7, 8), 2, 0x333333));
+	assert_eq!(kinds[3], &Command::Button((39, 30, 11, 12), STYLE, true));
+	let Command::Text { at, clip, .. } = kinds[4] else {
+		panic!("{:?}", kinds[4]);
+	};
+	let original = every_kind_clip();
+	assert_eq!(*at, (43, 34));
+	assert_eq!(
+		*clip,
+		(original.0 + 30, original.1 + 20, original.2, original.3)
+	);
+	let Command::Icon { at, .. } = kinds[5] else {
+		panic!("{:?}", kinds[5]);
+	};
+	assert_eq!(*at, (45, 36));
+}
+
+#[test]
+fn a_scene_moved_down_paints_the_same_pixels_lower_and_leaves_the_top_alone() {
+	let tall = |scene: &Scene, height: usize| {
+		let mut pixels = vec![0u32; 100 * height];
+		scene.replay(&mut Painter::new(&mut pixels, 100, height), &mut fonts());
+		pixels
+	};
+	let plain = tall(&every_kind_without_fill(), 50);
+	let mut lower = Scene::new(100, 61);
+	lower
+		.commands
+		.extend(every_kind_without_fill().moved((0, 11)).commands);
+	let lower = tall(&lower, 61);
+	for y in 0..50 {
+		for x in 0..100 {
+			assert_eq!(lower[(y + 11) * 100 + x], plain[y * 100 + x], "({x}, {y})");
+		}
+	}
+	assert!(lower[..11 * 100].iter().all(|&pixel| pixel == 0));
 }
