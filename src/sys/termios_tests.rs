@@ -258,3 +258,16 @@ fn without_line_editing_a_read_returns_each_key_at_once() {
 	assert_eq!(program.read(&mut key).unwrap(), 1);
 	assert_eq!(key[0], b'x');
 }
+
+#[test]
+fn fresh_settings_are_a_login_terminals() {
+	let fresh = fresh();
+	let mode = crate::inproc::tty::Mode::of(&fresh);
+	assert_eq!(
+		mode,
+		crate::inproc::tty::Mode::default(),
+		"what the device starts with"
+	);
+	assert_eq!(fresh.c_cc[libc::VMIN], 1, "reads wait for a byte");
+	assert_eq!(fresh.c_cflag & libc::CSIZE, libc::CS8);
+}

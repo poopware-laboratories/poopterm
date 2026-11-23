@@ -23,12 +23,14 @@ void vwarn(const char *, va_list);
 void vwarnx(const char *, va_list);
 #endif
 #include <setjmp.h>
+#include <signal.h>
 #include <spawn.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
 /* What the shell passes a command: its standard descriptors and terminal. */
@@ -44,13 +46,30 @@ struct poopterm_tty {
 	 * minus an errno: ENOENT when there is none, ENOEXEC when it is no
 	 * command. The shell provides it. */
 	int (*spawn)(const char *file, char *const *argv, const struct poopterm_tty *tty);
+	/* The terminal, when there is one: `control` does a POOPTERM_TTY_*
+	 * operation on it (`context` passed back) and returns 0 or minus an
+	 * errno. The device keeps the settings programs set, as a kernel would. */
+	void *context;
+	int (*control)(void *context, int op, void *arg);
+	/* Bit n set: descriptor n (0 to 2) is the terminal. */
+	unsigned tty_fds;
 };
+
+#define POOPTERM_TTY_GET_SETTINGS 1 /* struct termios * */
+#define POOPTERM_TTY_SET_SETTINGS 2
+#define POOPTERM_TTY_SET_SETTINGS_DRAIN 3
+#define POOPTERM_TTY_SET_SETTINGS_FLUSH 4
+#define POOPTERM_TTY_GET_SIZE 5 /* struct winsize * */
 
 int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty);
 void poopterm_exit(int status) __attribute__((noreturn));
 int poopterm_isatty(int fd);
 int poopterm_ioctl(int fd, unsigned long request, ...);
 int poopterm_fclose(FILE *stream);
+int poopterm_tcgetattr(int fd, struct termios *settings);
+int poopterm_tcsetattr(int fd, int when, const struct termios *settings);
+void (*poopterm_signal(int sig, void (*handler)(int)))(int);
+int poopterm_sigaction(int sig, const struct sigaction *action, struct sigaction *old);
 void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn));
 
 #define exit(status) poopterm_exit(status)
@@ -71,6 +90,14 @@ void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn)
 /* Closing a standard stream (cat and others do at the end) only flushes
  * it: the streams are the app's, and the next command needs them. */
 #define fclose(stream) poopterm_fclose(stream)
+/* The terminal's settings are the device's, not a kernel's. */
+#define tcgetattr(fd, settings) poopterm_tcgetattr(fd, settings)
+#define tcsetattr(fd, when, settings) poopterm_tcsetattr(fd, when, settings)
+/* A signal whose default would end or stop the process ends the command
+ * instead (`^C` is SIGINT on its thread); handlers a command installs are
+ * taken back when it ends, since its library may then be unloaded. */
+#define signal(sig, handler) poopterm_signal(sig, handler)
+#define sigaction(sig, action, old) poopterm_sigaction(sig, action, old)
 /*
  * No other process may start, so a command that starts one runs it in
  * this one instead, through the shell's `spawn`, before carrying on:

@@ -7,9 +7,10 @@ use std::{
 	collections::BTreeMap,
 	fs,
 	path::{Path, PathBuf},
+	sync::Arc,
 };
 
-use super::{native, pipeline};
+use super::{native, pipeline, terminal::Terminal};
 
 /// The built-in commands, for `help`: what changes the shell itself, and
 /// the few a shell answers on its own, as `sh` does.
@@ -45,6 +46,10 @@ pub(crate) struct Shell {
 	pub status: i32,
 	/// The terminal's columns and rows, as programs are told.
 	pub size: (u16, u16),
+	/// The device's terminal: programs print to it as they run and read
+	/// keys from it. Without one (tests), what they print is collected and
+	/// their input is empty.
+	pub terminal: Option<Arc<Terminal>>,
 }
 
 /// What running a line did.
@@ -99,6 +104,7 @@ impl Shell {
 			env,
 			status: 0,
 			size: (80, 24),
+			terminal: None,
 		}
 	}
 
@@ -127,7 +133,13 @@ impl Shell {
 		for (command, op) in commands {
 			if !skip {
 				self.status = self.segment(&command, &mut ran);
+				self.flush(&mut ran);
 				if ran.exit {
+					return ran;
+				}
+				if self.interrupted() {
+					// ^C stops the rest of the line, as a shell's does.
+					self.status = 130;
 					return ran;
 				}
 			}
@@ -138,6 +150,23 @@ impl Shell {
 			};
 		}
 		ran
+	}
+
+	/// Shows what was collected so far on the terminal, if there is one,
+	/// so it comes before what the next program prints there.
+	fn flush(&self, ran: &mut Ran) {
+		if let Some(terminal) = &self.terminal {
+			let _ = terminal.write(&std::mem::take(&mut ran.output));
+			let _ = terminal.write(&std::mem::take(&mut ran.errors));
+		}
+	}
+
+	/// Whether ^C interrupted the program that ran last.
+	fn interrupted(&self) -> bool {
+		self
+			.terminal
+			.as_ref()
+			.is_some_and(|terminal| terminal.take_interrupted())
 	}
 
 	/// Expands and runs one command or pipeline, now that those before it
@@ -202,6 +231,9 @@ impl Shell {
 				continue;
 			}
 			let to_terminal = index == last && file.is_none();
+			if to_terminal {
+				self.flush(ran);
+			}
 			let mut captured = Ran::default();
 			status = self.command(&stage.argv, input.as_deref(), &mut captured, to_terminal);
 			ran.exit |= captured.exit;
@@ -222,6 +254,14 @@ impl Shell {
 				}
 			}
 			if ran.exit {
+				break;
+			}
+			if self
+				.terminal
+				.as_ref()
+				.is_some_and(|terminal| terminal.interrupted())
+			{
+				status = 130;
 				break;
 			}
 		}
@@ -328,6 +368,7 @@ impl Shell {
 			input,
 			tty: tty.then_some(self.size),
 			merge: tty,
+			terminal: self.terminal.as_ref(),
 		};
 		match native::run(&library, &run) {
 			Ok(done) => {

@@ -61,6 +61,8 @@ fn nothing_to_run_is_enoent_and_a_non_command_is_enoexec() {
 		output: writer.as_fd(),
 		error: writer.as_fd(),
 		tty: None,
+		device: None,
+		keyboard: false,
 	};
 	let env = vars(&[&format!("PATH={}", dir.display())]);
 	assert_eq!(
@@ -89,7 +91,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("23 passed"), "{shown}");
+	assert!(shown.contains("29 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -190,6 +192,48 @@ int main(int argc, char **argv) {
 		while ((c = getchar()) != EOF) putchar(c);
 		return 0;
 	}
+	if (!strcmp(mode, "isatty")) { printf("%d%d%d", isatty(0), isatty(1), isatty(2)); return 0; }
+	if (!strcmp(mode, "raw")) {
+		/* As an editor starts: reads the settings, goes raw, reads a key. */
+		struct termios settings;
+		if (tcgetattr(0, &settings) != 0) { printf("[%s]", strerror(errno)); return 0; }
+		printf("[%d]", !!(settings.c_lflag & ICANON));
+		cfmakeraw(&settings);
+		settings.c_cc[VMIN] = 1;
+		printf("[%d]", tcsetattr(0, TCSAFLUSH, &settings));
+		tcgetattr(0, &settings);
+		printf("[%d]", !!(settings.c_lflag & ICANON));
+		struct winsize size = {0};
+		ioctl(0, TIOCGWINSZ, &size);
+		char key = 0;
+		printf("[%dx%d][%ld:%d]", size.ws_col, size.ws_row, (long)read(0, &key, 1), key);
+		return 0;
+	}
+	if (!strcmp(mode, "interrupt")) {
+		printf("before\n");
+		fflush(stdout);
+		raise(SIGINT);
+		printf("after\n");
+		return 0;
+	}
+	if (!strcmp(mode, "ignore")) {
+		printf("[%d]", signal(SIGINT, SIG_IGN) == SIG_DFL);
+		raise(SIGINT);
+		printf("survived");
+		return 0;
+	}
+	if (!strcmp(mode, "default")) {
+		signal(SIGINT, SIG_IGN);
+		printf("[%d]", signal(SIGINT, SIG_DFL) == SIG_IGN);
+		struct sigaction old;
+		sigaction(SIGINT, NULL, &old);
+		printf("[%d]", old.sa_handler == SIG_DFL);
+		fflush(stdout);
+		raise(SIGTSTP);
+		raise(SIGPIPE);
+		printf("not here");
+		return 0;
+	}
 	if (!strcmp(mode, "orphan")) {
 		int status;
 		pid_t got = waitpid(-1, &status, 0);
@@ -273,6 +317,8 @@ fn run_with(
 		output: out_writer.as_fd(),
 		error: err_writer.as_fd(),
 		tty,
+		device: None,
+		keyboard: false,
 	};
 	let status = call(&library, &strings(&argv), &strings(env), &stdio).unwrap();
 	drop((out_writer, err_writer));
@@ -406,8 +452,134 @@ fn a_library_without_an_entry_is_refused() {
 		output: writer.as_fd(),
 		error: writer.as_fd(),
 		tty: None,
+		device: None,
+		keyboard: false,
 	};
 	assert_eq!(call(&libc, &strings(&["x"]), &[], &stdio), None);
+}
+
+/// A terminal for tests: keeps the settings it is given.
+struct Keeper(Mutex<libc::termios>);
+
+impl Device for Keeper {
+	fn settings(&self) -> libc::termios {
+		*self.0.lock().unwrap()
+	}
+	fn set_settings(&self, settings: &libc::termios, _flush: bool) {
+		*self.0.lock().unwrap() = *settings;
+	}
+	fn size(&self) -> (u16, u16) {
+		(100, 30)
+	}
+}
+
+/// Runs the program on a terminal that `device` is, reading `keys` from
+/// the keyboard: its status and what it printed.
+fn run_on(args: &[&str], device: &dyn Device, keys: &[u8]) -> (i32, String) {
+	let _guard = ONE_AT_A_TIME
+		.lock()
+		.unwrap_or_else(|poison| poison.into_inner());
+	let library = open();
+	let (input, mut feed) = io::pipe().unwrap();
+	io::Write::write_all(&mut feed, keys).unwrap();
+	drop(feed);
+	let (mut out_reader, out_writer) = io::pipe().unwrap();
+	let mut argv = vec!["program"];
+	argv.extend(args);
+	let stdio = Stdio {
+		input: input.as_fd(),
+		output: out_writer.as_fd(),
+		error: out_writer.as_fd(),
+		tty: Some((80, 24)),
+		device: Some(device),
+		keyboard: true,
+	};
+	let status = call(&library, &strings(&argv), &[], &stdio).unwrap();
+	drop(out_writer);
+	let mut out = String::new();
+	out_reader.read_to_string(&mut out).unwrap();
+	(status, out)
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn each_standard_descriptor_says_whether_it_is_the_terminal() {
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()));
+	assert_eq!(run_on(&["isatty"], &keeper, b"").1, "111");
+	assert_eq!(
+		run_with(&["isatty"], &[], b"", Some((80, 24))).1,
+		"011",
+		"input from a pipe"
+	);
+	assert_eq!(run_with(&["isatty"], &[], b"", None).1, "000");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn a_program_reads_and_sets_the_devices_settings_and_live_size() {
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()));
+	let (status, out) = run_on(&["raw"], &keeper, b"q");
+	assert_eq!((status, out.as_str()), (0, "[1][0][0][100x30][1:113]"));
+	let left = keeper.settings();
+	assert_eq!(
+		left.c_lflag & (libc::ICANON | libc::ECHO),
+		0,
+		"the device kept raw mode"
+	);
+	assert_eq!(left.c_cc[libc::VMIN], 1);
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn without_a_device_the_settings_are_no_terminals() {
+	assert_eq!(
+		run_with(&["raw"], &[], b"", None).1,
+		"[Inappropriate ioctl for device]"
+	);
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn sigint_ends_the_command_with_its_status_not_the_app() {
+	crate::sys::signal::quiet_job_signals();
+	assert_eq!(run(&["interrupt"]), (130, "before\n".into(), String::new()));
+	assert_eq!(run(&["return"]).0, 7, "the app and the library live on");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn an_ignored_sigint_is_ignored_and_the_apps_handler_comes_back() {
+	crate::sys::signal::quiet_job_signals();
+	let before = handler(libc::SIGINT);
+	assert_eq!(
+		run(&["ignore"]).1,
+		"[1]survived",
+		"it reads the default it was given"
+	);
+	assert_eq!(handler(libc::SIGINT), before, "not left ignored");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn defaults_asked_for_end_or_stop_only_the_command() {
+	crate::sys::signal::quiet_job_signals();
+	// SIGTSTP would stop the app and SIGPIPE end it; the first does
+	// nothing, the second ends the command as a broken pipe ends a program.
+	assert_eq!(
+		run(&["default"]),
+		(128 + libc::SIGPIPE, "[1][1]".into(), String::new())
+	);
+	assert!(crate::sys::signal::caught(libc::SIGTSTP));
+}
+
+/// The handler installed for `signal`.
+fn handler(signal: libc::c_int) -> libc::sighandler_t {
+	let mut current = std::mem::MaybeUninit::<libc::sigaction>::uninit();
+	// SAFETY: with a null new action, only the current one is written.
+	let got = unsafe { libc::sigaction(signal, std::ptr::null(), current.as_mut_ptr()) };
+	assert_eq!(got, 0);
+	// SAFETY: filled by the successful call above.
+	unsafe { current.assume_init() }.sa_sigaction
 }
 
 /// The test program's directory as a `$PATH`.

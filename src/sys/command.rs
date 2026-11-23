@@ -7,7 +7,7 @@
 //! another (xargs, find -exec) does so through `spawn`, which runs it the
 //! same way on the descriptors it is given.
 use std::{
-	ffi::{CStr, CString, c_char, c_int, c_void},
+	ffi::{CStr, CString, c_char, c_int, c_uint, c_void},
 	os::fd::{AsRawFd, BorrowedFd},
 };
 
@@ -24,14 +24,43 @@ struct Tty {
 	rows: u16,
 	envp: *const *mut c_char,
 	spawn: Option<Spawn>,
+	/// The terminal `control` asks: a `*const &dyn Device`, or null.
+	context: *const c_void,
+	control: Option<Control>,
+	/// Bit `n` set: descriptor `n` (0 to 2) is the terminal.
+	tty_fds: c_uint,
 }
 
 /// The `spawn` member's type.
 type Spawn = extern "C" fn(*const c_char, *const *mut c_char, *const Tty) -> c_int;
 
-/// Darwin's errno values `spawn` answers with.
+/// The `control` member's type: an operation of `poopterm_cmd.h`'s
+/// `POOPTERM_TTY_*` on the terminal `context` is, with its argument.
+type Control = extern "C" fn(*const c_void, c_int, *mut c_void) -> c_int;
+
+/// `POOPTERM_TTY_*`: read the settings into a `termios`, set them from
+/// one (now, after output drains, or after dropping typed input), and
+/// read the window size into a `winsize`.
+pub(crate) const GET_SETTINGS: c_int = 1;
+pub(crate) const SET_SETTINGS: c_int = 2;
+pub(crate) const SET_SETTINGS_DRAIN: c_int = 3;
+pub(crate) const SET_SETTINGS_FLUSH: c_int = 4;
+pub(crate) const GET_SIZE: c_int = 5;
+
+/// A terminal a command's descriptors may be (the in-process device's):
+/// its `termios` settings, which programs read and set, and its size.
+pub(crate) trait Device: Sync {
+	fn settings(&self) -> libc::termios;
+	/// Sets them; `flush` drops what was typed and not read yet.
+	fn set_settings(&self, settings: &libc::termios, flush: bool);
+	fn size(&self) -> (u16, u16);
+}
+
+/// Darwin's errno values `spawn` and `control` answer with.
 const ENOENT: c_int = 2;
 const ENOEXEC: c_int = 8;
+const EINVAL: c_int = 22;
+const ENOTTY: c_int = 25;
 
 /// `poopterm_entry`'s type.
 type Entry = unsafe extern "C" fn(c_int, *const *mut c_char, *const Tty) -> c_int;
@@ -45,6 +74,18 @@ pub(crate) struct Stdio<'a> {
 	/// Answer `isatty` and the window size as a terminal of this many
 	/// columns and rows, or say these are no terminal.
 	pub tty: Option<(u16, u16)>,
+	/// The terminal that answers for the settings and live size.
+	pub device: Option<&'a dyn Device>,
+	/// Standard input is the terminal's keyboard.
+	pub keyboard: bool,
+}
+
+impl Stdio<'_> {
+	/// Which standard descriptors are the terminal, as `Tty::tty_fds`.
+	fn tty_fds(&self) -> c_uint {
+		let output = if self.tty.is_some() { 0b110 } else { 0 };
+		output | c_uint::from(self.keyboard)
+	}
 }
 
 /// Runs the command in `library` with `argv` and `env` (`NAME=value`) and
@@ -75,6 +116,8 @@ pub(crate) fn call(
 	};
 	let (argv_pointers, env_pointers) = (pointers(&mut args), pointers(&mut vars));
 	let (cols, rows) = stdio.tty.unwrap_or((0, 0));
+	// `control` gets a thin pointer to the fat one, alive through the call.
+	let device = stdio.device;
 	let tty = Tty {
 		input: stdio.input.as_raw_fd(),
 		output: stdio.output.as_raw_fd(),
@@ -84,8 +127,19 @@ pub(crate) fn call(
 		rows,
 		envp: env_pointers.as_ptr(),
 		spawn: Some(spawn),
+		context: device
+			.as_ref()
+			.map_or(std::ptr::null(), |device| std::ptr::from_ref(device).cast()),
+		control: device.is_some().then_some(control as Control),
+		tty_fds: stdio.tty_fds(),
 	};
 	let argc = c_int::try_from(args.len()).ok()?;
+	// What `spawn` hands a command this one starts: read from here, since a
+	// library built before these fields passes back a shorter `Tty`.
+	let outer = OUTER.replace(Outer {
+		context: tty.context,
+		keyboard: stdio.keyboard,
+	});
 	// SAFETY: every command library exports `poopterm_entry` with this type
 	// (`poopterm_cmd.h`), and a function pointer has a data pointer's size.
 	let entry = unsafe { std::mem::transmute::<*mut c_void, Entry>(symbol.as_ptr()) };
@@ -93,7 +147,26 @@ pub(crate) fn call(
 	// strings we own, writable as `main` may need, and with `tty` they live
 	// through the call; the descriptors are borrowed and open throughout, and
 	// the entry puts back the standard ones before it returns.
-	Some(unsafe { entry(argc, argv_pointers.as_ptr(), &tty) })
+	let status = unsafe { entry(argc, argv_pointers.as_ptr(), &tty) };
+	OUTER.set(outer);
+	Some(status)
+}
+
+/// The terminal of the command running on this thread, for those it starts.
+#[derive(Clone, Copy)]
+struct Outer {
+	/// `Tty::context`: a `*const &dyn Device`, or null.
+	context: *const c_void,
+	keyboard: bool,
+}
+
+thread_local! {
+	static OUTER: std::cell::Cell<Outer> = const {
+		std::cell::Cell::new(Outer {
+			context: std::ptr::null(),
+			keyboard: false,
+		})
+	};
 }
 
 /// The `$PATH` of an environment of `NAME=value` strings.
@@ -169,13 +242,61 @@ extern "C" fn spawn(file: *const c_char, argv: *const *mut c_char, tty: *const T
 	let output = unsafe { BorrowedFd::borrow_raw(tty.output) };
 	// SAFETY: as above.
 	let error = unsafe { BorrowedFd::borrow_raw(tty.error) };
+	let outer = OUTER.get();
+	let device = match outer.context.is_null() {
+		true => None,
+		// SAFETY: a non-null context is the `&dyn Device` that `call` points
+		// at, on the stack of the outer call, which is still running.
+		false => Some(unsafe { *outer.context.cast::<&dyn Device>() }),
+	};
 	let stdio = Stdio {
 		input,
 		output,
 		error,
 		tty: (tty.is_tty != 0).then_some((tty.cols, tty.rows)),
+		device,
+		// The child reads the keyboard if it kept its parent's input.
+		keyboard: outer.keyboard && tty.input == 0,
 	};
 	run_nested(file, &argv, &env, &stdio)
+}
+
+/// The shim's `control`: a command reads or sets the terminal's settings,
+/// or reads its size. 0, or minus an errno.
+extern "C" fn control(context: *const c_void, op: c_int, arg: *mut c_void) -> c_int {
+	if context.is_null() || arg.is_null() {
+		return -EINVAL;
+	}
+	// SAFETY: the shim passes back the context `call` gave it, a pointer to
+	// a `&dyn Device` that outlives the command.
+	let device = unsafe { *context.cast::<&dyn Device>() };
+	match op {
+		GET_SETTINGS => {
+			// SAFETY: for this operation the shim passes a `struct termios`
+			// it owns, writable, which `libc::termios` mirrors.
+			unsafe { arg.cast::<libc::termios>().write(device.settings()) };
+			0
+		}
+		SET_SETTINGS | SET_SETTINGS_DRAIN | SET_SETTINGS_FLUSH => {
+			// SAFETY: as above, the `termios` to set, read only.
+			let settings = unsafe { arg.cast::<libc::termios>().read() };
+			device.set_settings(&settings, op == SET_SETTINGS_FLUSH);
+			0
+		}
+		GET_SIZE => {
+			let (cols, rows) = device.size();
+			let size = libc::winsize {
+				ws_row: rows,
+				ws_col: cols,
+				ws_xpixel: 0,
+				ws_ypixel: 0,
+			};
+			// SAFETY: for this operation the shim passes a `struct winsize`.
+			unsafe { arg.cast::<libc::winsize>().write(size) };
+			0
+		}
+		_ => -ENOTTY,
+	}
 }
 
 #[cfg(test)]

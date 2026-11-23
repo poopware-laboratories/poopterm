@@ -7,7 +7,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <pthread.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,12 +66,29 @@ void poopterm_errx(int code, const char *format, ...) {
 	poopterm_exit(code);
 }
 
+/* Whether standard descriptor `fd` is the terminal. */
+static int is_terminal(int fd) {
+	return fd >= 0 && fd <= 2 && (current.tty_fds >> fd & 1);
+}
+
 #undef isatty
 int poopterm_isatty(int fd) {
 	if (fd >= 0 && fd <= 2) {
-		return current.is_tty;
+		return is_terminal(fd);
 	}
 	return isatty(fd);
+}
+
+/* The POOPTERM_TTY_* operation an ioctl request is, or 0. */
+static int tty_operation(unsigned long request) {
+	switch (request) {
+	case TIOCGETA: return POOPTERM_TTY_GET_SETTINGS;
+	case TIOCSETA: return POOPTERM_TTY_SET_SETTINGS;
+	case TIOCSETAW: return POOPTERM_TTY_SET_SETTINGS_DRAIN;
+	case TIOCSETAF: return POOPTERM_TTY_SET_SETTINGS_FLUSH;
+	case TIOCGWINSZ: return POOPTERM_TTY_GET_SIZE;
+	default: return 0;
+	}
 }
 
 #undef ioctl
@@ -78,8 +97,21 @@ int poopterm_ioctl(int fd, unsigned long request, ...) {
 	va_start(args, request);
 	void *arg = va_arg(args, void *);
 	va_end(args);
-	if (fd >= 0 && fd <= 2 && request == TIOCGWINSZ) {
-		if (!current.is_tty) {
+	int op = tty_operation(request);
+	if (fd >= 0 && fd <= 2 && op != 0) {
+		if (!is_terminal(fd)) {
+			errno = ENOTTY;
+			return -1;
+		}
+		if (current.control != NULL) {
+			int failed = current.control(current.context, op, arg);
+			if (failed < 0) {
+				errno = -failed;
+				return -1;
+			}
+			return 0;
+		}
+		if (op != POOPTERM_TTY_GET_SIZE) {
 			errno = ENOTTY;
 			return -1;
 		}
@@ -91,6 +123,136 @@ int poopterm_ioctl(int fd, unsigned long request, ...) {
 		return 0;
 	}
 	return ioctl(fd, request, arg);
+}
+
+#undef tcgetattr
+int poopterm_tcgetattr(int fd, struct termios *settings) {
+	return poopterm_ioctl(fd, TIOCGETA, settings);
+}
+
+#undef tcsetattr
+int poopterm_tcsetattr(int fd, int when, const struct termios *settings) {
+	switch (when & ~TCSASOFT) {
+	case TCSANOW: return poopterm_ioctl(fd, TIOCSETA, settings);
+	case TCSADRAIN: return poopterm_ioctl(fd, TIOCSETAW, settings);
+	case TCSAFLUSH: return poopterm_ioctl(fd, TIOCSETAF, settings);
+	default:
+		errno = EINVAL;
+		return -1;
+	}
+}
+
+/* Signals a command may handle, given back to the app's handlers when it
+ * ends. Those that by default end a process end the command; those that
+ * stop one do nothing. */
+static const int ending_signals[] = {SIGINT, SIGQUIT, SIGHUP, SIGTERM, SIGALRM, SIGPIPE, SIGUSR1, SIGUSR2, SIGVTALRM, SIGPROF, SIGXCPU};
+static const int stopping_signals[] = {SIGTSTP, SIGTTIN, SIGTTOU};
+static const int other_signals[] = {SIGWINCH, SIGCHLD, SIGCONT, SIGINFO, SIGURG};
+#define COUNT(list) (int)(sizeof list / sizeof list[0])
+static struct sigaction app_actions[NSIG];
+static pthread_t command_thread;
+
+static int listed(int sig, const int *list, int count) {
+	for (int i = 0; i < count; i++) {
+		if (list[i] == sig) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* SIGINT and the like, on the command's thread, end the command. */
+static void ended_by(int sig) {
+	if (running && pthread_equal(pthread_self(), command_thread)) {
+		poopterm_exit(128 + sig);
+	}
+}
+
+static void stopped_by(int sig) {
+	(void)sig;
+}
+
+/* What a handler means here: the default of an ending or stopping signal
+ * becomes ours, so the app is never ended or stopped. */
+static void (*meaning(int sig, void (*handler)(int)))(int) {
+	if (handler != SIG_DFL) {
+		return handler;
+	}
+	if (listed(sig, ending_signals, COUNT(ending_signals))) {
+		return ended_by;
+	}
+	if (listed(sig, stopping_signals, COUNT(stopping_signals))) {
+		return stopped_by;
+	}
+	return handler;
+}
+
+/* And back: ours read as the default the command asked for. */
+static void (*shown(void (*handler)(int)))(int) {
+	return handler == ended_by || handler == stopped_by ? SIG_DFL : handler;
+}
+
+#undef sigaction
+int poopterm_sigaction(int sig, const struct sigaction *action, struct sigaction *old) {
+	struct sigaction mine;
+	if (action != NULL) {
+		mine = *action;
+		if (!(mine.sa_flags & SA_SIGINFO)) {
+			mine.sa_handler = meaning(sig, mine.sa_handler);
+		}
+		action = &mine;
+	}
+	int failed = sigaction(sig, action, old);
+	if (failed == 0 && old != NULL && !(old->sa_flags & SA_SIGINFO)) {
+		old->sa_handler = shown(old->sa_handler);
+	}
+	return failed;
+}
+
+#undef signal
+void (*poopterm_signal(int sig, void (*handler)(int)))(int) {
+	struct sigaction action, old;
+	memset(&action, 0, sizeof action);
+	action.sa_handler = handler;
+	/* BSD's signal() restarts interrupted calls. */
+	action.sa_flags = SA_RESTART;
+	sigemptyset(&action.sa_mask);
+	if (poopterm_sigaction(sig, &action, &old) != 0) {
+		return SIG_ERR;
+	}
+	return old.sa_handler;
+}
+
+/* Saves the app's handlers and puts the command's defaults in place. */
+static void take_signals(void) {
+	command_thread = pthread_self();
+	const int *lists[] = {ending_signals, stopping_signals, other_signals};
+	const int counts[] = {COUNT(ending_signals), COUNT(stopping_signals), COUNT(other_signals)};
+	for (int list = 0; list < 3; list++) {
+		for (int i = 0; i < counts[list]; i++) {
+			int sig = lists[list][i];
+			sigaction(sig, NULL, &app_actions[sig]);
+			if (list < 2) {
+				struct sigaction action;
+				memset(&action, 0, sizeof action);
+				action.sa_handler = list == 0 ? ended_by : stopped_by;
+				sigemptyset(&action.sa_mask);
+				sigaction(sig, &action, NULL);
+			}
+		}
+	}
+}
+
+/* Gives the app its handlers back. */
+static void give_back_signals(void) {
+	const int *lists[] = {ending_signals, stopping_signals, other_signals};
+	const int counts[] = {COUNT(ending_signals), COUNT(stopping_signals), COUNT(other_signals)};
+	for (int list = 0; list < 3; list++) {
+		for (int i = 0; i < counts[list]; i++) {
+			int sig = lists[list][i];
+			sigaction(sig, &app_actions[sig], NULL);
+		}
+	}
 }
 
 #undef fclose
@@ -134,6 +296,14 @@ static int run_child(const char *file, char *const argv[], char *const envp[], i
 	tty.in = in;
 	tty.out = out;
 	tty.err = err;
+	/* The child's descriptor n is the terminal when it is one of ours that is. */
+	const int to[3] = {in, out, err};
+	tty.tty_fds = 0;
+	for (int fd = 0; fd < 3; fd++) {
+		if (is_terminal(to[fd])) {
+			tty.tty_fds |= 1u << fd;
+		}
+	}
 	tty.envp = (char **)(envp ? envp : environ);
 	fflush(NULL);
 	/* `stdin` is one stream for every command, and the child starts by
@@ -336,6 +506,7 @@ int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	clearerr(stderr);
 	ended_count = 0;
 	forking.active = 0;
+	take_signals();
 	optind = 1;
 	optreset = 1;
 	opterr = 1;
@@ -343,6 +514,7 @@ int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	if (setjmp(finished) == 0) {
 		status = poopterm_main(argc, argv);
 	}
+	give_back_signals();
 	fflush(stdout);
 	fflush(stderr);
 	environ = saved_environ;

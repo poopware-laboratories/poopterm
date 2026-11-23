@@ -10,12 +10,13 @@ use std::{
 	io::{self, Read, Write},
 	os::fd::{AsFd, OwnedFd},
 	path::{Path, PathBuf},
-	sync::Mutex,
+	sync::{Arc, Mutex},
 	thread,
 };
 
+use super::terminal::Terminal;
 use crate::sys::{
-	command::{self, Stdio},
+	command::{self, Device, Stdio},
 	dl::Library,
 };
 
@@ -40,8 +41,16 @@ pub(crate) fn find(name: &str, path: Option<&str>, cwd: &Path) -> Option<PathBuf
 	path?
 		.split(':')
 		.filter(|dir| !dir.is_empty())
-		.map(|dir| Path::new(dir).join(name))
-		.find(|file| file.is_file())
+		.find_map(|dir| {
+			let directory = Path::new(dir);
+			let framework = directory.join(format!("{name}.framework")).join(name);
+			if framework.is_file() {
+				Some(framework)
+			} else {
+				let file = directory.join(name);
+				file.is_file().then_some(file)
+			}
+		})
 }
 
 /// How a command ran: its status and what it printed.
@@ -65,12 +74,17 @@ pub(crate) struct Run<'a> {
 	pub tty: Option<(u16, u16)>,
 	/// Standard error with standard output, in the order written.
 	pub merge: bool,
+	/// The device's terminal, if any: output that goes to the terminal
+	/// (`tty`) is shown as it is printed, an input not given is the
+	/// keyboard, and the program is in the foreground (`^C` interrupts it).
+	pub terminal: Option<&'a Arc<Terminal>>,
 }
 
 /// Runs the command library at `library`. Standard input is what the run
 /// gives (a pipe fed by a thread of its own, so a program that reads less
-/// than all of it still ends), or empty; typed lines do not reach programs
-/// yet.
+/// than all of it still ends), else the keyboard when there is a terminal,
+/// else empty. The terminal's settings are put back after, whatever the
+/// program left them as.
 pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 	let argv = c_strings(run.argv.iter().map(String::as_str))?;
 	let pwd = format!("PWD={}", run.cwd.display());
@@ -88,19 +102,30 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 	// Opened for each run and closed after, so its globals start over.
 	let library = Library::open(&name)?;
 	let failed = |error: io::Error| error.to_string();
-	let stdin: OwnedFd = match run.input {
-		Some(bytes) => {
+	let terminal = run.terminal;
+	let keys = match terminal {
+		Some(terminal) => terminal.attach(run.input.is_none()).map_err(failed)?,
+		None => None,
+	};
+	let foreground = Foreground(terminal, terminal.map(|terminal| terminal.settings()));
+	let stdin: OwnedFd = match (run.input, keys) {
+		(Some(bytes), _) => {
 			let (reader, mut writer) = io::pipe().map_err(failed)?;
 			let bytes = bytes.to_vec();
 			// A reader that stops early closes its end; the write then fails.
 			thread::spawn(move || drop(writer.write_all(&bytes)));
 			reader.into()
 		}
-		None => File::open("/dev/null").map_err(failed)?.into(),
+		(None, Some(keys)) => keys.into(),
+		(None, None) => File::open("/dev/null").map_err(failed)?.into(),
 	};
 	let (out_reader, out_writer) = io::pipe().map_err(failed)?;
 	let (err_reader, err_writer) = io::pipe().map_err(failed)?;
-	let out = thread::spawn(move || drain(out_reader));
+	let shown = terminal.filter(|_| run.tty.is_some()).cloned();
+	let out = thread::spawn(move || match shown {
+		Some(terminal) => show(out_reader, &terminal),
+		None => drain(out_reader),
+	});
 	let err = thread::spawn(move || drain(err_reader));
 	let previous = std::env::current_dir().ok();
 	std::env::set_current_dir(run.cwd).map_err(|error| format!("{}: {error}", run.cwd.display()))?;
@@ -113,9 +138,12 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 			err_writer.as_fd()
 		},
 		tty: run.tty,
+		device: terminal.map(|terminal| &**terminal as &dyn Device),
+		keyboard: run.input.is_none() && terminal.is_some(),
 	};
 	let status = command::call(&library, &argv, &env, &stdio);
-	drop((out_writer, err_writer));
+	drop((out_writer, err_writer, stdin));
+	drop(foreground);
 	if let Some(dir) = previous {
 		let _ = std::env::set_current_dir(dir);
 	}
@@ -134,6 +162,39 @@ fn c_strings<'a>(words: impl Iterator<Item = &'a str>) -> Result<Vec<CString>, S
 	words
 		.map(|word| CString::new(word).map_err(|_| format!("{word:?}: has a NUL byte")))
 		.collect()
+}
+
+/// While a program runs in the terminal's foreground; its end puts the
+/// settings back and gives the keys back to the shell.
+struct Foreground<'a>(Option<&'a Arc<Terminal>>, Option<libc::termios>);
+
+impl Drop for Foreground<'_> {
+	fn drop(&mut self) {
+		if let Some(terminal) = self.0 {
+			terminal.detach();
+			if let Some(settings) = &self.1 {
+				terminal.set_settings(settings, false);
+			}
+		}
+	}
+}
+
+/// Shows everything until the end on `terminal` as it comes; nothing is
+/// kept.
+fn show(mut reader: impl Read, terminal: &Terminal) -> Vec<u8> {
+	let mut buf = [0u8; 16 << 10];
+	loop {
+		match reader.read(&mut buf) {
+			Ok(0) => return Vec::new(),
+			Ok(n) => {
+				// A screen gone still has the program's output read, so it
+				// ends instead of blocking.
+				let _ = terminal.write(&buf[..n]);
+			}
+			Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+			Err(_) => return Vec::new(),
+		}
+	}
 }
 
 /// Everything until the end, keeping the first `MAX_OUTPUT` bytes.

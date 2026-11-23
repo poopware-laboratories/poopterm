@@ -6,7 +6,35 @@ use super::{
 	run,
 	shell::{Shell, Word, segments, split},
 };
-use std::{fs, path::PathBuf};
+use std::{
+	fs,
+	io::Write,
+	path::PathBuf,
+	sync::{
+		Arc, Mutex,
+		atomic::{AtomicUsize, Ordering},
+	},
+};
+
+/// A screen for the device loop: what it shows, kept for the test.
+#[derive(Clone, Default)]
+pub(super) struct Screen(pub Arc<Mutex<Vec<u8>>>);
+
+impl Write for Screen {
+	fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+		self.0.lock().unwrap().extend_from_slice(bytes);
+		Ok(bytes.len())
+	}
+	fn flush(&mut self) -> std::io::Result<()> {
+		Ok(())
+	}
+}
+
+impl Screen {
+	pub(super) fn shown(&self) -> String {
+		String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+	}
+}
 
 fn typed(bytes: &[u8]) -> Vec<Event> {
 	Discipline::default().input(bytes)
@@ -229,14 +257,14 @@ fn the_small_built_ins_do_what_their_names_say() {
 #[test]
 fn the_device_shows_a_prompt_answers_lines_and_ends_on_exit() {
 	let (shell, _) = shell();
-	let mut out = Vec::new();
+	let screen = Screen::default();
 	run(
 		shell,
-		&Size::new(80, 24),
+		Arc::new(Size::new(80, 24)),
 		&b"echo hi\rnope\rexit\r"[..],
-		&mut out,
+		screen.clone(),
 	);
-	let shown = String::from_utf8(out).unwrap();
+	let shown = screen.shown();
 	assert!(shown.starts_with("Poopterm in-process shell."), "{shown:?}");
 	assert!(
 		shown.contains("e\x63ho hi\r\nhi\r\n"),
@@ -250,9 +278,9 @@ fn the_device_shows_a_prompt_answers_lines_and_ends_on_exit() {
 fn the_device_ends_on_end_of_file_or_a_closed_input() {
 	for input in [&b"\x04ignored\r"[..], &b"echo partial"[..]] {
 		let (shell, _) = shell();
-		let mut out = Vec::new();
-		run(shell, &Size::new(80, 24), input, &mut out);
-		let shown = String::from_utf8(out).unwrap();
+		let screen = Screen::default();
+		run(shell, Arc::new(Size::new(80, 24)), input, screen.clone());
+		let shown = screen.shown();
 		assert!(
 			!shown.contains("ignored") && !shown.contains("\r\npartial"),
 			"{shown:?}"
@@ -345,12 +373,29 @@ fn a_size_reads_back_as_set_and_clamps_to_what_a_terminal_holds() {
 }
 
 #[test]
+fn a_size_tells_whoever_listens_of_each_change_only() {
+	let size = Size::new(80, 24);
+	let calls = Arc::new(AtomicUsize::new(0));
+	let counted = calls.clone();
+	size.on_resize(Box::new(move || {
+		counted.fetch_add(1, Ordering::SeqCst);
+	}));
+	size.on_resize(Box::new(|| panic!("only the first listener stays")));
+	size.set(80, 24);
+	assert_eq!(calls.load(Ordering::SeqCst), 0, "no change, no call");
+	size.set(81, 24);
+	size.set(81, 25);
+	assert_eq!(calls.load(Ordering::SeqCst), 2);
+	assert_eq!(format!("{size:?}"), "Size((81, 25))");
+}
+
+#[test]
 fn programs_come_from_beside_the_app_then_from_packages_unless_chosen() {
 	let home = PathBuf::from("/home/me");
 	let exe = PathBuf::from("/App.app");
 	assert_eq!(
 		command_path(Some(&exe), &home, None),
-		"/App.app/commands:/home/me/Library/poopterm/packages/bin"
+		"/App.app/Frameworks:/home/me/Library/poopterm/packages/bin"
 	);
 	assert_eq!(
 		command_path(None, &home, None),

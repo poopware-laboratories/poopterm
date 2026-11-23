@@ -12,6 +12,7 @@ pub(crate) mod mem;
 pub(crate) mod process;
 pub(crate) mod pty;
 pub(crate) mod retry;
+pub(crate) mod signal;
 pub(crate) mod spawn;
 pub(crate) mod termios;
 pub(crate) mod user;

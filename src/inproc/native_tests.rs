@@ -1,7 +1,13 @@
 //! Real programs in the in-process shell: finding them on `$PATH`, bounds
 //! on what they print, and Apple's own commands run through the shell
 //! when `ios/commands/build.sh macosx` has built them.
-use std::{fs, io::Read as _, path::PathBuf};
+use std::{
+	fs,
+	io::{self, Read as _, Write as _},
+	path::PathBuf,
+	sync::Arc,
+	thread,
+};
 
 use super::{MAX_OUTPUT, Run, drain, find, run};
 use crate::inproc::shell::Shell;
@@ -56,6 +62,20 @@ fn a_name_with_a_slash_is_a_path_from_the_current_directory() {
 }
 
 #[test]
+fn bundled_frameworks_resolve_before_plain_package_commands() {
+	let dir = scratch("framework");
+	let framework = dir.join("uname.framework");
+	fs::create_dir(&framework).unwrap();
+	fs::write(framework.join("uname"), "framework").unwrap();
+	fs::write(dir.join("uname"), "package").unwrap();
+	assert_eq!(
+		find("uname", Some(dir.to_str().unwrap()), &dir),
+		Some(framework.join("uname"))
+	);
+	assert_eq!(find("missing", Some(dir.to_str().unwrap()), &dir), None);
+}
+
+#[test]
 fn what_is_not_a_command_library_fails_with_the_loaders_reason() {
 	let dir = scratch("bad");
 	fs::write(dir.join("fake"), "#!/bin/sh\necho hi\n").unwrap();
@@ -69,6 +89,7 @@ fn what_is_not_a_command_library_fails_with_the_loaders_reason() {
 			cwd: &dir,
 			tty: None,
 			merge: true,
+			terminal: None,
 			input: None,
 		},
 	);
@@ -89,6 +110,7 @@ fn arguments_with_nul_bytes_are_refused_before_loading() {
 			cwd: &dir,
 			tty: None,
 			merge: true,
+			terminal: None,
 			input: None,
 		},
 	)
@@ -159,6 +181,87 @@ fn real_commands_alone() {
 	a_command_pkg_installed_runs_from_the_path();
 	the_new_text_tools_match_the_systems();
 	xargs_and_find_start_other_commands();
+	programs_read_typed_lines_and_print_as_they_run();
+	interrupting_ends_a_program_and_the_rest_of_its_line();
+	the_keyboard_goes_back_to_the_shell_after_a_program();
+}
+
+/// The device loop on real commands: keys come from `keys`, a line at a
+/// time with a pause between, as a person types, and the screen is kept.
+fn device(name: &str, keys: &'static [&'static [u8]]) -> Option<String> {
+	let (shell, _) = real_shell(name)?;
+	let (input, mut typing) = io::pipe().unwrap();
+	let screen = crate::inproc::tests::Screen::default();
+	let shown = screen.clone();
+	let typist = thread::spawn(move || {
+		for chunk in keys {
+			thread::sleep(std::time::Duration::from_millis(150));
+			if typing.write_all(chunk).is_err() {
+				return;
+			}
+		}
+	});
+	crate::sys::signal::quiet_job_signals();
+	crate::inproc::run(
+		shell,
+		Arc::new(crate::inproc::Size::new(80, 24)),
+		input,
+		screen,
+	);
+	typist.join().unwrap();
+	Some(shown.shown())
+}
+
+fn programs_read_typed_lines_and_print_as_they_run() {
+	let Some(shown) = device("typed", &[b"cat\r", b"one\r", b"two\r", b"\x04", b"exit\r"]) else {
+		return;
+	};
+	// Each line is echoed, then printed back by cat before the next is typed.
+	assert!(shown.contains("one\r\none\r\ntwo\r\ntwo\r\n"), "{shown:?}");
+}
+
+fn interrupting_ends_a_program_and_the_rest_of_its_line() {
+	let keys: &[&[u8]] = &[b"yes; echo never\r", b"\x03", b"echo $?\r", b"exit\r"];
+	let Some(shown) = device("interrupt", keys) else {
+		return;
+	};
+	assert!(shown.contains("y\r\ny\r\n"), "yes printed as it ran");
+	assert!(
+		shown.contains("^C\r\n"),
+		"{:?}",
+		&shown[shown.len().saturating_sub(200)..]
+	);
+	assert!(
+		!shown.contains("\r\nnever\r\n"),
+		"the rest of the line was stopped"
+	);
+	assert!(
+		shown.contains("echo $?\r\n130\r\n"),
+		"{:?}",
+		&shown[shown.len().saturating_sub(200)..]
+	);
+}
+
+fn the_keyboard_goes_back_to_the_shell_after_a_program() {
+	// ed reads lines; once it quits, the shell's echo and \r\n are back.
+	let keys: &[&[u8]] = &[
+		b"ed\r",
+		b"a\r",
+		b"text\r",
+		b".\r",
+		b",p\r",
+		b"Q\r",
+		b"echo done\r",
+		b"exit\r",
+	];
+	let Some(shown) = device("ed", keys) else {
+		return;
+	};
+	assert!(
+		shown.contains(",p\r\ntext\r\nQ\r\n"),
+		"ed printed what it was given: {shown:?}"
+	);
+	assert!(shown.contains("echo done\r\ndone\r\n"), "{shown:?}");
 }
 
 fn real_shell(name: &str) -> Option<(Shell, PathBuf)> {
