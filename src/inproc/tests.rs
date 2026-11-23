@@ -433,3 +433,57 @@ fn the_user_is_the_apps_own_then_the_accounts_then_mobile_on_ios() {
 	);
 	assert_eq!(user_name(None, None, false), None);
 }
+
+#[test]
+fn or_runs_the_next_command_only_after_a_failure() {
+	let (mut sh, _) = shell();
+	assert_eq!(ran(&mut sh, "false || echo rescued"), "rescued\n");
+	assert_eq!(sh.status, 0);
+	assert_eq!(ran(&mut sh, "true || echo never"), "");
+	assert_eq!(
+		ran(&mut sh, "nope || echo $?"),
+		"poopsh: nope: command not found\n127\n"
+	);
+}
+
+#[test]
+fn and_and_or_chain_left_to_right_as_a_posix_shell_does() {
+	let (mut sh, _) = shell();
+	assert_eq!(ran(&mut sh, "false && echo a || echo b"), "b\n");
+	assert_eq!(ran(&mut sh, "true && echo a || echo b"), "a\n");
+	assert_eq!(
+		ran(&mut sh, "true || echo a && echo b"),
+		"b\n",
+		"skipping a keeps true's status"
+	);
+	assert_eq!(ran(&mut sh, "false || false || echo third"), "third\n");
+	assert_eq!(
+		ran(&mut sh, "false || echo x; echo after"),
+		"x\nafter\n",
+		"; ends the chain"
+	);
+}
+
+#[test]
+fn or_is_split_outside_quotes_and_apart_from_pipes() {
+	let pairs = |list: &[(&str, &'static str)]| {
+		list
+			.iter()
+			.map(|&(c, o)| (c.to_owned(), o))
+			.collect::<Vec<_>>()
+	};
+	assert_eq!(
+		segments("a || b | c"),
+		Some(pairs(&[("a ", "||"), (" b | c", ";")])),
+		"one | is a pipe, inside the second command"
+	);
+	assert_eq!(
+		segments("echo 'a||b' \"c||d\""),
+		Some(pairs(&[("echo 'a||b' \"c||d\"", ";")]))
+	);
+	assert_eq!(
+		segments("a \\|| b"),
+		Some(pairs(&[("a \\|| b", ";")])),
+		"an escaped | is a word, and the one after it a pipe"
+	);
+}

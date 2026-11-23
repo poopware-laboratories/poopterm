@@ -1,6 +1,6 @@
 //! A small shell for the in-process device, where iOS lets no other
 //! program run: words with quotes, escapes, `~` and `$VAR`, commands
-//! joined by `;` and `&&`, pipelines and redirections, the built-ins a shell
+//! joined by `;`, `&&` and `||`, pipelines and redirections, the built-ins a shell
 //! needs itself, and every other command a real program found on `$PATH`
 //! (`native`).
 use std::{
@@ -96,7 +96,9 @@ impl Shell {
 	}
 
 	/// Runs `line`: commands joined by `;` run in turn, by `&&` only
-	/// while the previous one succeeded.
+	/// while the previous one succeeded, by `||` only once it failed. A
+	/// command skipped leaves the status as it was, so chains of both read
+	/// left to right, as a POSIX shell's do.
 	pub(crate) fn run(&mut self, line: &str) -> Ran {
 		let mut ran = Ran::default();
 		let Some(commands) = segments(line) else {
@@ -112,7 +114,11 @@ impl Shell {
 					return ran;
 				}
 			}
-			skip = op == "&&" && self.status != 0;
+			skip = match op {
+				"&&" => self.status != 0,
+				"||" => self.status == 0,
+				_ => false,
+			};
 		}
 		ran
 	}
@@ -337,7 +343,7 @@ pub(crate) enum Word {
 	Op(&'static str),
 }
 
-/// The commands of `line` and the operator after each (`;` or `&&`; `;`
+/// The commands of `line` and the operator after each (`;`, `&&` or `||`; `;`
 /// after the last), split outside quotes, not yet expanded. `None` for an
 /// unfinished quote.
 pub(crate) fn segments(line: &str) -> Option<Vec<(String, &'static str)>> {
@@ -361,6 +367,11 @@ pub(crate) fn segments(line: &str) -> Option<Vec<(String, &'static str)>> {
 			(None, '&') if chars.peek() == Some(&'&') => {
 				chars.next();
 				out.push((std::mem::take(&mut current), "&&"));
+				continue;
+			}
+			(None, '|') if chars.peek() == Some(&'|') => {
+				chars.next();
+				out.push((std::mem::take(&mut current), "||"));
 				continue;
 			}
 			_ => {}
