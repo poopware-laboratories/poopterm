@@ -28,7 +28,10 @@ use crate::{
 /// An iPhone 16 Pro at 3×, with its status bar and home indicator.
 const PHONE: (usize, usize) = (1206, 2622);
 const S: usize = 3;
-const TOP: Shape = Shape::Top { inset: (186, 66) };
+const TOP: Shape = Shape::Top {
+	inset: (186, 66),
+	sides: (0, 0),
+};
 
 /// The page's rectangle in the phone's window.
 fn page() -> Rect {

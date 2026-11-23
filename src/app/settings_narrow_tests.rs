@@ -209,3 +209,52 @@ fn a_hint_of_one_long_word_is_cut_on_its_first_line() {
 	assert_eq!(lines.len(), 1, "{lines:?}");
 	assert!(lines[0].0.ends_with('…'));
 }
+
+#[test]
+fn every_page_draws_into_a_window_too_small_for_it_without_panicking() {
+	// A window is drawn once before iOS gives it its size.
+	use super::settings_view::{compose_about, compose_layout_settings, compose_shortcuts};
+	for size in [(1, 1), (10, 10), (40, 30), (100, 60)] {
+		for scale in [1, 3] {
+			record_in(size, scale, |pen, p, style| {
+				compose_main_settings(&editor(), style, p, pen);
+				compose_layout_settings(&editor(), style, p, pen);
+				let page = ("Shortcuts", "A hint", &SHORTCUT_ROWS[..]);
+				compose_shortcuts(&editor(), page, style, p, pen, &|_, _, _, _| false);
+				compose_about(pen, p, (0xffffff, 0x888888));
+				pen.footer(p, style, ("Save", 120), "status", &|_, _, _, _| false);
+				pen.hint(p, "a hint that has to wrap somewhere");
+			});
+		}
+	}
+}
+
+#[test]
+fn taps_on_a_window_too_small_for_its_page_never_panic() {
+	use super::settings_shape::{Shape, shape};
+	let pages = [
+		SettingsPage::Main,
+		SettingsPage::Layout,
+		SettingsPage::Fonts,
+		SettingsPage::Shortcuts,
+		SettingsPage::Panes,
+		SettingsPage::Clipboard,
+		SettingsPage::Diagnostics,
+		SettingsPage::About,
+	];
+	for size in [(1, 1), (10, 10), (40, 30), (100, 60), (300, 900)] {
+		for scale in [1, 3] {
+			for closable in [true, false] {
+				let shape: Shape = shape(size.0, scale, (6, 3), closable);
+				for page in pages {
+					for y in (0..size.1 + 5).step_by(3) {
+						for x in (0..size.0 + 5).step_by(3) {
+							let _ = shape.target((x, y), size, scale, page);
+							let _ = settings_target((x, y), size, scale, page);
+						}
+					}
+				}
+			}
+		}
+	}
+}

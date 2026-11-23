@@ -23,6 +23,13 @@ pub(crate) struct Layout {
 	pub(crate) bottom: usize,
 }
 
+/// Whether a window `(width, height)` pixels large has room to lay out at
+/// all: iOS reports a window as 0×0 while it moves into its scene, and a
+/// minimized desktop window can be; meanwhile the terminals keep their size.
+pub(crate) fn drawable((width, height): (u32, u32)) -> bool {
+	width > 0 && height > 0
+}
+
 /// Lays out the window for `chrome`, drawn at the whole-number `scale`.
 pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar: usize) -> Layout {
 	let margin = chrome.border + prefs.padding * scale;

@@ -148,6 +148,8 @@ impl App {
 				.create_window(attributes)
 				.expect("failed to create settings window"),
 		);
+		#[cfg(target_os = "ios")]
+		crate::ios_scene::adopt(&window);
 		let renderer = renderer::Renderer::new(window.clone(), self.preferences.renderer);
 		let (mut surface, _) = renderer.expect("settings surface");
 		let size = window.inner_size();
@@ -356,6 +358,7 @@ impl App {
 			(self.safe.0, self.home),
 			closable,
 		)
+		.beside(self.sides)
 	}
 
 	pub(super) fn settings_scale(&self) -> usize {

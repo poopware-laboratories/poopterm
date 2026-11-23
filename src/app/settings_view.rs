@@ -423,7 +423,7 @@ pub(super) fn compose_main_settings(
 
 	let button_w = 48 * s;
 	let theme_y = THEME_ROW * s;
-	for (bx, label) in [(x, "‹"), (x + content_w - button_w, "›")] {
+	for (bx, label) in [(x, "‹"), (x + content_w.saturating_sub(button_w), "›")] {
 		p.button((bx, theme_y, button_w, ROW_HEIGHT * s), style, false);
 		pen.text(p, bx + 18 * s, THEME_ROW + 7, label, 1.0);
 	}

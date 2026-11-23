@@ -46,6 +46,8 @@ mod input;
 #[cfg(target_os = "ios")]
 mod ios_keyboard;
 #[cfg(target_os = "ios")]
+mod ios_scene;
+#[cfg(target_os = "ios")]
 mod ios_window;
 mod mapped;
 mod notifier;
@@ -72,6 +74,9 @@ mod portal_tests;
 mod present;
 mod pty;
 mod render;
+mod scene_pairing;
+#[cfg(test)]
+mod scene_pairing_tests;
 #[cfg(test)]
 mod scratch_tests;
 mod session_store;

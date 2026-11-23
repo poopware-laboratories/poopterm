@@ -39,8 +39,12 @@ pub(super) enum Shape {
 	/// The list at the left, the page beside it.
 	Side,
 	/// The list across the top and the page under it, with `inset`
-	/// physical pixels at the top and bottom kept for the system.
-	Top { inset: (usize, usize) },
+	/// physical pixels at the top and bottom, and `sides` at the left and
+	/// right, kept for the system.
+	Top {
+		inset: (usize, usize),
+		sides: (usize, usize),
+	},
 }
 
 /// The shape of a window `width` physical pixels wide at `scale`, where
@@ -52,11 +56,24 @@ pub(super) fn shape(width: usize, scale: usize, inset: (usize, usize), closable:
 	if closable && width / scale.max(1) >= MIN_SIZE.0 + NAV_WIDTH {
 		Shape::Side
 	} else {
-		Shape::Top { inset }
+		Shape::Top {
+			inset,
+			sides: (0, 0),
+		}
 	}
 }
 
 impl Shape {
+	/// This shape with `sides` pixels at the left and right kept for the
+	/// system (a phone's sensor housing, an iPhone Duo's clock); the
+	/// sidebar's window has its own frame and keeps none.
+	pub(super) fn beside(self, sides: (usize, usize)) -> Self {
+		match self {
+			Shape::Side => Shape::Side,
+			Shape::Top { inset, .. } => Shape::Top { inset, sides },
+		}
+	}
+
 	/// The page's rectangle in a window `(width, height)` large.
 	pub(super) fn page(self, (width, height): (usize, usize), s: usize) -> Rect {
 		match self {
@@ -66,9 +83,12 @@ impl Shape {
 			}
 			Shape::Top {
 				inset: (top, bottom),
+				sides: (left, right),
 			} => {
 				let y = (top + HEAD * s).min(height);
-				(0, y, width, height.saturating_sub(y + bottom))
+				let x = left.min(width);
+				let w = width.saturating_sub(x + right);
+				(x, y, w, height.saturating_sub(y + bottom))
 			}
 		}
 	}
@@ -76,23 +96,31 @@ impl Shape {
 	/// Item `index`'s rectangle in a window `width` wide; across the top,
 	/// the columns share the width.
 	pub(super) fn item(self, index: usize, width: usize, s: usize) -> Rect {
-		let Shape::Top { inset: (top, _) } = self else {
+		let Shape::Top {
+			inset: (top, _),
+			sides: (left, right),
+		} = self
+		else {
 			return item_rect(index, s);
 		};
 		let (column, row) = (index % COLUMNS, index / COLUMNS);
-		let room = width.saturating_sub((2 * SIDE + (COLUMNS - 1) * GAP) * s);
+		let room = width.saturating_sub(left + right + (2 * SIDE + (COLUMNS - 1) * GAP) * s);
 		let w = room / COLUMNS;
-		let x = SIDE * s + column * (w + GAP * s);
+		let x = left + SIDE * s + column * (w + GAP * s);
 		(x, top + (BAR + row * STRIDE) * s, w, ITEM_HEIGHT * s)
 	}
 
 	/// The Done button in a window `width` wide; none beside the list,
 	/// where the window has its own way to close.
 	pub(super) fn done(self, width: usize, s: usize) -> Option<Rect> {
-		let Shape::Top { inset: (top, _) } = self else {
+		let Shape::Top {
+			inset: (top, _),
+			sides: (_, right),
+		} = self
+		else {
 			return None;
 		};
-		let x = width.saturating_sub((DONE + 2 * SIDE) * s);
+		let x = width.saturating_sub(right + (DONE + 2 * SIDE) * s);
 		Some((x, top + DONE_TOP * s, DONE * s, ITEM_HEIGHT * s))
 	}
 
@@ -118,7 +146,7 @@ impl Shape {
 			return Some(SettingsTarget::Open(ITEMS[index].0));
 		}
 		let (px, py, pw, ph) = self.page(size, s);
-		if !(py..py + ph).contains(&y) {
+		if !(py..py + ph).contains(&y) || !(px..px + pw).contains(&x) {
 			return None;
 		}
 		settings_target((x - px, y - py), (pw, ph), s, page)
@@ -146,7 +174,18 @@ pub(super) fn compose_top(
 			&& cursor.1 < (y + h) as f64
 	};
 	if let Some(done) = shape.done(width, s) {
-		pen.tinted(p, (SIDE + 8) * s, done.1 / s + 6, "Settings", 0.9, fg);
+		let left = match shape {
+			Shape::Top { sides, .. } => sides.0,
+			Shape::Side => 0,
+		};
+		pen.tinted(
+			p,
+			left + (SIDE + 8) * s,
+			done.1 / s + 6,
+			"Settings",
+			0.9,
+			fg,
+		);
 		p.focusable(done);
 		p.button(done, style, under(done));
 		pen.centered(p, done, "Done", 0.82);

@@ -19,7 +19,10 @@ use crate::{
 const PHONE: (usize, usize) = (1206, 2622);
 const PHONE_SCALE: usize = 3;
 const PHONE_INSET: (usize, usize) = (186, 66);
-const TOP: Shape = Shape::Top { inset: PHONE_INSET };
+const TOP: Shape = Shape::Top {
+	inset: PHONE_INSET,
+	sides: (0, 0),
+};
 
 fn center((x, y, w, h): Rect) -> (usize, usize) {
 	(x + w / 2, y + h / 2)
@@ -41,7 +44,10 @@ fn a_window_wide_enough_for_the_page_beside_the_list_keeps_the_sidebar() {
 		);
 		assert_eq!(
 			shape((wide - 1) * scale, scale, (40, 20), true),
-			Shape::Top { inset: (40, 20) },
+			Shape::Top {
+				inset: (40, 20),
+				sides: (0, 0)
+			},
 			"one logical pixel too narrow at {scale}x"
 		);
 	}
@@ -54,10 +60,22 @@ fn a_window_the_system_gives_no_close_button_always_has_the_list_on_top() {
 	// only it keeps clear of the status bar.
 	let ipad = (2420, 3);
 	let sideways = shape(ipad.0, ipad.1, (72, 60), false);
-	assert_eq!(sideways, Shape::Top { inset: (72, 60) });
+	assert_eq!(
+		sideways,
+		Shape::Top {
+			inset: (72, 60),
+			sides: (0, 0)
+		}
+	);
 	assert!(sideways.done(ipad.0, ipad.1).is_some());
 	let wide = (MIN_SIZE.0 + NAV_WIDTH) * 4;
-	assert_eq!(shape(wide, 1, (0, 0), false), Shape::Top { inset: (0, 0) });
+	assert_eq!(
+		shape(wide, 1, (0, 0), false),
+		Shape::Top {
+			inset: (0, 0),
+			sides: (0, 0)
+		}
+	);
 }
 
 #[test]
@@ -65,7 +83,10 @@ fn a_phone_gets_the_list_on_top_with_the_systems_insets() {
 	assert_eq!(shape(PHONE.0, PHONE_SCALE, PHONE_INSET, false), TOP);
 	assert_eq!(
 		shape(400, 0, PHONE_INSET, false),
-		Shape::Top { inset: PHONE_INSET },
+		Shape::Top {
+			inset: PHONE_INSET,
+			sides: (0, 0)
+		},
 		"a scale of nought counts as one"
 	);
 }
@@ -98,7 +119,10 @@ fn on_a_phone_the_page_runs_from_under_the_list_to_the_home_indicator() {
 
 #[test]
 fn a_window_shorter_than_its_insets_leaves_the_page_no_room() {
-	let shape = Shape::Top { inset: (300, 300) };
+	let shape = Shape::Top {
+		inset: (300, 300),
+		sides: (0, 0),
+	};
 	let (_, y, _, h) = shape.page((400, 500), 1);
 	assert_eq!((y, h), (424, 0));
 	let (_, y, _, h) = shape.page((400, 100), 1);
@@ -245,6 +269,7 @@ fn top_drawn(scale: usize, page: SettingsPage, cursor: (f64, f64)) -> Vec<Comman
 	let colors = chrome_colors(&theme);
 	let shape = Shape::Top {
 		inset: (20 * scale, 10 * scale),
+		sides: (0, 0),
 	};
 	record(scale, |pen, p, style| {
 		compose_top(pen, p, shape, (page, cursor), (&colors, theme.fg, style))
@@ -263,7 +288,10 @@ const AWAY: (f64, f64) = (-1.0, -1.0);
 
 #[test]
 fn the_top_list_fills_the_open_page_and_lights_the_one_under_the_finger() {
-	let shape = Shape::Top { inset: (20, 10) };
+	let shape = Shape::Top {
+		inset: (20, 10),
+		sides: (0, 0),
+	};
 	for (index, &(page, _)) in ITEMS.iter().enumerate() {
 		let filled = round_fills(&top_drawn(1, page, AWAY));
 		assert_eq!(filled, [shape.item(index, 900, 1)], "{page:?}");
@@ -279,6 +307,7 @@ fn the_top_list_names_every_page_inside_its_item_and_offers_done() {
 	for scale in [1, 2] {
 		let shape = Shape::Top {
 			inset: (20 * scale, 10 * scale),
+			sides: (0, 0),
 		};
 		let commands = top_drawn(scale, SettingsPage::Main, AWAY);
 		let labels = texts(&commands);
@@ -299,7 +328,10 @@ fn the_top_list_names_every_page_inside_its_item_and_offers_done() {
 
 #[test]
 fn every_item_and_done_can_take_the_keyboards_focus() {
-	let shape = Shape::Top { inset: (20, 10) };
+	let shape = Shape::Top {
+		inset: (20, 10),
+		sides: (0, 0),
+	};
 	let focusable: Vec<_> = top_drawn(1, SettingsPage::Main, AWAY)
 		.iter()
 		.filter_map(|command| match command {
@@ -323,7 +355,12 @@ fn the_head_is_a_panel_from_the_top_edge_to_the_page_with_a_line_under_it() {
 			_ => None,
 		})
 		.collect();
-	let page_top = Shape::Top { inset: (20, 10) }.page((900, 600), 1).1;
+	let page_top = Shape::Top {
+		inset: (20, 10),
+		sides: (0, 0),
+	}
+	.page((900, 600), 1)
+	.1;
 	assert_eq!(
 		rects,
 		[
@@ -336,7 +373,10 @@ fn the_head_is_a_panel_from_the_top_edge_to_the_page_with_a_line_under_it() {
 /// An iPad Pro 11-inch on its side: 2420×1668 at 2×, 48 of status bar and
 /// 40 of home indicator.
 const IPAD: (usize, usize) = (2420, 1668);
-const IPAD_TOP: Shape = Shape::Top { inset: (48, 40) };
+const IPAD_TOP: Shape = Shape::Top {
+	inset: (48, 40),
+	sides: (0, 0),
+};
 
 #[test]
 fn on_an_ipad_the_list_spreads_across_the_width_and_done_closes() {
@@ -385,7 +425,13 @@ fn an_ipads_page_is_wide_so_its_controls_sit_where_a_desktops_do() {
 #[test]
 fn a_small_ipad_window_still_offers_done_and_every_page() {
 	// A window dragged down to 500×700 points, its controls 30 deep.
-	let (size, shape) = ((1000, 1400), Shape::Top { inset: (60, 0) });
+	let (size, shape) = (
+		(1000, 1400),
+		Shape::Top {
+			inset: (60, 0),
+			sides: (0, 0),
+		},
+	);
 	let done = shape.done(size.0, 2).unwrap();
 	assert!(done.0 + done.2 <= size.0);
 	for (index, &(page, _)) in ITEMS.iter().enumerate() {
@@ -398,4 +444,74 @@ fn a_small_ipad_window_still_offers_done_and_every_page() {
 	// The page gets what is left under the list; shorter than the 600
 	// points the Appearance rows need, it does not scroll yet.
 	assert_eq!(shape.page(size, 2).3, 1400 - 60 - HEAD * 2);
+}
+
+/// The open iPhone Duo: 2853×2007 pixels at 3×, the clock's badge keeping
+/// 90 pixels on the right, a home indicator below.
+const DUO: (usize, usize) = (2853, 2007);
+fn duo() -> Shape {
+	Shape::Top {
+		inset: (0, 60),
+		sides: (0, 0),
+	}
+	.beside((0, 270))
+}
+
+#[test]
+fn done_the_list_and_the_page_keep_clear_of_the_side_insets() {
+	let shape = duo();
+	let done = shape.done(DUO.0, 3).unwrap();
+	assert!(
+		done.0 + done.2 <= DUO.0 - 270,
+		"Done clear of the badge: {done:?}"
+	);
+	for index in 0..ITEMS.len() {
+		let (x, _, w, _) = shape.item(index, DUO.0, 3);
+		assert!(x + w <= DUO.0 - 270, "item {index}");
+	}
+	let (px, _, pw, _) = shape.page(DUO, 3);
+	assert_eq!((px, px + pw), (0, DUO.0 - 270));
+	assert_eq!(
+		shape.target(center(done), DUO, 3, SettingsPage::Main),
+		Some(SettingsTarget::Done)
+	);
+}
+
+#[test]
+fn a_left_inset_moves_everything_right_of_it() {
+	let shape = Shape::Top {
+		inset: (0, 0),
+		sides: (0, 0),
+	}
+	.beside((186, 186));
+	let (x, ..) = shape.item(0, 2622, 3);
+	assert!(x >= 186);
+	let (px, _, pw, _) = shape.page((2622, 1206), 3);
+	assert_eq!((px, pw), (186, 2622 - 372));
+	let (tx, ..) = shape.done(2622, 3).unwrap();
+	assert!(tx + 72 * 3 <= 2622 - 186);
+}
+
+#[test]
+fn taps_in_the_side_insets_do_nothing_and_never_panic() {
+	let shape = Shape::Top {
+		inset: (30, 30),
+		sides: (0, 0),
+	}
+	.beside((150, 90));
+	let size = (1000, 900);
+	for y in (0..size.1).step_by(7) {
+		for x in (0..150).chain(910..1000).step_by(3) {
+			assert_eq!(
+				shape.target((x, y), size, 1, SettingsPage::Main),
+				None,
+				"{x},{y}"
+			);
+		}
+	}
+}
+
+#[test]
+fn beside_the_sidebar_side_insets_change_nothing() {
+	assert_eq!(Shape::Side.beside((40, 40)), Shape::Side);
 }

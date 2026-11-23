@@ -377,6 +377,9 @@ impl App {
 	}
 
 	pub(super) fn resize(&mut self, w: u32, h: u32) {
+		if !crate::ui::layout::drawable((w, h)) {
+			return;
+		}
 		// Also reached after font, wallpaper and settings changes.
 		self.canvas.invalidate();
 		self.width = w.max(1);
@@ -537,6 +540,9 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		closing: None,
 	};
 
+	// iOS 27 needs the scene delegate UIKit will ask for as it starts.
+	#[cfg(target_os = "ios")]
+	crate::ios_scene::register();
 	event_loop.run_app(&mut app)?;
 	Ok(())
 }

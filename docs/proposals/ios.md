@@ -154,5 +154,6 @@ iOS program: no Linux binaries, no system call translation.
 4. Detecting JIT (StikDebug attached, executable memory available).
 5. `pkg` and the package format; the first ports (fastfetch, jq,
    ripgrep) built as command libraries.
-6. A scene delegate for iOS 27, keyboard avoidance, the Metal renderer on
-   iOS; sideloading builds through AltStore/SideStore.
+6. ~~A scene delegate for iOS 27~~ (done: `src/ios_scene.rs` puts
+   winit's windows in the scene UIKit connects), keyboard avoidance, the
+   Metal renderer on iOS; sideloading builds through AltStore/SideStore.

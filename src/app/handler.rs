@@ -65,7 +65,9 @@ impl ApplicationHandler<UserEvent> for App {
 		// On iOS typing needs the on-screen keyboard, which this shows.
 		#[cfg(target_os = "ios")]
 		{
-			self.window.as_ref().unwrap().set_ime_allowed(true);
+			let window = self.window.as_ref().unwrap();
+			crate::ios_scene::adopt(window);
+			window.set_ime_allowed(true);
 			crate::ios_keyboard::observe(self.proxy.clone());
 		}
 		// pr-check: end window glue

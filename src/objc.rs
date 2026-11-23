@@ -33,6 +33,16 @@ unsafe extern "C" {
 	fn objc_allocateClassPair(superclass: Raw, name: *const c_char, extra: usize) -> Raw;
 	fn objc_registerClassPair(class: Raw);
 	fn class_addMethod(class: Raw, name: Sel, imp: *const c_void, types: *const c_char) -> Bool;
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's scene delegate uses it")
+	)]
+	fn objc_getProtocol(name: *const c_char) -> Raw;
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's scene delegate uses it")
+	)]
+	fn class_addProtocol(class: Raw, protocol: Raw) -> Bool;
 }
 
 /// An action method's implementation: the receiver, the selector, and the
@@ -134,6 +144,67 @@ pub(crate) fn action_class(
 			action as *const c_void,
 			c"v@:@".as_ptr(),
 		);
+		objc_registerClassPair(made);
+	}
+	class(name)
+}
+
+/// A method for [`subclass`]: its selector, its implementation, an
+/// `extern "C"` function taking the receiver and selector first, and its
+/// type encoding.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's scene delegate uses it")
+)]
+pub(crate) struct Method {
+	pub(crate) selector: &'static CStr,
+	pub(crate) imp: *const c_void,
+	pub(crate) types: &'static CStr,
+}
+
+/// A new class named `name`, descending from `superclass` and adopting
+/// `protocol` when the runtime has it, whose instances answer `methods`;
+/// the class already named `name` if there is one, taken to be this one
+/// made earlier.
+///
+/// # Safety
+///
+/// Each method's `imp` is an `extern "C"` function of the type its
+/// `types` encodes.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's scene delegate uses it")
+)]
+pub(crate) unsafe fn subclass(
+	name: &'static CStr,
+	superclass: &'static CStr,
+	protocol: &CStr,
+	methods: &[Method],
+) -> Result<Class, Missing> {
+	let superclass = class(superclass)?;
+	// SAFETY: the superclass is a class and `name` a C string; the runtime
+	// returns a new, unregistered class, or nil if the name is taken.
+	let made = unsafe { objc_allocateClassPair(superclass.raw(), name.as_ptr(), 0) };
+	if made.is_null() {
+		return class(name);
+	}
+	// SAFETY: `made` is unregistered, so protocols and methods may be
+	// added: the protocol is nil-checked, and each method's types encode
+	// its implementation's, as the caller vouches. Registering it then
+	// makes it usable.
+	unsafe {
+		let adopted = objc_getProtocol(protocol.as_ptr());
+		if !adopted.is_null() {
+			class_addProtocol(made, adopted);
+		}
+		for method in methods {
+			class_addMethod(
+				made,
+				sel(method.selector),
+				method.imp,
+				method.types.as_ptr(),
+			);
+		}
 		objc_registerClassPair(made);
 	}
 	class(name)

@@ -17,8 +17,9 @@ app=target/ios-sim/Poopterm.app
 rm -rf "$app"
 mkdir -p "$app/commands"
 cp "$here/Info.plist" "$app/Info.plist"
-vtool -set-build-version iossim 17.0 18.0 -replace -output "$app/Poopterm" \
-	target/aarch64-apple-ios-sim/debug/poopterm 2>/dev/null
+# Built against the current SDK: the app adopts the scene lifecycle iOS 27
+# requires (src/ios_scene.rs), so it resizes as a modern app.
+cp target/aarch64-apple-ios-sim/debug/poopterm "$app/Poopterm"
 chmod +x "$app/Poopterm"
 for command in target/ios-commands/iphonesimulator/*; do
 	cp "$command" "$app/commands/"

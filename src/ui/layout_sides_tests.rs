@@ -57,3 +57,14 @@ fn a_desktop_window_has_no_side_insets() {
 	assert_eq!(layout.left, layout.margin);
 	assert_eq!(layout.right, layout.margin);
 }
+
+#[test]
+fn a_window_with_no_width_or_height_has_nothing_to_lay_out() {
+	// iOS reports a window as 0×0 while it moves into its scene, and a
+	// minimized desktop window can be: the terminals keep their size.
+	assert!(!drawable((0, 0)));
+	assert!(!drawable((1398, 0)));
+	assert!(!drawable((0, 2034)));
+	assert!(drawable((1, 1)), "small, but real");
+	assert!(drawable((1398, 2034)));
+}
