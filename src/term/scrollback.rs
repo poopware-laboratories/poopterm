@@ -72,6 +72,14 @@ impl Scrollback {
 		}
 	}
 
+	/// Takes the newest row back out, its space reused by the next push.
+	pub(crate) fn pop_back(&mut self) -> Option<Vec<Cell>> {
+		let row = self.get(self.len().checked_sub(1)?)?.to_vec();
+		let line = self.lines.pop_back()?;
+		self.write = line.start;
+		Some(row)
+	}
+
 	/// Drops the `count` oldest rows.
 	pub(crate) fn drain_front(&mut self, count: usize) {
 		self.lines.drain(..count.min(self.lines.len()));

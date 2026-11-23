@@ -14,8 +14,11 @@ pub(crate) struct Layout {
 	/// the title bar and a tab bar, which ends where the grid starts.
 	pub(crate) padding_top: usize,
 	pub(crate) status_height: usize,
-	/// The grid's first pixel column, right of a vertical tab `sidebar`.
+	/// The grid's first pixel column, right of a vertical tab `sidebar`
+	/// and the system's left inset.
 	pub(crate) left: usize,
+	/// Pixels right of the grid: the margin and the system's right inset.
+	pub(crate) right: usize,
 	/// Pixels at the bottom the system keeps (iOS's home indicator).
 	pub(crate) bottom: usize,
 }
@@ -37,7 +40,8 @@ pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar
 			safe_top + chrome.titlebar_height + chrome.border
 		},
 		status_height: if prefs.show_bottom_bar { 26 * scale } else { 0 },
-		left: margin + sidebar,
+		left: margin + sidebar + chrome.sides.0,
+		right: margin + chrome.sides.1,
 		bottom: safe_bottom,
 	}
 }
@@ -45,7 +49,7 @@ pub(crate) fn layout(chrome: &Chrome, scale: usize, prefs: &Preferences, sidebar
 impl Layout {
 	/// How many `cell`-sized cells fit in a `window`, at least 2 by 2.
 	pub(crate) fn grid_size(&self, window: (usize, usize), cell: (usize, usize)) -> (usize, usize) {
-		let width = window.0.saturating_sub(self.left + self.margin);
+		let width = window.0.saturating_sub(self.left + self.right);
 		let height = window
 			.1
 			.saturating_sub(self.top + self.margin + self.status_height + self.bottom);
@@ -60,7 +64,7 @@ impl Layout {
 		crate::graphics::Rect {
 			x: self.left,
 			y: self.top,
-			width: width.saturating_sub(self.left + self.margin),
+			width: width.saturating_sub(self.left + self.right),
 			height: height.saturating_sub(self.top + self.margin + self.status_height + self.bottom),
 		}
 	}
@@ -68,11 +72,15 @@ impl Layout {
 	/// The window size holding exactly a `grid` of `cell`-sized cells.
 	pub(crate) fn window_size(&self, grid: (usize, usize), cell: (usize, usize)) -> (usize, usize) {
 		(
-			self.left + grid.0 * cell.0 + self.margin,
+			self.left + grid.0 * cell.0 + self.right,
 			self.top + grid.1 * cell.1 + self.margin + self.status_height,
 		)
 	}
 }
+
+#[cfg(test)]
+#[path = "layout_sides_tests.rs"]
+mod sides_tests;
 
 #[cfg(test)]
 mod tests {
@@ -123,6 +131,7 @@ mod tests {
 			padding_top: 40,
 			status_height: 26,
 			left: 0,
+			right: 0,
 			bottom: 0,
 		};
 		assert_eq!(linux(&unpadded()), expected);

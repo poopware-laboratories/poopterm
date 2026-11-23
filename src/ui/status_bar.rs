@@ -66,6 +66,20 @@ pub(crate) fn status_text(input: &StatusInput) -> (String, String) {
 	(left, right)
 }
 
+/// Where the bar goes in a window `(width, height)` large: `bar` pixels
+/// tall, above the window's `border` and the system's `bottom` inset (the
+/// home indicator or the keyboard), between its side insets.
+pub(crate) fn status_rect(
+	(width, height): (usize, usize),
+	bar: usize,
+	border: usize,
+	bottom: usize,
+	(left, right): (usize, usize),
+) -> Rect {
+	let y = height.saturating_sub(bar + border + bottom);
+	(left, y, width.saturating_sub(left + right), bar)
+}
+
 /// The bar across `rect`, its text at `px`.
 pub(crate) fn status_bar(
 	input: &StatusInput,

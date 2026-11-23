@@ -32,8 +32,9 @@ impl App {
 			self.sessions.len(),
 			self.scale(),
 			TabStripOptions {
-				left_reserve: self.tab_left_reserve().max(controls.left_reserve),
-				right_reserve: controls.right_reserve,
+				// A phone on its side keeps the tabs clear of its sensor housing.
+				left_reserve: self.tab_left_reserve().max(controls.left_reserve) + self.sides.0,
+				right_reserve: controls.right_reserve + self.sides.1,
 				scroll: self.tab_scroll,
 				show_plus: self.preferences.show_new_tab_button,
 				show_settings: self.preferences.show_settings_button,

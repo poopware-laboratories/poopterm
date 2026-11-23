@@ -94,6 +94,9 @@ mod recolor;
 mod recolor_tests;
 #[cfg(test)]
 mod report_tests;
+mod resize;
+#[cfg(test)]
+mod resize_tests;
 #[cfg(test)]
 mod reverse_screen_tests;
 #[cfg(test)]

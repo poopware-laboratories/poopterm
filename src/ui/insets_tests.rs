@@ -64,20 +64,35 @@ fn a_keyboard_inset_out_of_reason_is_none() {
 }
 
 #[test]
-fn the_system_keeps_the_status_bar_and_the_keyboard_or_home_indicator() {
-	// 2622 pixels tall at 3×, the safe area 186 down and 2370 tall.
-	let heights = (2622, 2370);
-	assert_eq!(system_insets(heights, 186, 0.0, 3.0), ((186, 66), 66));
-	assert_eq!(
-		system_insets(heights, 186, 336.0, 3.0),
-		((186, 1008), 66),
-		"the keyboard reaches higher; the home indicator stays known"
-	);
-	assert_eq!(system_insets(heights, 186, 10.0, 3.0), ((186, 66), 66));
+fn a_phone_on_its_side_keeps_both_sides_and_the_home_indicator() {
+	use winit::dpi::PhysicalSize;
+	// 2622×1206 at 3×; the safe area starts 186 in and is 2250 wide, 1143 tall.
+	let (outer, inner) = (PhysicalSize::new(2622, 1206), PhysicalSize::new(2250, 1143));
+	let insets = window_insets(outer, inner, (186, 0), 0.0, 3.0);
+	assert_eq!(insets.sides, (186, 186));
+	assert_eq!(insets.safe, (0, 63));
+	assert_eq!(insets.home, 63);
 }
 
 #[test]
-fn a_window_without_insets_keeps_nothing() {
-	assert_eq!(system_insets((800, 800), 0, 0.0, 2.0), ((0, 0), 0));
-	assert_eq!(system_insets((800, 800), 0, f64::NAN, 2.0), ((0, 0), 0));
+fn upright_a_phone_keeps_its_top_and_bottom_only() {
+	use winit::dpi::PhysicalSize;
+	let (outer, inner) = (PhysicalSize::new(1206, 2622), PhysicalSize::new(1206, 2370));
+	let insets = window_insets(outer, inner, (0, 186), 336.0, 3.0);
+	assert_eq!(insets.sides, (0, 0));
+	assert_eq!(
+		insets.safe,
+		(186, 1008),
+		"the keyboard reaches higher than the home indicator"
+	);
+	assert_eq!(insets.home, 66);
+}
+
+#[test]
+fn a_safe_area_reported_outside_the_window_is_clamped() {
+	use winit::dpi::PhysicalSize;
+	let (outer, inner) = (PhysicalSize::new(100, 100), PhysicalSize::new(400, 400));
+	let insets = window_insets(outer, inner, (-20, 300), 0.0, 1.0);
+	assert_eq!(insets.sides, (0, 0));
+	assert_eq!(insets.safe, (100, 0));
 }

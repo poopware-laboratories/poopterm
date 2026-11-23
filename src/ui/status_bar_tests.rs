@@ -252,3 +252,25 @@ fn broadcasting_is_said_first_on_the_right_and_nowhere_else() {
 	);
 	assert!(!quiet.1.contains("broadcasting"));
 }
+
+#[test]
+fn the_bar_sits_above_the_bottom_inset_between_the_side_insets() {
+	use super::status_bar::status_rect;
+	assert_eq!(status_rect((800, 600), 26, 0, 0, (0, 0)), (0, 574, 800, 26));
+	assert_eq!(
+		status_rect((800, 600), 26, 1, 0, (0, 0)),
+		(0, 573, 800, 26),
+		"above the border"
+	);
+	// A phone on its side: 2622×1206 at 3×, the keyboard 1008 pixels tall.
+	assert_eq!(
+		status_rect((2622, 1206), 78, 0, 1008, (186, 186)),
+		(186, 120, 2250, 78)
+	);
+}
+
+#[test]
+fn a_window_too_small_for_its_insets_gives_the_bar_no_room() {
+	use super::status_bar::status_rect;
+	assert_eq!(status_rect((100, 50), 26, 0, 80, (60, 60)), (60, 0, 0, 26));
+}

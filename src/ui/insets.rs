@@ -37,19 +37,33 @@ pub(crate) fn bottom_inset(safe_bottom: usize, keyboard: f64, factor: f64) -> us
 	safe_bottom.max(keyboard)
 }
 
-/// What the system keeps of a window `heights` (outer, safe area) pixels
-/// tall whose safe area starts `top` down, with a keyboard covering
-/// `keyboard` points at `factor`: the top and bottom insets, the bottom
-/// being the keyboard's while it reaches higher, and the home indicator's
-/// own bottom inset.
-pub(crate) fn system_insets(
-	(outer, inner): (u32, u32),
-	top: usize,
+/// What the system keeps of a window: its top and bottom (the bottom
+/// being the keyboard's while it reaches higher), the home indicator's own
+/// bottom, and the left and right, in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Insets {
+	pub(crate) safe: (usize, usize),
+	pub(crate) home: usize,
+	pub(crate) sides: (usize, usize),
+}
+
+/// The insets of a window `outer` large whose safe area, `inner` large,
+/// starts at `at`, with a keyboard covering `keyboard` points at `factor`.
+pub(crate) fn window_insets(
+	outer: winit::dpi::PhysicalSize<u32>,
+	inner: winit::dpi::PhysicalSize<u32>,
+	at: (i32, i32),
 	keyboard: f64,
 	factor: f64,
-) -> ((usize, usize), usize) {
-	let (top, home) = safe_insets(outer as usize, top, inner as usize);
-	((top, bottom_inset(home, keyboard, factor)), home)
+) -> Insets {
+	let start = |offset: i32| usize::try_from(offset).unwrap_or(0);
+	let (top, home) = safe_insets(outer.height as usize, start(at.1), inner.height as usize);
+	let sides = safe_insets(outer.width as usize, start(at.0), inner.width as usize);
+	Insets {
+		safe: (top, bottom_inset(home, keyboard, factor)),
+		home,
+		sides,
+	}
 }
 
 #[cfg(test)]

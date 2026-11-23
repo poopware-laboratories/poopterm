@@ -137,6 +137,8 @@ pub(crate) struct App {
 	titlebar_height: usize,
 	/// Top and bottom pixels the system keeps (iOS); see `Chrome::safe`.
 	safe: (usize, usize),
+	/// Left and right pixels the system keeps (iOS, on its side).
+	sides: (usize, usize),
 	/// The home indicator's pixels at the bottom (iOS), which `safe` leaves
 	/// out while the keyboard reaches higher.
 	home: usize,
@@ -322,7 +324,7 @@ impl App {
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
-		chrome.safe = self.safe;
+		(chrome.safe, chrome.sides) = (self.safe, self.sides);
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -338,7 +340,7 @@ impl App {
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
-		chrome.safe = self.safe;
+		(chrome.safe, chrome.sides) = (self.safe, self.sides);
 		layout(
 			&chrome,
 			self.scale(),
@@ -361,7 +363,7 @@ impl App {
 	}
 
 	pub(super) fn grid_left(&self) -> usize {
-		self.margin + self.sidebar_width()
+		self.margin + self.sidebar_width() + self.sides.0
 	}
 
 	/// Tells a terminal about the window showing it and the user's settings.
@@ -382,13 +384,13 @@ impl App {
 		// pr-check: window glue: the system's insets as the real window reports them
 		#[cfg(target_os = "ios")]
 		if let Some(window) = &self.window {
-			let top = window.inner_position().map_or(0, |at| at.y.max(0) as usize);
-			let heights = (window.outer_size().height, window.inner_size().height);
+			let at = window.inner_position().map_or((0, 0), |at| (at.x, at.y));
+			let (outer, inner) = (window.outer_size(), window.inner_size());
 			let keyboard = crate::ios_keyboard::covered();
-			let (safe, home) = crate::ui::insets::system_insets(heights, top, keyboard, self.factor());
-			self.home = home;
-			if safe != self.safe {
-				self.safe = safe;
+			let insets = crate::ui::insets::window_insets(outer, inner, at, keyboard, self.factor());
+			self.home = insets.home;
+			if (insets.safe, insets.sides) != (self.safe, self.sides) {
+				(self.safe, self.sides) = (insets.safe, insets.sides);
 				self.apply_scale();
 			}
 		}
@@ -464,6 +466,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		padding_top: 0,
 		titlebar_height: 0,
 		safe: (0, 0),
+		sides: (0, 0),
 		home: 0,
 		tab_height: 46,
 		status_height: 26,

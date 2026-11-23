@@ -19,7 +19,7 @@ use crate::{
 	ui::{
 		close_prompt::close_prompt,
 		overlays::{Place, command_palette, search_box, search_buttons, shortcut_hints},
-		status_bar::{StatusInput, status_bar},
+		status_bar::{StatusInput, status_bar, status_rect},
 	},
 };
 
@@ -301,7 +301,14 @@ impl App {
 			return;
 		}
 		let (width, height) = p.size();
-		let y = height.saturating_sub(self.status_height + self.border + self.safe.1);
+		let (border, bottom) = (self.border, self.safe.1);
+		let rect = status_rect(
+			(width, height),
+			self.status_height,
+			border,
+			bottom,
+			self.sides,
+		);
 		let term = self.sessions[self.active].term();
 		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
 		// Say when the user acts as someone else or somewhere else.
@@ -319,7 +326,6 @@ impl App {
 			theme: self.theme.kind.name(),
 			broadcast: self.broadcast,
 		};
-		let rect = (0, y, width, self.status_height);
 		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);
 		drop(term);
 		paint(p, &mut self.ui_fonts, |s, f| draw_status_bar(s, f, &bar));

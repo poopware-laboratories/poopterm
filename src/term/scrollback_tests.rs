@@ -392,3 +392,26 @@ fn trimming_random_rows_matches_the_slow_scan() {
 		);
 	}
 }
+
+#[test]
+fn popping_takes_the_newest_row_back_trimmed_and_reuses_its_space() {
+	let mut s = Scrollback::default();
+	assert_eq!(s.pop_back(), None, "nothing to take");
+	for line in ["one", "two", "three"] {
+		push(&mut s, &row(line, 8), PAD, 10);
+	}
+	let before = s.capacity();
+	assert_eq!(
+		s.pop_back().map(|cells| text(&cells)),
+		Some("three".to_owned())
+	);
+	assert_eq!(s.len(), 2);
+	push(&mut s, &row("four", 8), PAD, 10);
+	assert_eq!(s.capacity(), before, "the popped row's space was reused");
+	let rows: Vec<_> = s.iter().map(text).collect();
+	assert_eq!(rows, ["one", "two", "four"]);
+	while s.pop_back().is_some() {}
+	assert!(s.is_empty());
+	push(&mut s, &row("again", 8), PAD, 10);
+	assert_eq!(text(s.get(0).unwrap()), "again");
+}
