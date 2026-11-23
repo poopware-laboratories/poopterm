@@ -8,7 +8,7 @@ pub(crate) mod fd;
 #[cfg(target_vendor = "apple")]
 pub(crate) mod jit;
 #[cfg_attr(
-	all(target_os = "macos", not(test)),
+	all(target_vendor = "apple", not(test)),
 	expect(dead_code, reason = "no window buffers")
 )]
 pub(crate) mod mem;

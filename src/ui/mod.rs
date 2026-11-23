@@ -17,8 +17,8 @@ mod close_prompt_tests;
 pub(crate) mod contrast;
 pub(crate) mod copy;
 #[cfg_attr(
-	target_os = "macos",
-	allow(dead_code, reason = "macOS keeps its own title bar")
+	target_vendor = "apple",
+	allow(dead_code, reason = "macOS keeps its own title bar; iOS has none")
 )]
 pub(crate) mod decorations;
 #[cfg(test)]
@@ -135,8 +135,8 @@ mod ui_font_drawn_tests;
 #[cfg(test)]
 mod ui_font_tests;
 #[cfg_attr(
-	target_os = "macos",
-	allow(dead_code, reason = "macOS keeps its own window buttons")
+	target_vendor = "apple",
+	allow(dead_code, reason = "macOS keeps its own window buttons; iOS has none")
 )]
 pub(crate) mod window_controls;
 #[cfg(test)]

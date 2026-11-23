@@ -5,8 +5,7 @@ use std::time::Instant;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
-	application::ApplicationHandler, dpi::PhysicalSize, event::Ime, event_loop::ControlFlow,
-	window::WindowId,
+	application::ApplicationHandler, event::Ime, event_loop::ControlFlow, window::WindowId,
 };
 
 impl ApplicationHandler<UserEvent> for App {
@@ -78,7 +77,7 @@ impl ApplicationHandler<UserEvent> for App {
 		#[cfg(not(target_os = "ios"))]
 		{
 			let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
-			let size = PhysicalSize::new(width as u32, height as u32);
+			let size = winit::dpi::PhysicalSize::new(width as u32, height as u32);
 			let _ = self.window.as_ref().unwrap().request_inner_size(size);
 		}
 		#[cfg(target_os = "ios")]

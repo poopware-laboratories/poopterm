@@ -64,6 +64,10 @@ pub struct Preferences {
 	pub reduce_motion: bool,
 	pub(crate) renderer: RendererPreference,
 	/// Who draws the title bar on Linux and FreeBSD.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "iOS draws no title bar")
+	)]
 	pub(crate) decorations: DecorationPreference,
 	/// Whether the window keeps its frame or is just a square.
 	pub(crate) window_frame: WindowFrame,

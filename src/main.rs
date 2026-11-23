@@ -73,9 +73,9 @@ mod objc;
 mod parser;
 mod pkg;
 mod platform;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(target_vendor = "apple"))]
 mod portal;
-#[cfg(all(test, not(target_os = "macos")))]
+#[cfg(all(test, not(target_vendor = "apple")))]
 mod portal_tests;
 #[cfg_attr(
 	not(test),

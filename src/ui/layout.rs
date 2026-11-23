@@ -83,6 +83,10 @@ impl Layout {
 	}
 
 	/// The window size holding exactly a `grid` of `cell`-sized cells.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "on iOS the screen sets the window's size")
+	)]
 	pub(crate) fn window_size(&self, grid: (usize, usize), cell: (usize, usize)) -> (usize, usize) {
 		(
 			self.left + grid.0 * cell.0 + self.right,

@@ -163,6 +163,10 @@ impl Connection {
 	}
 
 	/// Makes [`Self::call`] fail after waiting `timeout` for a message.
+	#[cfg_attr(
+		target_os = "ios",
+		expect(dead_code, reason = "only the desktop portal waits with a timeout")
+	)]
 	pub(crate) fn set_timeout(&self, timeout: std::time::Duration) {
 		self.receiver.set_timeout(timeout);
 	}
@@ -256,6 +260,10 @@ impl Receiver {
 
 	/// Makes [`Self::receive`] fail after waiting `timeout`; a zero
 	/// timeout, which sockets refuse, waits forever.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "only the desktop portal waits with a timeout")
+	)]
 	pub(crate) fn set_timeout(&self, timeout: std::time::Duration) {
 		self.stream.set_read_timeout(Some(timeout)).ok();
 	}

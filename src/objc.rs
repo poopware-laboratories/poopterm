@@ -126,6 +126,10 @@ pub(crate) struct Sel(*const c_void);
 
 impl Sel {
 	/// No selector, as an item without an action has.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "iOS has no menu items")
+	)]
 	pub(crate) const NULL: Self = Self(ptr::null());
 }
 
