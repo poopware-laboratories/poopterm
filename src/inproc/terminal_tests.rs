@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{io::Read, time::Duration};
 
 use super::*;
 use crate::inproc::tests::Screen;
@@ -204,4 +204,60 @@ fn staying_canonical_keeps_the_line_being_typed() {
 	terminal.keyboard(b" line\r");
 	terminal.detach();
 	assert_eq!(read_all(keys), b"half line\n");
+}
+
+#[test]
+fn only_a_signalling_character_under_isig_splits_what_was_typed() {
+	let mode = Mode::default();
+	assert_eq!(
+		split_at_signal(&mode, b"ab\x03cd"),
+		Some((&b"ab\x03"[..], &b"cd"[..]))
+	);
+	assert_eq!(
+		split_at_signal(&mode, b"\x1cx"),
+		Some((&b"\x1c"[..], &b"x"[..])),
+		"quit too"
+	);
+	assert_eq!(split_at_signal(&mode, b"plain"), None);
+	let raw = Mode {
+		signals: false,
+		..mode
+	};
+	assert_eq!(
+		split_at_signal(&raw, b"ab\x03cd"),
+		None,
+		"^C is a key in raw mode"
+	);
+}
+
+#[test]
+fn keys_typed_after_interrupting_a_program_that_ends_go_to_the_shell() {
+	let (terminal, _) = terminal();
+	let keys = terminal.attach().unwrap();
+	assert_eq!(terminal.keyboard(b"\x03echo after\r"), None);
+	assert_eq!(
+		terminal.keyboard(b"ls\r"),
+		None,
+		"still held, the program is ending"
+	);
+	terminal.detach();
+	assert_eq!(read_all(keys), b"", "none reached the program");
+	assert_eq!(terminal.take_leftover(), b"echo after\rls\r");
+	assert_eq!(terminal.take_leftover(), b"", "taken once");
+}
+
+#[test]
+fn a_program_that_survives_interrupt_gets_the_held_keys_later() {
+	let (terminal, _) = terminal();
+	let keys = terminal.attach().unwrap();
+	terminal.keyboard(b"\x03first ");
+	std::thread::sleep(HOLD_AFTER_SIGNAL + Duration::from_millis(100));
+	terminal.keyboard(b"second\r");
+	terminal.detach();
+	assert_eq!(
+		read_all(keys),
+		b"first second\n",
+		"a REPL that caught ^C reads on"
+	);
+	assert_eq!(terminal.take_leftover(), b"");
 }

@@ -349,7 +349,8 @@ fn programs_read_typed_lines_and_print_as_they_run() {
 }
 
 fn interrupting_ends_a_program_and_the_rest_of_its_line() {
-	let keys: &[&[u8]] = &[b"yes; echo never\r", b"\x03", b"echo $?\r", b"exit\r"];
+	// What is typed right after ^C reaches the shell, not the ending program.
+	let keys: &[&[u8]] = &[b"yes; echo never\r", b"\x03echo $?\r", b"exit\r"];
 	let Some(shown) = device("interrupt", keys) else {
 		return;
 	};

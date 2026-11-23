@@ -14,6 +14,7 @@ mod tests;
 pub(crate) mod tty;
 
 use std::{
+	collections::VecDeque,
 	io::{self, PipeReader, PipeWriter, Read, Write},
 	path::{Path, PathBuf},
 	sync::{
@@ -158,7 +159,17 @@ pub(crate) fn run(
 	if !show(welcome.as_bytes()) || !show(shell.prompt().as_bytes()) {
 		return;
 	}
-	for bytes in typed {
+	// Keys typed after ^C to a program that has since ended were meant for
+	// the shell: they are edited at the next prompt, before newer keys.
+	let mut queued: VecDeque<Vec<u8>> = VecDeque::new();
+	loop {
+		let bytes = match queued.pop_front() {
+			Some(bytes) => bytes,
+			None => match typed.recv() {
+				Ok(bytes) => bytes,
+				Err(_) => return,
+			},
+		};
 		for event in discipline.input(&bytes) {
 			let shown = match event {
 				Event::Echo(bytes) => terminal.write_raw(&bytes).is_ok(),
@@ -167,6 +178,10 @@ pub(crate) fn run(
 					let ran = shell.run(&text);
 					if !show(&ran.output) || !show(&ran.errors) || ran.exit {
 						return;
+					}
+					let leftover = terminal.take_leftover();
+					if !leftover.is_empty() {
+						queued.push_back(leftover);
 					}
 					show(shell.prompt().as_bytes())
 				}

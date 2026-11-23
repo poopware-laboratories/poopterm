@@ -10,6 +10,7 @@ use std::{
 		Arc, Mutex, MutexGuard,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::{Duration, Instant},
 };
 
 use super::{
@@ -26,6 +27,23 @@ struct Foreground {
 	/// The thread running it, which `^C` and resizes signal.
 	thread: Thread,
 	line: Line,
+	/// When `^C` or `^\\` was typed: keys after it are held (`held`) for
+	/// the shell, since the program is most likely ending.
+	signalled: Option<Instant>,
+	held: Vec<u8>,
+}
+
+/// How long keys typed after `^C` wait for the program to end: past it, a
+/// program that caught the signal and went on (a REPL) gets them.
+pub(crate) const HOLD_AFTER_SIGNAL: Duration = Duration::from_millis(500);
+
+/// Splits typed bytes after the first character that signals the program
+/// (`^C`, `^\\` under `ISIG`): what it gets, and what comes after.
+/// None when no such character was typed.
+pub(crate) fn split_at_signal<'a>(mode: &Mode, bytes: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
+	let signals = |byte: &u8| Some(*byte) == mode.interrupt || Some(*byte) == mode.quit;
+	let at = bytes.iter().position(signals).filter(|_| mode.signals)?;
+	Some(bytes.split_at(at + 1))
 }
 
 pub(crate) struct Terminal {
@@ -36,6 +54,8 @@ pub(crate) struct Terminal {
 	/// `^C` interrupted the program in the foreground: the rest of the
 	/// line the shell was running stops, as a shell's does.
 	interrupted: AtomicBool,
+	/// Keys typed after `^C` to a program that then ended: the shell's.
+	leftover: Mutex<Vec<u8>>,
 }
 
 impl fmt::Debug for Terminal {
@@ -59,6 +79,7 @@ impl Terminal {
 			foreground: Mutex::new(None),
 			size: size.clone(),
 			interrupted: AtomicBool::new(false),
+			leftover: Mutex::new(Vec::new()),
 		});
 		let weak = Arc::downgrade(&terminal);
 		size.on_resize(Box::new(move || {
@@ -98,13 +119,26 @@ impl Terminal {
 			keys: Some(keys),
 			thread: Thread::current(),
 			line: Line::default(),
+			signalled: None,
+			held: Vec::new(),
 		});
 		Ok(reader)
 	}
 
 	/// The program in the foreground ended; keys go to the shell again.
 	pub(crate) fn detach(&self) {
-		lock(&self.foreground).take();
+		let ended = lock(&self.foreground).take();
+		if let Some(ended) = ended
+			&& !ended.held.is_empty()
+		{
+			lock(&self.leftover).extend(ended.held);
+		}
+	}
+
+	/// Keys typed after `^C` to a program that ended since: they were meant
+	/// for the shell, which reads them before what comes next.
+	pub(crate) fn take_leftover(&self) -> Vec<u8> {
+		std::mem::take(&mut *lock(&self.leftover))
 	}
 
 	/// Whether `^C` interrupted the last program.
@@ -126,7 +160,25 @@ impl Terminal {
 			let Some(running) = foreground.as_mut() else {
 				return Some(bytes.to_vec());
 			};
-			let events = running.line.feed(&mode, bytes);
+			// After ^C, keys wait to see whether the program ends.
+			let mut fed = bytes.to_vec();
+			if let Some(at) = running.signalled {
+				if at.elapsed() < HOLD_AFTER_SIGNAL {
+					running.held.extend_from_slice(bytes);
+					return None;
+				}
+				running.signalled = None;
+				fed = [std::mem::take(&mut running.held), fed].concat();
+			}
+			let now = match split_at_signal(&mode, &fed) {
+				Some((now, after)) => {
+					running.signalled = Some(Instant::now());
+					running.held.extend_from_slice(after);
+					now
+				}
+				None => &fed,
+			};
+			let events = running.line.feed(&mode, now);
 			if events.contains(&Event::EndOfFile) {
 				running.keys = None;
 			}
