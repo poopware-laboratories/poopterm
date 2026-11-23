@@ -29,6 +29,18 @@ struct Edges {
 const PLAIN: usize = 0;
 const AROUND_CORNERS: usize = 1;
 
+/// Readies the new `window`: gives it its scene, and the on-screen
+/// keyboard, which typing needs on iOS, typing plain text.
+pub(crate) fn attach(
+	window: &Window,
+	proxy: winit::event_loop::EventLoopProxy<crate::pty::UserEvent>,
+) {
+	crate::ios_scene::adopt(window);
+	crate::ios_keyboard::plain_typing();
+	window.set_ime_allowed(true);
+	crate::ios_keyboard::observe(proxy);
+}
+
 /// The insets of `window`, drawn at `factor` pixels a point.
 pub(crate) fn insets(window: &Window, factor: f64) -> Insets {
 	let place = |at: Result<PhysicalPosition<i32>, _>| at.map_or((0, 0), |at| (at.x, at.y));

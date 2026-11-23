@@ -62,15 +62,8 @@ impl ApplicationHandler<UserEvent> for App {
 		self.follow_appearance(appearance);
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		self.start_decorations();
-		// On iOS typing needs the on-screen keyboard, which this shows.
 		#[cfg(target_os = "ios")]
-		{
-			let window = self.window.as_ref().unwrap();
-			crate::ios_scene::adopt(window);
-			crate::ios_keyboard::plain_typing();
-			window.set_ime_allowed(true);
-			crate::ios_keyboard::observe(self.proxy.clone());
-		}
+		crate::ios_window::attach(self.window.as_ref().unwrap(), self.proxy.clone());
 		// pr-check: end window glue
 		// pr-check: window glue: AppKit has built the app menu once the app launched
 		#[cfg(target_os = "macos")]
