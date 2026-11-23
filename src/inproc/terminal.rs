@@ -20,7 +20,7 @@ use crate::sys::{command::Device, signal::Thread};
 
 /// The program running in the foreground, while it runs.
 struct Foreground {
-	/// The write end of its standard input, when that is the keyboard;
+	/// The write end of its keyboard (its standard input, or `/dev/tty`);
 	/// none once the user ended input with `^D`.
 	keys: Option<PipeWriter>,
 	/// The thread running it, which `^C` and resizes signal.
@@ -88,18 +88,14 @@ impl Terminal {
 	}
 
 	/// The program on this thread is now in the foreground: keys go to it
-	/// (through the returned pipe when `keyboard`), and `^C` to this thread.
-	pub(crate) fn attach(&self, keyboard: bool) -> io::Result<Option<PipeReader>> {
-		let (reader, keys) = match keyboard {
-			true => {
-				let (reader, writer) = io::pipe()?;
-				(Some(reader), Some(writer))
-			}
-			false => (None, None),
-		};
+	/// through the returned pipe, and `^C` to this thread. Keys it does not
+	/// read are dropped once the pipe is full, so they never hold up `^C`.
+	pub(crate) fn attach(&self) -> io::Result<PipeReader> {
+		let (reader, keys) = io::pipe()?;
+		crate::sys::fd::set_nonblocking(&keys)?;
 		self.interrupted.store(false, Ordering::SeqCst);
 		*lock(&self.foreground) = Some(Foreground {
-			keys,
+			keys: Some(keys),
 			thread: Thread::current(),
 			line: Line::default(),
 		});
@@ -183,9 +179,31 @@ impl Device for Terminal {
 	}
 
 	fn set_settings(&self, settings: &libc::termios, flush: bool) {
-		*lock(&self.settings) = *settings;
-		if flush && let Some(running) = lock(&self.foreground).as_mut() {
-			running.line = Line::default();
+		let was_canonical = {
+			let mut kept = lock(&self.settings);
+			let was = kept.c_lflag & libc::ICANON != 0;
+			*kept = *settings;
+			was
+		};
+		let going_raw = was_canonical && settings.c_lflag & libc::ICANON == 0;
+		if !flush && !going_raw {
+			return;
+		}
+		let (pending, keys) = {
+			let mut foreground = lock(&self.foreground);
+			let Some(running) = foreground.as_mut() else {
+				return;
+			};
+			let keys = running.keys.as_ref().and_then(|keys| keys.try_clone().ok());
+			(running.line.take_pending(), keys)
+		};
+		// What was typed ahead of a program going raw, it reads now; a flush
+		// drops it.
+		if !flush
+			&& !pending.is_empty()
+			&& let Some(mut keys) = keys
+		{
+			let _ = keys.write_all(&pending);
 		}
 	}
 

@@ -9,4 +9,12 @@ int tgetent(char *buffer, const char *name);
 char *tgetstr(const char *id, char **area);
 char *tgoto(const char *cap, int col, int row);
 int tputs(const char *str, int affcnt, int (*putc)(int));
+/* Also in libncurses: flags and numbers (ul, less), and the variables
+ * termcap programs set (less sets ospeed from the line speed). */
+int tgetflag(const char *id);
+int tgetnum(const char *id);
+extern short ospeed;
+extern char PC;
+extern char *UP;
+extern char *BC;
 #endif

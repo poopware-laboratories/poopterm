@@ -4,6 +4,7 @@
 pub(crate) mod command;
 pub(crate) mod dl;
 pub(crate) mod exits;
+pub(crate) mod fd;
 #[cfg_attr(
 	all(target_os = "macos", not(test)),
 	expect(dead_code, reason = "no window buffers")

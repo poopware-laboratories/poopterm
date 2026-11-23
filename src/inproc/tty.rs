@@ -140,6 +140,14 @@ impl Line {
 		merge_echoes(events)
 	}
 
+	/// What was typed on the line and not sent yet, taken off it: when the
+	/// program leaves canonical mode, it reads that at once, as from a
+	/// kernel's terminal.
+	pub(crate) fn take_pending(&mut self) -> Vec<u8> {
+		self.literal = false;
+		std::mem::take(&mut self.line)
+	}
+
 	/// A character that goes into the line (or straight out when raw); a
 	/// newline sends the line.
 	fn keep(&mut self, mode: &Mode, byte: u8, raw: &mut Vec<u8>, events: &mut Vec<Event>) {

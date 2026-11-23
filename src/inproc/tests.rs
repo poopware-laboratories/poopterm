@@ -16,13 +16,24 @@ use std::{
 	},
 };
 
-/// A screen for the device loop: what it shows, kept for the test.
+/// A screen for the device loop: what it shows, kept for the test. It
+/// keeps the first `SCREEN_LIMIT` bytes and then the last ones, so a
+/// program that never stops printing cannot fill memory.
 #[derive(Clone, Default)]
 pub(super) struct Screen(pub Arc<Mutex<Vec<u8>>>);
 
+/// Most bytes a test screen keeps.
+pub(super) const SCREEN_LIMIT: usize = 1 << 20;
+
 impl Write for Screen {
 	fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-		self.0.lock().unwrap().extend_from_slice(bytes);
+		let mut shown = self.0.lock().unwrap();
+		shown.extend_from_slice(bytes);
+		if shown.len() > SCREEN_LIMIT {
+			// Keep the start and the most recent half.
+			let cut = shown.len() - SCREEN_LIMIT / 2;
+			shown.drain(SCREEN_LIMIT / 2..cut);
+		}
 		Ok(bytes.len())
 	}
 	fn flush(&mut self) -> std::io::Result<()> {
@@ -363,6 +374,19 @@ fn output_redirects_to_files_replacing_or_appending() {
 }
 
 #[test]
+fn a_test_screen_stays_bounded_keeping_the_start_and_the_end() {
+	let mut screen = Screen::default();
+	screen.write_all(b"start").unwrap();
+	for _ in 0..3 * SCREEN_LIMIT / 4096 {
+		screen.write_all(&[b'y'; 4096]).unwrap();
+	}
+	screen.write_all(b"end").unwrap();
+	let shown = screen.shown();
+	assert!(shown.len() <= SCREEN_LIMIT + 4096, "{}", shown.len());
+	assert!(shown.starts_with("start") && shown.ends_with("end"));
+}
+
+#[test]
 fn a_size_reads_back_as_set_and_clamps_to_what_a_terminal_holds() {
 	let size = Size::new(80, 24);
 	assert_eq!(size.get(), (80, 24));
@@ -557,4 +581,21 @@ fn programs_are_told_not_to_start_a_pager_or_background_work() {
 fn the_defaults_can_be_replaced_like_any_variable() {
 	let (mut sh, _) = shell();
 	assert_eq!(ran(&mut sh, "export PAGER=less; echo $PAGER"), "less\n");
+}
+
+#[test]
+fn whoami_names_the_user_programs_run_for() {
+	let (mut sh, _) = shell();
+	sh.env.insert("USER".into(), "mobile".into());
+	assert_eq!(ran(&mut sh, "whoami"), "mobile\n");
+	assert_eq!(ran(&mut sh, "whoami && echo ok"), "mobile\nok\n");
+	sh.env.remove("USER");
+	assert_eq!(
+		ran(&mut sh, "whoami || echo failed"),
+		"whoami: no user name\nfailed\n"
+	);
+	assert!(
+		ran(&mut sh, "help").contains(" whoami"),
+		"listed as a built-in"
+	);
 }

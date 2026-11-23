@@ -63,6 +63,7 @@ fn nothing_to_run_is_enoent_and_a_non_command_is_enoexec() {
 		tty: None,
 		device: None,
 		keyboard: false,
+		keys: None,
 	};
 	let env = vars(&[&format!("PATH={}", dir.display())]);
 	assert_eq!(
@@ -91,7 +92,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("29 passed"), "{shown}");
+	assert!(shown.contains("30 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -190,6 +191,19 @@ int main(int argc, char **argv) {
 		waitpid(pid, NULL, 0);
 		int c;
 		while ((c = getchar()) != EOF) putchar(c);
+		return 0;
+	}
+	if (!strcmp(mode, "spin")) {
+		/* As yes does: writes until something ends it. */
+		for (;;) {
+			if (write(1, "y\n", 2) < 0) { printf("[write %s]", strerror(errno)); return 3; }
+		}
+	}
+	if (!strcmp(mode, "block")) {
+		/* As pax does: blocks signals and ends without unblocking them. */
+		sigset_t all;
+		sigfillset(&all);
+		sigprocmask(SIG_BLOCK, &all, NULL);
 		return 0;
 	}
 	if (!strcmp(mode, "isatty")) { printf("%d%d%d", isatty(0), isatty(1), isatty(2)); return 0; }
@@ -319,6 +333,7 @@ fn run_with(
 		tty,
 		device: None,
 		keyboard: false,
+		keys: None,
 	};
 	let status = call(&library, &strings(&argv), &strings(env), &stdio).unwrap();
 	drop((out_writer, err_writer));
@@ -454,6 +469,7 @@ fn a_library_without_an_entry_is_refused() {
 		tty: None,
 		device: None,
 		keyboard: false,
+		keys: None,
 	};
 	assert_eq!(call(&libc, &strings(&["x"]), &[], &stdio), None);
 }
@@ -493,6 +509,7 @@ fn run_on(args: &[&str], device: &dyn Device, keys: &[u8]) -> (i32, String) {
 		tty: Some((80, 24)),
 		device: Some(device),
 		keyboard: true,
+		keys: None,
 	};
 	let status = call(&library, &strings(&argv), &[], &stdio).unwrap();
 	drop(out_writer);
@@ -570,6 +587,47 @@ fn defaults_asked_for_end_or_stop_only_the_command() {
 		(128 + libc::SIGPIPE, "[1][1]".into(), String::new())
 	);
 	assert!(crate::sys::signal::caught(libc::SIGTSTP));
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn sigint_from_another_thread_ends_a_command_stuck_writing() {
+	crate::sys::signal::quiet_job_signals();
+	let _guard = ONE_AT_A_TIME
+		.lock()
+		.unwrap_or_else(|poison| poison.into_inner());
+	let library = open();
+	let (input, _feed) = io::pipe().unwrap();
+	let (mut out_reader, out_writer) = io::pipe().unwrap();
+	let me = crate::sys::signal::Thread::current();
+	// Reads what it prints, as the screen does, then interrupts it.
+	let reader = std::thread::spawn(move || {
+		let mut buf = [0u8; 4096];
+		let mut total = 0;
+		while total < 1 << 16 {
+			total += out_reader.read(&mut buf).unwrap();
+		}
+		assert!(me.signal(libc::SIGINT));
+		while out_reader.read(&mut buf).unwrap() > 0 {}
+	});
+	let stdio = Stdio {
+		input: input.as_fd(),
+		output: out_writer.as_fd(),
+		error: out_writer.as_fd(),
+		tty: Some((80, 24)),
+		device: None,
+		keyboard: false,
+		keys: None,
+	};
+	// Left blocked by a command before, as pax leaves them.
+	assert_eq!(
+		call(&library, &strings(&["program", "block"]), &[], &stdio),
+		Some(0)
+	);
+	let status = call(&library, &strings(&["program", "spin"]), &[], &stdio).unwrap();
+	drop(out_writer);
+	reader.join().unwrap();
+	assert_eq!(status, 130);
 }
 
 /// The handler installed for `signal`.

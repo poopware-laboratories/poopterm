@@ -27,7 +27,7 @@ fn keys_go_to_the_shell_while_no_program_runs() {
 #[test]
 fn a_program_reading_the_keyboard_gets_whole_echoed_lines() {
 	let (terminal, screen) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	assert_eq!(
 		terminal.keyboard(b"hi\x7fo\r"),
 		None,
@@ -51,7 +51,7 @@ fn a_program_reading_the_keyboard_gets_whole_echoed_lines() {
 #[test]
 fn a_program_in_raw_mode_gets_keys_at_once_and_unprocessed_output() {
 	let (terminal, screen) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	let mut raw = terminal.settings();
 	raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
 	raw.c_iflag &= !libc::ICRNL;
@@ -72,7 +72,7 @@ fn a_program_in_raw_mode_gets_keys_at_once_and_unprocessed_output() {
 #[test]
 fn interrupting_marks_the_program_and_drops_what_was_typed() {
 	let (terminal, screen) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	terminal.keyboard(b"half\x03");
 	assert!(terminal.interrupted());
 	terminal.detach();
@@ -85,12 +85,12 @@ fn interrupting_marks_the_program_and_drops_what_was_typed() {
 #[test]
 fn a_new_program_starts_uninterrupted_with_a_fresh_line() {
 	let (terminal, _) = terminal();
-	let first = terminal.attach(true).unwrap().unwrap();
+	let first = terminal.attach().unwrap();
 	terminal.keyboard(b"left over\x03");
 	terminal.keyboard(b"typed");
 	terminal.detach();
 	drop(first);
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	assert!(!terminal.interrupted());
 	terminal.keyboard(b"new\r");
 	terminal.detach();
@@ -100,11 +100,11 @@ fn a_new_program_starts_uninterrupted_with_a_fresh_line() {
 #[test]
 fn a_program_not_reading_the_keyboard_still_takes_keys_and_interrupts() {
 	let (terminal, _) = terminal();
-	assert!(terminal.attach(false).unwrap().is_none());
+	let _keys = terminal.attach().unwrap();
 	assert_eq!(
-		terminal.keyboard(b"ignored\r"),
+		terminal.keyboard(b"unread\r"),
 		None,
-		"typed ahead is dropped"
+		"the program's, read or not"
 	);
 	terminal.keyboard(b"\x03");
 	assert!(terminal.interrupted());
@@ -112,9 +112,24 @@ fn a_program_not_reading_the_keyboard_still_takes_keys_and_interrupts() {
 }
 
 #[test]
+fn keys_a_program_never_reads_are_dropped_once_its_pipe_is_full() {
+	let (terminal, _) = terminal();
+	let _keys = terminal.attach().unwrap();
+	let mut raw = terminal.settings();
+	raw.c_lflag &= !(libc::ICANON | libc::ECHO);
+	terminal.set_settings(&raw, false);
+	for _ in 0..64 {
+		terminal.keyboard(&[b'k'; 4096]);
+	}
+	terminal.keyboard(b"\x03");
+	assert!(terminal.interrupted(), "^C still got through");
+	terminal.detach();
+}
+
+#[test]
 fn keys_for_a_program_that_has_ended_are_dropped() {
 	let (terminal, _) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	drop(keys);
 	assert_eq!(terminal.keyboard(b"late\r"), None, "no panic, no block");
 	terminal.detach();
@@ -123,7 +138,7 @@ fn keys_for_a_program_that_has_ended_are_dropped() {
 #[test]
 fn flushing_settings_drop_the_line_being_typed() {
 	let (terminal, _) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	terminal.keyboard(b"stale");
 	let settings = terminal.settings();
 	terminal.set_settings(&settings, true);
@@ -135,7 +150,7 @@ fn flushing_settings_drop_the_line_being_typed() {
 #[test]
 fn hanging_up_ends_the_programs_input() {
 	let (terminal, _) = terminal();
-	let keys = terminal.attach(true).unwrap().unwrap();
+	let keys = terminal.attach().unwrap();
 	terminal.keyboard(b"partial");
 	terminal.hang_up();
 	assert_eq!(read_all(keys), b"", "an unfinished line is not sent");
@@ -163,4 +178,30 @@ fn output_follows_the_settings_and_the_shell_writes_raw() {
 	terminal.write_raw(b"2\n").unwrap();
 	assert_eq!(screen.shown(), "1\r\n2\n");
 	assert_eq!(terminal.mode(), Mode::default());
+}
+
+#[test]
+fn keys_typed_before_a_program_goes_raw_reach_it_then() {
+	let (terminal, _) = terminal();
+	let keys = terminal.attach().unwrap();
+	terminal.keyboard(b" q");
+	let mut raw = terminal.settings();
+	raw.c_lflag &= !(libc::ICANON | libc::ECHO);
+	terminal.set_settings(&raw, false);
+	terminal.keyboard(b"x");
+	terminal.detach();
+	assert_eq!(read_all(keys), b" qx", "the half line first, then new keys");
+}
+
+#[test]
+fn staying_canonical_keeps_the_line_being_typed() {
+	let (terminal, _) = terminal();
+	let keys = terminal.attach().unwrap();
+	terminal.keyboard(b"half");
+	let mut quiet = terminal.settings();
+	quiet.c_lflag &= !libc::ECHO;
+	terminal.set_settings(&quiet, false);
+	terminal.keyboard(b" line\r");
+	terminal.detach();
+	assert_eq!(read_all(keys), b"half line\n");
 }

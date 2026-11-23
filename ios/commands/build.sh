@@ -111,6 +111,44 @@ dd:file_cmds/dd
 truncate:file_cmds/truncate
 pathchk:file_cmds/pathchk
 mkfifo:file_cmds/mkfifo
+md5:text_cmds/md5
+sha1:text_cmds/md5
+sha224:text_cmds/md5
+sha256:text_cmds/md5
+sha384:text_cmds/md5
+sha512:text_cmds/md5
+base64:text_cmds/bintrans
+bintrans:text_cmds/bintrans
+uuencode:text_cmds/bintrans
+uudecode:text_cmds/bintrans
+b64encode:text_cmds/bintrans
+b64decode:text_cmds/bintrans
+ul:text_cmds/ul
+time:shell_cmds/time
+lockf:shell_cmds/lockf
+whereis:shell_cmds/whereis
+pax:file_cmds/pax
+tar:file_cmds/pax
+cpio:file_cmds/pax
+compress:file_cmds/compress
+uncompress:file_cmds/compress
+install:file_cmds/install
+chown:file_cmds/chown
+chgrp:file_cmds/chown
+xattr:file_cmds/xattr
+awk:awk/src
+less:less/less
+stty:adv_cmds/stty
+tty:adv_cmds/tty
+tabs:adv_cmds/tabs
+whois:adv_cmds/whois
+cal:misc_cmds/ncal
+ncal:misc_cmds/ncal
+tsort:misc_cmds/tsort
+diff:gnudiff/diffutils/src
+cmp:gnudiff/diffutils/src
+diff3:gnudiff/diffutils/src
+sdiff:gnudiff/diffutils/src
 "
 
 all=${POOPTERM_COMMANDS_LIST:-$all}
@@ -120,6 +158,10 @@ for entry in $all; do
 	name=${entry%%:*}
 	dir=$ports/${entry#*:}
 	if [ -n "$wanted" ] && ! printf ' %s ' "$wanted" | grep -q " $name "; then
+		continue
+	fi
+	# time reads its child's use through libproc, which iOS keeps private.
+	if [ "$sdk" != macosx ] && [ "$name" = time ]; then
 		continue
 	fi
 	if [ ! -d "$dir" ]; then
@@ -155,6 +197,35 @@ for entry in $all; do
 	dd)
 		sources=$(printf '%s\n' $sources | grep -v '/gen\.c$')
 		extra='-DHN_IEC_PREFIXES=0'
+		;;
+	# The One True AWK: its grammar and table come generated; maketab is the
+	# program that generates the table.
+	awk)
+		sources="$dir/b.c $dir/lex.c $dir/lib.c $dir/main.c $dir/parse.c $dir/run.c $dir/tran.c $dir/proctab.c $dir/awkgram.tab.c"
+		extra='-DHAS_ISBLANK'
+		libraries='-lm'
+		;;
+	# less's settings are Apple's defines.h, one directory up; lessecho
+	# and lesskey are programs of their own.
+	less)
+		sources=$(printf '%s\n' $sources | grep -v -e '/lessecho\.c$' -e '/lesskey\.c$' -e '/regexp\.c$' -e '/scrsize\.c$')
+		extra="-I $dir/.. -DSYSDIR=\"/usr/share\" -DPOOPTERM_DEV_TTY"
+		;;
+	# GNU diffutils with Apple's config.h: each program is one file of src
+	# plus the shared ones and lib's portability files.
+	diff | cmp | diff3 | sdiff)
+		top="$dir/.."
+		shared=""
+		[ "$name" = diff ] && shared="analyze.c context.c dir.c ed.c ifdef.c io.c normal.c side.c util.c"
+		sources="$dir/$name.c $dir/version.c"
+		for file in $shared; do sources="$sources $dir/$file"; done
+		for file in c-stack cmpbuf error exclude exitfail freesoft hard-locale imaxtostr offtostr posixver prepargs quotesys regex setmode umaxtostr xmalloc xstrtol xstrtoumax basename strftime; do
+			sources="$sources $top/lib/$file.c"
+		done
+		# GNU's regex.h, made from its template, ahead of the system's.
+		mkdir -p "$logs/gnudiff-include"
+		cp "$top/lib/regex.hin" "$logs/gnudiff-include/regex.h"
+		extra="-DHAVE_CONFIG_H -I $logs/gnudiff-include -I $top -I $top/lib -DDEFAULT_DIFF_PROGRAM=\"diff\" -DLOCALEDIR=\"/usr/share/locale\""
 		;;
 	esac
 	if xcrun -sdk "$sdk" clang -target "$target" -dynamiclib -Os -w \

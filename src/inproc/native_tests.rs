@@ -180,15 +180,94 @@ fn real_commands_alone() {
 	pipes_feed_each_stage_what_the_one_before_printed();
 	a_command_pkg_installed_runs_from_the_path();
 	the_new_text_tools_match_the_systems();
+	digests_archives_and_encodings_match_the_systems();
 	xargs_and_find_start_other_commands();
 	programs_read_typed_lines_and_print_as_they_run();
 	interrupting_ends_a_program_and_the_rest_of_its_line();
 	the_keyboard_goes_back_to_the_shell_after_a_program();
+	eprintln!("[stty]");
+	stty_reads_and_changes_the_devices_settings();
+	eprintln!("[less]");
+	less_pages_a_file_and_a_pipe_reading_keys_from_dev_tty();
+	awk_and_diff_match_the_systems();
+}
+
+fn stty_reads_and_changes_the_devices_settings() {
+	let keys: &[&[u8]] = &[
+		b"stty size\r",
+		b"stty -echo\r",
+		b"stty -a | grep -c -w -- -echo\r",
+		b"stty echo; stty -a | grep -c -w -- -echo\r",
+		b"exit\r",
+	];
+	let Some(shown) = device("stty", keys) else {
+		return;
+	};
+	assert!(shown.contains("stty size\r\n24 80\r\n"), "{shown:?}");
+	assert!(
+		shown.contains("grep -c -w -- -echo\r\n1\r\n"),
+		"stty -echo lasts: {shown:?}"
+	);
+	assert!(
+		shown.contains("-echo\r\n0\r\n"),
+		"until stty echo: {shown:?}"
+	);
+}
+
+fn less_pages_a_file_and_a_pipe_reading_keys_from_dev_tty() {
+	let keys: &[&[u8]] = &[
+		b"jot 100 > numbers\r",
+		b"less numbers\r",
+		b" ",
+		b"q",
+		b"jot 3 | less\r",
+		b"q",
+		b"echo back\r",
+		b"exit\r",
+	];
+	let Some(shown) = device("less", keys) else {
+		return;
+	};
+	assert!(shown.contains("23\r\n"), "the first page: {shown:?}");
+	assert!(shown.contains("40"), "space showed the next page");
+	assert!(!shown.contains("\r\n100\r\n"), "q quit before the end");
+	assert!(
+		shown.contains("echo back\r\nback\r\n"),
+		"the shell had the keys back"
+	);
+}
+
+fn awk_and_diff_match_the_systems() {
+	let Some((mut sh, home)) = real_shell("awk-diff") else {
+		return;
+	};
+	fs::write(home.join("a"), "one:1\ntwo:2\nthree:3\n").unwrap();
+	fs::write(home.join("b"), "one:1\nTWO:2\nthree:3\nfour:4\n").unwrap();
+	let (a, b) = (
+		home.join("a").display().to_string(),
+		home.join("b").display().to_string(),
+	);
+	for (line, program, args) in [
+		(
+			"awk -F: '{ s += $2 } END { print s }' b",
+			"/usr/bin/awk",
+			vec!["-F:", "{ s += $2 } END { print s }", &b],
+		),
+		("awk 'NR % 2' a", "/usr/bin/awk", vec!["NR % 2", &a]),
+		("diff a b", "/usr/bin/diff", vec![&a, &b]),
+		("diff -e a b", "/usr/bin/diff", vec!["-e", &a, &b]),
+	] {
+		let expected = system(program, &args).replace(&a, "a").replace(&b, "b");
+		assert_eq!(ran(&mut sh, line), expected, "{line}");
+	}
+	assert_eq!(ran(&mut sh, "diff a a && echo same"), "same\n");
+	assert_eq!(ran(&mut sh, "cmp a b"), "a b differ: char 7, line 2\n");
+	assert_eq!(ran(&mut sh, "cmp a a && echo same"), "same\n");
 }
 
 /// The device loop on real commands: keys come from `keys`, a line at a
 /// time with a pause between, as a person types, and the screen is kept.
-fn device(name: &str, keys: &'static [&'static [u8]]) -> Option<String> {
+fn device(name: &'static str, keys: &'static [&'static [u8]]) -> Option<String> {
 	let (shell, _) = real_shell(name)?;
 	let (input, mut typing) = io::pipe().unwrap();
 	let screen = crate::inproc::tests::Screen::default();
@@ -231,9 +310,10 @@ fn interrupting_ends_a_program_and_the_rest_of_its_line() {
 		"{:?}",
 		&shown[shown.len().saturating_sub(200)..]
 	);
+	let tail = shown.rfind("y\r\n").map_or("", |at| &shown[at..]);
 	assert!(
 		!shown.contains("\r\nnever\r\n"),
-		"the rest of the line was stopped"
+		"the rest of the line was stopped: {tail:?}"
 	);
 	assert!(
 		shown.contains("echo $?\r\n130\r\n"),
@@ -511,6 +591,61 @@ fn the_new_text_tools_match_the_systems() {
 		ran(&mut sh, "gzip -k words && gzip -dc words.gz"),
 		text,
 		"through a compressed copy and back"
+	);
+}
+
+/// md5 and the sha family, base64, tar and compress, as the system's.
+fn digests_archives_and_encodings_match_the_systems() {
+	let Some((mut sh, home)) = real_shell("digests") else {
+		return;
+	};
+	fs::write(home.join("data"), "hello digests\n".repeat(500)).unwrap();
+	let file = home.join("data").display().to_string();
+	for (line, program, args) in [
+		("md5 data", "/sbin/md5", vec![file.as_str()]),
+		("md5 -q data", "/sbin/md5", vec!["-q", &file]),
+		("sha1 -q data", "/sbin/sha1", vec!["-q", &file]),
+		("sha256 -r data", "/sbin/sha256", vec!["-r", &file]),
+		("sha512 -q data", "/sbin/sha512", vec!["-q", &file]),
+		("base64 -i data", "/usr/bin/base64", vec!["-i", &file]),
+	] {
+		let expected = system(program, &args).replace(&file, "data");
+		assert_eq!(ran(&mut sh, line), expected, "{line}");
+	}
+	assert_eq!(
+		ran(&mut sh, "md5 -s abc"),
+		"900150983cd24fb0d6963f7d28e17f72\n",
+		"RFC 1321's example"
+	);
+	assert_eq!(
+		ran(&mut sh, "sha224 -q -s abc"),
+		"23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7\n",
+		"FIPS 180-2's example"
+	);
+	assert_eq!(
+		ran(
+			&mut sh,
+			"base64 -i data -o enc && base64 -d -i enc | md5 -q"
+		),
+		ran(&mut sh, "md5 -q data"),
+		"through base64 and back"
+	);
+	ran(
+		&mut sh,
+		"mkdir box && cp data box/a && tar -cf box.tar box && rm -r box",
+	);
+	let listed = system(
+		"/usr/bin/tar",
+		&["-tf", &home.join("box.tar").display().to_string()],
+	);
+	assert_eq!(listed, "box\nbox/a\n", "the system's tar reads ours");
+	assert_eq!(
+		ran(&mut sh, "tar -xf box.tar && cmp box/a data && echo same"),
+		"same\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "compress -c data | uncompress -c | md5 -q"),
+		ran(&mut sh, "md5 -q data")
 	);
 }
 

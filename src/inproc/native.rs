@@ -83,8 +83,7 @@ pub(crate) struct Run<'a> {
 /// Runs the command library at `library`. Standard input is what the run
 /// gives (a pipe fed by a thread of its own, so a program that reads less
 /// than all of it still ends), else the keyboard when there is a terminal,
-/// else empty. The terminal's settings are put back after, whatever the
-/// program left them as.
+/// else empty.
 pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 	let argv = c_strings(run.argv.iter().map(String::as_str))?;
 	let pwd = format!("PWD={}", run.cwd.display());
@@ -104,11 +103,11 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 	let failed = |error: io::Error| error.to_string();
 	let terminal = run.terminal;
 	let keys = match terminal {
-		Some(terminal) => terminal.attach(run.input.is_none()).map_err(failed)?,
+		Some(terminal) => Some(terminal.attach().map_err(failed)?),
 		None => None,
 	};
 	let foreground = Foreground(terminal, terminal.map(|terminal| terminal.settings()));
-	let stdin: OwnedFd = match (run.input, keys) {
+	let stdin: OwnedFd = match (run.input, &keys) {
 		(Some(bytes), _) => {
 			let (reader, mut writer) = io::pipe().map_err(failed)?;
 			let bytes = bytes.to_vec();
@@ -116,7 +115,7 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 			thread::spawn(move || drop(writer.write_all(&bytes)));
 			reader.into()
 		}
-		(None, Some(keys)) => keys.into(),
+		(None, Some(keys)) => keys.try_clone().map_err(failed)?.into(),
 		(None, None) => File::open("/dev/null").map_err(failed)?.into(),
 	};
 	let (out_reader, out_writer) = io::pipe().map_err(failed)?;
@@ -140,9 +139,10 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 		tty: run.tty,
 		device: terminal.map(|terminal| &**terminal as &dyn Device),
 		keyboard: run.input.is_none() && terminal.is_some(),
+		keys: keys.as_ref().map(AsFd::as_fd),
 	};
 	let status = command::call(&library, &argv, &env, &stdio);
-	drop((out_writer, err_writer, stdin));
+	drop((out_writer, err_writer, stdin, keys));
 	drop(foreground);
 	if let Some(dir) = previous {
 		let _ = std::env::set_current_dir(dir);
@@ -164,15 +164,16 @@ fn c_strings<'a>(words: impl Iterator<Item = &'a str>) -> Result<Vec<CString>, S
 		.collect()
 }
 
-/// While a program runs in the terminal's foreground; its end puts the
-/// settings back and gives the keys back to the shell.
+/// While a program runs in the terminal's foreground; its end gives the
+/// keys back to the shell. The settings it leaves stay (`stty -echo` must
+/// last), unless `^C` ended it before it could put its own back.
 struct Foreground<'a>(Option<&'a Arc<Terminal>>, Option<libc::termios>);
 
 impl Drop for Foreground<'_> {
 	fn drop(&mut self) {
 		if let Some(terminal) = self.0 {
 			terminal.detach();
-			if let Some(settings) = &self.1 {
+			if let Some(settings) = self.1.as_ref().filter(|_| terminal.interrupted()) {
 				terminal.set_settings(settings, false);
 			}
 		}

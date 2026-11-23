@@ -22,6 +22,7 @@ void warnc(int, const char *, ...);
 void vwarn(const char *, va_list);
 void vwarnx(const char *, va_list);
 #endif
+#include <fcntl.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <spawn.h>
@@ -53,6 +54,8 @@ struct poopterm_tty {
 	int (*control)(void *context, int op, void *arg);
 	/* Bit n set: descriptor n (0 to 2) is the terminal. */
 	unsigned tty_fds;
+	/* Where the keyboard reads, which opening /dev/tty gives, or -1. */
+	int keyboard;
 };
 
 #define POOPTERM_TTY_GET_SETTINGS 1 /* struct termios * */
@@ -66,6 +69,7 @@ void poopterm_exit(int status) __attribute__((noreturn));
 int poopterm_isatty(int fd);
 int poopterm_ioctl(int fd, unsigned long request, ...);
 int poopterm_fclose(FILE *stream);
+int poopterm_open(const char *path, int flags, ...);
 int poopterm_tcgetattr(int fd, struct termios *settings);
 int poopterm_tcsetattr(int fd, int when, const struct termios *settings);
 void (*poopterm_signal(int sig, void (*handler)(int)))(int);
@@ -90,6 +94,12 @@ void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn)
 /* Closing a standard stream (cat and others do at the end) only flushes
  * it: the streams are the app's, and the next command needs them. */
 #define fclose(stream) poopterm_fclose(stream)
+/* A program that reads keys from /dev/tty (less, vim) is built with
+ * POOPTERM_DEV_TTY: there is no such device, so opening it gives the
+ * keyboard. Not for all, since `open` is also a common member name. */
+#ifdef POOPTERM_DEV_TTY
+#define open(...) poopterm_open(__VA_ARGS__)
+#endif
 /* The terminal's settings are the device's, not a kernel's. */
 #define tcgetattr(fd, settings) poopterm_tcgetattr(fd, settings)
 #define tcsetattr(fd, when, settings) poopterm_tcsetattr(fd, when, settings)

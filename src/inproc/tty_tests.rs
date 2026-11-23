@@ -263,3 +263,17 @@ fn settings_read_from_termios_as_the_flags_say() {
 	settings.c_oflag |= libc::OPOST;
 	assert!(Mode::of(&settings).newline_out);
 }
+
+#[test]
+fn the_pending_line_can_be_taken_whole() {
+	let mode = Mode::default();
+	let mut line = Line::default();
+	line.feed(&mode, b"ab\x16");
+	assert_eq!(line.take_pending(), b"ab");
+	assert_eq!(
+		line.feed(&mode, b"\x03"),
+		[echo(b"^C\n"), Event::Interrupt],
+		"no literal left over"
+	);
+	assert_eq!(line.take_pending(), b"");
+}

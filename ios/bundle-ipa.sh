@@ -50,6 +50,13 @@ for command in target/ios-commands/iphoneos/*; do
 done
 # Each package's commands are framework bundles for iOS code signing and
 # sideloader re-signing; its license is kept apart.
+# Bundled ports that are not Apple's command projects bring their own
+# licenses: the One True AWK, less and GNU diffutils.
+ports=target/ios-ports
+for license in awk:awk/src/LICENSE less:less/less/LICENSE diffutils:gnudiff/diffutils/COPYING; do
+	mkdir -p "$app/licenses/${license%%:*}"
+	cp "$ports/${license#*:}" "$app/licenses/${license%%:*}/"
+done
 for package in target/ios-packages/work-iphoneos/*/; do
 	name=$(basename "$package")
 	for command in "$package"bin/*; do

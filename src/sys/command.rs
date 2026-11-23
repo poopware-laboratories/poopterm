@@ -29,6 +29,8 @@ struct Tty {
 	control: Option<Control>,
 	/// Bit `n` set: descriptor `n` (0 to 2) is the terminal.
 	tty_fds: c_uint,
+	/// Where the keyboard reads, for `/dev/tty`, or -1.
+	keyboard: c_int,
 }
 
 /// The `spawn` member's type.
@@ -78,6 +80,9 @@ pub(crate) struct Stdio<'a> {
 	pub device: Option<&'a dyn Device>,
 	/// Standard input is the terminal's keyboard.
 	pub keyboard: bool,
+	/// The keyboard, which `/dev/tty` opens even when standard input is a
+	/// pipe (`ls | less`).
+	pub keys: Option<BorrowedFd<'a>>,
 }
 
 impl Stdio<'_> {
@@ -132,6 +137,7 @@ pub(crate) fn call(
 			.map_or(std::ptr::null(), |device| std::ptr::from_ref(device).cast()),
 		control: device.is_some().then_some(control as Control),
 		tty_fds: stdio.tty_fds(),
+		keyboard: stdio.keys.map_or(-1, |keys| keys.as_raw_fd()),
 	};
 	let argc = c_int::try_from(args.len()).ok()?;
 	// What `spawn` hands a command this one starts: read from here, since a
@@ -257,6 +263,7 @@ extern "C" fn spawn(file: *const c_char, argv: *const *mut c_char, tty: *const T
 		device,
 		// The child reads the keyboard if it kept its parent's input.
 		keyboard: outer.keyboard && tty.input == 0,
+		keys: None,
 	};
 	run_nested(file, &argv, &env, &stdio)
 }

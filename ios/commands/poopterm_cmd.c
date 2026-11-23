@@ -66,17 +66,53 @@ void poopterm_errx(int code, const char *format, ...) {
 	poopterm_exit(code);
 }
 
-/* Whether standard descriptor `fd` is the terminal. */
+/* Descriptors this run opened /dev/tty as. */
+#define POOPTERM_TTY_OPENS 8
+static int tty_opens[POOPTERM_TTY_OPENS];
+
+/* Whether `fd` is the terminal: a standard descriptor that is, or one
+ * /dev/tty was opened as. */
 static int is_terminal(int fd) {
-	return fd >= 0 && fd <= 2 && (current.tty_fds >> fd & 1);
+	if (fd >= 0 && fd <= 2) {
+		return current.tty_fds >> fd & 1;
+	}
+	for (int i = 0; fd >= 0 && i < POOPTERM_TTY_OPENS; i++) {
+		if (tty_opens[i] == fd) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 #undef isatty
 int poopterm_isatty(int fd) {
-	if (fd >= 0 && fd <= 2) {
+	if (fd >= 0 && fd <= 2 || is_terminal(fd)) {
 		return is_terminal(fd);
 	}
 	return isatty(fd);
+}
+
+#undef open
+int poopterm_open(const char *path, int flags, ...) {
+	va_list args;
+	va_start(args, flags);
+	mode_t mode = (flags & O_CREAT) ? (mode_t)va_arg(args, int) : 0;
+	va_end(args);
+	if (path == NULL || strcmp(path, "/dev/tty") != 0) {
+		return open(path, flags, mode);
+	}
+	if (current.keyboard < 0) {
+		errno = ENXIO;
+		return -1;
+	}
+	int fd = fcntl(current.keyboard, (flags & O_CLOEXEC) ? F_DUPFD_CLOEXEC : F_DUPFD, 3);
+	for (int i = 0; fd >= 0 && i < POOPTERM_TTY_OPENS; i++) {
+		if (tty_opens[i] < 0) {
+			tty_opens[i] = fd;
+			break;
+		}
+	}
+	return fd;
 }
 
 /* The POOPTERM_TTY_* operation an ioctl request is, or 0. */
@@ -98,7 +134,14 @@ int poopterm_ioctl(int fd, unsigned long request, ...) {
 	void *arg = va_arg(args, void *);
 	va_end(args);
 	int op = tty_operation(request);
-	if (fd >= 0 && fd <= 2 && op != 0) {
+	/* The device has one line discipline, the standard one (stty asks). */
+	if ((request == TIOCGETD || request == TIOCSETD) && is_terminal(fd)) {
+		if (request == TIOCGETD) {
+			*(int *)arg = TTYDISC;
+		}
+		return 0;
+	}
+	if (op != 0 && (fd >= 0 && fd <= 2 || is_terminal(fd))) {
 		if (!is_terminal(fd)) {
 			errno = ENOTTY;
 			return -1;
@@ -223,9 +266,24 @@ void (*poopterm_signal(int sig, void (*handler)(int)))(int) {
 	return old.sa_handler;
 }
 
-/* Saves the app's handlers and puts the command's defaults in place. */
+/* The thread's signal mask before the command, put back after: a command
+ * may leave signals blocked (pax does), which would keep ^C from every
+ * command after it. */
+static sigset_t app_mask;
+
+/* Saves the app's handlers and puts the command's defaults in place, with
+ * those signals unblocked. */
 static void take_signals(void) {
 	command_thread = pthread_self();
+	sigset_t unblock;
+	sigemptyset(&unblock);
+	for (int i = 0; i < COUNT(ending_signals); i++) {
+		sigaddset(&unblock, ending_signals[i]);
+	}
+	for (int i = 0; i < COUNT(stopping_signals); i++) {
+		sigaddset(&unblock, stopping_signals[i]);
+	}
+	pthread_sigmask(SIG_UNBLOCK, &unblock, &app_mask);
 	const int *lists[] = {ending_signals, stopping_signals, other_signals};
 	const int counts[] = {COUNT(ending_signals), COUNT(stopping_signals), COUNT(other_signals)};
 	for (int list = 0; list < 3; list++) {
@@ -243,8 +301,9 @@ static void take_signals(void) {
 	}
 }
 
-/* Gives the app its handlers back. */
+/* Gives the app its handlers and signal mask back. */
 static void give_back_signals(void) {
+	pthread_sigmask(SIG_SETMASK, &app_mask, NULL);
 	const int *lists[] = {ending_signals, stopping_signals, other_signals};
 	const int counts[] = {COUNT(ending_signals), COUNT(stopping_signals), COUNT(other_signals)};
 	for (int list = 0; list < 3; list++) {
@@ -506,6 +565,9 @@ int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	clearerr(stderr);
 	ended_count = 0;
 	forking.active = 0;
+	for (int i = 0; i < POOPTERM_TTY_OPENS; i++) {
+		tty_opens[i] = -1;
+	}
 	take_signals();
 	optind = 1;
 	optreset = 1;

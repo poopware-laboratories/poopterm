@@ -14,8 +14,8 @@ use super::{native, pipeline, terminal::Terminal};
 
 /// The built-in commands, for `help`: what changes the shell itself, and
 /// the few a shell answers on its own, as `sh` does.
-pub(crate) const COMMANDS: [&str; 11] = [
-	"cd", "clear", "echo", "exit", "export", "false", "help", "pkg", "pwd", "true", "unset",
+pub(crate) const COMMANDS: [&str; 12] = [
+	"cd", "clear", "echo", "exit", "export", "false", "help", "pkg", "pwd", "true", "unset", "whoami",
 ];
 
 /// Who programs run for: the app's own `$USER`, else the account
@@ -306,6 +306,15 @@ impl Shell {
 				}
 				0
 			}
+			// id needs the system's directory service, which iOS keeps from
+			// apps; who programs run for is $USER (`user_name`).
+			"whoami" => match self.env.get("USER") {
+				Some(user) => {
+					out.extend(format!("{user}\n").into_bytes());
+					0
+				}
+				None => fail(out, "no user name".to_owned()),
+			},
 			"pwd" => {
 				out.extend(format!("{}\n", self.cwd.display()).into_bytes());
 				0
