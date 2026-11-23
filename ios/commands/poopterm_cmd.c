@@ -48,6 +48,14 @@ void poopterm_exit(int code) {
 	longjmp(finished, 1);
 }
 
+/* The C library's exit, for calls the header's macro does not catch (git
+ * defines its own exit macro, calling the function by name): within this
+ * library the name binds here, so it ends the command, not the app. */
+#undef exit
+void exit(int code) {
+	poopterm_exit(code);
+}
+
 void poopterm_errx(int code, const char *format, ...) {
 	va_list args;
 	va_start(args, format);

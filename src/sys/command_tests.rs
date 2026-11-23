@@ -89,7 +89,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("22 passed"), "{shown}");
+	assert!(shown.contains("23 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -110,7 +110,11 @@ int main(int argc, char **argv) {
 	const char *mode = argc > 1 ? argv[1] : "";
 	if (!strcmp(mode, "return")) return 7;
 	if (!strcmp(mode, "exit")) { printf("before\n"); exit(9); printf("after\n"); }
+	/* As git does: its own exit macro, calling the function by name. */
+	if (!strcmp(mode, "libexit")) { printf("before\n"); (exit)(3); printf("after\n"); }
+#ifndef POOPTERM_NO_ERR_H
 	if (!strcmp(mode, "err")) { errno = ENOENT; err(4, "%s", "gone"); }
+#endif
 	if (!strcmp(mode, "errx")) errx(5, "plain %d", 1);
 	if (!strcmp(mode, "args")) {
 		for (int i = 0; i < argc; i++) printf("[%s]", argv[i]);
@@ -521,7 +525,11 @@ fn without_err_h_errx_still_ends_only_the_command() {
 		"the parent carries on"
 	);
 	assert!(err.ends_with("noerrh: plain 1\n"), "{err}");
-	let (_, out, err) = spawned(&["spawn", "noerrh", "err"], b"");
-	assert_eq!(out, "<[1 4]");
-	assert!(err.contains("gone: No such file or directory"), "{err}");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn calling_the_exit_function_itself_ends_only_the_command() {
+	assert_eq!(run(&["libexit"]), (3, "before\n".into(), String::new()));
+	assert_eq!(run(&["return"]).0, 7, "and the app is still here");
 }

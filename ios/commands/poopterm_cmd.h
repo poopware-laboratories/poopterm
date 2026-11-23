@@ -11,8 +11,8 @@
 
 /* The system's declarations first, so the macros below do not rename them. */
 #include <stdarg.h>
-/* A command with a global named `err` (pr) leaves err.h out, and gets
- * only the warn family the macros below use. */
+/* A command that names something `err` itself (pr, git) leaves err.h
+ * out, and gets only the warn family. */
 #ifndef POOPTERM_NO_ERR_H
 #include <err.h>
 #else
@@ -55,16 +55,17 @@ void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn)
 
 #define exit(status) poopterm_exit(status)
 #define _exit(status) poopterm_exit(status)
-#define err(status, ...) (warn(__VA_ARGS__), poopterm_exit(status))
 #ifndef POOPTERM_NO_ERR_H
+#define err(status, ...) (warn(__VA_ARGS__), poopterm_exit(status))
 #define errx(status, ...) (warnx(__VA_ARGS__), poopterm_exit(status))
-#else
-/* Without err.h a command may declare errx itself: a function's name. */
-#define errx poopterm_errx
-#endif
 #define errc(status, code, ...) (warnc(code, __VA_ARGS__), poopterm_exit(status))
 #define verr(status, format, args) (vwarn(format, args), poopterm_exit(status))
 #define verrx(status, format, args) (vwarnx(format, args), poopterm_exit(status))
+#else
+/* Without err.h, `err` may be the command's own name (pr's stream, git's
+ * function), and errx a function the command declares itself. */
+#define errx poopterm_errx
+#endif
 #define isatty(fd) poopterm_isatty(fd)
 #define ioctl(...) poopterm_ioctl(__VA_ARGS__)
 /* Closing a standard stream (cat and others do at the end) only flushes
