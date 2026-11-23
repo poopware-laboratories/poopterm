@@ -395,13 +395,14 @@ fn the_new_text_tools_match_the_systems() {
 		("column -t words", "/usr/bin/column", vec!["-t", &file]),
 		("hexdump -C words", "/usr/bin/hexdump", vec!["-C", &file]),
 		("cksum words", "/usr/bin/cksum", vec![&file]),
+		("pr -2 -t words", "/usr/bin/pr", vec!["-2", "-t", &file]),
+		("pr -l 12 words", "/usr/bin/pr", vec!["-l", "12", &file]),
 	] {
 		let expected = system(program, &args).replace(&file, "words");
 		assert_eq!(ran(&mut sh, line), expected, "{line}");
 	}
 	assert_eq!(ran(&mut sh, "test -f words && echo file"), "file\n");
-	assert_eq!(ran(&mut sh, "test -d words"), "");
-	assert_eq!(sh.status, 1, "not a directory");
+	assert_eq!(ran(&mut sh, "test -d words || echo no"), "no\n");
 	assert_eq!(ran(&mut sh, "jot 3 5"), "5\n6\n7\n");
 	assert_eq!(
 		ran(&mut sh, "gzip -k words && gzip -dc words.gz"),

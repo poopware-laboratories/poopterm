@@ -76,6 +76,7 @@ nl:text_cmds/nl
 fold:text_cmds/fold
 paste:text_cmds/paste
 comm:text_cmds/comm
+pr:text_cmds/pr
 grep:text_cmds/grep
 sed:text_cmds/sed
 find:shell_cmds/find
@@ -147,6 +148,8 @@ for entry in $all; do
 		libraries='-lz -lbz2'
 		;;
 	join) extra='-include stdbool.h' ;;
+	# pr has a global named err, so leaves err.h out.
+	pr) extra='-DPOOPTERM_NO_ERR_H' ;;
 	# The system's humanize_number has no IEC prefixes (KiB): plain K.
 	# gen.c is a program that builds dd's tables, not part of dd.
 	dd)

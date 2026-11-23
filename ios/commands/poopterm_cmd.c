@@ -48,6 +48,14 @@ void poopterm_exit(int code) {
 	longjmp(finished, 1);
 }
 
+void poopterm_errx(int code, const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	vwarnx(format, args);
+	va_end(args);
+	poopterm_exit(code);
+}
+
 #undef isatty
 int poopterm_isatty(int fd) {
 	if (fd >= 0 && fd <= 2) {

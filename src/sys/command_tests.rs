@@ -89,7 +89,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("21 passed"), "{shown}");
+	assert!(shown.contains("22 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -218,6 +218,17 @@ fn library_path() -> &'static PathBuf {
 		assert!(status.success(), "cc failed");
 		// A second copy, a command of its own the first can start.
 		fs::copy(&out, dir.join("helper")).unwrap();
+		// A third built as a command with its own `err` global is (pr).
+		let status = Command::new("cc")
+			.args(["-dynamiclib", "-w", "-DPOOPTERM_NO_ERR_H", "-include"])
+			.arg(format!("{shim}/poopterm_cmd.h"))
+			.arg("-o")
+			.arg(dir.join("noerrh"))
+			.arg(format!("{shim}/poopterm_cmd.c"))
+			.arg(&source)
+			.status()
+			.unwrap();
+		assert!(status.success(), "cc -DPOOPTERM_NO_ERR_H failed");
 		out
 	})
 }
@@ -498,4 +509,19 @@ fn waiting_without_children_fails_with_echild() {
 #[ignore = "run by each_in_a_process_of_their_own"]
 fn input_read_ahead_before_a_child_is_still_there_after_it() {
 	assert_eq!(spawned(&["readahead"], b"abc\ndef\n").1, "abc\ndef\n");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn without_err_h_errx_still_ends_only_the_command() {
+	let (status, out, err) = spawned(&["spawn", "noerrh", "errx"], b"");
+	assert_eq!(
+		(status, out.as_str()),
+		(0, "<[1 5]"),
+		"the parent carries on"
+	);
+	assert!(err.ends_with("noerrh: plain 1\n"), "{err}");
+	let (_, out, err) = spawned(&["spawn", "noerrh", "err"], b"");
+	assert_eq!(out, "<[1 4]");
+	assert!(err.contains("gone: No such file or directory"), "{err}");
 }

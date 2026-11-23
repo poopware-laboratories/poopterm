@@ -10,7 +10,18 @@
 #define POOPTERM_CMD_H
 
 /* The system's declarations first, so the macros below do not rename them. */
+#include <stdarg.h>
+/* A command with a global named `err` (pr) leaves err.h out, and gets
+ * only the warn family the macros below use. */
+#ifndef POOPTERM_NO_ERR_H
 #include <err.h>
+#else
+void warn(const char *, ...);
+void warnx(const char *, ...);
+void warnc(int, const char *, ...);
+void vwarn(const char *, va_list);
+void vwarnx(const char *, va_list);
+#endif
 #include <setjmp.h>
 #include <spawn.h>
 #include <stdarg.h>
@@ -40,11 +51,17 @@ void poopterm_exit(int status) __attribute__((noreturn));
 int poopterm_isatty(int fd);
 int poopterm_ioctl(int fd, unsigned long request, ...);
 int poopterm_fclose(FILE *stream);
+void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn));
 
 #define exit(status) poopterm_exit(status)
 #define _exit(status) poopterm_exit(status)
 #define err(status, ...) (warn(__VA_ARGS__), poopterm_exit(status))
+#ifndef POOPTERM_NO_ERR_H
 #define errx(status, ...) (warnx(__VA_ARGS__), poopterm_exit(status))
+#else
+/* Without err.h a command may declare errx itself: a function's name. */
+#define errx poopterm_errx
+#endif
 #define errc(status, code, ...) (warnc(code, __VA_ARGS__), poopterm_exit(status))
 #define verr(status, format, args) (vwarn(format, args), poopterm_exit(status))
 #define verrx(status, format, args) (vwarnx(format, args), poopterm_exit(status))
