@@ -1,11 +1,11 @@
 //! Windows drawn on the GPU, by Vulkan on Linux and FreeBSD and by Metal
-//! on macOS: the backend's view of a window from its handles, the renderer
+//! on macOS and iOS: the backend's view of a window from its handles, the renderer
 //! and its pen, frames of the main window and scenes of the Settings
 //! window, and what each frame's outcome means for the next.
 // Calls into C or the kernel; docs/unsafe.md lists each block.
 #![allow(unsafe_code)]
 use super::{Arc, Window};
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 use crate::gpu::mtl::{
 	device::Error,
 	window::{Drawn, MetalWindow as GpuWindow},
@@ -31,20 +31,22 @@ use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 const ATLAS: (usize, usize) = (1024, 4);
 
 /// Whether Metal may draw: unless software is asked for by name.
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 pub(super) const fn allows_metal(preference: RendererPreference) -> bool {
 	!matches!(preference, RendererPreference::Software)
 }
 
 /// Why Metal does not draw when software was asked for.
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 pub(super) const TURNED_OFF: &str = "Metal is turned off (renderer = \"software\")";
 
-/// The `NSView` of a window with this handle: AppKit windows only.
-#[cfg(target_os = "macos")]
-pub(super) fn ns_view(window: RawWindowHandle) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+/// The view of a window with this handle, which hosts Metal's layer: an
+/// `NSView` (AppKit) or a `UIView` (UIKit).
+#[cfg(target_vendor = "apple")]
+pub(super) fn host_view(window: RawWindowHandle) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
 	match window {
 		RawWindowHandle::AppKit(window) => Some(window.ns_view),
+		RawWindowHandle::UiKit(window) => Some(window.ui_view),
 		_ => None,
 	}
 }
@@ -146,16 +148,16 @@ pub(super) struct Gpu<W = Arc<Window>> {
 	pen: QuadPen,
 	window: W,
 	/// Pixels a point, which Metal shows its frames at.
-	#[cfg(target_os = "macos")]
+	#[cfg(target_vendor = "apple")]
 	scale: f64,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 impl Gpu {
 	// pr-check: window glue: only a real window has a view, and a scale
 	pub(super) fn new(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
 		let handle = window.window_handle().map(|handle| handle.as_raw());
-		let view = handle.ok().and_then(ns_view);
+		let view = handle.ok().and_then(host_view);
 		// SAFETY: the view is the winit window's, which the clone keeps alive.
 		let mut gpu = unsafe { Self::open(window.clone(), view, preference) }?;
 		gpu.rescale(window.scale_factor());
@@ -170,7 +172,7 @@ impl Gpu {
 	// pr-check: end window glue
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 impl<W> Gpu<W> {
 	/// Metal drawing in `window`, whose `NSView` is `view`, when the
 	/// `preference` does not ask for software.
@@ -251,7 +253,7 @@ impl<W> Gpu<W> {
 			gpu,
 			pen: QuadPen::new((0, 0), atlas),
 			window,
-			#[cfg(target_os = "macos")]
+			#[cfg(target_vendor = "apple")]
 			scale: 1.0,
 		}
 	}
@@ -297,7 +299,7 @@ impl<W> Gpu<W> {
 		self.pen.begin_frame(size);
 		quads(&mut self.pen);
 		let size = [size.0, size.1].map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-		#[cfg(target_os = "macos")]
+		#[cfg(target_vendor = "apple")]
 		return next(self.gpu.draw(&mut self.pen, size, self.scale));
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		next(self.gpu.draw(&mut self.pen, size))
@@ -316,7 +318,7 @@ mod frame_tests;
 #[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
 #[path = "gpu_headless_tests.rs"]
 mod headless_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, target_vendor = "apple"))]
 #[path = "gpu_metal_tests.rs"]
 mod metal_tests;
 #[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]

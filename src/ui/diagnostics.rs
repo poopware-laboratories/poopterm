@@ -54,7 +54,7 @@ pub(crate) enum Drawing {
 }
 
 /// The GPU API this platform draws with.
-pub(crate) const GPU_API: &str = if cfg!(target_os = "macos") {
+pub(crate) const GPU_API: &str = if cfg!(target_vendor = "apple") {
 	"Metal"
 } else {
 	"Vulkan"

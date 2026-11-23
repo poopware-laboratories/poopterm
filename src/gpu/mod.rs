@@ -19,7 +19,7 @@ pub(crate) mod encode;
 pub(crate) mod facts;
 #[cfg(test)]
 mod facts_tests;
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 // Metal through the Objective-C runtime: every message is C.
 #[allow(unsafe_code)]
 pub(crate) mod mtl;

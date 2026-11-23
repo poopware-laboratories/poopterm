@@ -1,4 +1,5 @@
-//! A window drawn by Metal: a `CAMetalLayer` hosted by the window's view,
+//! A window drawn by Metal: a `CAMetalLayer` hosted by the window's view
+//! (its layer on macOS, a sublayer of its layer on iOS, framed to it),
 //! its drawables made at the window's size in pixels and shown at its
 //! scale, at most three in flight; each frame drawn into the next drawable
 //! and shown with its commands. A frame lacking room in the atlas grows it
@@ -59,6 +60,34 @@ pub(crate) fn resized(
 	Some((drawables, scale))
 }
 
+/// `CGRect`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+pub(crate) struct Rect {
+	pub origin: Size,
+	pub size: Size,
+}
+
+/// Whether the layer is a sublayer the view does not size (UIKit, whose
+/// views cannot take a layer of another class), framed by us to the
+/// view's size in points; AppKit's view takes the layer as its own.
+pub(crate) const FRAMED: bool = cfg!(target_os = "ios");
+
+/// The frame of a sublayer showing drawables `size` pixels large at
+/// `scale` pixels a point: from the view's corner, in points.
+pub(crate) fn frame(size: Size, scale: f64) -> Rect {
+	Rect {
+		origin: Size {
+			width: 0.0,
+			height: 0.0,
+		},
+		size: Size {
+			width: size.width / scale,
+			height: size.height / scale,
+		},
+	}
+}
+
 pub(crate) struct MetalWindow {
 	/// Dropped first: it waits for the frames it drew.
 	pub(super) renderer: Renderer,
@@ -97,8 +126,15 @@ impl MetalWindow {
 			let _: () = layer.send(c"setMaximumDrawableCount:", (DRAWABLES,));
 			let _: () = layer.send(c"setOpaque:", (1 as Bool,));
 			if let Some(view) = view.and_then(|view| Object::retained(view.as_ptr())) {
-				let _: () = view.send(c"setLayer:", (layer.raw(),));
-				let _: () = view.send(c"setWantsLayer:", (1 as Bool,));
+				if FRAMED {
+					// A `UIView`'s `layer` is its own, never nil.
+					let host: crate::objc::Raw = view.send(c"layer", ());
+					let host = retained(host, "view layer")?;
+					let _: () = host.send(c"addSublayer:", (layer.raw(),));
+				} else {
+					let _: () = view.send(c"setLayer:", (layer.raw(),));
+					let _: () = view.send(c"setWantsLayer:", (1 as Bool,));
+				}
 			}
 			layer
 		};
@@ -129,7 +165,12 @@ impl MetalWindow {
 			driver: None,
 			swapchain: None,
 			atlas: None,
-			presenter: "Metal on macOS".to_owned(),
+			presenter: if FRAMED {
+				"Metal on iOS"
+			} else {
+				"Metal on macOS"
+			}
+			.to_owned(),
 		}
 	}
 
@@ -160,9 +201,13 @@ impl MetalWindow {
 		if let Some((drawables, scale)) = resized(self.told, size, scale) {
 			// SAFETY: `setDrawableSize:` takes a `CGSize` and
 			// `setContentsScale:` a `CGFloat`.
+			// `setFrame:` takes a `CGRect`.
 			unsafe {
 				let _: () = self.layer.send(c"setDrawableSize:", (drawables,));
 				let _: () = self.layer.send(c"setContentsScale:", (scale,));
+				if FRAMED {
+					let _: () = self.layer.send(c"setFrame:", (frame(drawables, scale),));
+				}
 			}
 			self.told = Some((size, scale));
 		}
