@@ -19,11 +19,16 @@ work="$root/target/ios-packages/work-$sdk"
 mkdir -p "$out"
 
 # name|version|commands (name:directory, or "port": ios/packages/<name>/
-# build.sh builds it; version "source" reads the version from its source)
+# build.sh builds it; version "source" reads the version from its source).
+# jot and hexdump, packages once, are bundled with the app now.
 packages="
-jot|1.0|jot:shell_cmds/jot|Print sequential or random data
-hexdump|1.0|hexdump:shell_cmds/hexdump|Show a file's bytes in hex, octal or ASCII
 fastfetch|source|port|Show system information beside a logo
+curl|8.11.1|port|Transfer data from or to URLs (HTTPS through the system)
+git|2.47.1|port|Version control on local repositories
+jq|1.7.1|port|Query and reshape JSON
+lua|5.4.7|port|The Lua language
+sqlite3|3.47.2|port|SQLite databases from the command line
+tree|2.2.1|port|List directories as a tree
 "
 
 wanted=${*:-}
