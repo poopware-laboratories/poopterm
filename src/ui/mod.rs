@@ -72,6 +72,11 @@ pub(crate) mod hover;
 #[cfg(test)]
 mod hover_tests;
 pub(crate) mod insets;
+#[cfg_attr(
+	not(any(target_os = "ios", test)),
+	expect(dead_code, reason = "only iOS shows the key bar")
+)]
+pub(crate) mod key_bar;
 pub(crate) mod layout;
 pub(crate) mod links;
 #[cfg(all(test, unix))]

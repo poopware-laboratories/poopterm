@@ -62,6 +62,9 @@ pub(crate) enum UserEvent {
 	/// The on-screen keyboard moved (`ios_keyboard`).
 	#[cfg(target_os = "ios")]
 	Keyboard,
+	/// A hardware keyboard's key, with the modifiers held (`ios_keyboard`).
+	#[cfg(target_os = "ios")]
+	HardwareKey(winit::keyboard::Key, crate::input::keys::Modifiers),
 }
 
 pub(crate) struct Session {

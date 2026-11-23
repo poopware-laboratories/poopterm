@@ -73,6 +73,7 @@ impl App {
 		}
 		self.restore_background(p, status_y, self.status_height + self.border);
 		self.draw_status_bar(p, scale, ui);
+		self.draw_key_bar(p, scale, ui);
 		bands
 	}
 

@@ -3,7 +3,9 @@
 //! keyboard is moving to, keeps its top edge in screen points (what it
 //! covers depends on where the window is: `ui::insets::window_insets`),
 //! and wakes the event loop to lay the window out again. It also keeps the
-//! keyboard from rewriting what is typed (`input::typing`).
+//! keyboard from rewriting what is typed (`input::typing`), and passes a
+//! hardware keyboard's presses with modifiers on as keys
+//! (`input::hardware_keys`), which winit would lose.
 // Calls into C or the kernel; docs/unsafe.md lists each block.
 #![allow(unsafe_code)]
 use std::sync::{
@@ -105,6 +107,115 @@ pub(crate) fn plain_typing() {
 	// SAFETY: `none` and `no` take the receiver and selector and return an
 	// `NSInteger`, as `q@:` encodes.
 	let _ = unsafe { objc::add_methods(c"WinitUIView", &methods) };
+	let presses = [
+		objc::Method {
+			selector: c"pressesBegan:withEvent:",
+			imp: presses_began as *const _,
+			types: c"v@:@@",
+		},
+		objc::Method {
+			selector: c"pressesEnded:withEvent:",
+			imp: presses_ended as *const _,
+			types: c"v@:@@",
+		},
+	];
+	// SAFETY: both take the receiver, selector, a set of presses and an
+	// event, and return nothing, as `v@:@@` encodes.
+	let _ = unsafe { objc::add_methods(c"WinitUIView", &presses) };
+}
+
+/// The view's `pressesBegan:withEvent:`: keys taken (`hardware_keys`) go
+/// to the app; the rest, and every press when none is, to UIKit.
+extern "C" fn presses_began(view: Raw, _: Sel, presses: Raw, event: Raw) {
+	let taken = taken_keys(presses);
+	if taken.is_empty() {
+		// SAFETY: `view` is a `WinitUIView`, a `UIResponder`, which answers
+		// `pressesBegan:withEvent:` with a set and an event.
+		unsafe {
+			objc::send_super(
+				view,
+				c"WinitUIView",
+				c"pressesBegan:withEvent:",
+				(presses, event),
+			)
+		};
+		return;
+	}
+	let proxy = PROXY.lock().unwrap_or_else(|poison| poison.into_inner());
+	for (key, mods) in taken {
+		if let Some(proxy) = proxy.as_ref() {
+			let _ = proxy.send_event(UserEvent::HardwareKey(key, mods));
+		}
+	}
+}
+
+/// The view's `pressesEnded:withEvent:`: UIKit sees the end of the presses
+/// it saw begin.
+extern "C" fn presses_ended(view: Raw, _: Sel, presses: Raw, event: Raw) {
+	if taken_keys(presses).is_empty() {
+		// SAFETY: as in `presses_began`, for `pressesEnded:withEvent:`.
+		unsafe {
+			objc::send_super(
+				view,
+				c"WinitUIView",
+				c"pressesEnded:withEvent:",
+				(presses, event),
+			)
+		};
+	}
+}
+
+/// The keys the app takes of `presses`, an `NSSet` of `UIPress`.
+fn taken_keys(presses: Raw) -> Vec<(winit::keyboard::Key, crate::input::keys::Modifiers)> {
+	let mut taken = Vec::new();
+	// SAFETY: UIKit passes a set of presses, alive through the call; nil
+	// is checked. `allObjects` returns an array the caller does not own.
+	let Some(all) = (unsafe { objc::Object::retained(presses) }) else {
+		return taken;
+	};
+	// SAFETY: an `NSSet` answers `allObjects` with an `NSArray`.
+	let array: Raw = unsafe { all.send(c"allObjects", ()) };
+	// SAFETY: the array is live; `count` returns an `NSUInteger`.
+	let Some(array) = (unsafe { objc::Object::retained(array) }) else {
+		return taken;
+	};
+	// SAFETY: an `NSArray` answers `count`.
+	let count: usize = unsafe { array.send(c"count", ()) };
+	for index in 0..count {
+		// SAFETY: `index` is below `count`; the press is a `UIPress`.
+		let press: Raw = unsafe { array.send(c"objectAtIndex:", (index,)) };
+		if let Some(key) = press_key(press) {
+			taken.push(key);
+		}
+	}
+	taken
+}
+
+/// The key the app takes for one `UIPress`, if it takes it.
+fn press_key(press: Raw) -> Option<(winit::keyboard::Key, crate::input::keys::Modifiers)> {
+	// SAFETY: `press` is a live `UIPress` from the set; `key` returns its
+	// `UIKey` (iOS 13.4) or nil, which is checked.
+	let press = unsafe { objc::Object::retained(press) }?;
+	if !press.responds(c"key") {
+		return None;
+	}
+	// SAFETY: the press answers `key`, as checked.
+	let key: Raw = unsafe { press.send(c"key", ()) };
+	// SAFETY: a `UIKey` or nil.
+	let key = unsafe { objc::Object::retained(key) }?;
+	// SAFETY: a `UIKey` answers `modifierFlags` with an `NSInteger`.
+	let flags: isize = unsafe { key.send(c"modifierFlags", ()) };
+	// SAFETY: and `keyCode` with an `NSInteger` (`UIKeyboardHIDUsage`).
+	let usage: isize = unsafe { key.send(c"keyCode", ()) };
+	// SAFETY: and `charactersIgnoringModifiers` with an `NSString`.
+	let characters: Raw = unsafe { key.send(c"charactersIgnoringModifiers", ()) };
+	// SAFETY: a string or nil.
+	let characters = unsafe { objc::Object::retained(characters) };
+	// SAFETY: the string is an `NSString`.
+	let text = characters
+		.map(|string| unsafe { objc::text(&string) })
+		.unwrap_or_default();
+	crate::input::hardware_keys::press(flags, &text, usage)
 }
 
 extern "C" fn none(_: Raw, _: Sel) -> isize {

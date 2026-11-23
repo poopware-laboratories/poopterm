@@ -214,6 +214,10 @@ impl ApplicationHandler<UserEvent> for App {
 			#[cfg(target_os = "ios")]
 			UserEvent::Keyboard => self.resize(self.width, self.height),
 			// pr-check: end window glue
+			// pr-check: window glue: only a hardware keyboard's presses on iOS send this
+			#[cfg(target_os = "ios")]
+			UserEvent::HardwareKey(key, mods) => self.press_hardware_key(event_loop, key, mods),
+			// pr-check: end window glue
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 			UserEvent::ButtonLayout(layout) => self.desktop_buttons(layout),

@@ -34,8 +34,15 @@ impl App {
 			return;
 		}
 		let at = (touch.location.x, touch.location.y);
+		let action = self.touches.event(phase(touch.phase), touch.id, at);
+		// A tap on the key bar is its key's, not the terminal's.
+		if let Some(Action::Click(x, y)) = action
+			&& let Some(key) = self.bar_key_at((x, y))
+		{
+			return self.press_bar_key(event_loop, key);
+		}
 		// pr-check: window glue: replays a tap or drag as the mouse events a window sends
-		match self.touches.event(phase(touch.phase), touch.id, at) {
+		match action {
 			Some(Action::Click(x, y)) => {
 				self.handle_cursor_moved(PhysicalPosition::new(x, y));
 				self.handle_mouse_input(event_loop, ElementState::Pressed, MouseButton::Left);
@@ -448,5 +455,20 @@ impl App {
 				}
 			}
 		}
+	}
+
+	/// The key of the bar above the on-screen keyboard at `point`, while
+	/// the bar shows.
+	fn bar_key_at(&self, (x, y): (f64, f64)) -> Option<crate::ui::key_bar::BarKey> {
+		use crate::ui::key_bar::{key_at, key_rects, shown, strip};
+		if !shown(cfg!(target_os = "ios"), self.safe.1, self.home) || x < 0.0 || y < 0.0 {
+			return None;
+		}
+		let size = (self.width as usize, self.height as usize);
+		let (sx, sy, sw, _) = strip(size, self.safe.1, self.sides, self.scale());
+		key_at(
+			(x as usize, y as usize),
+			&key_rects((sx, sy), sw, self.scale()),
+		)
 	}
 }

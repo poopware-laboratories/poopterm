@@ -43,6 +43,63 @@ unsafe extern "C" {
 		expect(dead_code, reason = "iOS's scene delegate uses it")
 	)]
 	fn class_addProtocol(class: Raw, protocol: Raw) -> Bool;
+	/// Declared without a type, as `objc_msgSend`.
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's key presses use it")
+	)]
+	fn objc_msgSendSuper();
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's key presses use it")
+	)]
+	fn class_getSuperclass(class: Raw) -> Raw;
+}
+
+/// `struct objc_super`: the receiver, and the class whose methods answer.
+#[repr(C)]
+struct Super {
+	receiver: Raw,
+	class: Raw,
+}
+
+/// Sends `receiver`, an instance of class `name`, the message `selector`
+/// with two object arguments, as `name`'s superclass answers it: the
+/// method a method added to `name` replaces.
+///
+/// # Safety
+///
+/// `receiver` is a live instance of `name`, whose superclass has a method
+/// `selector` taking two objects and returning nothing.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's key presses use it")
+)]
+pub(crate) unsafe fn send_super(
+	receiver: Raw,
+	name: &'static CStr,
+	selector: &CStr,
+	(a, b): (Raw, Raw),
+) {
+	let Ok(class) = class(name) else {
+		return;
+	};
+	// SAFETY: the class exists; its superclass is a class or nil.
+	let parent = unsafe { class_getSuperclass(class.raw()) };
+	if parent.is_null() {
+		return;
+	}
+	let to = Super {
+		receiver,
+		class: parent,
+	};
+	type Typed = unsafe extern "C" fn(*const Super, Sel, Raw, Raw);
+	// SAFETY: `objc_msgSendSuper` jumps to the superclass's implementation
+	// with the arguments as passed, so called as the method's C type it is
+	// that method; both are function pointers of one size.
+	let send = unsafe { std::mem::transmute::<unsafe extern "C" fn(), Typed>(objc_msgSendSuper) };
+	// SAFETY: as the caller vouches; `to` lives through the call.
+	unsafe { send(&to, sel(selector), a, b) };
 }
 
 /// An action method's implementation: the receiver, the selector, and the

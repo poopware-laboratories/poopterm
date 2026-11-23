@@ -202,6 +202,35 @@ impl App {
 			self.draw_command_palette(p, scale, ui);
 		}
 		self.draw_status_bar(p, scale, ui);
+		self.draw_key_bar(p, scale, ui);
+	}
+
+	/// The keys above a phone's on-screen keyboard, while it is up (iOS):
+	/// Ctrl lit while it holds.
+	pub(super) fn draw_key_bar(&mut self, p: &mut impl Pen, scale: usize, ui: UiFont) {
+		use crate::ui::key_bar::{KEYS, key_rects, shown, strip};
+		if !shown(cfg!(target_os = "ios"), self.safe.1, self.home) {
+			return;
+		}
+		let (x, y, w, h) = strip(p.size(), self.safe.1, self.sides, scale);
+		let style = self.button_style(scale);
+		let (chrome, fg) = (
+			crate::ui::chrome_colors::chrome_colors(&self.theme).chrome,
+			self.theme.fg,
+		);
+		let ctrl = self.key_bar.ctrl();
+		// pr-check: window glue: paints the tested key bar layout into the real frame
+		paint(p, &mut self.ui_fonts, |s, fonts| {
+			s.rect(x, y, w, h, chrome);
+			for (rect, key) in key_rects((x, y), w, scale) {
+				let lit = ctrl && key == crate::ui::key_bar::BarKey::Ctrl;
+				s.button(rect, style, lit);
+				let label = KEYS.iter().find(|(k, _)| *k == key).map_or("", |(_, l)| l);
+				let center = (rect.0 + rect.2 / 2, rect.1 + rect.3 / 2);
+				crate::render::header::centered_text(s, fonts, label, center, ui.px * 0.8, fg);
+			}
+		});
+		// pr-check: end window glue
 	}
 
 	/// The space around the grid, inside the border and between the chrome,
@@ -301,7 +330,7 @@ impl App {
 			return;
 		}
 		let (width, height) = p.size();
-		let (border, bottom) = (self.border, self.safe.1);
+		let (border, bottom) = (self.border, self.bottom_inset());
 		let rect = status_rect(
 			(width, height),
 			self.status_height,

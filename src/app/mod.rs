@@ -200,6 +200,8 @@ pub(crate) struct App {
 	/// How far the Settings page is scrolled down, in pixels, where the
 	/// window is shorter than the page (a phone on its side).
 	settings_scroll: usize,
+	/// The keys above a phone's on-screen keyboard, and whether Ctrl holds.
+	key_bar: crate::ui::key_bar::KeyBar,
 	held_button: Option<MouseButtonCode>,
 	/// `TERM` and terminfo path for new shells.
 	term_env: crate::terminfo::TermEnv,
@@ -331,7 +333,7 @@ impl App {
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
-		(chrome.safe, chrome.sides) = (self.safe, self.sides);
+		(chrome.safe, chrome.sides) = ((self.safe.0, self.bottom_inset()), self.sides);
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -341,13 +343,21 @@ impl App {
 		// pr-check: end window glue
 	}
 
+	/// Pixels at the bottom kept from the grid and status bar: the
+	/// system's (home indicator, keyboard) and the key bar above the
+	/// keyboard while it shows.
+	pub(super) fn bottom_inset(&self) -> usize {
+		let ios = cfg!(target_os = "ios");
+		crate::ui::key_bar::bottom_with_bar(ios, self.safe.1, self.home, self.scale())
+	}
+
 	/// The grid's place in the window with the current chrome and settings.
 	pub(super) fn layout(&self) -> Layout {
 		let mut chrome = chrome(
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
-		(chrome.safe, chrome.sides) = (self.safe, self.sides);
+		(chrome.safe, chrome.sides) = ((self.safe.0, self.bottom_inset()), self.sides);
 		layout(
 			&chrome,
 			self.scale(),
@@ -512,6 +522,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		touches: Default::default(),
 		settings_touches: Default::default(),
 		settings_scroll: 0,
+		key_bar: Default::default(),
 		held_button: None,
 		term_env,
 		scroll: ScrollAccumulator::default(),
