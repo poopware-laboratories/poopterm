@@ -339,7 +339,7 @@ impl App {
 			self.sides,
 		);
 		let term = self.sessions[self.active].term();
-		let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+		let home = crate::config::home_dir();
 		let cwd = crate::ui::status_bar::cwd_label(&term.cwd, home.as_deref());
 		// Say when the user acts as someone else or somewhere else.
 		let place = term.contexts.label().or_else(|| {

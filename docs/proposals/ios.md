@@ -56,7 +56,7 @@ Limits to design for:
 |---|---|
 | `src/vt`, `src/parser`, `src/term` | Unchanged: the tokenizer, terminal state, scrollback, images. |
 | `src/gpu/mtl` (Metal renderer) | Draws into a `CAMetalLayer` in a `UIView`, as on macOS. |
-| `src/fonts`, `src/render`, `src/ui` | Unchanged; touch selection and a keyboard accessory row are new UI models. |
+| `src/fonts`, `src/render`, `src/ui` | Unchanged; touch selection and a keyboard accessory row with a dismiss key are new UI models. |
 | `src/input` | Key encoding is reused; input comes from `UIKeyInput` and hardware keyboards (`UIPress`) instead of winit. |
 | `src/pty` | Replaced by an in-process "terminal device" (below). |
 | `src/app` | A UIKit app delegate and view controller in place of winit's event loop. |
@@ -85,8 +85,10 @@ iOS program: no Linux binaries, no system call translation.
    (`cd`, `export`, `exit`…). Every other command is a real program:
    `uname`, `ls`, `cat`, `sort`… are built from Apple's own sources
    (shell_cmds, file_cmds, text_cmds) as libraries by
-   `ios/commands/build.sh`, bundled in `Poopterm.app/commands` and found on
-   `$PATH`. Bundled with the app, they are signed with it, so they run
+   `ios/commands/build.sh`, embedded as frameworks under
+   `Poopterm.app/Frameworks` and found on `$PATH`. This is iOS's supported
+   location for third-party executable code, so sideloaders can re-sign them
+   with the app and they run
    without JIT. A pipeline runs its stages one after another, each reading
    what the one before printed.
 2. **Packages (with JIT).** A command is a dynamic library built for iOS

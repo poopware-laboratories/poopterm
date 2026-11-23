@@ -151,6 +151,25 @@ fn save_is_reached_above_the_home_indicator_on_every_page() {
 }
 
 #[test]
+fn save_stays_above_the_keyboard_after_scrolling_to_the_footer() {
+	let bottom = 1000;
+	let keyboard = Shape::Top {
+		inset: (186, bottom),
+		sides: (0, 0),
+	};
+	let (x, y, width, visible) = keyboard.page(PHONE, S);
+	let extent = keyboard.extent(visible, S);
+	let scroll = super::settings_shape::clamp_scroll(usize::MAX, visible, extent);
+	let save = footer_rect((width, extent), 120, S);
+	let point = (x + save.0 + save.2 / 2, y + save.1 - scroll + save.3 / 2);
+	assert!(y + save.1 + save.3 - scroll <= PHONE.1 - bottom);
+	assert_eq!(
+		keyboard.target(point, PHONE, S, (SettingsPage::Main, scroll)),
+		Some(SettingsTarget::Save)
+	);
+}
+
+#[test]
 fn the_font_list_shows_a_phones_worth_of_rows_and_each_is_tapped() {
 	let rows = font_list_rows(page().3, S);
 	assert!(rows >= 10, "{rows} rows");

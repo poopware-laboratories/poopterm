@@ -74,8 +74,7 @@ pub(crate) fn save_session_dirs(dirs: &[PathBuf]) -> std::io::Result<()> {
 }
 
 pub(crate) fn default_cwd() -> PathBuf {
-	env::var_os("HOME")
-		.map(PathBuf::from)
+	crate::config::home_dir()
 		.or_else(|| env::current_dir().ok())
 		.unwrap_or_else(|| PathBuf::from("/"))
 }

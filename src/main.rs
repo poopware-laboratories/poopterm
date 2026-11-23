@@ -46,6 +46,10 @@ mod input;
 #[cfg(target_os = "ios")]
 mod ios_keyboard;
 #[cfg(target_os = "ios")]
+mod ios_paths;
+#[cfg(target_os = "ios")]
+mod ios_photos;
+#[cfg(target_os = "ios")]
 mod ios_scene;
 #[cfg(target_os = "ios")]
 mod ios_window;

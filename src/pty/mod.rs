@@ -65,6 +65,12 @@ pub(crate) enum UserEvent {
 	/// A hardware keyboard's key, with the modifiers held (`ios_keyboard`).
 	#[cfg(target_os = "ios")]
 	HardwareKey(winit::keyboard::Key, crate::input::keys::Modifiers),
+	/// A photo copied from Photos into the app's private directory.
+	#[cfg(target_os = "ios")]
+	WallpaperImported(Result<std::path::PathBuf, String>),
+	/// The user closed Photos without selecting an image.
+	#[cfg(target_os = "ios")]
+	WallpaperPickerCancelled,
 }
 
 pub(crate) struct Session {
@@ -192,7 +198,7 @@ pub(crate) fn spawn_session(
 	let mut device_size = None;
 	let (master, reader, input, child) = if in_process() {
 		// No program may run: a built-in shell in this process stands in.
-		let home = std::env::var_os("HOME").map_or_else(|| cwd.clone(), PathBuf::from);
+		let home = crate::config::home_dir().unwrap_or_else(|| cwd.clone());
 		let device = crate::inproc::spawn(id, cwd.clone(), home, (cols, rows))?;
 		device_size = Some(device.size.clone());
 		let master = OwnedFd::from(device.output.try_clone()?);

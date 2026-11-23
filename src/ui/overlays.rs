@@ -231,6 +231,22 @@ pub(crate) fn command_palette<'a>(
 	}
 }
 
+/// The command row tapped in a palette, excluding its field, note and gaps.
+pub(crate) fn palette_row_at(
+	place: Place,
+	(query, renaming): (&str, bool),
+	closing: bool,
+	point: (f64, f64),
+	theme: &Theme,
+) -> Option<usize> {
+	(!closing)
+		.then(|| {
+			command_palette(place, (query, renaming), 1.0, theme)
+				.row_at((point.0.max(0.0) as usize, point.1.max(0.0) as usize))
+		})
+		.flatten()
+}
+
 /// The row after stepping `delta` from `current` among `count` rows,
 /// wrapping at both ends. A `current` past the rows counts as the first.
 pub(crate) fn step_selection(current: usize, count: usize, delta: isize) -> usize {

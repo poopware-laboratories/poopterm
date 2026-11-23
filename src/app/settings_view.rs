@@ -115,6 +115,10 @@ fn theme_label(kind: ThemeKind) -> String {
 	}
 }
 
+pub(super) fn wallpaper_picker_label(ios: bool) -> &'static str {
+	if ios { "Photos…" } else { "Choose image…" }
+}
+
 impl App {
 	pub(super) fn draw_settings(&mut self) {
 		let scale = self
@@ -446,7 +450,7 @@ pub(super) fn compose_main_settings(
 
 	pen.text(p, x, MAIN.wallpaper_label, "Background wallpaper", 0.76);
 	for (bx, bw, label) in [
-		(x, 152 * s, "Choose image…"),
+		(x, 152 * s, wallpaper_picker_label(cfg!(target_os = "ios"))),
 		(x + 164 * s, 96 * s, "Clear"),
 	] {
 		p.button((bx, WALLPAPER_ROW * s, bw, 32 * s), style, false);
@@ -457,7 +461,7 @@ pub(super) fn compose_main_settings(
 		.as_ref()
 		.and_then(|path| path.file_name())
 		.and_then(|name| name.to_str())
-		.unwrap_or("No image selected")
+		.unwrap_or("No wallpaper selected")
 		.chars()
 		.take(32)
 		.collect();

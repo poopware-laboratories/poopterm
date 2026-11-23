@@ -172,7 +172,7 @@ pub(crate) fn load_ui_font() -> Option<Font> {
 /// The installed fonts, from the cache in `$XDG_CACHE_HOME/poopterm`.
 pub(crate) fn system_fonts() -> db::Cache {
 	let roots = font_roots(
-		env::var_os("HOME"),
+		crate::config::home_dir().map(Into::into),
 		env::var_os("XDG_DATA_HOME"),
 		env::var_os("XDG_DATA_DIRS"),
 	);

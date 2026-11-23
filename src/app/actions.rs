@@ -61,9 +61,7 @@ impl App {
 		let text = export::history_text(&self.active_term());
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
 		let name = export::file_name(now.map_or(0, |since| since.as_secs()));
-		let home = std::env::var_os("HOME")
-			.map(std::path::PathBuf::from)
-			.unwrap_or_default();
+		let home = crate::config::home_dir().unwrap_or_default();
 		let folder = Some(home.join("Downloads"))
 			.filter(|d| d.is_dir())
 			.unwrap_or(home);

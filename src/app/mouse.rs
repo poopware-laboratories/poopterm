@@ -41,6 +41,15 @@ impl App {
 		{
 			return self.press_bar_key(event_loop, key);
 		}
+		// pr-check: window glue: a terminal tap restores the keyboard after it was dismissed
+		#[cfg(target_os = "ios")]
+		if let Some(Action::Click(x, y)) = action
+			&& self.point_at(x, y).is_some()
+			&& let Some(window) = &self.window
+		{
+			window.set_ime_allowed(true);
+		}
+		// pr-check: end window glue
 		// pr-check: window glue: replays a tap or drag as the mouse events a window sends
 		match action {
 			Some(Action::Click(x, y)) => {
@@ -392,6 +401,17 @@ impl App {
 			_ => return,
 		};
 		self.held_button = (state == ElementState::Pressed).then_some(code);
+		// pr-check: window glue: routes a tap through the tested palette row hit target
+		if state == ElementState::Pressed
+			&& button == MouseButton::Left
+			&& self.command_palette
+			&& let Some(index) = self.palette_row_at((x, y))
+		{
+			self.command_selected = index;
+			self.activate_palette_command(event_loop);
+			return;
+		}
+		// pr-check: end window glue
 		// pr-check: window glue: a press on the search box goes to its tested buttons
 		if state == ElementState::Pressed && button == MouseButton::Left && self.press_search() {
 			return;
@@ -455,6 +475,21 @@ impl App {
 				}
 			}
 		}
+	}
+
+	/// The command palette row at the point, if it is open and not a prompt.
+	fn palette_row_at(&self, point: (f64, f64)) -> Option<usize> {
+		crate::ui::overlays::palette_row_at(
+			crate::ui::overlays::Place {
+				window: (self.width as usize, self.height as usize),
+				top: self.top,
+				scale: self.scale(),
+			},
+			(&self.command_query, self.renaming_tab),
+			self.closing.is_some(),
+			point,
+			&self.theme,
+		)
 	}
 
 	/// The key of the bar above the on-screen keyboard at `point`, while

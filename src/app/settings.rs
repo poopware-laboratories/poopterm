@@ -127,6 +127,12 @@ impl App {
 			window.focus_window();
 			return;
 		}
+		// pr-check: window glue: clears the terminal keyboard out of Settings
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			window.set_ime_allowed(false);
+		}
+		// pr-check: end window glue
 		self.settings_editor = SettingsEditor::load();
 		let attributes = crate::platform::identify(Window::default_attributes())
 			.with_title("Poopterm Settings")
@@ -382,7 +388,7 @@ impl App {
 		shape(
 			width,
 			self.settings_scale(),
-			(self.safe.0, self.home),
+			(self.safe.0, self.safe.1),
 			closable,
 		)
 		.beside(self.sides)
@@ -482,7 +488,7 @@ impl App {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(self.preferences.renderer, variable.as_deref());
 		let gpu = self.renderer.as_ref().and_then(renderer::Renderer::facts);
-		let home = std::env::var_os("HOME").map(PathBuf::from);
+		let home = crate::config::home_dir();
 		let (drawing, frames) = (self.drawing.clone(), self.recent_frames.counts());
 		let recent = crate::warnings::recent();
 		gather(drawing, frames, preference, gpu.as_ref(), recent, home)
@@ -490,27 +496,58 @@ impl App {
 	// pr-check: end window glue
 
 	fn choose_wallpaper(&mut self) {
-		// iOS has no file dialogs; wallpapers come from the config there.
 		#[cfg(target_os = "ios")]
-		let picked: Option<std::path::PathBuf> = None;
-		#[cfg(not(target_os = "ios"))]
-		let picked = self.settings_window.as_ref().and_then(|window| {
-			rfd::FileDialog::new()
-				.set_title("Choose a terminal wallpaper")
-				.add_filter("Wallpaper images", &["png", "jpg", "jpeg", "webp"])
-				.set_parent(window.as_ref())
-				.pick_file()
-		});
-		let Some(path) = picked else {
-			return;
-		};
-		let editor = &mut self.settings_editor;
-		match Wallpaper::load(&path) {
-			Ok(_) => {
-				editor.wallpaper_path = Some(path);
-				editor.status = "Wallpaper selected. Click Save to apply.".into();
-			}
-			Err(error) => editor.status = format!("Could not use wallpaper: {error}"),
+		{
+			let result = self
+				.settings_window
+				.as_ref()
+				.ok_or_else(|| "Settings window is closed".to_owned())
+				.and_then(|window| crate::ios_photos::choose(window));
+			self.settings_editor.status = match result {
+				Ok(()) => "Choose a photo from your library…".into(),
+				Err(error) => format!("Could not open Photos: {error}"),
+			};
+			self.redraw_settings();
 		}
+		#[cfg(not(target_os = "ios"))]
+		{
+			let picked = self.settings_window.as_ref().and_then(|window| {
+				rfd::FileDialog::new()
+					.set_title("Choose a terminal wallpaper")
+					.add_filter("Wallpaper images", &["png", "jpg", "jpeg", "webp"])
+					.set_parent(window.as_ref())
+					.pick_file()
+			});
+			let Some(path) = picked else {
+				return;
+			};
+			let editor = &mut self.settings_editor;
+			match Wallpaper::load(&path) {
+				Ok(_) => {
+					editor.wallpaper_path = Some(path);
+					editor.status = "Wallpaper selected. Click Save to apply.".into();
+				}
+				Err(error) => editor.status = format!("Could not use wallpaper: {error}"),
+			}
+		}
+	}
+
+	#[cfg(target_os = "ios")]
+	pub(super) fn wallpaper_imported(&mut self, imported: Result<PathBuf, String>) {
+		self.settings_editor.status =
+			match imported.and_then(|path| Wallpaper::load(&path).map(|_| path)) {
+				Ok(path) => {
+					self.settings_editor.wallpaper_path = Some(path);
+					"Photo selected. Tap Save to apply.".into()
+				}
+				Err(error) => format!("Could not use wallpaper: {error}"),
+			};
+		self.redraw_settings();
+	}
+
+	#[cfg(target_os = "ios")]
+	pub(super) fn wallpaper_picker_cancelled(&mut self) {
+		self.settings_editor.status = "No photo selected.".into();
+		self.redraw_settings();
 	}
 }

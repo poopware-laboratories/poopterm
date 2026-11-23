@@ -217,6 +217,10 @@ impl ApplicationHandler<UserEvent> for App {
 			// pr-check: window glue: only a hardware keyboard's presses on iOS send this
 			#[cfg(target_os = "ios")]
 			UserEvent::HardwareKey(key, mods) => self.press_hardware_key(event_loop, key, mods),
+			#[cfg(target_os = "ios")]
+			UserEvent::WallpaperImported(path) => self.wallpaper_imported(path),
+			#[cfg(target_os = "ios")]
+			UserEvent::WallpaperPickerCancelled => self.wallpaper_picker_cancelled(),
 			// pr-check: end window glue
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]

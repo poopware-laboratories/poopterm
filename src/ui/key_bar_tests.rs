@@ -46,6 +46,18 @@ fn a_tap_finds_the_key_under_it_and_none_between() {
 }
 
 #[test]
+fn the_hide_key_remains_a_tappable_target_at_iphone_16e_width() {
+	let rects = key_rects((0, 0), 1170, 3);
+	let (rect, key) = *rects.last().unwrap();
+	assert_eq!(key, BarKey::Hide);
+	assert!(rect.2 >= 96, "at least 32 points wide: {}", rect.2);
+	assert_eq!(
+		key_at((rect.0 + rect.2 / 2, rect.1 + rect.3 / 2), &rects),
+		Some(key)
+	);
+}
+
+#[test]
 fn the_named_keys_send_what_a_keyboard_would() {
 	let mut bar = KeyBar::default();
 	let cases = [
@@ -144,6 +156,14 @@ fn the_palette_key_opens_it_and_lets_ctrl_go() {
 	bar.press(BarKey::Ctrl);
 	assert_eq!(bar.press(BarKey::Palette), Press::Palette);
 	assert!(!bar.ctrl());
+}
+
+#[test]
+fn the_hide_key_has_an_explicit_keyboard_dismiss_action() {
+	let mut bar = KeyBar::default();
+	bar.press(BarKey::Ctrl);
+	assert_eq!(bar.press(BarKey::Hide), Press::HideKeyboard);
+	assert!(!bar.ctrl(), "hiding clears a pending modifier");
 }
 
 #[test]

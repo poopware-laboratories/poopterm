@@ -409,6 +409,7 @@ impl App {
 			if (insets.safe, insets.sides, insets.corner) != (self.safe, self.sides, self.corner) {
 				(self.safe, self.sides, self.corner) = (insets.safe, insets.sides, insets.corner);
 				self.apply_scale();
+				self.redraw_settings();
 			}
 		}
 		// pr-check: end window glue
@@ -428,6 +429,8 @@ impl App {
 pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 	let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
 	let proxy = event_loop.create_proxy();
+	#[cfg(target_os = "ios")]
+	crate::ios_photos::register(proxy.clone());
 
 	let theme = Theme::load();
 	let settings_editor = SettingsEditor::load();

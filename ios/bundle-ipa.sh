@@ -4,8 +4,8 @@
 #
 #   ios/bundle-ipa.sh            # target/ios/Poopterm.ipa
 #
-# The app carries its bundled commands (ios/commands) and every package of
-# ios/packages, so they work from the first launch, signed with the app;
+# The app carries its bundled command frameworks (ios/commands) and every
+# package of ios/packages, so they work from the first launch, signed with the app;
 # packages installed later with `pkg` need the JIT a debugger gives. Its
 # icon is assets/icon.icon, compiled by actool, light and dark; each port's
 # license sits in Poopterm.app/licenses/<package>.
@@ -24,13 +24,37 @@ cargo build --release --target aarch64-apple-ios
 "$here/packages/build.sh" iphoneos
 
 rm -rf "$out/Payload" "$out/Poopterm.ipa" "$out/icon"
-mkdir -p "$app/commands" "$app/licenses" "$out/icon"
+mkdir -p "$app/Frameworks" "$app/licenses" "$out/icon"
 cp target/aarch64-apple-ios/release/poopterm "$app/Poopterm"
-cp target/ios-commands/iphoneos/* "$app/commands/"
-# Each package's commands beside the bundled ones, its license apart.
+embed_command() {
+	command=$1
+	name=$(basename "$command")
+	framework="$app/Frameworks/$name.framework"
+	mkdir -p "$framework"
+	cp "$command" "$framework/$name"
+	cat >"$framework/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+	<key>CFBundleExecutable</key><string>$name</string>
+	<key>CFBundleIdentifier</key><string>labs.poopterm.command.$name</string>
+	<key>CFBundleName</key><string>$name</string>
+	<key>CFBundlePackageType</key><string>FMWK</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>MinimumOSVersion</key><string>17.0</string>
+</dict></plist>
+PLIST
+}
+for command in target/ios-commands/iphoneos/*; do
+	embed_command "$command"
+done
+# Each package's commands are framework bundles for iOS code signing and
+# sideloader re-signing; its license is kept apart.
 for package in target/ios-packages/work-iphoneos/*/; do
 	name=$(basename "$package")
-	cp "$package"bin/* "$app/commands/"
+	for command in "$package"bin/*; do
+		embed_command "$command"
+	done
 	if [ -d "$package/share/doc/$name" ]; then
 		mkdir -p "$app/licenses/$name"
 		cp -R "$package/share/doc/$name/." "$app/licenses/$name/"
@@ -43,9 +67,9 @@ xcrun actool assets/icon.icon --compile "$app" --platform iphoneos \
 	--target-device ipad --output-partial-info-plist "$out/icon/partial.plist" >/dev/null
 python3 -I "$here/merge_plist.py" "$here/Info.plist" "$out/icon/partial.plist" "$app/Info.plist"
 
-for command in "$app"/commands/*; do
-	codesign --force --sign - "$command" 2>/dev/null
+for framework in "$app"/Frameworks/*.framework; do
+	codesign --force --sign - "$framework" 2>/dev/null
 done
 codesign --force --sign - "$app" 2>/dev/null
 (cd "$out" && COPYFILE_DISABLE=1 zip -qr -X Poopterm.ipa Payload)
-echo "built $out/Poopterm.ipa: $(ls "$app/commands" | wc -l | tr -d ' ') commands, $(du -h "$out/Poopterm.ipa" | cut -f1)"
+echo "built $out/Poopterm.ipa: $(find "$app/Frameworks" -name '*.framework' -type d | wc -l | tr -d ' ') command frameworks, $(du -h "$out/Poopterm.ipa" | cut -f1)"

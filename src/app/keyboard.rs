@@ -320,8 +320,28 @@ impl App {
 			}
 			Press::Latched(_) => {}
 			Press::Palette => self.open_command_palette(),
+			Press::HideKeyboard => self.hide_keyboard(),
 		}
 		self.request_redraw();
+	}
+
+	fn hide_keyboard(&self) {
+		// pr-check: window glue: resigns the UIKit terminal input view
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			window.set_ime_allowed(false);
+		}
+		// pr-check: end window glue
+	}
+
+	/// Activates the selected palette row using the same key path as Return.
+	pub(super) fn activate_palette_command(&mut self, event_loop: &ActiveEventLoop) {
+		let typed = Typed {
+			key: Key::Named(NamedKey::Enter),
+			repeat: false,
+			numpad: false,
+		};
+		self.handle_typed(event_loop, &typed);
 	}
 }
 

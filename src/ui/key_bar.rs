@@ -1,7 +1,7 @@
 //! The key bar above a phone's on-screen keyboard (iOS), for the keys it
 //! lacks: Esc, Tab, the arrows, a Ctrl that holds for the next key typed,
-//! and the command palette. Where the keys sit, which one a tap is on, and
-//! what Ctrl does to the key after it.
+//! and the command palette, plus a key to hide it. Where the keys sit, which
+//! one a tap is on, and what Ctrl does to the key after it.
 use crate::{input::keys::Modifiers, render::scene::Rect};
 use winit::keyboard::{Key, NamedKey};
 
@@ -19,10 +19,11 @@ pub(crate) enum BarKey {
 	Up,
 	Right,
 	Palette,
+	Hide,
 }
 
 /// The keys, left to right, with their labels.
-pub(crate) const KEYS: [(BarKey, &str); 8] = [
+pub(crate) const KEYS: [(BarKey, &str); 9] = [
 	(BarKey::Esc, "esc"),
 	(BarKey::Ctrl, "ctrl"),
 	(BarKey::Tab, "tab"),
@@ -31,6 +32,7 @@ pub(crate) const KEYS: [(BarKey, &str); 8] = [
 	(BarKey::Up, "↑"),
 	(BarKey::Right, "→"),
 	(BarKey::Palette, "cmd"),
+	(BarKey::Hide, "hide"),
 ];
 
 /// What pressing a key does.
@@ -42,6 +44,8 @@ pub(crate) enum Press {
 	Latched(bool),
 	/// Open the command palette.
 	Palette,
+	/// Dismiss the on-screen keyboard.
+	HideKeyboard,
 }
 
 /// Each key's rectangle in a bar from `(x, y)`, `width` pixels wide, at
@@ -93,6 +97,10 @@ impl KeyBar {
 			BarKey::Palette => {
 				self.ctrl = false;
 				return Press::Palette;
+			}
+			BarKey::Hide => {
+				self.ctrl = false;
+				return Press::HideKeyboard;
 			}
 			BarKey::Esc => NamedKey::Escape,
 			BarKey::Tab => NamedKey::Tab,

@@ -5,7 +5,8 @@ use super::{
 	header::{TabPalette, header_colors},
 	overlays::{
 		PALETTE_COMMANDS, Place, command_action, command_palette, palette_commands, palette_matches,
-		search_box, search_buttons, selected_command, shortcut_hints, stays_open, step_selection,
+		palette_row_at, search_box, search_buttons, selected_command, shortcut_hints, stays_open,
+		step_selection,
 	},
 	search_controls::{SearchControl, geometry},
 };
@@ -120,6 +121,32 @@ fn a_name_typed_whole_or_as_a_start_comes_first() {
 	assert_eq!(
 		palette_matches("Zoom"),
 		["Zoom in", "Zoom out", "Reset zoom"]
+	);
+}
+
+#[test]
+fn palette_taps_hit_only_visible_rows_and_respect_the_current_query() {
+	let place = place((390, 844), 1);
+	let theme = theme();
+	let palette = command_palette(place, ("settings", false), 14.0, &theme);
+	let row = palette.rows.first().unwrap().rect;
+	let center = (row.0 + row.2 / 2, row.1 + row.3 / 2);
+	let center = (center.0 as f64, center.1 as f64);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), false, center, &theme),
+		Some(0)
+	);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), true, center, &theme),
+		None
+	);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), false, (0.0, 0.0), &theme),
+		None
+	);
+	assert_eq!(
+		palette_row_at(place, ("no match", false), false, center, &theme),
+		None
 	);
 }
 
