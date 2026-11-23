@@ -14,8 +14,9 @@ use super::{native, pipeline, terminal::Terminal};
 
 /// The built-in commands, for `help`: what changes the shell itself, and
 /// the few a shell answers on its own, as `sh` does.
-pub(crate) const COMMANDS: [&str; 12] = [
-	"cd", "clear", "echo", "exit", "export", "false", "help", "pkg", "pwd", "true", "unset", "whoami",
+pub(crate) const COMMANDS: [&str; 13] = [
+	"cd", "clear", "echo", "exit", "export", "false", "help", "jit", "pkg", "pwd", "true", "unset",
+	"whoami",
 ];
 
 /// Who programs run for: the app's own `$USER`, else the account
@@ -344,6 +345,17 @@ impl Shell {
 				}
 				0
 			}
+			"jit" => {
+				let terminal = self.terminal.clone();
+				let stop = move || {
+					terminal
+						.as_ref()
+						.is_some_and(|terminal| terminal.interrupted())
+				};
+				let (text, status) = jit(args, &stop);
+				out.extend(text.into_bytes());
+				status
+			}
 			"pkg" => {
 				let root = crate::pkg::root(&self.home);
 				let source = self.env.get("POOPTERM_PKG_SOURCE").map(String::as_str);
@@ -412,6 +424,20 @@ pub(crate) enum Word {
 
 /// The commands of `line` and the operator after each (`;`, `&&` or `||`; `;`
 /// after the last), split outside quotes, not yet expanded. `None` for an
+/// `jit`: where code iOS did not sign can run.
+#[cfg(target_vendor = "apple")]
+fn jit(args: &[String], stop: &dyn Fn() -> bool) -> (String, i32) {
+	crate::jit::command(args, stop)
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn jit(_args: &[String], _stop: &dyn Fn() -> bool) -> (String, i32) {
+	(
+		"jit: not needed here; this system runs any program\n".to_owned(),
+		0,
+	)
+}
+
 /// unfinished quote.
 pub(crate) fn segments(line: &str) -> Option<Vec<(String, &'static str)>> {
 	let mut out = Vec::new();

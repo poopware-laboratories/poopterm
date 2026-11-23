@@ -18,12 +18,24 @@ impl Library {
 		NonNull::new(handle).map(Self).ok_or_else(last_error)
 	}
 
+	/// The entry of a command library (`poopterm_entry`), if it is one.
+	pub(crate) fn entry(&self) -> Option<NonNull<c_void>> {
+		self.symbol(c"poopterm_entry")
+	}
+
 	/// The address of the symbol `name`, if the library has it.
 	pub(crate) fn symbol(&self, name: &CStr) -> Option<NonNull<c_void>> {
 		// SAFETY: the handle stays open while `self` lives, and `name` is a
 		// C string.
 		NonNull::new(unsafe { libc::dlsym(self.0.as_ptr(), name.as_ptr()) })
 	}
+}
+
+/// The address of `name` in any library loaded, as dyld's flat lookup
+/// finds it: for code we load ourselves (`jit::loader`).
+pub(crate) fn any_symbol(name: &CStr) -> Option<NonNull<c_void>> {
+	// SAFETY: RTLD_DEFAULT searches every loaded image; `name` is a C string.
+	NonNull::new(unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) })
 }
 
 impl Drop for Library {

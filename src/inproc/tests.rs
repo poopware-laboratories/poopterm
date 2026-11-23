@@ -599,3 +599,19 @@ fn whoami_names_the_user_programs_run_for() {
 		"listed as a built-in"
 	);
 }
+
+#[test]
+fn jit_is_a_built_in_that_reports_where_code_can_run() {
+	let (mut sh, _) = shell();
+	let shown = ran(&mut sh, "jit");
+	assert!(
+		shown.contains("JIT: ") || shown.starts_with("jit: "),
+		"{shown}"
+	);
+	assert_eq!(sh.status, 0);
+	assert!(ran(&mut sh, "jit nonsense").starts_with("usage: jit") || !cfg!(target_vendor = "apple"));
+	assert!(
+		ran(&mut sh, "help").contains(" jit "),
+		"listed as a built-in"
+	);
+}

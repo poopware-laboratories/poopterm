@@ -15,10 +15,9 @@ use std::{
 };
 
 use super::terminal::Terminal;
-use crate::sys::{
-	command::{self, Device, Stdio},
-	dl::Library,
-};
+use crate::sys::command::{self, Device, Stdio};
+#[cfg(not(target_vendor = "apple"))]
+use crate::sys::dl::Library;
 
 /// Most bytes kept of what one command prints; the rest is read and
 /// dropped, so `yes` cannot fill memory or block forever.
@@ -93,13 +92,15 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 		.map(|(key, value)| format!("{key}={value}"))
 		.collect();
 	let env = c_strings(vars.iter().map(String::as_str).chain([pwd.as_str()]))?;
-	let name = CString::new(library.as_os_str().as_encoded_bytes())
-		.map_err(|_| "a path with a NUL byte".to_owned())?;
 	let _guard = ONE_AT_A_TIME
 		.lock()
 		.unwrap_or_else(|poison| poison.into_inner());
-	// Opened for each run and closed after, so its globals start over.
-	let library = Library::open(&name)?;
+	// Opened for each run and closed after (or, loaded by us, its data put
+	// back), so its globals start over.
+	let library = open(library)?;
+	let entry = library
+		.entry()
+		.ok_or_else(|| "not a command library (no poopterm_entry)".to_owned())?;
 	let failed = |error: io::Error| error.to_string();
 	let terminal = run.terminal;
 	let keys = match terminal {
@@ -141,7 +142,7 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 		keyboard: run.input.is_none() && terminal.is_some(),
 		keys: keys.as_ref().map(AsFd::as_fd),
 	};
-	let status = command::call(&library, &argv, &env, &stdio);
+	let status = command::call_entry(entry, &argv, &env, &stdio);
 	drop((out_writer, err_writer, stdin, keys));
 	drop(foreground);
 	if let Some(dir) = previous {
@@ -149,12 +150,35 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 	}
 	let output = out.join().unwrap_or_default();
 	let errors = err.join().unwrap_or_default();
-	let status = status.ok_or_else(|| "not a command library (no poopterm_entry)".to_owned())?;
+	let status = status.ok_or_else(|| "too many arguments".to_owned())?;
 	Ok(Ran {
 		status,
 		output,
 		errors,
 	})
+}
+
+/// Every command goes through our loader, not dyld (`POOPTERM_LOADER=1`
+/// does the same): for testing the loader on real programs.
+#[cfg(target_vendor = "apple")]
+pub(crate) static FORCE_LOADER: std::sync::atomic::AtomicBool =
+	std::sync::atomic::AtomicBool::new(false);
+
+/// A command library opened for a run: by dyld, and where JIT allows, by
+/// our loader when dyld refuses it (unsigned, downloaded by `pkg` on iOS).
+#[cfg(target_vendor = "apple")]
+pub(crate) fn open(path: &Path) -> Result<crate::jit::Opened, String> {
+	let force = FORCE_LOADER.load(std::sync::atomic::Ordering::Relaxed)
+		|| std::env::var_os("POOPTERM_LOADER").is_some_and(|value| value == "1");
+	crate::jit::open(path, force)
+}
+
+/// A command library opened for a run, by the dynamic linker.
+#[cfg(not(target_vendor = "apple"))]
+pub(crate) fn open(path: &Path) -> Result<Library, String> {
+	let name = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())
+		.map_err(|_| "a path with a NUL byte".to_owned())?;
+	Library::open(&name)
 }
 
 /// Arguments or variables as C strings; one with a NUL byte cannot be.

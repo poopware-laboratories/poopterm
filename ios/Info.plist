@@ -42,6 +42,8 @@
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+  <!-- `jit enable` opens StikDebug, which gives the app JIT. -->
+  <key>LSApplicationQueriesSchemes</key><array><string>stikdebug</string></array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

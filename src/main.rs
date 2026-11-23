@@ -44,6 +44,8 @@ mod inflate;
 mod inproc;
 mod input;
 #[cfg(target_os = "ios")]
+mod ios_jit;
+#[cfg(target_os = "ios")]
 mod ios_keyboard;
 #[cfg(target_os = "ios")]
 mod ios_paths;
@@ -53,6 +55,10 @@ mod ios_photos;
 mod ios_scene;
 #[cfg(target_os = "ios")]
 mod ios_window;
+// Our own loader: copying code into executable memory and calling it.
+#[cfg(target_vendor = "apple")]
+#[allow(unsafe_code)]
+mod jit;
 mod mapped;
 mod notifier;
 #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -537,6 +537,19 @@ int poopterm_execve(const char *file, char *const argv[], char *const envp[]) {
 	poopterm_exit(code);
 }
 
+/* Gives the standard streams buffers of stdio's own again: a command may
+ * have pointed one at a buffer of its own (setvbuf with a static array),
+ * gone once its library is unloaded, where the next command would read
+ * or write. Output to the terminal is line-buffered, so a prompt shows
+ * before the program waits for keys, and standard error is unbuffered. */
+static void fresh_buffers(void) {
+	fpurge(stdin);
+	clearerr(stdin);
+	setvbuf(stdin, NULL, _IOFBF, 0);
+	setvbuf(stdout, NULL, is_terminal(1) ? _IOLBF : _IOFBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+}
+
 #undef exit
 int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	if (running) {
@@ -559,8 +572,7 @@ int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	if (argc > 0) {
 		setprogname(argv[0]);
 	}
-	fpurge(stdin);
-	clearerr(stdin);
+	fresh_buffers();
 	clearerr(stdout);
 	clearerr(stderr);
 	ended_count = 0;
@@ -579,6 +591,7 @@ int poopterm_entry(int argc, char **argv, const struct poopterm_tty *tty) {
 	give_back_signals();
 	fflush(stdout);
 	fflush(stderr);
+	fresh_buffers();
 	environ = saved_environ;
 	setprogname(saved_name);
 	for (int fd = 0; fd < 3; fd++) {

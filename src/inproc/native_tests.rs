@@ -185,11 +185,60 @@ fn real_commands_alone() {
 	programs_read_typed_lines_and_print_as_they_run();
 	interrupting_ends_a_program_and_the_rest_of_its_line();
 	the_keyboard_goes_back_to_the_shell_after_a_program();
-	eprintln!("[stty]");
 	stty_reads_and_changes_the_devices_settings();
-	eprintln!("[less]");
 	less_pages_a_file_and_a_pipe_reading_keys_from_dev_tty();
 	awk_and_diff_match_the_systems();
+	// Last: from here on every command goes through our own loader.
+	real_commands_run_through_our_own_loader();
+}
+
+/// The commands as a device without dyld's blessing runs them: loaded by
+/// our loader (`jit::loader`), each run with its globals as loaded.
+fn real_commands_run_through_our_own_loader() {
+	let Some((mut sh, home)) = real_shell("loader") else {
+		return;
+	};
+	super::FORCE_LOADER.store(true, std::sync::atomic::Ordering::Relaxed);
+	assert_eq!(ran(&mut sh, "uname -s"), system("/usr/bin/uname", &["-s"]));
+	fs::write(home.join("words"), "pear\napple\nfig\n").unwrap();
+	assert_eq!(
+		ran(&mut sh, "sort words | sed s/p/P/g"),
+		"aPPle\nfig\nPear\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "sort words | sed s/p/P/g"),
+		"aPPle\nfig\nPear\n",
+		"twice: fresh globals"
+	);
+	assert_eq!(
+		ran(&mut sh, "awk '{ n += length($0) } END { print n }' words"),
+		"12\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "md5 -q -s abc"),
+		"900150983cd24fb0d6963f7d28e17f72\n"
+	);
+	// Without macOS's AppleDouble copies of extended attributes (._words).
+	sh.env.insert("COPYFILE_DISABLE".into(), "1".into());
+	assert_eq!(
+		ran(&mut sh, "tar -cf w.tar words && tar -tf w.tar"),
+		"words\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "echo words | xargs cat | wc -l | tr -d ' '"),
+		"3\n",
+		"children too"
+	);
+	let keys: &[&[u8]] = &[
+		b"jot 3 > words\r",
+		b"less words\r",
+		b"q",
+		b"echo after\r",
+		b"exit\r",
+	];
+	let shown = device("loader-less", keys).unwrap();
+	assert!(shown.contains("1\r\n2\r\n3"), "less paged it: {shown:?}");
+	assert!(shown.contains("echo after\r\nafter\r\n"));
 }
 
 fn stty_reads_and_changes_the_devices_settings() {

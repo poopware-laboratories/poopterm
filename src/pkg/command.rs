@@ -22,8 +22,8 @@ usage: pkg <command> [name...]
   update           fetch the list of packages again
   source [URL]     show or set where packages come from
 
-Bundled commands work without JIT. Downloaded native packages need StikDebug
-attached to Poopterm after each launch.
+Bundled commands work without JIT. On an iPhone or iPad, downloaded packages
+need JIT: install StikDebug, then run `jit enable` after each launch.
 ";
 
 const NO_SOURCE: &str = "pkg: no package source; set one with pkg source URL\n";

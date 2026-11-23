@@ -11,6 +11,7 @@ use std::{
 	os::fd::{AsRawFd, BorrowedFd},
 };
 
+#[cfg(test)]
 use super::dl::Library;
 
 /// `struct poopterm_tty` of `poopterm_cmd.h`.
@@ -95,6 +96,7 @@ impl Stdio<'_> {
 
 /// Runs the command in `library` with `argv` and `env` (`NAME=value`) and
 /// returns its exit status, or None if the library has no entry.
+#[cfg(test)]
 pub(crate) fn call(
 	library: &Library,
 	argv: &[CString],
@@ -102,6 +104,17 @@ pub(crate) fn call(
 	stdio: &Stdio,
 ) -> Option<i32> {
 	let symbol = library.symbol(c"poopterm_entry")?;
+	call_entry(symbol, argv, env, stdio)
+}
+
+/// As `call`, with the entry already found (in a library our own loader
+/// loaded, `jit::loader`).
+pub(crate) fn call_entry(
+	symbol: std::ptr::NonNull<c_void>,
+	argv: &[CString],
+	env: &[CString],
+	stdio: &Stdio,
+) -> Option<i32> {
 	// A program's `main` may change its arguments (getopt reorders them), so
 	// each gets a buffer of its own, and the arrays end in null as C's do.
 	let mut args: Vec<Vec<u8>> = argv
@@ -192,13 +205,13 @@ pub(super) fn run_nested(file: &str, argv: &[CString], env: &[CString], stdio: &
 	let Some(found) = crate::inproc::native::find(file, search_path(env), &cwd) else {
 		return -ENOENT;
 	};
-	let Ok(name) = CString::new(found.as_os_str().as_encoded_bytes()) else {
-		return -ENOENT;
-	};
-	let Ok(library) = Library::open(&name) else {
+	let Ok(opened) = crate::inproc::native::open(&found) else {
 		return -ENOEXEC;
 	};
-	call(&library, argv, env, stdio).map_or(-ENOEXEC, |status| status & 0xff)
+	let Some(entry) = opened.entry() else {
+		return -ENOEXEC;
+	};
+	call_entry(entry, argv, env, stdio).map_or(-ENOEXEC, |status| status & 0xff)
 }
 
 /// NUL-terminated strings from a null-terminated array.

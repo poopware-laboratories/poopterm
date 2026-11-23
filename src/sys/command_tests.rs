@@ -92,7 +92,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("30 passed"), "{shown}");
+	assert!(shown.contains("31 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -198,6 +198,14 @@ int main(int argc, char **argv) {
 		for (;;) {
 			if (write(1, "y\n", 2) < 0) { printf("[write %s]", strerror(errno)); return 3; }
 		}
+	}
+	if (!strcmp(mode, "ownbuffer")) {
+		/* Reads stdin through a buffer of its own, and leaves it there. */
+		static char mine[4096];
+		setvbuf(stdin, mine, _IOFBF, sizeof mine);
+		int c;
+		while ((c = getchar()) != EOF) putchar(c);
+		return 0;
 	}
 	if (!strcmp(mode, "block")) {
 		/* As pax does: blocks signals and ends without unblocking them. */
@@ -587,6 +595,16 @@ fn defaults_asked_for_end_or_stop_only_the_command() {
 		(128 + libc::SIGPIPE, "[1][1]".into(), String::new())
 	);
 	assert!(crate::sys::signal::caught(libc::SIGTSTP));
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn a_buffer_a_command_gave_stdin_is_not_used_after_it_is_unloaded() {
+	assert_eq!(run_with(&["ownbuffer"], &[], b"first", None).1, "first");
+	// Each run reopens the library, so its static buffer moved or went:
+	// stdin must not still point there.
+	assert_eq!(run_with(&["upper"], &[], b"after", None).1, "AFTER");
+	assert_eq!(run_with(&["ownbuffer"], &[], b"again", None).1, "again");
 }
 
 #[test]
