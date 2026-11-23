@@ -45,7 +45,11 @@ int poopterm_fclose(FILE *stream);
 /* Closing a standard stream (cat and others do at the end) only flushes
  * it: the streams are the app's, and the next command needs them. */
 #define fclose(stream) poopterm_fclose(stream)
-/* The command's own `main`, called by `poopterm_entry`. */
+/* The command's own `main`, called by `poopterm_entry`. A `main` that
+ * relies on C's implicit `return 0` keeps its name (POOPTERM_KEEP_MAIN)
+ * and is linked as `poopterm_main` with `-Wl,-alias,_main,_poopterm_main`. */
+#ifndef POOPTERM_KEEP_MAIN
 #define main poopterm_main
+#endif
 
 #endif

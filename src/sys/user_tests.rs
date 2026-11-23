@@ -160,3 +160,19 @@ fn every_account_in_etc_passwd_has_the_shell_its_first_line_lists() {
 fn the_terminal_keeps_the_host_name_the_system_reports() {
 	assert_eq!(crate::term::iterm::hostname(), hostname().unwrap());
 }
+
+#[test]
+fn the_login_name_is_the_one_id_reports() {
+	let id = std::process::Command::new("id")
+		.arg("-un")
+		.output()
+		.unwrap();
+	let expected = String::from_utf8(id.stdout).unwrap().trim().to_owned();
+	assert_eq!(login(uid()), Some(expected));
+	assert_eq!(login(0).as_deref(), Some("root"));
+}
+
+#[test]
+fn an_unknown_user_has_no_login_name() {
+	assert_eq!(login(4_000_000_000), None);
+}

@@ -399,3 +399,37 @@ fn the_environment_can_point_pkg_elsewhere() {
 	let saved = home.join("Library/poopterm/packages/source");
 	assert!(!saved.exists(), "the environment's source is not saved");
 }
+
+#[test]
+fn programs_see_who_they_run_for_and_which_terminal_runs_them() {
+	let (sh, _) = shell();
+	let account = crate::sys::user::login(crate::sys::user::uid());
+	let user = super::shell::user_name(std::env::var("USER").ok(), account, cfg!(target_os = "ios"));
+	assert_eq!(sh.env.get("USER"), user.as_ref());
+	assert_eq!(sh.env.get("LOGNAME"), user.as_ref());
+	assert_eq!(
+		sh.env["TERM_PROGRAM"], "poopterm",
+		"as the desktop app's shells see"
+	);
+	assert_eq!(sh.env["TERM_PROGRAM_VERSION"], env!("CARGO_PKG_VERSION"));
+	assert_eq!(sh.env["COLORTERM"], "truecolor");
+}
+
+#[test]
+fn the_user_is_the_apps_own_then_the_accounts_then_mobile_on_ios() {
+	use super::shell::user_name;
+	let (process, account) = (Some("app".to_owned()), Some("account".to_owned()));
+	assert_eq!(user_name(process.clone(), account.clone(), true), process);
+	assert_eq!(
+		user_name(Some(String::new()), account.clone(), false),
+		account,
+		"empty is none"
+	);
+	assert_eq!(user_name(None, account.clone(), true), account);
+	assert_eq!(
+		user_name(None, None, true).as_deref(),
+		Some("mobile"),
+		"iOS's one account"
+	);
+	assert_eq!(user_name(None, None, false), None);
+}

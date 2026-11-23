@@ -109,6 +109,12 @@ iOS program: no Linux binaries, no system call translation.
      in, and links the commands into
      `~/Library/poopterm/packages/bin`, which is on `$PATH`. Still to
      come: an Ed25519 signature on the index, and hosting for it.
+   - **Ports.** `jot` and `hexdump` (Apple's shell_cmds) and fastfetch.
+     fastfetch builds with its own CMake, given an iOS branch by
+     `ios/packages/fastfetch/prepare.py`: macOS's sources where the iOS
+     SDK has what they use, fastfetch's `*_nosupport.c` where it does not,
+     and files of ours for the GPU (Metal), the screen (UIKit) and what an
+     app cannot reach (child processes, AppleScript, the process list).
    - **Loading:** iOS loads only code signed by Apple or the developer.
      While StikDebug has the app attached (`CS_DEBUGGED`), unsigned
      libraries load; without it, `pkg` says JIT is needed and the

@@ -1,5 +1,5 @@
-//! Who and where we run: the user ID, an account's login shell from the
-//! account database, and the host name.
+//! Who and where we run: the user ID, an account's login name and shell
+//! from the account database, and the host name.
 use std::ffi::CStr;
 
 /// This process's real user ID.
@@ -11,6 +11,17 @@ pub(crate) fn uid() -> u32 {
 /// The login shell the account database lists for user `uid` (what `chsh`
 /// sets), or None for an unknown user or a lookup error.
 pub(crate) fn shell(uid: u32) -> Option<String> {
+	account(uid, |entry| entry.pw_shell)
+}
+
+/// The login name of user `uid`, or None for an unknown user or a lookup
+/// error.
+pub(crate) fn login(uid: u32) -> Option<String> {
+	account(uid, |entry| entry.pw_name)
+}
+
+/// The text field `pick` chooses of user `uid`'s account entry.
+fn account(uid: u32, pick: fn(&libc::passwd) -> *mut libc::c_char) -> Option<String> {
 	let mut entry = std::mem::MaybeUninit::<libc::passwd>::uninit();
 	let mut buffer = vec![0u8; 4096];
 	let mut found: *mut libc::passwd = std::ptr::null_mut();
@@ -24,13 +35,13 @@ pub(crate) fn shell(uid: u32) -> Option<String> {
 	}
 	// SAFETY: a zero status with a non-null `found` means `getpwuid_r` filled
 	// in `entry`, which we own; we read it, not the pointer it handed back.
-	let shell = unsafe { entry.assume_init_ref() }.pw_shell;
-	if shell.is_null() {
+	let field = pick(unsafe { entry.assume_init_ref() });
+	if field.is_null() {
 		return None;
 	}
-	// SAFETY: `pw_shell` is a NUL-terminated string inside `buffer`, which is
-	// alive here; it is copied before `buffer` is dropped.
-	unsafe { CStr::from_ptr(shell) }
+	// SAFETY: the account's text fields are NUL-terminated strings inside
+	// `buffer`, which is alive here; it is copied before `buffer` is dropped.
+	unsafe { CStr::from_ptr(field) }
 		.to_str()
 		.ok()
 		.map(str::to_owned)

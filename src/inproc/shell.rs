@@ -17,6 +17,24 @@ pub(crate) const COMMANDS: [&str; 11] = [
 	"cd", "clear", "echo", "exit", "export", "false", "help", "pkg", "pwd", "true", "unset",
 ];
 
+/// Who programs run for: the app's own `$USER`, else the account
+/// database's name for its user, else on iOS `mobile`, the one account
+/// there (the simulator's database does not know the app's user).
+pub(crate) fn user_name(
+	process: Option<String>,
+	account: Option<String>,
+	ios: bool,
+) -> Option<String> {
+	let set = |name: &Option<String>| name.as_ref().is_some_and(|name| !name.is_empty());
+	if set(&process) {
+		process
+	} else if set(&account) {
+		account
+	} else {
+		ios.then(|| "mobile".to_owned())
+	}
+}
+
 /// What the shell remembers between lines.
 #[derive(Clone, Debug)]
 pub(crate) struct Shell {
@@ -47,6 +65,17 @@ impl Shell {
 		env.insert("HOME".to_owned(), home.display().to_string());
 		env.insert("TERM".to_owned(), "xterm-256color".to_owned());
 		env.insert("SHELL".to_owned(), "poopsh".to_owned());
+		// What the desktop app's shells are told, and who they run for.
+		env.insert("COLORTERM".to_owned(), "truecolor".to_owned());
+		env.insert("TERM_PROGRAM".to_owned(), "poopterm".to_owned());
+		let version = env!("CARGO_PKG_VERSION").to_owned();
+		env.insert("TERM_PROGRAM_VERSION".to_owned(), version);
+		let account = crate::sys::user::login(crate::sys::user::uid());
+		let process = std::env::var("USER").ok();
+		if let Some(user) = user_name(process, account, cfg!(target_os = "ios")) {
+			env.insert("USER".to_owned(), user.clone());
+			env.insert("LOGNAME".to_owned(), user);
+		}
 		Self {
 			cwd: home.clone(),
 			home,
