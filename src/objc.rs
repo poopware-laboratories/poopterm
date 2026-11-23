@@ -210,6 +210,35 @@ pub(crate) unsafe fn subclass(
 	class(name)
 }
 
+/// Gives the existing class `name` `methods` it does not answer yet; those
+/// it already has are kept.
+///
+/// # Safety
+///
+/// Each method's `imp` is an `extern "C"` function of the type its
+/// `types` encodes.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's keyboard uses it")
+)]
+pub(crate) unsafe fn add_methods(name: &'static CStr, methods: &[Method]) -> Result<(), Missing> {
+	let class = class(name)?;
+	for method in methods {
+		// SAFETY: the class exists; each method's types encode its
+		// implementation's, as the caller vouches. The runtime adds a
+		// method the class lacks and refuses one it has.
+		unsafe {
+			class_addMethod(
+				class.raw(),
+				sel(method.selector),
+				method.imp,
+				method.types.as_ptr(),
+			)
+		};
+	}
+	Ok(())
+}
+
 /// The arguments of a message, after its receiver and selector.
 pub(crate) trait Arguments {
 	/// Sends `receiver` `selector` with these arguments.

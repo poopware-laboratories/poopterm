@@ -67,6 +67,7 @@ impl ApplicationHandler<UserEvent> for App {
 		{
 			let window = self.window.as_ref().unwrap();
 			crate::ios_scene::adopt(window);
+			crate::ios_keyboard::plain_typing();
 			window.set_ime_allowed(true);
 			crate::ios_keyboard::observe(self.proxy.clone());
 		}

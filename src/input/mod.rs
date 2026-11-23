@@ -22,3 +22,8 @@ pub(crate) mod scroll;
 mod shortcut_actions_tests;
 pub(crate) mod shortcuts;
 pub(crate) mod touch;
+#[cfg_attr(
+	not(any(target_os = "ios", test)),
+	expect(dead_code, reason = "only iOS's keyboard asks")
+)]
+pub(crate) mod typing;

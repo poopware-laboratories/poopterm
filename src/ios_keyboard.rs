@@ -2,7 +2,8 @@
 //! an observer of UIKit's keyboard notifications reads the frame the
 //! keyboard is moving to, keeps its top edge in screen points (what it
 //! covers depends on where the window is: `ui::insets::window_insets`),
-//! and wakes the event loop to lay the window out again.
+//! and wakes the event loop to lay the window out again. It also keeps the
+//! keyboard from rewriting what is typed (`input::typing`).
 // Calls into C or the kernel; docs/unsafe.md lists each block.
 #![allow(unsafe_code)]
 use std::sync::{
@@ -81,6 +82,37 @@ pub(crate) fn observe(proxy: EventLoopProxy<UserEvent>) {
 		};
 	}
 	std::mem::forget(observer);
+}
+
+/// Turns off what the keyboard does to typed text (smart quotes and
+/// dashes, correction, capitals) by answering winit's view's
+/// `UITextInputTraits` getters, which it leaves to UIKit's defaults.
+/// Called once, before the view first takes the keyboard.
+pub(crate) fn plain_typing() {
+	use crate::input::typing::{NONE, TRAITS};
+	let methods: Vec<objc::Method> = TRAITS
+		.iter()
+		.map(|&(selector, value)| objc::Method {
+			selector,
+			imp: if value == NONE {
+				none as *const _
+			} else {
+				no as *const _
+			},
+			types: c"q@:",
+		})
+		.collect();
+	// SAFETY: `none` and `no` take the receiver and selector and return an
+	// `NSInteger`, as `q@:` encodes.
+	let _ = unsafe { objc::add_methods(c"WinitUIView", &methods) };
+}
+
+extern "C" fn none(_: Raw, _: Sel) -> isize {
+	crate::input::typing::NONE
+}
+
+extern "C" fn no(_: Raw, _: Sel) -> isize {
+	crate::input::typing::NO
 }
 
 /// The observer's method: a keyboard notification arrived.
