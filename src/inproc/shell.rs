@@ -59,6 +59,20 @@ pub(crate) struct Ran {
 	pub exit: bool,
 }
 
+/// Programs run one at a time, so none may start a second to run beside
+/// it: no pager, and no git maintenance in the background (git reads its
+/// `GIT_CONFIG_COUNT` pairs as configuration). Variables like any other,
+/// which `export` replaces.
+const ONE_PROGRAM_AT_A_TIME: [(&str, &str); 7] = [
+	("PAGER", "cat"),
+	("GIT_PAGER", "cat"),
+	("GIT_CONFIG_COUNT", "2"),
+	("GIT_CONFIG_KEY_0", "maintenance.auto"),
+	("GIT_CONFIG_VALUE_0", "false"),
+	("GIT_CONFIG_KEY_1", "gc.auto"),
+	("GIT_CONFIG_VALUE_1", "0"),
+];
+
 impl Shell {
 	pub(crate) fn new(home: PathBuf) -> Self {
 		let mut env = BTreeMap::new();
@@ -70,6 +84,9 @@ impl Shell {
 		env.insert("TERM_PROGRAM".to_owned(), "poopterm".to_owned());
 		let version = env!("CARGO_PKG_VERSION").to_owned();
 		env.insert("TERM_PROGRAM_VERSION".to_owned(), version);
+		for (key, value) in ONE_PROGRAM_AT_A_TIME {
+			env.insert(key.to_owned(), value.to_owned());
+		}
 		let account = crate::sys::user::login(crate::sys::user::uid());
 		let process = std::env::var("USER").ok();
 		if let Some(user) = user_name(process, account, cfg!(target_os = "ios")) {

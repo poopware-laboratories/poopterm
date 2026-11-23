@@ -487,3 +487,29 @@ fn or_is_split_outside_quotes_and_apart_from_pipes() {
 		"an escaped | is a word, and the one after it a pipe"
 	);
 }
+
+#[test]
+fn programs_are_told_not_to_start_a_pager_or_background_work() {
+	let (sh, _) = shell();
+	assert_eq!(
+		sh.env["PAGER"], "cat",
+		"a pager would be a second program at once"
+	);
+	assert_eq!(sh.env["GIT_PAGER"], "cat");
+	// git reads GIT_CONFIG_COUNT pairs as configuration.
+	let count: usize = sh.env["GIT_CONFIG_COUNT"].parse().unwrap();
+	let pairs: Vec<(&str, &str)> = (0..count)
+		.map(|n| {
+			let key = sh.env[&format!("GIT_CONFIG_KEY_{n}")].as_str();
+			(key, sh.env[&format!("GIT_CONFIG_VALUE_{n}")].as_str())
+		})
+		.collect();
+	assert!(pairs.contains(&("maintenance.auto", "false")), "{pairs:?}");
+	assert!(pairs.contains(&("gc.auto", "0")), "{pairs:?}");
+}
+
+#[test]
+fn the_defaults_can_be_replaced_like_any_variable() {
+	let (mut sh, _) = shell();
+	assert_eq!(ran(&mut sh, "export PAGER=less; echo $PAGER"), "less\n");
+}
