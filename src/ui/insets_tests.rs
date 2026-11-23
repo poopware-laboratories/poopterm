@@ -182,3 +182,32 @@ fn a_scale_out_of_reason_counts_as_one() {
 		assert_eq!(insets.safe, (20, 100), "{factor}");
 	}
 }
+
+#[test]
+fn the_window_controls_reserve_what_the_corner_adapted_inset_adds() {
+	// An iPad window at 2×: the plain safe area starts at the left edge,
+	// adapted around its corner it starts after the controls, 76 points in.
+	assert_eq!(corner_reserve(0.0, 76.0, 2.0), 152);
+	assert_eq!(
+		corner_reserve(62.0, 62.0, 3.0),
+		0,
+		"a phone's housing is no corner"
+	);
+	assert_eq!(corner_reserve(62.0, 100.0, 3.0), 114);
+}
+
+#[test]
+fn a_corner_inset_out_of_reason_reserves_nothing() {
+	assert_eq!(
+		corner_reserve(10.0, 4.0, 2.0),
+		0,
+		"smaller than the plain one"
+	);
+	assert_eq!(corner_reserve(0.0, f64::NAN, 2.0), 0);
+	assert_eq!(corner_reserve(0.0, f64::INFINITY, 2.0), 0);
+	assert_eq!(
+		corner_reserve(0.0, 50.0, f64::NAN),
+		50,
+		"a factor out of reason counts as one"
+	);
+}

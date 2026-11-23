@@ -32,8 +32,11 @@ impl App {
 			self.sessions.len(),
 			self.scale(),
 			TabStripOptions {
-				// A phone on its side keeps the tabs clear of its sensor housing.
-				left_reserve: self.tab_left_reserve().max(controls.left_reserve) + self.sides.0,
+				// A phone on its side keeps the tabs clear of its sensor housing,
+				// an iPad window clear of its controls.
+				left_reserve: self.tab_left_reserve().max(controls.left_reserve)
+					+ self.sides.0
+					+ self.corner,
 				right_reserve: controls.right_reserve + self.sides.1,
 				scroll: self.tab_scroll,
 				show_plus: self.preferences.show_new_tab_button,

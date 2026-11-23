@@ -45,6 +45,9 @@ pub(crate) struct Insets {
 	pub(crate) safe: (usize, usize),
 	pub(crate) home: usize,
 	pub(crate) sides: (usize, usize),
+	/// Pixels at the top left an iPad window's controls take, beyond the
+	/// left inset: the tab strip starts after them.
+	pub(crate) corner: usize,
 }
 
 /// The insets of a window `outer` large whose safe area is `inner` large,
@@ -84,6 +87,24 @@ pub(crate) fn window_insets(
 		safe: (top, bottom_inset(home, covered, factor)),
 		home,
 		sides,
+		corner: 0,
+	}
+}
+
+/// The pixels an iPad window's controls take at the top left: how much
+/// further in the safe area starts when adapted around the window's
+/// corners (`adapted`, points) than plainly (`plain`), at `factor`.
+pub(crate) fn corner_reserve(plain: f64, adapted: f64, factor: f64) -> usize {
+	let factor = if factor.is_finite() && factor > 0.0 {
+		factor
+	} else {
+		1.0
+	};
+	let extra = (adapted - plain) * factor;
+	if extra.is_finite() && extra > 0.0 {
+		extra.round() as usize
+	} else {
+		0
 	}
 }
 

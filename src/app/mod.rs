@@ -139,6 +139,8 @@ pub(crate) struct App {
 	safe: (usize, usize),
 	/// Left and right pixels the system keeps (iOS, on its side).
 	sides: (usize, usize),
+	/// Pixels an iPad window's controls take at the top left (iPadOS 26).
+	corner: usize,
 	/// The home indicator's pixels at the bottom (iOS), which `safe` leaves
 	/// out while the keyboard reaches higher.
 	home: usize,
@@ -389,8 +391,8 @@ impl App {
 		if let Some(window) = &self.window {
 			let insets = crate::ios_window::insets(window, self.factor());
 			self.home = insets.home;
-			if (insets.safe, insets.sides) != (self.safe, self.sides) {
-				(self.safe, self.sides) = (insets.safe, insets.sides);
+			if (insets.safe, insets.sides, insets.corner) != (self.safe, self.sides, self.corner) {
+				(self.safe, self.sides, self.corner) = (insets.safe, insets.sides, insets.corner);
 				self.apply_scale();
 			}
 		}
@@ -467,6 +469,7 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		titlebar_height: 0,
 		safe: (0, 0),
 		sides: (0, 0),
+		corner: 0,
 		home: 0,
 		tab_height: 46,
 		status_height: 26,
