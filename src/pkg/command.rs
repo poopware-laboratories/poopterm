@@ -205,13 +205,14 @@ impl Pkg<'_> {
 		let Some(packages) = self.update_quietly() else {
 			return 1;
 		};
-		let installed = self.store().installed();
+		// What is installed and differs from the index: a new version, or
+		// the same one rebuilt.
+		let store = self.store();
+		let installed = store.installed();
 		let newer: Vec<_> = packages
 			.iter()
 			.filter(|package| {
-				installed
-					.iter()
-					.any(|(name, version)| *name == package.name && *version != package.version)
+				installed.iter().any(|(name, _)| *name == package.name) && !store.is_current(package)
 			})
 			.collect();
 		if newer.is_empty() {
@@ -229,11 +230,9 @@ impl Pkg<'_> {
 
 	fn install_one(&mut self, package: &Package) -> i32 {
 		let store = self.store();
-		let current = store
-			.installed()
-			.into_iter()
-			.find(|(name, _)| *name == package.name);
-		if current.is_some_and(|(_, version)| version == package.version) {
+		// The same archive is already in place; a rebuild of the same
+		// version is not.
+		if store.is_current(package) {
 			let (name, version) = (&package.name, &package.version);
 			self
 				.out

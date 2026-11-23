@@ -1,6 +1,7 @@
 //! Installed packages, in a directory of their own: each package unpacked
 //! in `<root>/<name>`, its commands linked from `<root>/bin` (on `$PATH`),
-//! and `<root>/installed` naming each package and its version. An archive
+//! and `<root>/installed` naming each package, its version and its
+//! archive's SHA-256 (so a rebuild under the same version is new). An archive
 //! is checked against its index entry, then unpacked beside the old
 //! version and swapped in, so a failed install leaves the old one whole.
 use std::{fs, path::PathBuf};
@@ -25,20 +26,43 @@ impl Store {
 
 	/// The installed packages and their versions, by name.
 	pub(crate) fn installed(&self) -> Vec<(String, String)> {
+		let records = self.records().into_iter();
+		records.map(|(name, version, _)| (name, version)).collect()
+	}
+
+	/// Whether `package` is the archive installed as its name: the same
+	/// version and checksum. An install recorded without a checksum (by an
+	/// older pkg) is not known to be, so an upgrade installs it again.
+	pub(crate) fn is_current(&self, package: &Package) -> bool {
+		let hash = hex(&package.sha256);
+		self.records().iter().any(|(name, version, recorded)| {
+			*name == package.name && *version == package.version && recorded.as_deref() == Some(&hash)
+		})
+	}
+
+	/// Each installed package's name, version and checksum, by name.
+	fn records(&self) -> Vec<(String, String, Option<String>)> {
 		let text = fs::read_to_string(self.root.join("installed")).unwrap_or_default();
-		let mut list: Vec<(String, String)> = text
+		let mut list: Vec<_> = text
 			.lines()
-			.filter_map(|line| line.split_once(' '))
-			.map(|(name, version)| (name.to_owned(), version.to_owned()))
+			.filter_map(|line| {
+				let mut words = line.split(' ');
+				let (name, version) = (words.next()?, words.next()?);
+				let hash = words.next().map(str::to_owned);
+				Some((name.to_owned(), version.to_owned(), hash))
+			})
 			.collect();
 		list.sort();
 		list
 	}
 
-	fn record(&self, list: &[(String, String)]) -> Result<(), String> {
+	fn record(&self, list: &[(String, String, Option<String>)]) -> Result<(), String> {
 		let text: String = list
 			.iter()
-			.map(|(name, version)| format!("{name} {version}\n"))
+			.map(|(name, version, hash)| match hash {
+				Some(hash) => format!("{name} {version} {hash}\n"),
+				None => format!("{name} {version}\n"),
+			})
 			.collect();
 		let path = self.root.join("installed");
 		fs::write(&path, text).map_err(|error| format!("{}: {error}", path.display()))
@@ -125,17 +149,17 @@ impl Store {
 			let _ = fs::remove_file(&link);
 			link_to(&format!("../{name}/bin/{command}"), &link).map_err(io)?;
 		}
-		let mut list = self.installed();
-		list.retain(|(installed, _)| installed != name);
-		list.push((name.to_owned(), package.version.clone()));
+		let mut list = self.records();
+		list.retain(|(installed, ..)| installed != name);
+		list.push((name.to_owned(), package.version.clone(), Some(hex(&digest))));
 		self.record(&list)?;
 		Ok(commands)
 	}
 
 	/// Removes package `name`; the commands it took off the path.
 	pub(crate) fn remove(&self, name: &str) -> Result<Vec<String>, String> {
-		let mut list = self.installed();
-		if !valid_name(name) || !list.iter().any(|(installed, _)| installed == name) {
+		let mut list = self.records();
+		if !valid_name(name) || !list.iter().any(|(installed, ..)| installed == name) {
 			return Err(format!("{name}: not installed"));
 		}
 		let commands = self.links_of(name);
@@ -144,7 +168,7 @@ impl Store {
 		}
 		let home = self.root.join(name);
 		fs::remove_dir_all(&home).map_err(|error| format!("{}: {error}", home.display()))?;
-		list.retain(|(installed, _)| installed != name);
+		list.retain(|(installed, ..)| installed != name);
 		self.record(&list)?;
 		Ok(commands)
 	}

@@ -275,3 +275,54 @@ fn remove_takes_packages_away_and_names_those_it_cannot() {
 	assert!(!world.root.join("bin/jot").exists());
 	assert_eq!(world.pkg(&["remove"]).1, 2, "remove needs a name");
 }
+
+#[test]
+fn upgrade_reinstalls_a_package_rebuilt_under_the_same_version() {
+	let mut world = World::new("rebuilt");
+	world.publish("jot", "1", b"first build", "");
+	world.pkg(&["install", "jot"]);
+	world.publish("jot", "1", b"second build", "");
+	let (out, status) = world.pkg(&["upgrade"]);
+	assert_eq!((out.as_str(), status), ("installed jot 1: jot\n", 0));
+	assert_eq!(
+		std::fs::read(world.root.join("bin/jot")).unwrap(),
+		b"second build"
+	);
+	assert_eq!(
+		world.pkg(&["upgrade"]),
+		("everything is up to date\n".to_owned(), 0),
+		"the same archive again is no change"
+	);
+}
+
+#[test]
+fn an_install_recorded_before_checksums_were_is_reinstalled_once() {
+	let mut world = World::new("unhashed");
+	world.publish("jot", "1", b"j", "");
+	world.pkg(&["install", "jot"]);
+	// As pkg wrote the record before it kept checksums: name and version.
+	std::fs::write(world.root.join("installed"), "jot 1\n").unwrap();
+	assert_eq!(world.pkg(&["upgrade"]).0, "installed jot 1: jot\n");
+	assert_eq!(world.pkg(&["upgrade"]).0, "everything is up to date\n");
+	assert_eq!(world.pkg(&["list"]).1, 0, "and the record still reads");
+}
+
+#[test]
+fn the_record_keeps_each_packages_checksum_through_other_installs() {
+	let mut world = World::new("hashes");
+	world.publish("jot", "1", b"j", "");
+	world.publish("hexdump", "1", b"h", "");
+	world.pkg(&["install", "jot"]);
+	world.pkg(&["install", "hexdump"]);
+	world.pkg(&["remove", "hexdump"]);
+	let record = std::fs::read_to_string(world.root.join("installed")).unwrap();
+	let index = String::from_utf8(world.files[SOURCE].clone()).unwrap();
+	let listed = index.lines().find(|line| line.starts_with("jot ")).unwrap();
+	let hash = listed.split(' ').nth(2).unwrap();
+	assert_eq!(
+		record,
+		format!("jot 1 {hash}\n"),
+		"the archive's, as the index lists it"
+	);
+	assert_eq!(world.pkg(&["upgrade"]).0, "everything is up to date\n");
+}
