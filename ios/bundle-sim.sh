@@ -5,8 +5,6 @@
 #
 #   ios/bundle-sim.sh && xcrun simctl install booted target/ios-sim/Poopterm.app
 #
-# The binary is marked as built against the iOS 18 SDK, since the app has
-# no scene delegate yet and iOS 27 requires one of apps built for it.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
@@ -16,7 +14,12 @@ cargo build --target aarch64-apple-ios-sim
 app=target/ios-sim/Poopterm.app
 rm -rf "$app"
 mkdir -p "$app/commands"
-cp "$here/Info.plist" "$app/Info.plist"
+# The icon (assets/icon.icon), and the Info.plist keys that name it.
+mkdir -p target/ios-sim/icon
+xcrun actool assets/icon.icon --compile "$app" --platform iphonesimulator \
+	--minimum-deployment-target 17.0 --app-icon icon --target-device iphone \
+	--target-device ipad --output-partial-info-plist target/ios-sim/icon/partial.plist >/dev/null
+python3 -I "$here/merge_plist.py" "$here/Info.plist" target/ios-sim/icon/partial.plist "$app/Info.plist"
 # Built against the current SDK: the app adopts the scene lifecycle iOS 27
 # requires (src/ios_scene.rs), so it resizes as a modern app.
 cp target/aarch64-apple-ios-sim/debug/poopterm "$app/Poopterm"
