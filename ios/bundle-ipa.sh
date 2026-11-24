@@ -59,13 +59,15 @@ for license in awk:awk/src/LICENSE less:less/less/LICENSE diffutils:gnudiff/diff
 	cp "$ports/${license#*:}" "$app/licenses/${license%%:*}/"
 done
 for package in target/ios-packages/work-iphoneos/*/; do
-	name=$(basename "$package")
+	# Not `name`: embed_command sets that for each command, and a package
+	# with several (ssh, dropbearkey) would lose its own.
+	package_name=$(basename "$package")
 	for command in "$package"bin/*; do
 		embed_command "$command"
 	done
-	if [ -d "$package/share/doc/$name" ]; then
-		mkdir -p "$app/licenses/$name"
-		cp -R "$package/share/doc/$name/." "$app/licenses/$name/"
+	if [ -d "$package/share/doc/$package_name" ]; then
+		mkdir -p "$app/licenses/$package_name"
+		cp -R "$package/share/doc/$package_name/." "$app/licenses/$package_name/"
 	fi
 done
 
