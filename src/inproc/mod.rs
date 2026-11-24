@@ -10,6 +10,7 @@ pub(crate) mod native;
 pub(crate) mod pipeline;
 pub(crate) mod script;
 pub(crate) mod shell;
+pub(crate) mod sshd;
 pub(crate) mod terminal;
 #[cfg(test)]
 mod tests;
@@ -144,23 +145,11 @@ pub(crate) fn start_directory(cwd: PathBuf, home: &Path) -> PathBuf {
 	}
 }
 
-/// Starts the device's thread, its shell in `cwd` (or `home`, see
-/// `start_directory`), with `home` for `~` and `support` holding the
-/// packages, on a terminal of `cols`×`rows`.
-pub(crate) fn spawn(
-	id: u64,
-	cwd: PathBuf,
-	home: PathBuf,
-	support: PathBuf,
-	(cols, rows): (usize, usize),
-) -> io::Result<Device> {
-	// ^C reaches a program as SIGINT on the shell's thread; none of the
-	// signals a terminal sends may end the app itself.
-	crate::sys::signal::quiet_job_signals();
-	let (input_reader, input) = io::pipe()?;
-	let (output, output_writer) = io::pipe()?;
-	let size = Arc::new(Size::new(0, 0));
-	size.set(cols, rows);
+/// A shell as a login gives it: in `cwd` (or `home`, see
+/// `start_directory`), with `$PATH` to the commands and the folders the
+/// bundled programs look in (`TCCDIR`, `TERMINFO`), `support` holding the
+/// packages.
+pub(crate) fn login_shell(cwd: PathBuf, home: PathBuf, support: PathBuf) -> Shell {
 	let exe = std::env::current_exe().ok();
 	let chosen = std::env::var("POOPTERM_COMMANDS").ok();
 	let path = command_path(
@@ -191,6 +180,41 @@ pub(crate) fn spawn(
 			.env
 			.insert("TERMINFO".to_owned(), dir.display().to_string());
 	}
+	shell
+}
+
+/// Starts the device's thread, its shell in `cwd` (or `home`, see
+/// `start_directory`), with `home` for `~` and `support` holding the
+/// packages, on a terminal of `cols`×`rows`.
+pub(crate) fn spawn(
+	id: u64,
+	cwd: PathBuf,
+	home: PathBuf,
+	support: PathBuf,
+	size: (usize, usize),
+) -> io::Result<Device> {
+	spawn_with(id, cwd, home, support, size, &[])
+}
+
+/// `spawn`, with `extra` variables set in the shell's environment (the
+/// `TERM` an ssh client asked for).
+pub(crate) fn spawn_with(
+	id: u64,
+	cwd: PathBuf,
+	home: PathBuf,
+	support: PathBuf,
+	(cols, rows): (usize, usize),
+	extra: &[(String, String)],
+) -> io::Result<Device> {
+	// ^C reaches a program as SIGINT on the shell's thread; none of the
+	// signals a terminal sends may end the app itself.
+	crate::sys::signal::quiet_job_signals();
+	let (input_reader, input) = io::pipe()?;
+	let (output, output_writer) = io::pipe()?;
+	let size = Arc::new(Size::new(0, 0));
+	size.set(cols, rows);
+	let mut shell = login_shell(cwd, home, support);
+	shell.env.extend(extra.iter().cloned());
 	let shared = size.clone();
 	thread::Builder::new()
 		.name(format!("inproc-shell-{id}"))

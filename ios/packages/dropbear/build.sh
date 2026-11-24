@@ -6,7 +6,7 @@
 #
 #   ios/packages/dropbear/build.sh <iphonesimulator|iphoneos|macosx> <output>/bin/ssh
 #
-# dropbearkey is built beside the ssh at the path given.
+# dropbearkey and sshd (the server) are built beside the ssh at the path given.
 #
 # The source is expected in target/ios-ports/dropbear-2026.94.
 set -eu
@@ -54,6 +54,8 @@ sources() { for name in "$@"; do printf '%s ' "$source/src/$name.c"; done; }
 # ssh keeps main's name for C's implicit return 0? No: it exits itself.
 "$here/../cc.sh" "$sdk" "$bin/ssh" $flags $(sources $client $shared $common) "$work/libtomcrypt.a" "$work/libtommath.a" -lz
 "$here/../cc.sh" "$sdk" "$bin/dropbearkey" $flags $(sources dropbearkey $shared $common) "$work/libtomcrypt.a" "$work/libtommath.a" -lz
+# The ssh server, a library the app calls (sshd.sh).
+"$here/sshd.sh" "$sdk" "$bin/sshd"
 license="$out/share/doc/dropbear"
 mkdir -p "$license"
 cp "$source/LICENSE" "$license/LICENSE"

@@ -14,9 +14,9 @@ use super::{native, pipeline, terminal::Terminal};
 
 /// The built-in commands, for `help`: what changes the shell itself, and
 /// the few a shell answers on its own, as `sh` does.
-pub(crate) const COMMANDS: [&str; 13] = [
-	"cd", "clear", "echo", "exit", "export", "false", "help", "jit", "pkg", "pwd", "true", "unset",
-	"whoami",
+pub(crate) const COMMANDS: [&str; 14] = [
+	"cd", "clear", "echo", "exit", "export", "false", "help", "jit", "pkg", "pwd", "sshd", "true",
+	"unset", "whoami",
 ];
 
 /// Who programs run for: the app's own `$USER`, else the account
@@ -401,6 +401,11 @@ impl Shell {
 				let source = self.env.get("POOPTERM_PKG_SOURCE").map(String::as_str);
 				let fetch = |url: &str| crate::pkg::fetch::fetch(url, crate::pkg::DOWNLOAD_LIMIT);
 				let (text, status) = crate::pkg::command::run(args, &root, source, &fetch);
+				out.extend(text.into_bytes());
+				status
+			}
+			"sshd" => {
+				let (text, status) = super::sshd::command(args, &self.home, &self.support, &self.env);
 				out.extend(text.into_bytes());
 				status
 			}

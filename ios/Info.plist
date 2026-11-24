@@ -46,6 +46,9 @@
   <key>UIFileSharingEnabled</key><true/>
   <key>LSSupportsOpeningDocumentsInPlace</key><true/>
   <!-- `jit enable` opens StikDebug, which gives the app JIT. -->
+  <!-- `sshd start` listens for other computers on the local network. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Poopterm's ssh server, started with `sshd start`, lets computers on your network log in to its shell.</string>
   <key>LSApplicationQueriesSchemes</key><array><string>stikdebug</string></array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

@@ -190,6 +190,7 @@ fn real_commands_alone() {
 	awk_and_diff_match_the_systems();
 	nano_edits_and_saves_a_file_on_the_device();
 	ssh_runs_a_command_and_a_session_on_a_server();
+	the_ssh_server_serves_commands_and_sessions();
 	patch_diffstat_and_bzip2_agree_with_the_systems();
 	zip_and_unzip_agree_with_the_systems();
 	tcc_compiles_and_runs_c_in_memory();
@@ -812,6 +813,146 @@ fn ssh_runs_a_command_and_a_session_on_a_server() {
 		shown.contains("echo back-home\r\nback-home\r\n"),
 		"the local shell has the keys again: {shown:?}"
 	);
+}
+
+/// The `sshd` built-in: the system's own `ssh` logs in with a key and a
+/// password, runs a command (with its status) and a session on a terminal.
+fn the_ssh_server_serves_commands_and_sessions() {
+	use std::process::{Command, Stdio};
+	let server = PathBuf::from(DROPBEAR_DIR);
+	let client = PathBuf::from("/usr/bin/ssh");
+	if !server.join("sshd").is_file() || !client.is_file() {
+		eprintln!("skipped: run ios/packages/build.sh macosx dropbear");
+		return;
+	}
+	let Some((mut sh, home)) = real_shell("sshd") else {
+		return;
+	};
+	sh.support = home.clone();
+	let path = format!("{DROPBEAR_DIR}:{}", sh.env["PATH"]);
+	sh.env.insert("PATH".into(), path);
+	let user = std::env::var("USER").unwrap_or_else(|_| "root".into());
+	sh.env.insert("USER".into(), user.clone());
+	let key = home.join("client_key");
+	let made = Command::new("ssh-keygen")
+		.args(["-q", "-t", "ed25519", "-N", "", "-f"])
+		.arg(&key)
+		.status()
+		.unwrap();
+	assert!(made.success());
+	fs::create_dir_all(home.join(".ssh")).unwrap();
+	fs::copy(
+		home.join("client_key.pub"),
+		home.join(".ssh/authorized_keys"),
+	)
+	.unwrap();
+	let port = std::net::TcpListener::bind("127.0.0.1:0")
+		.unwrap()
+		.local_addr()
+		.unwrap()
+		.port();
+	let started = ran(&mut sh, &format!("sshd start -p {port} -P open-sesame"));
+	assert!(started.starts_with("sshd: started\n"), "{started}");
+	let ssh = |extra: &[&str], word: &str| {
+		let mut command = Command::new(&client);
+		command
+			.args([
+				"-o",
+				"StrictHostKeyChecking=no",
+				"-o",
+				"UserKnownHostsFile=/dev/null",
+			])
+			.args([
+				"-o",
+				"LogLevel=ERROR",
+				"-o",
+				"ConnectTimeout=20",
+				"-p",
+				&port.to_string(),
+			])
+			.args(extra)
+			.arg(format!("{user}@127.0.0.1"))
+			.arg(word)
+			.stdin(Stdio::null());
+		command
+	};
+	let by_key = ["-o", "BatchMode=yes", "-i", key.to_str().unwrap()];
+	let output = ssh(&by_key, "echo hi-from-device; pwd").output().unwrap();
+	let text = String::from_utf8_lossy(&output.stdout).into_owned();
+	let early = ran(&mut sh, "sshd log");
+	assert!(
+		text.starts_with("hi-from-device\n") && text.contains(home.to_str().unwrap()),
+		"{text:?} {} log: {early}",
+		String::from_utf8_lossy(&output.stderr)
+	);
+	let status = ssh(&by_key, "false").status().unwrap();
+	let log_now = ran(&mut sh, "sshd log");
+	assert_eq!(
+		status.code(),
+		Some(1),
+		"the command's status comes back; log: {log_now}"
+	);
+	// A terminal session: typed lines run in the app's shell.
+	let mut session = ssh(
+		&["-tt", "-o", "BatchMode=yes", "-i", key.to_str().unwrap()],
+		"",
+	);
+	session.stdin(Stdio::piped()).stdout(Stdio::piped());
+	let mut child = session.spawn().unwrap();
+	// A session that never ends is cut off, so the test fails instead of hanging.
+	let pid = child.id();
+	thread::spawn(move || {
+		thread::sleep(std::time::Duration::from_secs(25));
+		let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+	});
+	let mut stdin = child.stdin.take().unwrap();
+	std::io::Write::write_all(&mut stdin, b"echo interactive-ok\rexit\r").unwrap();
+	let shown = child.wait_with_output().unwrap();
+	drop(stdin);
+	let shown = String::from_utf8_lossy(&shown.stdout).into_owned();
+	assert!(
+		shown.contains("interactive-ok"),
+		"{shown:?} log: {}",
+		ran(&mut sh, "sshd log")
+	);
+	// A password, given by ssh's askpass helper; a wrong one is refused.
+	let asker = |password: &str| {
+		let script = home.join(format!("askpass-{password}"));
+		fs::write(&script, format!("#!/bin/sh\necho {password}\n")).unwrap();
+		fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+		script
+	};
+	let by_password = |password: &str| {
+		let mut command = ssh(
+			&[
+				"-o",
+				"PreferredAuthentications=password",
+				"-o",
+				"PubkeyAuthentication=no",
+				"-o",
+				"NumberOfPasswordPrompts=1",
+			],
+			"echo password-ok",
+		);
+		command
+			.env("SSH_ASKPASS", asker(password))
+			.env("SSH_ASKPASS_REQUIRE", "force")
+			.env("DISPLAY", ":0");
+		command.output().unwrap()
+	};
+	let good = by_password("open-sesame");
+	assert!(
+		String::from_utf8_lossy(&good.stdout).contains("password-ok"),
+		"{good:?}"
+	);
+	let bad = by_password("wrong");
+	assert!(!bad.status.success(), "a wrong password is refused");
+	let log = ran(&mut sh, "sshd log");
+	assert!(
+		log.contains("Password auth succeeded") || log.contains("auth succeeded"),
+		"{log}"
+	);
+	assert_eq!(ran(&mut sh, "sshd stop"), "sshd: stopped\n");
 }
 
 fn stty_reads_and_changes_the_devices_settings() {

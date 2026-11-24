@@ -27,7 +27,8 @@ case $output in
 	objects="$output.objects"
 	rm -rf "$objects" "$output"
 	mkdir -p "$objects"
-	flags="" sources=""
+	flags="" sources="" shim_include="-include $shim/poopterm_cmd.h"
+	[ -z "${NO_SHIM:-}" ] || shim_include=""
 	for argument in "$@"; do
 		case $argument in
 		*.c) sources="$sources $argument" ;;
@@ -40,13 +41,21 @@ case $output in
 		# The port's own include directories come first: a library that is
 		# itself ncurses must find its term.h before the shim's stand-in.
 		xcrun -sdk "$sdk" clang -target "$target" -c -Os -w \
-			-include "$shim/poopterm_cmd.h" $flags $ios -I "$shim/compat" -D_DARWIN_C_SOURCE \
+			$shim_include $flags $ios -I "$shim/compat" -D_DARWIN_C_SOURCE \
 			"$source" -o "$object"
 	done
 	xcrun -sdk "$sdk" ar rcs "$output" "$objects"/*.o
 	exit 0
 	;;
 esac
+# NO_SHIM=1 builds a library that is no command: plain C, which the app
+# itself calls (the ssh server, which must outlive any one command).
+if [ -n "${NO_SHIM:-}" ]; then
+	xcrun -sdk "$sdk" clang -target "$target" -dynamiclib -Os -w \
+		"$@" $ios -D_DARWIN_C_SOURCE \
+		-Wl,-dead_strip -install_name "@rpath/$(basename "$output")" -o "$output"
+	exit 0
+fi
 xcrun -sdk "$sdk" clang -target "$target" -dynamiclib -Os -w \
 	-include "$shim/poopterm_cmd.h" $ios -I "$shim/compat" -D_DARWIN_C_SOURCE \
 	"$shim/poopterm_cmd.c" "$@" \

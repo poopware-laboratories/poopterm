@@ -16,6 +16,11 @@ class FileSharingTest(unittest.TestCase):
     def test_files_open_in_place_rather_than_as_copies(self):
         self.assertIs(self.info.get("LSSupportsOpeningDocumentsInPlace"), True)
 
+    def test_the_ssh_server_may_listen_on_the_local_network(self):
+        reason = self.info.get("NSLocalNetworkUsageDescription", "")
+        self.assertIn("sshd start", reason)
+        self.assertGreater(len(reason), 40)
+
     def test_the_other_keys_the_app_needs_are_still_there(self):
         self.assertEqual(self.info["CFBundleExecutable"], "Poopterm")
         self.assertIn("stikdebug", self.info["LSApplicationQueriesSchemes"])
