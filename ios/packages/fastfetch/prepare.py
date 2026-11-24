@@ -5,7 +5,7 @@ iOS shares macOS's sources where its SDK has what they use. Where it does
 not (IOKit, AppKit, CoreWLAN, IOBluetooth, CoreGraphics displays...) a
 module takes fastfetch's own *_nosupport.c, a portable version (DNS from
 resolv.conf), or a file of ours in src/ (the GPU through Metal, the screen
-through UIKit, and what an app cannot reach at all). Run on a checkout;
+through UIKit, the CPU named by its GPU, and what an app cannot reach at all). Run on a checkout;
 running it again changes nothing.
 
     prepare.py <fastfetch checkout>
@@ -21,6 +21,7 @@ REPLACE = {
     "src/common/impl/netif_apple.c": None,
     "src/common/impl/processing_linux.c": None,
     "src/common/impl/kmod_apple.c": "src/common/impl/kmod_nosupport.c",
+    "src/detection/cpu/cpu_apple.c": None,
     "src/detection/dns/dns_apple.c": "src/detection/dns/dns_linux.c",
     "src/detection/displayserver/displayserver_apple.c": None,
     "src/detection/font/font_apple.m": None,
@@ -38,7 +39,7 @@ REPLACE = {
 NOSUPPORT = """battery bluetooth bluetoothradio brightness camera diskio gamepad
 keyboard mouse netio physicaldisk poweradapter wifi wm bios board chassis
 physicalmemory""".split()
-OURS = ["unsupported_ios.c", "gpu_ios.m", "displayserver_ios.m"]
+OURS = ["unsupported_ios.c", "gpu_ios.m", "displayserver_ios.m", "cpu_ios.m"]
 FRAMEWORKS = ["CoreFoundation", "Foundation", "IOKit", "Metal", "UIKit"]
 
 
