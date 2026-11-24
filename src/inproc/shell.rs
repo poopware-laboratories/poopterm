@@ -278,6 +278,35 @@ impl Shell {
 	/// standard input (none: empty); `tty` when its output goes to the
 	/// terminal.
 	fn command(&mut self, argv: &[String], input: Option<&[u8]>, ran: &mut Ran, tty: bool) -> i32 {
+		// `NAME=value` words first set variables: for good when alone, else
+		// only for the command after them.
+		let assigned = argv
+			.iter()
+			.take_while(|word| assignment(word).is_some())
+			.count();
+		if assigned > 0 {
+			let saved: Vec<(String, Option<String>)> = argv[..assigned]
+				.iter()
+				.filter_map(|word| assignment(word))
+				.map(|(name, value)| {
+					(
+						name.to_owned(),
+						self.env.insert(name.to_owned(), value.to_owned()),
+					)
+				})
+				.collect();
+			if assigned == argv.len() {
+				return 0;
+			}
+			let status = self.command(&argv[assigned..], input, ran, tty);
+			for (name, old) in saved.into_iter().rev() {
+				match old {
+					Some(value) => self.env.insert(name, value),
+					None => self.env.remove(&name),
+				};
+			}
+			return status;
+		}
 		let out = &mut ran.output;
 		let (name, args) = (argv[0].as_str(), &argv[1..]);
 		let fail = |out: &mut Vec<u8>, message: String| {
@@ -426,6 +455,17 @@ impl Shell {
 	}
 }
 
+/// The name and value of a `NAME=value` word.
+fn assignment(word: &str) -> Option<(&str, &str)> {
+	let (name, value) = word.split_once('=')?;
+	let mut chars = name.chars();
+	let first = chars.next()?;
+	(first.is_alphabetic() || first == '_')
+		.then_some(())
+		.filter(|()| chars.all(|ch| ch.is_alphanumeric() || ch == '_'))?;
+	Some((name, value))
+}
+
 /// A word of a command, or a redirection (`>`, `>>`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Word {
@@ -495,13 +535,20 @@ pub(crate) fn segments(line: &str) -> Option<Vec<(String, &'static str)>> {
 /// disappears. `None` for an unfinished quote.
 pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 	let mut words = Vec::new();
-	// The word being read, and whether it stays even if empty (quoted).
-	let mut word: Option<(String, bool)> = None;
-	let finish = |word: &mut Option<(String, bool)>, words: &mut Vec<Word>| {
-		if let Some((text, kept)) = word.take()
-			&& (kept || !text.is_empty())
-		{
-			words.push(Word::Text(text));
+	let mut word: Option<Partial> = None;
+	let finish = |word: &mut Option<Partial>, words: &mut Vec<Word>| {
+		let Some(partial) = word.take() else {
+			return;
+		};
+		if partial.glob {
+			let found = super::glob::expand(&partial.pattern, &shell.cwd);
+			if !found.is_empty() {
+				words.extend(found.into_iter().map(Word::Text));
+				return;
+			}
+		}
+		if partial.kept || !partial.text.is_empty() {
+			words.push(Word::Text(partial.text));
 		}
 	};
 	let mut chars = line.chars().peekable();
@@ -511,14 +558,14 @@ pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 			(Some(q), _) if ch == q => quote = None,
 			(None, '\'' | '"') => {
 				quote = Some(ch);
-				word.get_or_insert_default().1 = true;
+				word.get_or_insert_default().kept = true;
 			}
-			(Some('\''), _) => word.get_or_insert_default().0.push(ch),
+			(Some('\''), _) => word.get_or_insert_default().push(ch, true),
 			(_, '\\') => {
 				let next = chars.next()?;
-				let (text, kept) = word.get_or_insert_default();
-				text.push(next);
-				*kept = true;
+				let partial = word.get_or_insert_default();
+				partial.push(next, true);
+				partial.kept = true;
 			}
 			(_, '$') => {
 				let mut name = String::new();
@@ -536,9 +583,9 @@ pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 					"?" => shell.status.to_string(),
 					_ => shell.env.get(&name).cloned().unwrap_or_default(),
 				};
-				let (text, kept) = word.get_or_insert_default();
-				text.push_str(&value);
-				*kept |= quote.is_some() || name.is_empty();
+				let partial = word.get_or_insert_default();
+				value.chars().for_each(|c| partial.push(c, true));
+				partial.kept |= quote.is_some() || name.is_empty();
 			}
 			(None, ' ' | '\t') => finish(&mut word, &mut words),
 			(None, '|') => {
@@ -558,12 +605,20 @@ pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 				words.push(Word::Op(if append { ">>" } else { ">" }));
 			}
 			(None, '~') if word.is_none() && matches!(chars.peek(), None | Some('/' | ' ')) => {
-				word = Some((shell.home.display().to_string(), true));
+				let mut partial = Partial::default();
+				shell
+					.home
+					.display()
+					.to_string()
+					.chars()
+					.for_each(|c| partial.push(c, true));
+				partial.kept = true;
+				word = Some(partial);
 			}
 			_ => {
-				let (text, kept) = word.get_or_insert_default();
-				text.push(ch);
-				*kept = true;
+				let partial = word.get_or_insert_default();
+				partial.push(ch, quote.is_some());
+				partial.kept = true;
 			}
 		}
 	}
@@ -572,4 +627,28 @@ pub(crate) fn split(line: &str, shell: &Shell) -> Option<Vec<Word>> {
 	}
 	finish(&mut word, &mut words);
 	Some(words)
+}
+
+/// A word being read: its text, whether it stays even if empty (quoted),
+/// and the same as a filename pattern, where quoted and expanded
+/// characters are escaped, with whether any pattern character is left.
+#[derive(Default)]
+struct Partial {
+	text: String,
+	kept: bool,
+	pattern: String,
+	glob: bool,
+}
+
+impl Partial {
+	/// Adds `ch`; a `literal` one never acts as a pattern character.
+	fn push(&mut self, ch: char, literal: bool) {
+		self.text.push(ch);
+		let special = matches!(ch, '*' | '?' | '[');
+		if literal && (special || ch == '\\') {
+			self.pattern.push('\\');
+		}
+		self.pattern.push(ch);
+		self.glob |= !literal && special;
+	}
 }

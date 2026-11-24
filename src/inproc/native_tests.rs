@@ -193,6 +193,7 @@ fn real_commands_alone() {
 	patch_diffstat_and_bzip2_agree_with_the_systems();
 	zip_and_unzip_agree_with_the_systems();
 	tcc_compiles_and_runs_c_in_memory();
+	make_runs_recipes_through_the_shell();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -296,6 +297,90 @@ fn nano_edits_and_saves_a_file_on_the_device() {
 		shown.contains("cat note.txt\r\nhello from nano\r\n"),
 		"the file holds what was typed: {:?}",
 		&shown[shown.len().saturating_sub(300)..]
+	);
+}
+
+/// Where `ios/packages/build.sh macosx make` puts make.
+const MAKE_DIR: &str = concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/target/ios-packages/work-macosx/make/bin"
+);
+
+const MAKEFILE: &str = "NAME = world\n\
+all: greet build.txt run\n\
+greet:\n\
+\t@echo hello $(NAME)\n\
+build.txt: a.txt b.txt\n\
+\tcat a.txt b.txt > build.txt\n\
+\t@echo built\n\
+run:\n\
+\ttcc -run prog.c\n\
+clean:\n\
+\trm -f build.txt\n\
+objs:\n\
+\ttouch x1.o x2.o\n\
+\tLEFT=over rm -f *.o\n\
+.PHONY: all greet run clean objs\n";
+
+/// make reads a Makefile, runs recipes as programs and as `sh -c` lines
+/// (redirections included) in the app, and knows what is up to date.
+fn make_runs_recipes_through_the_shell() {
+	let tcc = PathBuf::from(TCC_DIR).join("bin/tcc").is_file();
+	if !PathBuf::from(MAKE_DIR).join("make").is_file() || !tcc {
+		eprintln!("skipped: run ios/packages/build.sh macosx make tcc");
+		return;
+	}
+	let Some((mut sh, home)) = real_shell("make") else {
+		return;
+	};
+	let path = format!("{MAKE_DIR}:{TCC_DIR}/bin:{}", sh.env["PATH"]);
+	sh.env.insert("PATH".into(), path);
+	sh.env
+		.insert("TCCDIR".into(), format!("{TCC_DIR}/share/tcc"));
+	fs::write(home.join("Makefile"), MAKEFILE).unwrap();
+	fs::write(home.join("a.txt"), "first\n").unwrap();
+	fs::write(home.join("b.txt"), "second\n").unwrap();
+	fs::write(
+		home.join("prog.c"),
+		"#include <stdio.h>\nint main(void) { puts(\"from C\"); return 0; }\n",
+	)
+	.unwrap();
+
+	let shown = ran(&mut sh, "make; echo status $?");
+	assert!(
+		shown.contains("hello world\ncat a.txt b.txt > build.txt\nbuilt\ntcc -run prog.c\nfrom C\n"),
+		"recipes ran in order, commands echoed: {shown}"
+	);
+	assert!(shown.ends_with("status 0\n"), "{shown}");
+	assert_eq!(
+		fs::read_to_string(home.join("build.txt")).unwrap(),
+		"first\nsecond\n",
+		"a redirection through sh -c"
+	);
+	let again = ran(&mut sh, "make build.txt");
+	assert!(
+		again.contains("is up to date"),
+		"nothing to rebuild: {again}"
+	);
+	ran(&mut sh, "make clean");
+	assert!(!home.join("build.txt").exists(), "clean removed it");
+	let dry = ran(&mut sh, "make -n build.txt");
+	assert!(
+		dry.contains("cat a.txt b.txt > build.txt") && !home.join("build.txt").exists(),
+		"-n only prints: {dry}"
+	);
+	let named = ran(&mut sh, "make NAME=you greet");
+	assert_eq!(named, "hello you\n", "a variable given on the command line");
+	let cleaned = ran(&mut sh, "make objs; echo status $?");
+	assert!(cleaned.ends_with("status 0\n"), "{cleaned}");
+	assert!(
+		!home.join("x1.o").exists() && !home.join("x2.o").exists(),
+		"the pattern removed both"
+	);
+	let fail = ran(&mut sh, "make nosuchtarget; echo status $?");
+	assert!(
+		fail.contains("No rule to make target 'nosuchtarget'") && fail.ends_with("status 2\n"),
+		"{fail}"
 	);
 }
 

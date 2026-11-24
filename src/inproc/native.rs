@@ -26,6 +26,27 @@ pub(crate) const MAX_OUTPUT: usize = 16 << 20;
 /// Commands share the process's descriptors, environment and directory.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
+thread_local! {
+	/// A command is running on this thread, so one it starts (through
+	/// `sh -c`, say) is part of it and takes no turn of its own.
+	static INSIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marks the thread as inside a command until dropped.
+struct Inside(bool);
+
+impl Inside {
+	fn enter() -> Self {
+		Self(INSIDE.replace(true))
+	}
+}
+
+impl Drop for Inside {
+	fn drop(&mut self) {
+		INSIDE.set(self.0);
+	}
+}
+
 /// The command library `name` stands for: a path when it has a `/` (from
 /// `cwd`), else the first file of that name in a directory of `path`
 /// (`$PATH`, colon-separated).
@@ -92,9 +113,13 @@ pub(crate) fn run(library: &Path, run: &Run) -> Result<Ran, String> {
 		.map(|(key, value)| format!("{key}={value}"))
 		.collect();
 	let env = c_strings(vars.iter().map(String::as_str).chain([pwd.as_str()]))?;
-	let _guard = ONE_AT_A_TIME
-		.lock()
-		.unwrap_or_else(|poison| poison.into_inner());
+	let nested = INSIDE.get();
+	let _guard = (!nested).then(|| {
+		ONE_AT_A_TIME
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner())
+	});
+	let _inside = Inside::enter();
 	// Opened for each run and closed after (or, loaded by us, its data put
 	// back), so its globals start over.
 	let library = open(library)?;

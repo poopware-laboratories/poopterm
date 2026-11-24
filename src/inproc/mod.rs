@@ -4,9 +4,11 @@
 //! program it runs (`terminal`), and what they print comes back as a PTY's
 //! output would. Sessions read and write it through two pipes, as they
 //! would a PTY's master.
+pub(crate) mod glob;
 pub(crate) mod line;
 pub(crate) mod native;
 pub(crate) mod pipeline;
+pub(crate) mod script;
 pub(crate) mod shell;
 pub(crate) mod terminal;
 #[cfg(test)]

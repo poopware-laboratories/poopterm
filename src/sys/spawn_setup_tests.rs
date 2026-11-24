@@ -376,7 +376,7 @@ fn close_on_exec(fd: &impl AsRawFd) -> bool {
 
 /// A copy of a descriptor of ours that does not close on exec.
 fn inheritable() -> OwnedFd {
-	let file = File::open("Cargo.toml").unwrap();
+	let file = File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
 	// SAFETY: duplicates a descriptor we own and checks the result.
 	let fd = check(unsafe { libc::dup(file.as_raw_fd()) }).unwrap();
 	// SAFETY: `fd` was just made and nothing else owns it.

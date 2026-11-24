@@ -234,6 +234,10 @@ fn search_path(env: &[CString]) -> Option<&str> {
 /// and `stdio`: its status (the low byte, as a process's), or minus
 /// ENOENT when there is none and ENOEXEC when it is no command.
 pub(super) fn run_nested(file: &str, argv: &[CString], env: &[CString], stdio: &Stdio) -> c_int {
+	// `sh -c line` is answered by the app's own shell.
+	if let Some(status) = crate::inproc::script::run(file, argv, env, stdio) {
+		return status;
+	}
 	let cwd = std::env::current_dir().unwrap_or_default();
 	let Some(found) = crate::inproc::native::find(file, search_path(env), &cwd) else {
 		return -ENOENT;

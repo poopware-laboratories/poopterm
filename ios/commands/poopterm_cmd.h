@@ -161,6 +161,7 @@ int poopterm_execve(const char *file, char *const argv[], char *const envp[]);
 #define posix_spawn(pid, path, actions, attr, argv, envp) poopterm_spawn(pid, path, actions, argv, envp)
 #define posix_spawnp(pid, file, actions, attr, argv, envp) poopterm_spawn(pid, file, actions, argv, envp)
 #define waitpid(pid, status, options) poopterm_waitpid(pid, status, options)
+#define wait(status) poopterm_waitpid(-1, status, 0)
 /* setjmp is called in the caller's frame, which is still running when the
  * child's exec comes back to it. */
 #define fork() poopterm_forked(setjmp(*poopterm_fork_begin()))

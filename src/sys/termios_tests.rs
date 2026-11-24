@@ -144,7 +144,7 @@ fn settings_round_trip_through_the_kernel() {
 
 #[test]
 fn something_that_is_not_a_terminal_has_no_settings() {
-	let file = File::open("Cargo.toml").unwrap();
+	let file = File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
 	assert_eq!(get(&file).unwrap_err().raw_os_error(), Some(libc::ENOTTY));
 }
 

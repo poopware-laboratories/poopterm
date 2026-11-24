@@ -442,7 +442,7 @@ fn a_directory_that_is_a_file_is_an_error() {
 
 #[test]
 fn a_terminal_that_is_not_a_tty_is_an_error() {
-	let file = OwnedFd::from(File::open("Cargo.toml").unwrap());
+	let file = OwnedFd::from(File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap());
 	let error = spawn(&Command::new("sh"), &file).err().unwrap();
 	assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
 }
@@ -619,7 +619,7 @@ fn a_child_that_cannot_enter_its_directory_is_reaped() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_child_refused_its_terminal_is_reaped() {
-	let file = OwnedFd::from(File::open("Cargo.toml").unwrap());
+	let file = OwnedFd::from(File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap());
 	fails_and_is_reaped(sh("true"), &file, libc::ENOTTY);
 }
 
@@ -732,7 +732,7 @@ fn the_last_real_time_signal_gets_its_default_action_back() {
 #[test]
 fn none_of_our_descriptors_reach_the_program() {
 	// One we would leak if nothing closed it: inheritable, unlike std's.
-	let file = File::open("Cargo.toml").unwrap();
+	let file = File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
 	// SAFETY: duplicates a descriptor we own, without close-on-exec.
 	let leaky = unsafe { libc::dup(std::os::fd::AsRawFd::as_raw_fd(&file)) };
 	assert!(leaky > 2);

@@ -722,3 +722,64 @@ fn tcc_finds_its_folder_in_the_app_then_among_installed_packages() {
 	);
 	let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn unquoted_patterns_expand_to_sorted_names_and_quoted_ones_do_not() {
+	let (mut sh, home) = shell();
+	for file in ["b.o", "a.o", "a.c", ".h.o", "star*.o"] {
+		fs::write(home.join(file), "").unwrap();
+	}
+	sh.env.insert("PATTERN".into(), "*.c".into());
+	let say = |sh: &mut Shell, line: &str| String::from_utf8(sh.run(line).output).unwrap();
+	assert_eq!(say(&mut sh, "echo *.o"), "a.o b.o star*.o\n");
+	assert_eq!(say(&mut sh, "echo '*.o' \"*.o\" \\*.o"), "*.o *.o *.o\n");
+	assert_eq!(say(&mut sh, "echo a.? [ab].c"), "a.c a.o a.c\n");
+	assert_eq!(
+		say(&mut sh, "echo *.h"),
+		"*.h\n",
+		"no match keeps the pattern"
+	);
+	assert_eq!(
+		say(&mut sh, "echo $PATTERN"),
+		"*.c\n",
+		"an expansion is not a pattern"
+	);
+	assert_eq!(say(&mut sh, "echo star\\*.o"), "star*.o\n");
+	assert_eq!(say(&mut sh, "echo .*.o"), ".h.o\n");
+	assert_eq!(say(&mut sh, "echo *.o > list; echo list*"), "list\n");
+	assert_eq!(
+		fs::read_to_string(home.join("list")).unwrap(),
+		"a.o b.o star*.o\n"
+	);
+}
+
+#[test]
+fn name_equals_value_words_set_variables_for_the_command_or_for_good() {
+	let (mut sh, _) = shell();
+	let say = |sh: &mut Shell, line: &str| String::from_utf8(sh.run(line).output).unwrap();
+	assert_eq!(say(&mut sh, "GREETING=hi; echo $GREETING"), "hi\n");
+	assert_eq!(say(&mut sh, "A=1 B=two; echo $A $B"), "1 two\n");
+	sh.env.insert("KEEP".into(), "old".into());
+	assert_eq!(
+		say(&mut sh, "KEEP=new echo $KEEP"),
+		"old\n",
+		"expanded before the command runs"
+	);
+	assert_eq!(sh.env["KEEP"], "old", "restored after the command");
+	assert_eq!(
+		say(&mut sh, "TEMP=x echo done; echo [$TEMP]"),
+		"done\n[]\n",
+		"removed after"
+	);
+	assert_eq!(
+		say(&mut sh, "echo A=1"),
+		"A=1\n",
+		"after the command it is a plain word"
+	);
+	assert_eq!(
+		say(&mut sh, "1A=x"),
+		"poopsh: 1A=x: command not found\n",
+		"not a name"
+	);
+	assert_eq!(say(&mut sh, "=x"), "poopsh: =x: command not found\n");
+}
