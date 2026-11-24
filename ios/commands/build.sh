@@ -149,6 +149,8 @@ diff:gnudiff/diffutils/src
 cmp:gnudiff/diffutils/src
 diff3:gnudiff/diffutils/src
 sdiff:gnudiff/diffutils/src
+patch:patch_cmds/patch
+diffstat:patch_cmds/diffstat
 "
 
 all=${POOPTERM_COMMANDS_LIST:-$all}

@@ -31,6 +31,7 @@ sqlite3|3.47.2|port|SQLite databases from the command line
 tree|2.2.1|port|List directories as a tree
 nano|8.7|port|Full-screen text editor
 dropbear|2026.94|port|ssh client and key tool (ssh, dropbearkey)
+bzip2|1.0.8|port|bzip2 compression (bzip2, bunzip2, bzcat)
 "
 
 wanted=${*:-}

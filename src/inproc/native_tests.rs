@@ -190,6 +190,7 @@ fn real_commands_alone() {
 	awk_and_diff_match_the_systems();
 	nano_edits_and_saves_a_file_on_the_device();
 	ssh_runs_a_command_and_a_session_on_a_server();
+	patch_diffstat_and_bzip2_agree_with_the_systems();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -293,6 +294,73 @@ fn nano_edits_and_saves_a_file_on_the_device() {
 		shown.contains("cat note.txt\r\nhello from nano\r\n"),
 		"the file holds what was typed: {:?}",
 		&shown[shown.len().saturating_sub(300)..]
+	);
+}
+
+/// Where `ios/packages/build.sh macosx bzip2` puts bzip2.
+const BZIP2_DIR: &str = concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/target/ios-packages/work-macosx/bzip2/bin"
+);
+
+/// patch applies what diff made, diffstat counts it, and bzip2 compresses
+/// into what the system's bzip2 reads and reads what it made.
+fn patch_diffstat_and_bzip2_agree_with_the_systems() {
+	let Some((mut sh, home)) = real_shell("patch-bz") else {
+		return;
+	};
+	let bzip2 = PathBuf::from(BZIP2_DIR).join("bzip2").is_file();
+	if bzip2 {
+		let path = format!("{BZIP2_DIR}:{}", sh.env["PATH"]);
+		sh.env.insert("PATH".into(), path);
+	}
+	fs::write(home.join("old"), "one\ntwo\nthree\nfour\n").unwrap();
+	fs::write(home.join("new"), "one\n2\nthree\nfour\nfive\n").unwrap();
+	ran(&mut sh, "diff -u old new > change.diff");
+	assert_eq!(
+		ran(&mut sh, "diffstat -f 0 change.diff | tail -1"),
+		" 1 file changed, 2 insertions(+), 1 deletion(-)\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "patch old < change.diff"),
+		"patching file old\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "cmp old new && echo same"),
+		"same\n",
+		"the patch made old into new"
+	);
+	assert_eq!(
+		ran(&mut sh, "patch -R old < change.diff"),
+		"patching file old\n"
+	);
+	assert_eq!(
+		fs::read_to_string(home.join("old")).unwrap(),
+		"one\ntwo\nthree\nfour\n",
+		"and back"
+	);
+	if !bzip2 {
+		eprintln!("skipped bzip2: run ios/packages/build.sh macosx bzip2");
+		return;
+	}
+	let text = "compress me, compress me, compress me\n".repeat(200);
+	fs::write(home.join("big"), &text).unwrap();
+	ran(&mut sh, "bzip2 -k big");
+	assert!(home.join("big.bz2").is_file());
+	let theirs = system(
+		"/usr/bin/bzip2",
+		&["-dc", &home.join("big.bz2").display().to_string()],
+	);
+	assert_eq!(theirs, text, "the system reads ours");
+	assert_eq!(
+		ran(&mut sh, "bzcat big.bz2 | md5 -q"),
+		ran(&mut sh, "md5 -q big")
+	);
+	ran(&mut sh, "rm big && bunzip2 big.bz2");
+	assert_eq!(
+		fs::read_to_string(home.join("big")).unwrap(),
+		text,
+		"bunzip2 restores it"
 	);
 }
 
