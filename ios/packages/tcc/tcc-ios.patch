@@ -30,7 +30,7 @@ diff --color -ruN orig/libtcc.c src/libtcc.c
          filename = strcat(strcpy(buf, CONFIG_TCC_CROSSPREFIX), filename);
 diff --color -ruN orig/tccrun.c src/tccrun.c
 --- orig/tccrun.c	2026-11-24 11:42:13
-+++ src/tccrun.c	2026-11-24 11:42:46
++++ src/tccrun.c	2026-11-24 11:54:29
 @@ -79,8 +79,17 @@
  # include <sys/mman.h>
  #endif
@@ -140,14 +140,23 @@ diff --color -ruN orig/tccrun.c src/tccrun.c
  {
      Section *s;
      unsigned offset, length, align, i, k, f;
-@@ -412,6 +444,10 @@
-                 continue;
- #ifdef CONFIG_SELINUX
+@@ -414,6 +446,10 @@
              if (k == 0) /* SHF_EXECINSTR has its own mapping */
-+                continue;
-+#endif
-+#ifdef POOPTERM_JIT
-+            if (k == 0 && ptr_diff) /* code is already in the app's executable region */
                  continue;
  #endif
++#ifdef POOPTERM_JIT
++            if (k == 0 && ptr_diff) /* code is already in the app's executable region */
++                continue;
++#endif
              f = k;
+             if (f >= CONFIG_RUNMEM_RO) {
+                 if (f != 0)
+@@ -430,7 +466,7 @@
+ #ifdef _WIN32
+                     "VirtualProtect failed");
+ #else
+-                    "mprotect failed (did you mean to configure --with-selinux?)");
++                    "mprotect failed: running code needs JIT on iOS (run `jit enable`)");
+ #endif
+         }
+     }
