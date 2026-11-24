@@ -2,6 +2,7 @@
 pub(crate) mod click;
 #[cfg(test)]
 mod clipboard_shortcuts_tests;
+pub(crate) mod commit;
 #[cfg_attr(
 	not(any(target_os = "ios", test)),
 	expect(dead_code, reason = "only iOS reads hardware key presses")
