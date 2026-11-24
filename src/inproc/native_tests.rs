@@ -191,6 +191,7 @@ fn real_commands_alone() {
 	nano_edits_and_saves_a_file_on_the_device();
 	ssh_runs_a_command_and_a_session_on_a_server();
 	patch_diffstat_and_bzip2_agree_with_the_systems();
+	zip_and_unzip_agree_with_the_systems();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -294,6 +295,72 @@ fn nano_edits_and_saves_a_file_on_the_device() {
 		shown.contains("cat note.txt\r\nhello from nano\r\n"),
 		"the file holds what was typed: {:?}",
 		&shown[shown.len().saturating_sub(300)..]
+	);
+}
+
+/// zip makes archives the system's unzip reads, and unzip reads (and
+/// lists, as zipinfo) the ones the system's zip made.
+fn zip_and_unzip_agree_with_the_systems() {
+	let dirs = ["zip", "unzip"].map(|name| {
+		format!(
+			"{}/target/ios-packages/work-macosx/{name}/bin",
+			env!("CARGO_MANIFEST_DIR")
+		)
+	});
+	if dirs.iter().any(|dir| {
+		!PathBuf::from(dir)
+			.join(dir.rsplit('/').nth(1).unwrap())
+			.is_file()
+	}) {
+		eprintln!("skipped: run ios/packages/build.sh macosx zip unzip");
+		return;
+	}
+	let Some((mut sh, home)) = real_shell("zip-unzip") else {
+		return;
+	};
+	let path = format!("{}:{}:{}", dirs[0], dirs[1], sh.env["PATH"]);
+	sh.env.insert("PATH".into(), path);
+	fs::create_dir_all(home.join("tree/sub")).unwrap();
+	fs::write(home.join("tree/a.txt"), "alpha\n".repeat(100)).unwrap();
+	fs::write(home.join("tree/sub/b.txt"), "beta\n").unwrap();
+	let made = ran(&mut sh, "zip -r ours.zip tree");
+	assert!(
+		made.contains("adding: tree/a.txt") && made.contains("adding: tree/sub/b.txt"),
+		"{made}"
+	);
+	let listed = system(
+		"/usr/bin/unzip",
+		&["-Z1", &home.join("ours.zip").display().to_string()],
+	);
+	assert!(
+		listed.lines().any(|name| name == "tree/sub/b.txt"),
+		"the system lists ours: {listed}"
+	);
+	let system_made = std::process::Command::new("/usr/bin/zip")
+		.current_dir(&home)
+		.args(["-qr", "theirs.zip", "tree"])
+		.status()
+		.unwrap();
+	assert!(system_made.success());
+	fs::remove_dir_all(home.join("tree")).unwrap();
+	let extracted = ran(&mut sh, "unzip -o theirs.zip");
+	assert!(extracted.contains("inflating: tree/a.txt"), "{extracted}");
+	assert_eq!(
+		fs::read_to_string(home.join("tree/sub/b.txt")).unwrap(),
+		"beta\n"
+	);
+	assert_eq!(
+		fs::read_to_string(home.join("tree/a.txt")).unwrap(),
+		"alpha\n".repeat(100)
+	);
+	let listing = ran(&mut sh, "unzip -l ours.zip");
+	assert!(
+		listing.contains("tree/sub/b.txt") && listing.contains("4 files"),
+		"lists its own archive, directories included: {listing}"
+	);
+	assert!(
+		ran(&mut sh, "zipinfo -1 ours.zip").contains("tree/a.txt"),
+		"zipinfo is the same program by another name"
 	);
 }
 
