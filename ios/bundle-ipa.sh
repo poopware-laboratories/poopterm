@@ -65,6 +65,11 @@ for package in target/ios-packages/work-iphoneos/*/; do
 	for command in "$package"bin/*; do
 		embed_command "$command"
 	done
+	# tcc's headers and runtime sources: the app's own tcc folder.
+	if [ -d "$package/share/tcc" ]; then
+		rm -rf "$app/tcc"
+		cp -R "$package/share/tcc" "$app/tcc"
+	fi
 	if [ -d "$package/share/doc/$package_name" ]; then
 		mkdir -p "$app/licenses/$package_name"
 		cp -R "$package/share/doc/$package_name/." "$app/licenses/$package_name/"

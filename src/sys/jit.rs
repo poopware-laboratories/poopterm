@@ -313,6 +313,11 @@ impl Image {
 		self.address
 	}
 
+	/// The writable view of an image in a prepared region, if it has one.
+	pub(crate) fn mirror(&self) -> Option<usize> {
+		self.mirror
+	}
+
 	/// Puts `bytes` (fixed up for `address`) in place, with the pieces in
 	/// `code` (offset, length) executable and the rest writable data.
 	pub(crate) fn seal(&self, bytes: &[u8], code: &[(usize, usize)]) -> io::Result<()> {
@@ -415,6 +420,26 @@ fn flush_instructions(address: usize, len: usize) {
 	};
 	#[cfg(not(target_vendor = "apple"))]
 	let _ = (address, len);
+}
+
+/// An executable region for tests: `len` bytes mapped writable, then made
+/// executable, as a debugger leaves the one it prepares.
+#[cfg(test)]
+pub(crate) fn test_executable_region(len: usize) -> usize {
+	// SAFETY: a new private anonymous mapping; checked below.
+	let region = unsafe {
+		libc::mmap(
+			std::ptr::null_mut(),
+			len,
+			libc::PROT_READ | libc::PROT_WRITE,
+			libc::MAP_PRIVATE | libc::MAP_ANON,
+			-1,
+			0,
+		)
+	};
+	assert_ne!(region, libc::MAP_FAILED);
+	protect(region as usize, len, libc::PROT_READ | libc::PROT_EXEC).unwrap();
+	region as usize
 }
 
 #[cfg(test)]

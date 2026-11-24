@@ -92,6 +92,14 @@ int poopterm_isatty(int fd) {
 	return isatty(fd);
 }
 
+int poopterm_jit_dual(unsigned long size, void **exec, void **mirror) {
+	return current.jit_dual != NULL ? current.jit_dual(size, exec, mirror) : -1;
+}
+
+int poopterm_jit_owns(void *ptr) {
+	return current.jit_owns != NULL && current.jit_owns(ptr);
+}
+
 #undef fopen
 FILE *poopterm_fopen(const char *path, const char *mode) {
 	if (path == NULL || strcmp(path, "/dev/tty") != 0) {

@@ -47,5 +47,9 @@ for command in target/ios-commands/iphonesimulator/* target/ios-packages/work-ip
 PLIST
 	codesign --force --sign - "$framework" 2>/dev/null
 done
+# tcc's headers and runtime sources, where the app looks (Poopterm.app/tcc).
+for tcc in target/ios-packages/work-iphonesimulator/tcc/share/tcc; do
+	[ -d "$tcc" ] && { rm -rf "$app/tcc"; cp -R "$tcc" "$app/tcc"; }
+done
 codesign --force --sign - "$app" 2>/dev/null
 echo "built $app with $(find "$app/Frameworks" -name '*.framework' -type d | wc -l | tr -d ' ') command frameworks"

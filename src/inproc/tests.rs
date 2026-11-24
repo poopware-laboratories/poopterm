@@ -5,7 +5,7 @@ use super::{
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
-	start_directory, terminfo_dir,
+	start_directory, tcc_dir, terminfo_dir,
 };
 use std::{
 	fs,
@@ -676,4 +676,49 @@ fn packages_live_under_support_while_home_is_the_users() {
 	assert!(shown.contains("no package") || !shown.is_empty(), "{shown}");
 	let installed = crate::pkg::root(&support);
 	assert!(installed.starts_with(&support) && !installed.starts_with(sh.home.join("Library")));
+}
+
+#[test]
+fn tcc_finds_its_folder_in_the_app_then_among_installed_packages() {
+	let dir = std::env::temp_dir().join(format!("poopterm-tccdir-{}", std::process::id()));
+	let _ = fs::remove_dir_all(&dir);
+	let (app, support) = (dir.join("App.app"), dir.join("support"));
+	fs::create_dir_all(&app).unwrap();
+	fs::create_dir_all(&support).unwrap();
+	assert_eq!(tcc_dir(Some(&app), &support, None), None, "none anywhere");
+	let installed = support.join("Library/poopterm/packages/share/tcc");
+	fs::create_dir_all(installed.join("include")).unwrap();
+	assert_eq!(
+		tcc_dir(Some(&app), &support, None),
+		Some(installed.clone()),
+		"the package's"
+	);
+	fs::create_dir_all(app.join("tcc/include")).unwrap();
+	assert_eq!(
+		tcc_dir(Some(&app), &support, None),
+		Some(app.join("tcc")),
+		"the app's comes first"
+	);
+	assert_eq!(
+		tcc_dir(None, &support, None),
+		Some(installed),
+		"no app folder to look in"
+	);
+	assert_eq!(
+		tcc_dir(Some(&app), &support, Some("/mine")),
+		None,
+		"the user's stays"
+	);
+	assert_eq!(
+		tcc_dir(Some(&app), &support, Some("")),
+		Some(app.join("tcc")),
+		"empty is unset"
+	);
+	fs::create_dir_all(dir.join("App2.app/tcc")).unwrap();
+	assert_eq!(
+		tcc_dir(Some(&dir.join("App2.app")), &dir.join("none"), None),
+		None,
+		"a folder without include/ is not it"
+	);
+	let _ = fs::remove_dir_all(&dir);
 }

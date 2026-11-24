@@ -1,0 +1,153 @@
+diff --color -ruN orig/libtcc.c src/libtcc.c
+--- orig/libtcc.c	2026-11-24 11:42:13
++++ src/libtcc.c	2026-11-24 11:42:14
+@@ -1281,6 +1281,26 @@
+ /* find [cross-]libtcc1.a and tcc helper objects in library path */
+ ST_FUNC int tcc_add_support(TCCState *s1, const char *filename)
+ {
++#ifdef POOPTERM_RUNTIME_SOURCES
++    /* Poopterm: the helper objects and libtcc1.a are made by running the
++     * tcc just built, which the app never does at build time. Their C
++     * sources (lib/ of the app's tcc folder) are compiled with the program
++     * instead, each time: a few hundred lines. */
++    static const char *const runmain[] = { "runmain.c", 0 };
++    static const char *const libtcc1[] = { "libtcc1.c", "lib-arm64.c", "builtin.c", 0 };
++    const char *const *sources = 0;
++    char path[1024];
++    if (strcmp(filename, "runmain.o") == 0)
++        sources = runmain;
++    else if (strcmp(filename, TCC_LIBTCC1) == 0)
++        sources = libtcc1;
++    for (; sources && *sources; ++sources) {
++        snprintf(path, sizeof path, "%s/lib/%s", s1->tcc_lib_path, *sources);
++        if (tcc_add_file(s1, path) < 0)
++            return -1;
++    }
++    return sources ? 0 : tcc_add_dll(s1, filename, AFF_PRINT_ERROR);
++#endif
+     char buf[100];
+     if (CONFIG_TCC_CROSSPREFIX[0])
+         filename = strcat(strcpy(buf, CONFIG_TCC_CROSSPREFIX), filename);
+diff --color -ruN orig/tccrun.c src/tccrun.c
+--- orig/tccrun.c	2026-11-24 11:42:13
++++ src/tccrun.c	2026-11-24 11:42:46
+@@ -79,8 +79,17 @@
+ # include <sys/mman.h>
+ #endif
+ 
++#ifdef POOPTERM_JIT
++/* Poopterm: where the app has a region a debugger made executable, code
++ * runs there and is written through a writable view of the same pages, a
++ * whole address apart (the app, poopterm_jit_dual; nothing is given back). */
++extern int poopterm_jit_dual(unsigned long size, void **exec, void **mirror);
++extern int poopterm_jit_owns(void *ptr);
++extern void poopterm_tcc_symbols(TCCState *s1);
++extern void __clear_cache(void *beginning, void *end);
++#endif
+ static int protect_pages(void *ptr, unsigned long length, int mode);
+-static int tcc_relocate_ex(TCCState *s1, void *ptr, unsigned ptr_diff);
++static int tcc_relocate_ex(TCCState *s1, void *ptr, addr_t ptr_diff);
+ static void st_link(TCCState *s1);
+ static void st_unlink(TCCState *s1);
+ #ifdef CONFIG_TCC_BACKTRACE
+@@ -113,10 +122,21 @@
+ # define CONFIG_RUNMEM_VIRTUALALLOC 1
+ #endif
+ 
+-static int rt_mem(TCCState *s1, int size)
++static int rt_mem(TCCState *s1, int size, addr_t *diff)
+ {
+     void *ptr;
+-    int ptr_diff = 0;
++    addr_t ptr_diff = 0;
++#ifdef POOPTERM_JIT
++    {
++        void *exec, *mirror;
++        if (poopterm_jit_dual(size, &exec, &mirror) == 0) {
++            s1->run_ptr = exec;
++            s1->run_size = size;
++            *diff = (addr_t)mirror - (addr_t)exec;
++            return 0;
++        }
++    }
++#endif
+ #ifdef CONFIG_SELINUX
+     /* Using mmap instead of malloc */
+     void *prw;
+@@ -144,7 +164,8 @@
+ #endif
+     s1->run_ptr = ptr;
+     s1->run_size = size;
+-    return ptr_diff;
++    *diff = ptr_diff;
++    return 0;
+ }
+ 
+ /* ------------------------------------------------------------- */
+@@ -153,7 +174,8 @@
+ 
+ LIBTCCAPI int tcc_relocate(TCCState *s1)
+ {
+-    int size, ret, ptr_diff;
++    int size, ret;
++    addr_t ptr_diff = 0;
+ 
+     if (s1->run_ptr)
+         exit(tcc_error_noabort("'tcc_relocate()' twice is no longer supported"));
+@@ -164,10 +186,13 @@
+     size = tcc_relocate_ex(s1, NULL, 0);
+     if (size < 0)
+         return -1;
+-    ptr_diff = rt_mem(s1, size);
+-    if (ptr_diff < 0)
++    if (rt_mem(s1, size, &ptr_diff) < 0)
+         return -1;
+     ret = tcc_relocate_ex(s1, s1->run_ptr, ptr_diff);
++#ifdef POOPTERM_JIT
++    if (ret == 0 && ptr_diff)
++        __clear_cache(s1->run_ptr, (char *)s1->run_ptr + s1->run_size);
++#endif
+     if (ret == 0)
+         st_link(s1);
+     return ret;
+@@ -194,6 +219,10 @@
+     if (NULL == ptr)
+         return;
+     st_unlink(s1);
++#ifdef POOPTERM_JIT
++    if (poopterm_jit_owns(ptr))
++        return; /* the app's region stays: other code may point into it */
++#endif
+ #ifdef _WIN64
+     win64_del_function_table(s1->run_function_table);
+ #endif
+@@ -233,6 +262,9 @@
+         return 0;
+ 
+     tcc_add_symbol(s1, "__rt_exit", rt_exit);
++#ifdef POOPTERM_JIT
++    poopterm_tcc_symbols(s1);
++#endif
+     s1->run_main = "_runmain", top_sym = "main";
+     if (s1->elf_entryname)
+         s1->run_main = top_sym = s1->elf_entryname;
+@@ -327,7 +359,7 @@
+ 
+ /* relocate code. Return -1 on error, required size if ptr is NULL,
+    otherwise copy code into buffer passed by the caller */
+-static int tcc_relocate_ex(TCCState *s1, void *ptr, unsigned ptr_diff)
++static int tcc_relocate_ex(TCCState *s1, void *ptr, addr_t ptr_diff)
+ {
+     Section *s;
+     unsigned offset, length, align, i, k, f;
+@@ -412,6 +444,10 @@
+                 continue;
+ #ifdef CONFIG_SELINUX
+             if (k == 0) /* SHF_EXECINSTR has its own mapping */
++                continue;
++#endif
++#ifdef POOPTERM_JIT
++            if (k == 0 && ptr_diff) /* code is already in the app's executable region */
+                 continue;
+ #endif
+             f = k;

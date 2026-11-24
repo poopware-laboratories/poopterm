@@ -192,6 +192,7 @@ fn real_commands_alone() {
 	ssh_runs_a_command_and_a_session_on_a_server();
 	patch_diffstat_and_bzip2_agree_with_the_systems();
 	zip_and_unzip_agree_with_the_systems();
+	tcc_compiles_and_runs_c_in_memory();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -296,6 +297,169 @@ fn nano_edits_and_saves_a_file_on_the_device() {
 		"the file holds what was typed: {:?}",
 		&shown[shown.len().saturating_sub(300)..]
 	);
+}
+
+/// Where `ios/packages/build.sh macosx tcc` puts tcc and its folder.
+const TCC_DIR: &str = concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/target/ios-packages/work-macosx/tcc"
+);
+
+const HELLO_C: &str = r#"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+static int counter = 40;
+int main(int argc, char **argv) {
+	char *text = strdup("poopterm");
+	counter += 2;
+	printf("hello from tcc: %s, fib(20)=%d, argc=%d, pi=%.3f, big=%ld, counter=%d\n",
+		text, fib(20), argc, 3.14159, 1L << 40, counter);
+	printf("main at %p, counter at %p\n", (void *)main, (void *)&counter);
+	free(text);
+	return 7;
+}
+"#;
+
+const TOOLS_C: &str = r#"
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+static int by_value(const void *a, const void *b) { return *(const int *)a - *(const int *)b; }
+struct point { int x, y; double scale; };
+int main(void) {
+	int v[] = {5, 3, 9, 1};
+	qsort(v, 4, sizeof v[0], by_value);
+	printf("sorted %d %d %d %d\n", v[0], v[1], v[2], v[3]);
+	printf("math %.4f %.4f %.1f\n", sqrt(2.0), sin(1.0), pow(2, 10));
+	printf("ctype %d %c\n", isdigit('7') != 0, toupper('q'));
+	errno = 0;
+	FILE *missing = fopen("/no/such/file", "r");
+	printf("errno %d %s\n", missing == NULL && errno == ENOENT, strerror(errno));
+	struct stat st;
+	printf("stat %d\n", stat(".", &st) == 0 && S_ISDIR(st.st_mode));
+	DIR *dir = opendir(".");
+	int visible = 0;
+	struct dirent *entry;
+	while ((entry = readdir(dir)))
+		if (entry->d_name[0] != '.') visible++;
+	closedir(dir);
+	printf("entries %d\n", visible > 0);
+	time_t when = 86400 * 365;
+	printf("year %d\n", gmtime(&when)->tm_year + 1900);
+	uint64_t big = UINT64_C(1) << 40;
+	printf("big %" PRIu64 "\n", big);
+	struct point p = {3, 4, 0.5};
+	printf("struct %d %.1f\n", p.x * p.x + p.y * p.y, p.scale * 2);
+	int fd = open("written.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	write(fd, "hi\n", 3);
+	close(fd);
+	return 0;
+}
+"#;
+
+const EXIT_C: &str = r#"
+#include <stdio.h>
+#include <stdlib.h>
+int main(void) {
+	printf("about to exit\n");
+	exit(3);
+	printf("not reached\n");
+	return 0;
+}
+"#;
+
+/// tcc compiles C from files and runs it in this process: arguments,
+/// statics, doubles, a status back, and `exit` that ends the program and
+/// not the app. With a region standing in for the one StikDebug prepares,
+/// the code runs there and the statics live apart in the writable view.
+fn tcc_compiles_and_runs_c_in_memory() {
+	if !PathBuf::from(TCC_DIR).join("bin/tcc").is_file() {
+		eprintln!("skipped: run ios/packages/build.sh macosx tcc");
+		return;
+	}
+	let Some((mut sh, home)) = real_shell("tcc") else {
+		return;
+	};
+	let path = format!("{TCC_DIR}/bin:{}", sh.env["PATH"]);
+	sh.env.insert("PATH".into(), path);
+	sh.env
+		.insert("TCCDIR".into(), format!("{TCC_DIR}/share/tcc"));
+	fs::write(home.join("hello.c"), HELLO_C).unwrap();
+	fs::write(home.join("quit.c"), EXIT_C).unwrap();
+
+	let shown = ran(&mut sh, "tcc -run hello.c a b; echo status $?");
+	assert!(
+		shown.contains(
+			"hello from tcc: poopterm, fib(20)=6765, argc=3, pi=3.142, big=1099511627776, counter=42\n"
+		),
+		"{shown}"
+	);
+	assert!(
+		shown.ends_with("status 7\n"),
+		"the program's status: {shown}"
+	);
+	let quit = ran(&mut sh, "tcc -run quit.c; echo status $?");
+	assert_eq!(
+		quit, "about to exit\nstatus 3\n",
+		"exit ended the program, not the app"
+	);
+	fs::write(home.join("tools.c"), TOOLS_C).unwrap();
+	let tools = ran(&mut sh, "tcc -run tools.c; echo status $?");
+	assert_eq!(
+		tools,
+		"sorted 1 3 5 9\nmath 1.4142 0.8415 1024.0\nctype 1 Q\nerrno 1 No such file or directory\n\
+		 stat 1\nentries 1\nyear 1971\nbig 1099511627776\nstruct 25 1.0\nstatus 0\n"
+	);
+	assert_eq!(
+		fs::read_to_string(home.join("written.txt")).unwrap(),
+		"hi\n"
+	);
+	let missing = ran(&mut sh, "tcc -run nothere.c; echo status $?");
+	assert!(
+		missing.contains("nothere.c") && missing.ends_with("status 1\n"),
+		"{missing}"
+	);
+
+	// The prepared-region way: code in the region, data in its view.
+	let (start, len) = crate::jit::tests::install_test_region(1 << 20);
+	let shown = ran(&mut sh, "tcc -run hello.c; echo status $?");
+	crate::jit::tests::remove_test_region();
+	assert!(shown.contains("counter=42"), "{shown}");
+	let address = |label: &str| {
+		let after = shown
+			.split(label)
+			.nth(1)
+			.unwrap_or_else(|| panic!("{label}: {shown}"));
+		let hex: String = after
+			.trim_start_matches("0x")
+			.chars()
+			.take_while(char::is_ascii_hexdigit)
+			.collect();
+		usize::from_str_radix(&hex, 16).unwrap()
+	};
+	let main = address("main at 0x");
+	let counter = address("counter at 0x");
+	assert!(
+		(start..start + len).contains(&main),
+		"main runs in the region: {main:#x} not in {start:#x}+{len:#x}"
+	);
+	assert!(
+		!(start..start + len).contains(&counter),
+		"its data is in the writable view"
+	);
+	assert!(shown.ends_with("status 7\n"), "{shown}");
 }
 
 /// zip makes archives the system's unzip reads, and unzip reads (and

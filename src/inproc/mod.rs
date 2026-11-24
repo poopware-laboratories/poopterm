@@ -96,6 +96,25 @@ pub(crate) fn terminfo_dir(exe_dir: Option<&Path>, chosen: Option<&str>) -> Opti
 	dir.is_dir().then_some(dir)
 }
 
+/// The folder tcc finds its headers and runtime sources in: the app's own
+/// `tcc` folder, else the one the tcc package installs under `support`;
+/// none when neither exists, or when the user chose one (`chosen`).
+pub(crate) fn tcc_dir(
+	exe_dir: Option<&Path>,
+	support: &Path,
+	chosen: Option<&str>,
+) -> Option<PathBuf> {
+	if chosen.is_some_and(|dir| !dir.is_empty()) {
+		return None;
+	}
+	let bundled = exe_dir.map(|dir| dir.join("tcc"));
+	let installed = support.join("Library/poopterm/packages/share/tcc");
+	bundled
+		.into_iter()
+		.chain([installed])
+		.find(|dir| dir.join("include").is_dir())
+}
+
 /// Where the shell looks for programs: `POOPTERM_COMMANDS` when set, else
 /// the app's `Frameworks` directory, then packages installed under `home`.
 pub(crate) fn command_path(exe_dir: Option<&Path>, home: &Path, chosen: Option<&str>) -> String {
@@ -149,8 +168,18 @@ pub(crate) fn spawn(
 	);
 	let mut shell = Shell::new(home.clone());
 	shell.cwd = start_directory(cwd, &home);
-	shell.support = support;
 	shell.env.insert("PATH".to_owned(), path);
+	let chosen_tcc = std::env::var("TCCDIR").ok();
+	if let Some(dir) = tcc_dir(
+		exe.as_deref().and_then(Path::parent),
+		&support,
+		chosen_tcc.as_deref(),
+	) {
+		shell
+			.env
+			.insert("TCCDIR".to_owned(), dir.display().to_string());
+	}
+	shell.support = support;
 	let chosen_terminfo = std::env::var("TERMINFO").ok();
 	if let Some(dir) = terminfo_dir(
 		exe.as_deref().and_then(Path::parent),

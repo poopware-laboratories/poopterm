@@ -56,6 +56,11 @@ struct poopterm_tty {
 	unsigned tty_fds;
 	/* Where the keyboard reads, which opening /dev/tty gives, or -1. */
 	int keyboard;
+	/* Executable memory the app has for code a command makes (tcc): a
+	 * region and a writable view of it, or -1; and whether `ptr` starts
+	 * one, which a command must not free. NULL when the app has none. */
+	int (*jit_dual)(unsigned long size, void **exec, void **mirror);
+	int (*jit_owns)(void *ptr);
 };
 
 #define POOPTERM_TTY_GET_SETTINGS 1 /* struct termios * */
@@ -70,6 +75,8 @@ int poopterm_isatty(int fd);
 int poopterm_ioctl(int fd, unsigned long request, ...);
 int poopterm_fclose(FILE *stream);
 int poopterm_open(const char *path, int flags, ...);
+int poopterm_jit_dual(unsigned long size, void **exec, void **mirror);
+int poopterm_jit_owns(void *ptr);
 FILE *poopterm_fopen(const char *path, const char *mode);
 char *poopterm_getpass(const char *prompt);
 int poopterm_tcgetattr(int fd, struct termios *settings);

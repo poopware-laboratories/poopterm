@@ -34,6 +34,7 @@ dropbear|2026.94|port|ssh client and key tool (ssh, dropbearkey)
 bzip2|1.0.8|port|bzip2 compression (bzip2, bunzip2, bzcat)
 zip|3.0|port|Make zip archives
 unzip|6.0|port|Extract and list zip archives (unzip, zipinfo)
+tcc|0.9.28rc|port|C compiler that runs programs in memory (tcc -run file.c)
 "
 
 wanted=${*:-}

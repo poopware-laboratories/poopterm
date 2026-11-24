@@ -88,6 +88,40 @@ fn current(state: &State) -> Strategy {
 	)
 }
 
+/// Regions handed out for code a command makes (`dual_region`): their
+/// starts, so a command that would free one is told not to.
+static REGIONS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+
+/// Room of `size` bytes in the region a debugger prepared, as the address
+/// it runs at and a writable view of the same pages, if there is such a
+/// region and room: tcc writes code through the view and runs it there.
+/// Elsewhere (none prepared) the command's own memory does.
+pub(crate) fn dual_region(size: usize) -> Option<(usize, usize)> {
+	let mut state = state();
+	let arena = state.arena.as_mut().filter(|arena| arena.is_prepared())?;
+	let image = arena.reserve(size).ok()?;
+	let view = image.mirror()?;
+	REGIONS
+		.lock()
+		.unwrap_or_else(|poison| poison.into_inner())
+		.push(image.address());
+	Some((image.address(), view))
+}
+
+/// Whether `address` is where a region from `dual_region` starts.
+pub(crate) fn owns_region(address: usize) -> bool {
+	REGIONS
+		.lock()
+		.unwrap_or_else(|poison| poison.into_inner())
+		.contains(&address)
+}
+
+/// Makes `arena` the app's (for tests that stand in for a debugger).
+#[cfg(test)]
+pub(crate) fn install_arena(arena: Option<Arena>) {
+	state().arena = arena;
+}
+
 /// A command library open for a run: by dyld, or by our loader.
 pub(crate) enum Opened {
 	Dyld(dl::Library),
@@ -307,4 +341,4 @@ fn open_url(_url: &str) {}
 
 #[cfg(test)]
 #[path = "tests.rs"]
-mod tests;
+pub(crate) mod tests;

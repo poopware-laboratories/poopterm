@@ -1,6 +1,7 @@
 //! When our loader may run code, StikDebug's link, and the `jit` command
 //! where JIT is not needed (here).
 use super::*;
+use crate::sys::jit::Arena;
 
 #[test]
 fn macos_and_the_simulator_always_run_unsigned_code() {
@@ -154,4 +155,37 @@ fn enabling_says_what_it_asks_before_it_asks_where_a_device_would() {
 	});
 	// Off a device nothing is asked, so nothing is said either.
 	assert_eq!((status, said.borrow().as_str()), (0, ""));
+}
+
+/// A region standing in for the one a debugger prepares, made executable
+/// here as the kernel lets a test do, installed as the app's arena:
+/// its start and length. `remove_test_region` takes it back.
+pub(crate) fn install_test_region(len: usize) -> (usize, usize) {
+	let region = crate::sys::jit::test_executable_region(len);
+	// SAFETY: a region made executable for this test alone and never freed.
+	let arena = unsafe { Arena::prepared(region, len) }.unwrap();
+	install_arena(Some(arena));
+	(region, len)
+}
+
+pub(crate) fn remove_test_region() {
+	install_arena(None);
+}
+
+#[test]
+fn a_dual_region_comes_from_a_prepared_arena_with_a_view_and_is_remembered() {
+	assert!(
+		dual_region(16384).is_none(),
+		"none without a prepared arena"
+	);
+	let (start, len) = install_test_region(4 * 16384);
+	let (run, view) = dual_region(2 * 16384 - 5).unwrap();
+	assert_eq!(run, start, "the first piece");
+	assert_ne!(view, run, "a view apart from where it runs");
+	assert!(owns_region(run) && !owns_region(run + 1) && !owns_region(view));
+	let (second, _) = dual_region(16384).unwrap();
+	assert_eq!(second, start + 2 * 16384, "whole pages, one after another");
+	assert!(dual_region(len).is_none(), "no room left");
+	remove_test_region();
+	assert!(dual_region(1).is_none());
 }

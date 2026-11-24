@@ -7,7 +7,7 @@
 //! another (xargs, find -exec) does so through `spawn`, which runs it the
 //! same way on the descriptors it is given.
 use std::{
-	ffi::{CStr, CString, c_char, c_int, c_uint, c_void},
+	ffi::{CStr, CString, c_char, c_int, c_uint, c_ulong, c_void},
 	os::fd::{AsRawFd, BorrowedFd},
 };
 
@@ -32,6 +32,31 @@ struct Tty {
 	tty_fds: c_uint,
 	/// Where the keyboard reads, for `/dev/tty`, or -1.
 	keyboard: c_int,
+	/// Executable memory for code a command makes (`jit::dual_region`).
+	jit_dual: Option<JitDual>,
+	jit_owns: Option<JitOwns>,
+}
+
+/// `jit_dual`'s type: a region and a writable view of it, or -1.
+type JitDual = extern "C" fn(c_ulong, *mut *mut c_void, *mut *mut c_void) -> c_int;
+/// `jit_owns`'s type: whether the pointer starts a region handed out.
+type JitOwns = extern "C" fn(*mut c_void) -> c_int;
+
+#[cfg(target_vendor = "apple")]
+extern "C" fn jit_dual(size: c_ulong, exec: *mut *mut c_void, mirror: *mut *mut c_void) -> c_int {
+	let Some((run, view)) = usize::try_from(size).ok().and_then(crate::jit::dual_region) else {
+		return -1;
+	};
+	// SAFETY: the shim passes room for one pointer, written once.
+	unsafe { exec.write(run as *mut c_void) };
+	// SAFETY: as above, for the second.
+	unsafe { mirror.write(view as *mut c_void) };
+	0
+}
+
+#[cfg(target_vendor = "apple")]
+extern "C" fn jit_owns(ptr: *mut c_void) -> c_int {
+	c_int::from(crate::jit::owns_region(ptr as usize))
 }
 
 /// The `spawn` member's type.
@@ -151,6 +176,14 @@ pub(crate) fn call_entry(
 		control: device.is_some().then_some(control as Control),
 		tty_fds: stdio.tty_fds(),
 		keyboard: stdio.keys.map_or(-1, |keys| keys.as_raw_fd()),
+		#[cfg(target_vendor = "apple")]
+		jit_dual: Some(jit_dual),
+		#[cfg(not(target_vendor = "apple"))]
+		jit_dual: None,
+		#[cfg(target_vendor = "apple")]
+		jit_owns: Some(jit_owns),
+		#[cfg(not(target_vendor = "apple"))]
+		jit_owns: None,
 	};
 	let argc = c_int::try_from(args.len()).ok()?;
 	// What `spawn` hands a command this one starts: read from here, since a
