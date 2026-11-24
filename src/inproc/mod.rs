@@ -112,12 +112,25 @@ pub(crate) fn command_path(exe_dir: Option<&Path>, home: &Path, chosen: Option<&
 		.join(":")
 }
 
-/// Starts the device's thread, its shell in `cwd`, with `home` for `~`, on
-/// a terminal of `cols`×`rows`.
+/// Where a new shell starts: `cwd` when it is inside `home`, else `home`
+/// (on iOS the app may write only there, and a tab asked to start in the
+/// sandbox's root would find nothing it can use).
+pub(crate) fn start_directory(cwd: PathBuf, home: &Path) -> PathBuf {
+	if cwd.starts_with(home) {
+		cwd
+	} else {
+		home.to_path_buf()
+	}
+}
+
+/// Starts the device's thread, its shell in `cwd` (or `home`, see
+/// `start_directory`), with `home` for `~` and `support` holding the
+/// packages, on a terminal of `cols`×`rows`.
 pub(crate) fn spawn(
 	id: u64,
 	cwd: PathBuf,
 	home: PathBuf,
+	support: PathBuf,
 	(cols, rows): (usize, usize),
 ) -> io::Result<Device> {
 	// ^C reaches a program as SIGINT on the shell's thread; none of the
@@ -131,11 +144,12 @@ pub(crate) fn spawn(
 	let chosen = std::env::var("POOPTERM_COMMANDS").ok();
 	let path = command_path(
 		exe.as_deref().and_then(Path::parent),
-		&home,
+		&support,
 		chosen.as_deref(),
 	);
-	let mut shell = Shell::new(home);
-	shell.cwd = cwd;
+	let mut shell = Shell::new(home.clone());
+	shell.cwd = start_directory(cwd, &home);
+	shell.support = support;
 	shell.env.insert("PATH".to_owned(), path);
 	let chosen_terminfo = std::env::var("TERMINFO").ok();
 	if let Some(dir) = terminfo_dir(

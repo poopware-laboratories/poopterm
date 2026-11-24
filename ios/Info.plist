@@ -42,6 +42,9 @@
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+  <!-- The Documents folder, the shell's home, shows in the Files app. -->
+  <key>UIFileSharingEnabled</key><true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key><true/>
   <!-- `jit enable` opens StikDebug, which gives the app JIT. -->
   <key>LSApplicationQueriesSchemes</key><array><string>stikdebug</string></array>
 	<key>NSAppTransportSecurity</key>

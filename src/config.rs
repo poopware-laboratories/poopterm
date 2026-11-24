@@ -292,6 +292,27 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
 	preferred_home(environment, sandbox, cfg!(target_os = "ios"))
 }
 
+/// The directory a shell calls `~`. On iOS that is the app's Documents
+/// folder, made when missing: the one place the Files app shows and the
+/// user's files live, and the sandbox lets the app write. Elsewhere it is
+/// the home directory.
+pub(crate) fn shell_home() -> Option<PathBuf> {
+	let home = home_dir()?;
+	let shell = shell_home_of(&home, cfg!(target_os = "ios"));
+	if shell != home {
+		let _ = std::fs::create_dir_all(&shell);
+	}
+	Some(shell)
+}
+
+pub(crate) fn shell_home_of(home: &Path, ios: bool) -> PathBuf {
+	if ios {
+		home.join("Documents")
+	} else {
+		home.to_path_buf()
+	}
+}
+
 pub(crate) fn preferred_home(
 	environment: Option<PathBuf>,
 	sandbox: Option<PathBuf>,
@@ -376,6 +397,23 @@ pub fn quote_config_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn the_shell_calls_documents_home_on_ios_and_the_home_elsewhere() {
+		let home = Path::new("/var/mobile/Containers/Data/Application/ABC");
+		assert_eq!(shell_home_of(home, true), home.join("Documents"));
+		assert_eq!(shell_home_of(home, false), home);
+		assert!(
+			!shell_home_of(home, true).starts_with(home.join("Library")),
+			"not where settings and packages are kept"
+		);
+	}
+
+	#[cfg(not(target_os = "ios"))]
+	#[test]
+	fn off_ios_the_shell_home_is_the_home_and_nothing_is_made() {
+		assert_eq!(shell_home(), home_dir());
+	}
 
 	#[test]
 	fn ios_prefers_foundations_container_home_over_environment_home() {

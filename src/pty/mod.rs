@@ -198,8 +198,9 @@ pub(crate) fn spawn_session(
 	let mut device_size = None;
 	let (master, reader, input, child) = if in_process() {
 		// No program may run: a built-in shell in this process stands in.
-		let home = crate::config::home_dir().unwrap_or_else(|| cwd.clone());
-		let device = crate::inproc::spawn(id, cwd.clone(), home, (cols, rows))?;
+		let support = crate::config::home_dir().unwrap_or_else(|| cwd.clone());
+		let home = crate::config::shell_home().unwrap_or_else(|| support.clone());
+		let device = crate::inproc::spawn(id, cwd.clone(), home, support, (cols, rows))?;
 		device_size = Some(device.size.clone());
 		let master = OwnedFd::from(device.output.try_clone()?);
 		let reader: Box<dyn std::io::Read + Send> = Box::new(device.output);

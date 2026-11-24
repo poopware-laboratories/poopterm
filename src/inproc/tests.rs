@@ -5,7 +5,7 @@ use super::{
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
-	terminfo_dir,
+	start_directory, terminfo_dir,
 };
 use std::{
 	fs,
@@ -643,4 +643,37 @@ fn the_terminfo_beside_the_app_is_used_unless_the_user_chose_one() {
 		"a file is no directory"
 	);
 	let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_shell_starts_where_asked_inside_home_and_in_home_otherwise() {
+	let home = PathBuf::from("/app/Documents");
+	assert_eq!(
+		start_directory(home.join("project"), &home),
+		home.join("project")
+	);
+	assert_eq!(start_directory(home.clone(), &home), home);
+	assert_eq!(
+		start_directory(PathBuf::from("/app"), &home),
+		home,
+		"the container's root"
+	);
+	assert_eq!(start_directory(PathBuf::from("/"), &home), home);
+	assert_eq!(
+		start_directory(PathBuf::from("/app/Documents-old"), &home),
+		home,
+		"a sibling sharing a prefix is outside"
+	);
+}
+
+#[test]
+fn packages_live_under_support_while_home_is_the_users() {
+	let (mut sh, home) = shell();
+	let support = home.join("support");
+	sh.support = support.clone();
+	assert_eq!(sh.home, home);
+	let shown = ran(&mut sh, "pkg list");
+	assert!(shown.contains("no package") || !shown.is_empty(), "{shown}");
+	let installed = crate::pkg::root(&support);
+	assert!(installed.starts_with(&support) && !installed.starts_with(sh.home.join("Library")));
 }

@@ -42,6 +42,10 @@ pub(crate) fn user_name(
 pub(crate) struct Shell {
 	pub cwd: PathBuf,
 	pub home: PathBuf,
+	/// Where the app keeps what the user does not see in their files:
+	/// installed packages and their source list. `home` unless set (on iOS
+	/// `home` is the Documents folder, which Files shows).
+	pub support: PathBuf,
 	pub env: BTreeMap<String, String>,
 	/// The exit status of the last command, for `$?`.
 	pub status: i32,
@@ -101,6 +105,7 @@ impl Shell {
 		}
 		Self {
 			cwd: home.clone(),
+			support: home.clone(),
 			home,
 			env,
 			status: 0,
@@ -363,7 +368,7 @@ impl Shell {
 				status
 			}
 			"pkg" => {
-				let root = crate::pkg::root(&self.home);
+				let root = crate::pkg::root(&self.support);
 				let source = self.env.get("POOPTERM_PKG_SOURCE").map(String::as_str);
 				let fetch = |url: &str| crate::pkg::fetch::fetch(url, crate::pkg::DOWNLOAD_LIMIT);
 				let (text, status) = crate::pkg::command::run(args, &root, source, &fetch);
