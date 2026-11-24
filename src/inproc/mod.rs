@@ -84,6 +84,18 @@ impl Size {
 	}
 }
 
+/// The terminal descriptions the app carries (`ios/terminfo.sh`), beside
+/// its binary: an iPhone has no `/usr/share/terminfo`, and `less` and the
+/// editors cannot start without a description of the terminal. `chosen`
+/// is `TERMINFO` when the user set it, which stays.
+pub(crate) fn terminfo_dir(exe_dir: Option<&Path>, chosen: Option<&str>) -> Option<PathBuf> {
+	if chosen.is_some_and(|dir| !dir.is_empty()) {
+		return None;
+	}
+	let dir = exe_dir?.join("terminfo");
+	dir.is_dir().then_some(dir)
+}
+
 /// Where the shell looks for programs: `POOPTERM_COMMANDS` when set, else
 /// the app's `Frameworks` directory, then packages installed under `home`.
 pub(crate) fn command_path(exe_dir: Option<&Path>, home: &Path, chosen: Option<&str>) -> String {
@@ -125,6 +137,15 @@ pub(crate) fn spawn(
 	let mut shell = Shell::new(home);
 	shell.cwd = cwd;
 	shell.env.insert("PATH".to_owned(), path);
+	let chosen_terminfo = std::env::var("TERMINFO").ok();
+	if let Some(dir) = terminfo_dir(
+		exe.as_deref().and_then(Path::parent),
+		chosen_terminfo.as_deref(),
+	) {
+		shell
+			.env
+			.insert("TERMINFO".to_owned(), dir.display().to_string());
+	}
 	let shared = size.clone();
 	thread::Builder::new()
 		.name(format!("inproc-shell-{id}"))

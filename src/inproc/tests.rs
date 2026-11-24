@@ -5,6 +5,7 @@ use super::{
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
+	terminfo_dir,
 };
 use std::{
 	fs,
@@ -614,4 +615,32 @@ fn jit_is_a_built_in_that_reports_where_code_can_run() {
 		ran(&mut sh, "help").contains(" jit "),
 		"listed as a built-in"
 	);
+}
+
+#[test]
+fn the_terminfo_beside_the_app_is_used_unless_the_user_chose_one() {
+	let dir = std::env::temp_dir().join(format!("poopterm-terminfo-{}", std::process::id()));
+	let _ = fs::remove_dir_all(&dir);
+	fs::create_dir_all(&dir).unwrap();
+	assert_eq!(terminfo_dir(Some(&dir), None), None, "none bundled");
+	fs::create_dir_all(dir.join("terminfo/78")).unwrap();
+	assert_eq!(terminfo_dir(Some(&dir), None), Some(dir.join("terminfo")));
+	assert_eq!(
+		terminfo_dir(Some(&dir), Some("")),
+		Some(dir.join("terminfo")),
+		"empty is unset"
+	);
+	assert_eq!(
+		terminfo_dir(Some(&dir), Some("/mine")),
+		None,
+		"the user's stays"
+	);
+	assert_eq!(terminfo_dir(None, None), None, "no executable directory");
+	fs::write(dir.join("terminfo2"), "a file").unwrap();
+	assert_eq!(
+		terminfo_dir(Some(&dir.join("terminfo2")), None),
+		None,
+		"a file is no directory"
+	);
+	let _ = fs::remove_dir_all(&dir);
 }

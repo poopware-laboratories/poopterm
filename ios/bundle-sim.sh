@@ -14,6 +14,7 @@ cargo build --target aarch64-apple-ios-sim
 app=target/ios-sim/Poopterm.app
 rm -rf "$app"
 mkdir -p "$app/Frameworks"
+"$here/terminfo.sh" "$app/terminfo" >/dev/null
 # The icon (assets/icon.icon), and the Info.plist keys that name it.
 mkdir -p target/ios-sim/icon
 xcrun actool assets/icon.icon --compile "$app" --platform iphonesimulator \

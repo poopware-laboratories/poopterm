@@ -25,6 +25,7 @@ cargo build --release --target aarch64-apple-ios
 
 rm -rf "$out/Payload" "$out/Poopterm.ipa" "$out/icon"
 mkdir -p "$app/Frameworks" "$app/licenses" "$out/icon"
+"$here/terminfo.sh" "$app/terminfo" >/dev/null
 cp target/aarch64-apple-ios/release/poopterm "$app/Poopterm"
 embed_command() {
 	command=$1
