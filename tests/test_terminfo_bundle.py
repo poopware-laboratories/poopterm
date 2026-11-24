@@ -29,7 +29,12 @@ class TerminfoBundleTest(unittest.TestCase):
             self.assertTrue((out / "78" / "xterm-256color").is_file())
             self.assertTrue((out / "76" / "vt100").is_file())
             self.assertTrue((out / "64" / "dumb").is_file())
-            self.assertIn("14 entries", result.stdout)
+            self.assertIn("28 files", result.stdout)
+            self.assertTrue((out / "x" / "xterm-256color").is_file(), "ncurses built from source")
+            self.assertEqual(
+                (out / "x" / "xterm-256color").read_bytes(),
+                (out / "78" / "xterm-256color").read_bytes(),
+            )
 
     @unittest.skipUnless(shutil.which("infocmp"), "needs infocmp")
     def test_the_copied_entry_reads_back_as_a_256_color_xterm(self):
@@ -49,7 +54,7 @@ class TerminfoBundleTest(unittest.TestCase):
             out = Path(tmp) / "terminfo"
             self.run_script(out)
             size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
-            self.assertLess(size, 64 * 1024)
+            self.assertLess(size, 128 * 1024)
 
     def test_replaces_what_was_there(self):
         with tempfile.TemporaryDirectory() as tmp:

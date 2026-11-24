@@ -29,6 +29,7 @@ jq|1.7.1|port|Query and reshape JSON
 lua|5.4.7|port|The Lua language
 sqlite3|3.47.2|port|SQLite databases from the command line
 tree|2.2.1|port|List directories as a tree
+nano|8.7|port|Full-screen text editor
 "
 
 wanted=${*:-}

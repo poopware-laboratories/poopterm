@@ -188,6 +188,7 @@ fn real_commands_alone() {
 	stty_reads_and_changes_the_devices_settings();
 	less_pages_a_file_and_a_pipe_reading_keys_from_dev_tty();
 	awk_and_diff_match_the_systems();
+	nano_edits_and_saves_a_file_on_the_device();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -239,6 +240,59 @@ fn real_commands_run_through_our_own_loader() {
 	let shown = device("loader-less", keys).unwrap();
 	assert!(shown.contains("1\r\n2\r\n3"), "less paged it: {shown:?}");
 	assert!(shown.contains("echo after\r\nafter\r\n"));
+}
+
+/// Where `ios/packages/build.sh macosx nano` puts the package.
+const NANO_DIR: &str = concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/target/ios-packages/work-macosx/nano/bin"
+);
+
+/// nano is full-screen: it needs raw mode, the live window size and keys
+/// as they come, all from the device, through our own ncurses.
+fn nano_edits_and_saves_a_file_on_the_device() {
+	// The descriptions the app carries (ios/terminfo.sh), as it points
+	// TERMINFO at them: the host's are laid out the way Apple's ncurses
+	// reads them, not ours.
+	let terminfo = scratch("terminfo").join("db");
+	let made = std::process::Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/ios/terminfo.sh"))
+		.arg(&terminfo)
+		.output()
+		.unwrap();
+	assert!(
+		made.status.success(),
+		"{}",
+		String::from_utf8_lossy(&made.stderr)
+	);
+	if !PathBuf::from(NANO_DIR).join("nano").is_file() {
+		eprintln!("skipped: run ios/packages/build.sh macosx nano");
+		return;
+	}
+	let keys: &[&[u8]] = &[
+		b"nano note.txt\r",
+		b"hello from nano",
+		b"\x0f", // ^O: write out
+		b"\r",   // keep the name
+		b"\x18", // ^X: exit
+		b"cat note.txt\r",
+		b"exit\r",
+	];
+	let Some(shown) = device_with("nano", Some(NANO_DIR), Some(&terminfo), keys) else {
+		return;
+	};
+	assert!(
+		shown.contains("GNU nano"),
+		"nano drew its title bar: {shown:?}"
+	);
+	assert!(
+		shown.contains("\x1b[?1049h") || shown.contains("\x1b["),
+		"it drew with escapes"
+	);
+	assert!(
+		shown.contains("cat note.txt\r\nhello from nano\r\n"),
+		"the file holds what was typed: {:?}",
+		&shown[shown.len().saturating_sub(300)..]
+	);
 }
 
 fn stty_reads_and_changes_the_devices_settings() {
@@ -317,13 +371,33 @@ fn awk_and_diff_match_the_systems() {
 /// The device loop on real commands: keys come from `keys`, a line at a
 /// time with a pause between, as a person types, and the screen is kept.
 fn device(name: &'static str, keys: &'static [&'static [u8]]) -> Option<String> {
-	let (shell, _) = real_shell(name)?;
+	device_with(name, None, None, keys)
+}
+
+/// `device`, with the programs of `extra` (a directory of command
+/// libraries) found first on `$PATH`, and `terminfo` as `$TERMINFO`.
+fn device_with(
+	name: &'static str,
+	extra: Option<&str>,
+	terminfo: Option<&std::path::Path>,
+	keys: &'static [&'static [u8]],
+) -> Option<String> {
+	let (mut shell, _) = real_shell(name)?;
+	if let Some(terminfo) = terminfo {
+		shell
+			.env
+			.insert("TERMINFO".into(), terminfo.display().to_string());
+	}
+	if let Some(extra) = extra {
+		let path = format!("{extra}:{}", shell.env["PATH"]);
+		shell.env.insert("PATH".into(), path);
+	}
 	let (input, mut typing) = io::pipe().unwrap();
 	let screen = crate::inproc::tests::Screen::default();
 	let shown = screen.clone();
 	let typist = thread::spawn(move || {
 		for chunk in keys {
-			thread::sleep(std::time::Duration::from_millis(150));
+			thread::sleep(std::time::Duration::from_millis(400));
 			if typing.write_all(chunk).is_err() {
 				return;
 			}

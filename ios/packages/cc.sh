@@ -37,9 +37,11 @@ case $output in
 	for source in $sources; do
 		# Sources of one name in two directories stay apart.
 		object="$objects/$(echo "$source" | tr / _).o"
+		# The port's own include directories come first: a library that is
+		# itself ncurses must find its term.h before the shim's stand-in.
 		xcrun -sdk "$sdk" clang -target "$target" -c -Os -w \
-			-include "$shim/poopterm_cmd.h" $ios -I "$shim/compat" -D_DARWIN_C_SOURCE \
-			$flags "$source" -o "$object"
+			-include "$shim/poopterm_cmd.h" $flags $ios -I "$shim/compat" -D_DARWIN_C_SOURCE \
+			"$source" -o "$object"
 	done
 	xcrun -sdk "$sdk" ar rcs "$output" "$objects"/*.o
 	exit 0
