@@ -33,7 +33,8 @@ impl App {
 
 	pub(super) fn handle_key(&mut self, event_loop: &ActiveEventLoop, event: KeyEvent) {
 		let typed = Typed {
-			key: event.logical_key,
+			// The on-screen keyboard's Return comes as a character.
+			key: crate::input::commit::soft_key(event.logical_key),
 			repeat: event.repeat,
 			numpad: event.location == KeyLocation::Numpad,
 		};

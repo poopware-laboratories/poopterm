@@ -25,7 +25,10 @@ python3 -I "$here/merge_plist.py" "$here/Info.plist" target/ios-sim/icon/partial
 # requires (src/ios_scene.rs), so it resizes as a modern app.
 cp target/aarch64-apple-ios-sim/debug/poopterm "$app/Poopterm"
 chmod +x "$app/Poopterm"
-for command in target/ios-commands/iphonesimulator/*; do
+# Packages built for the simulator (ios/packages/build.sh iphonesimulator)
+# go in too, as the IPA carries its own.
+for command in target/ios-commands/iphonesimulator/* target/ios-packages/work-iphonesimulator/*/bin/*; do
+	[ -f "$command" ] || continue
 	name=$(basename "$command")
 	framework="$app/Frameworks/$name.framework"
 	mkdir -p "$framework"
