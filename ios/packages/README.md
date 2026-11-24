@@ -37,6 +37,12 @@ are not signed, so on an iPhone or iPad they need JIT from
 to attach, and Poopterm loads the library with its own loader
 (`src/jit/`). The simulator and macOS run them without JIT.
 
+To use it on a phone: launch Poopterm from StikDebug's app list (it lists
+apps signed with `get-task-allow`), choose StikDebug's universal script for
+it, and run `jit enable`. Without that script the request ends the app.
+`jit loader on` sends every command, bundled ones included, through the
+loader, which is how to check it on a device.
+
 ## Porting a program
 
 1. **Get the source** into `target/ios-ports/<name>` (a release tarball or a

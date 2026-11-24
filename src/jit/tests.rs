@@ -114,3 +114,44 @@ fn the_messages_say_to_launch_from_stikdebug_and_choose_its_script() {
 	assert!(NEEDS_SCRIPT.contains("universal script"));
 	assert!(NEEDS_SCRIPT.contains("jit enable"));
 }
+
+#[test]
+fn the_loader_switch_sets_its_flag_and_checks_its_argument() {
+	use std::sync::atomic::{AtomicBool, Ordering};
+	let flag = AtomicBool::new(false);
+	let (text, status) = loader_switch(Some("on"), &flag);
+	assert_eq!(status, 0);
+	assert!(text.contains("own loader"), "{text}");
+	assert!(flag.load(Ordering::Relaxed));
+	let (text, status) = loader_switch(Some("off"), &flag);
+	assert_eq!(status, 0);
+	assert!(text.contains("dyld first"), "{text}");
+	assert!(!flag.load(Ordering::Relaxed));
+	for bad in [None, Some("maybe"), Some("")] {
+		assert_eq!(loader_switch(bad, &flag).1, 2, "{bad:?}");
+	}
+	assert!(
+		!flag.load(Ordering::Relaxed),
+		"a bad argument changes nothing"
+	);
+}
+
+#[test]
+fn the_jit_command_routes_loader_and_rejects_a_missing_choice() {
+	assert_eq!(command(&["loader".into()], &|| false).1, 2);
+	assert!(
+		command(&["bogus".into()], &|| false)
+			.0
+			.contains("jit loader on|off")
+	);
+}
+
+#[test]
+fn enabling_says_what_it_asks_before_it_asks_where_a_device_would() {
+	let said = std::cell::RefCell::new(String::new());
+	let (_, status) = command_with(&["enable".into()], &|| false, &|text| {
+		said.borrow_mut().push_str(text)
+	});
+	// Off a device nothing is asked, so nothing is said either.
+	assert_eq!((status, said.borrow().as_str()), (0, ""));
+}

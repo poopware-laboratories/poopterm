@@ -146,7 +146,18 @@ pub(crate) fn open(path: &Path, force: bool) -> Result<Opened, String> {
 /// The `jit` built-in: `jit` says where JIT stands, `jit enable [MB]` asks
 /// StikDebug for it and prepares a region of MB megabytes (64 by default)
 /// where iOS needs one. `stop` is polled while waiting: true ends the wait.
+#[cfg(test)]
 pub(crate) fn command(args: &[String], stop: &dyn Fn() -> bool) -> (String, i32) {
+	command_with(args, stop, &|_| {})
+}
+
+/// `command`, with `say` showing a line at once, before a step that may end
+/// the app (the request to StikDebug's script when none answers it).
+pub(crate) fn command_with(
+	args: &[String],
+	stop: &dyn Fn() -> bool,
+	say: &dyn Fn(&str),
+) -> (String, i32) {
 	match args.first().map(String::as_str) {
 		None | Some("status") => (status(&state()), 0),
 		Some("enable") => {
@@ -155,13 +166,33 @@ pub(crate) fn command(args: &[String], stop: &dyn Fn() -> bool) -> (String, i32)
 				Some(Ok(size)) if (16..=1024).contains(&size) => size,
 				Some(_) => return ("jit: the region is 16 to 1024 MB\n".to_owned(), 2),
 			};
-			enable(megabytes << 20, stop)
+			enable(megabytes << 20, stop, say)
+		}
+		Some("loader") => {
+			loader_switch(args.get(1).map(String::as_str), &crate::inproc::native::FORCE_LOADER)
 		}
 		Some(_) => (
-			"usage: jit [status]\n       jit enable [MB]   ask StikDebug for JIT\n".to_owned(),
+			"usage: jit [status]\n       jit enable [MB]   ask StikDebug for JIT\n       jit loader on|off   run every command through our own loader (to test it)\n".to_owned(),
 			2,
 		),
 	}
+}
+
+/// `jit loader on|off`: sets `flag`, which sends every command through our
+/// own loader instead of dyld, to try it with the commands bundled.
+fn loader_switch(choice: Option<&str>, flag: &std::sync::atomic::AtomicBool) -> (String, i32) {
+	let on = match choice {
+		Some("on") => true,
+		Some("off") => false,
+		_ => return ("usage: jit loader on|off\n".to_owned(), 2),
+	};
+	flag.store(on, std::sync::atomic::Ordering::Relaxed);
+	let text = if on {
+		"loader: every command runs through Poopterm's own loader\n"
+	} else {
+		"loader: dyld first\n"
+	};
+	(text.to_owned(), 0)
 }
 
 /// Where JIT stands, for `jit status`.
@@ -187,7 +218,7 @@ fn status(state: &State) -> String {
 }
 
 /// `jit enable`.
-fn enable(region: usize, stop: &dyn Fn() -> bool) -> (String, i32) {
+fn enable(region: usize, stop: &dyn Fn() -> bool, say: &dyn Fn(&str)) -> (String, i32) {
 	if !DEVICE {
 		return (
 			"jit: not needed here; this system runs unsigned code\n".to_owned(),
@@ -219,6 +250,10 @@ fn enable(region: usize, stop: &dyn Fn() -> bool) -> (String, i32) {
 		state().arena = Some(Arena::plain(4 << 30));
 		return ("JIT: on\n".to_owned(), 0);
 	}
+	say(&format!(
+		"asking StikDebug's script for {} MB; if the app ends here, choose its universal script for Poopterm\n",
+		region >> 20
+	));
 	match prepare(region) {
 		Ok(arena) => {
 			state().arena = Some(arena);

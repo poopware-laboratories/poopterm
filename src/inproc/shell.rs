@@ -352,7 +352,13 @@ impl Shell {
 						.as_ref()
 						.is_some_and(|terminal| terminal.interrupted())
 				};
-				let (text, status) = jit(args, &stop);
+				let screen = self.terminal.clone();
+				let say = move |text: &str| {
+					if let Some(terminal) = &screen {
+						let _ = terminal.write(text.as_bytes());
+					}
+				};
+				let (text, status) = jit(args, &stop, &say);
 				out.extend(text.into_bytes());
 				status
 			}
@@ -426,12 +432,12 @@ pub(crate) enum Word {
 /// after the last), split outside quotes, not yet expanded. `None` for an
 /// `jit`: where code iOS did not sign can run.
 #[cfg(target_vendor = "apple")]
-fn jit(args: &[String], stop: &dyn Fn() -> bool) -> (String, i32) {
-	crate::jit::command(args, stop)
+fn jit(args: &[String], stop: &dyn Fn() -> bool, say: &dyn Fn(&str)) -> (String, i32) {
+	crate::jit::command_with(args, stop, say)
 }
 
 #[cfg(not(target_vendor = "apple"))]
-fn jit(_args: &[String], _stop: &dyn Fn() -> bool) -> (String, i32) {
+fn jit(_args: &[String], _stop: &dyn Fn() -> bool, _say: &dyn Fn(&str)) -> (String, i32) {
 	(
 		"jit: not needed here; this system runs any program\n".to_owned(),
 		0,
