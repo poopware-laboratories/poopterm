@@ -92,6 +92,56 @@ int poopterm_isatty(int fd) {
 	return isatty(fd);
 }
 
+#undef fopen
+FILE *poopterm_fopen(const char *path, const char *mode) {
+	if (path == NULL || strcmp(path, "/dev/tty") != 0) {
+		return fopen(path, mode);
+	}
+	/* The terminal: its keyboard to read, its screen to write. */
+	int fd = mode[0] == 'r' && mode[1] != '+' ? poopterm_open(path, O_RDONLY) : dup(2);
+	if (fd < 0) {
+		return NULL;
+	}
+	FILE *stream = fdopen(fd, mode);
+	if (stream == NULL) {
+		close(fd);
+	}
+	return stream;
+}
+
+#undef getpass
+char *poopterm_getpass(const char *prompt) {
+	static char line[256];
+	int keyboard = poopterm_open("/dev/tty", O_RDONLY);
+	int fd = keyboard >= 0 ? keyboard : 0;
+	struct termios saved, quiet;
+	int changed = poopterm_tcgetattr(fd, &saved) == 0;
+	if (changed) {
+		quiet = saved;
+		quiet.c_lflag &= ~(tcflag_t)ECHO;
+		poopterm_tcsetattr(fd, TCSANOW, &quiet);
+	}
+	if (prompt != NULL) {
+		(void)!write(2, prompt, strlen(prompt));
+	}
+	size_t length = 0;
+	char c;
+	while (read(fd, &c, 1) == 1 && c != '\n' && c != '\r') {
+		if (length < sizeof line - 1) {
+			line[length++] = c;
+		}
+	}
+	line[length] = '\0';
+	if (changed) {
+		poopterm_tcsetattr(fd, TCSANOW, &saved);
+	}
+	(void)!write(2, "\n", 1);
+	if (keyboard >= 0) {
+		close(keyboard);
+	}
+	return line;
+}
+
 #undef open
 int poopterm_open(const char *path, int flags, ...) {
 	va_list args;

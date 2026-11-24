@@ -189,6 +189,7 @@ fn real_commands_alone() {
 	less_pages_a_file_and_a_pipe_reading_keys_from_dev_tty();
 	awk_and_diff_match_the_systems();
 	nano_edits_and_saves_a_file_on_the_device();
+	ssh_runs_a_command_and_a_session_on_a_server();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
@@ -295,6 +296,140 @@ fn nano_edits_and_saves_a_file_on_the_device() {
 	);
 }
 
+/// Where `ios/packages/build.sh macosx dropbear` puts ssh and dropbearkey.
+const DROPBEAR_DIR: &str = concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/target/ios-ports/dropbear-out-macosx/bin"
+);
+
+/// The system's own sshd, started for one user on a spare port: what our
+/// ssh talks to. It ends with the test.
+struct Server {
+	child: std::process::Child,
+	port: u16,
+}
+
+impl Drop for Server {
+	fn drop(&mut self) {
+		let _ = self.child.kill();
+		let _ = self.child.wait();
+	}
+}
+
+fn start_sshd(dir: &std::path::Path, authorized: &std::path::Path) -> Option<Server> {
+	if !PathBuf::from("/usr/sbin/sshd").is_file() {
+		return None;
+	}
+	let hostkey = dir.join("hostkey");
+	let made = std::process::Command::new("ssh-keygen")
+		.args(["-q", "-t", "ed25519", "-N", "", "-f"])
+		.arg(&hostkey)
+		.status()
+		.ok()?;
+	if !made.success() {
+		return None;
+	}
+	let port = std::net::TcpListener::bind("127.0.0.1:0")
+		.ok()?
+		.local_addr()
+		.ok()?
+		.port();
+	let config = dir.join("sshd_config");
+	fs::write(
+		&config,
+		format!(
+			"Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nAuthorizedKeysFile {}\n\
+			 PubkeyAuthentication yes\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n\
+			 UsePAM no\nStrictModes no\nPidFile {}\n",
+			hostkey.display(),
+			authorized.display(),
+			dir.join("sshd.pid").display()
+		),
+	)
+	.ok()?;
+	let child = std::process::Command::new("/usr/sbin/sshd")
+		.args(["-D", "-f"])
+		.arg(&config)
+		.stdout(std::process::Stdio::null())
+		.stderr(std::process::Stdio::null())
+		.spawn()
+		.ok()?;
+	let server = Server { child, port };
+	for _ in 0..50 {
+		if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+			return Some(server);
+		}
+		thread::sleep(std::time::Duration::from_millis(100));
+	}
+	None
+}
+
+/// ssh, from Dropbear: a key made by our dropbearkey logs in to a real
+/// server, runs a command, and carries an interactive session, where the
+/// device's raw mode and the keys reach the far shell.
+fn ssh_runs_a_command_and_a_session_on_a_server() {
+	if !PathBuf::from(DROPBEAR_DIR).join("ssh").is_file() {
+		eprintln!("skipped: run ios/packages/build.sh macosx dropbear");
+		return;
+	}
+	let Some((mut sh, home)) = real_shell("ssh") else {
+		return;
+	};
+	let path = format!("{DROPBEAR_DIR}:{}", sh.env["PATH"]);
+	sh.env.insert("PATH".into(), path);
+	fs::create_dir_all(home.join(".ssh")).unwrap();
+	let made = ran(&mut sh, "dropbearkey -t ed25519 -f id");
+	assert!(made.contains("Public key portion"), "{made}");
+	let public = ran(&mut sh, "dropbearkey -y -f id | grep ssh-ed25519");
+	assert!(public.starts_with("ssh-ed25519 "), "{public:?}");
+	let authorized = home.join("authorized_keys");
+	fs::write(&authorized, public).unwrap();
+	let Some(server) = start_sshd(&home, &authorized) else {
+		eprintln!("skipped: no sshd to talk to");
+		return;
+	};
+	let user = sh.env.get("USER").cloned().unwrap_or_else(|| "root".into());
+	let port = server.port;
+	let target = format!("-y -i id -p {port} {user}@127.0.0.1");
+	let once: &'static [u8] = Box::leak(
+		format!("ssh {target} echo hello-from-ssh\r")
+			.into_bytes()
+			.into_boxed_slice(),
+	);
+	let keys: &'static [&'static [u8]] =
+		Box::leak(vec![once, b"exit\r" as &'static [u8]].into_boxed_slice());
+	let output = device_in(sh.clone(), Some(DROPBEAR_DIR), None, keys);
+	assert!(output.contains("hello-from-ssh\r\n"), "{output:?}");
+	// An interactive session on a terminal there (-t): what is typed goes
+	// through the device's raw mode, the network and the far terminal's
+	// echo, and cat sends it back; ^D ends it and the local prompt returns.
+	let login: &'static [u8] = Box::leak(
+		format!("ssh -t {target} cat\r")
+			.into_bytes()
+			.into_boxed_slice(),
+	);
+	let session: &'static [&'static [u8]] = Box::leak(
+		vec![
+			login,
+			b"typed-over-ssh\r" as &'static [u8],
+			b"\x04",
+			b"echo back-home\r",
+			b"exit\r",
+		]
+		.into_boxed_slice(),
+	);
+	let shown = device_in(sh, Some(DROPBEAR_DIR), None, session);
+	drop(server);
+	assert!(
+		shown.matches("typed-over-ssh").count() >= 2,
+		"echoed there, then sent back by cat: {shown:?}"
+	);
+	assert!(
+		shown.contains("echo back-home\r\nback-home\r\n"),
+		"the local shell has the keys again: {shown:?}"
+	);
+}
+
 fn stty_reads_and_changes_the_devices_settings() {
 	let keys: &[&[u8]] = &[
 		b"stty size\r",
@@ -382,7 +517,20 @@ fn device_with(
 	terminfo: Option<&std::path::Path>,
 	keys: &'static [&'static [u8]],
 ) -> Option<String> {
-	let (mut shell, _) = real_shell(name)?;
+	let (shell, _) = real_shell(name)?;
+	Some(device_in(shell, extra, terminfo, keys))
+}
+
+/// `device_with` for a shell already prepared (a home with keys in it).
+/// A program that does not end would hang the test run, and one that
+/// never stops printing would fill memory: the screen keeps a bounded
+/// amount, and a watchdog gives up loudly after a minute.
+fn device_in(
+	mut shell: Shell,
+	extra: Option<&str>,
+	terminfo: Option<&std::path::Path>,
+	keys: &'static [&'static [u8]],
+) -> String {
 	if let Some(terminfo) = terminfo {
 		shell
 			.env
@@ -404,14 +552,29 @@ fn device_with(
 		}
 	});
 	crate::sys::signal::quiet_job_signals();
+	let (done, finished) = std::sync::mpsc::channel::<()>();
+	let on_screen = shown.clone();
+	let watchdog = thread::spawn(move || {
+		if finished
+			.recv_timeout(std::time::Duration::from_secs(60))
+			.is_err()
+		{
+			// stderr belongs to the program running: leave a note in a file.
+			let note = std::env::temp_dir().join("poopterm-device-test-timeout.txt");
+			let _ = fs::write(note, on_screen.shown());
+			std::process::abort();
+		}
+	});
 	crate::inproc::run(
 		shell,
 		Arc::new(crate::inproc::Size::new(80, 24)),
 		input,
 		screen,
 	);
+	let _ = done.send(());
+	watchdog.join().unwrap();
 	typist.join().unwrap();
-	Some(shown.shown())
+	shown.shown()
 }
 
 fn programs_read_typed_lines_and_print_as_they_run() {

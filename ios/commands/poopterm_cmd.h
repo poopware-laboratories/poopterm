@@ -70,6 +70,8 @@ int poopterm_isatty(int fd);
 int poopterm_ioctl(int fd, unsigned long request, ...);
 int poopterm_fclose(FILE *stream);
 int poopterm_open(const char *path, int flags, ...);
+FILE *poopterm_fopen(const char *path, const char *mode);
+char *poopterm_getpass(const char *prompt);
 int poopterm_tcgetattr(int fd, struct termios *settings);
 int poopterm_tcsetattr(int fd, int when, const struct termios *settings);
 void (*poopterm_signal(int sig, void (*handler)(int)))(int);
@@ -99,7 +101,11 @@ void poopterm_errx(int status, const char *format, ...) __attribute__((noreturn)
  * keyboard. Not for all, since `open` is also a common member name. */
 #ifdef POOPTERM_DEV_TTY
 #define open(...) poopterm_open(__VA_ARGS__)
+#define fopen(path, mode) poopterm_fopen(path, mode)
 #endif
+/* libc's getpass opens /dev/tty itself: this one asks on the terminal
+ * device, with echo off, and reads from its keyboard. */
+#define getpass(prompt) poopterm_getpass(prompt)
 /* The terminal's settings are the device's, not a kernel's. */
 #define tcgetattr(fd, settings) poopterm_tcgetattr(fd, settings)
 #define tcsetattr(fd, when, settings) poopterm_tcsetattr(fd, when, settings)

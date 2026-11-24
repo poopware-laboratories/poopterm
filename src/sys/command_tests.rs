@@ -92,7 +92,7 @@ fn each_in_a_process_of_their_own() {
 		.unwrap();
 	let shown = String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
 	assert!(output.status.success(), "{shown}");
-	assert!(shown.contains("31 passed"), "{shown}");
+	assert!(shown.contains("34 passed"), "{shown}");
 }
 
 const PROGRAM: &str = r#"
@@ -207,6 +207,25 @@ int main(int argc, char **argv) {
 		while ((c = getchar()) != EOF) putchar(c);
 		return 0;
 	}
+	if (!strcmp(mode, "getpass")) {
+		char *secret = getpass("pw: ");
+		struct termios after;
+		tcgetattr(0, &after);
+		printf("[%s][echo %d]", secret, !!(after.c_lflag & ECHO));
+		return 0;
+	}
+	if (!strcmp(mode, "devtty")) {
+		FILE *keys = fopen("/dev/tty", "r");
+		char line[64] = "";
+		if (keys == NULL) { printf("[no keyboard: %s]", strerror(errno)); return 1; }
+		fgets(line, sizeof line, keys);
+		fclose(keys);
+		FILE *screen = fopen("/dev/tty", "w");
+		if (screen != NULL) { fprintf(screen, "(to the screen)"); fclose(screen); }
+		line[strcspn(line, "\n")] = 0;
+		printf("[%s]", line);
+		return 0;
+	}
 	if (!strcmp(mode, "block")) {
 		/* As pax does: blocks signals and ends without unblocking them. */
 		sigset_t all;
@@ -277,7 +296,7 @@ fn library_path() -> &'static PathBuf {
 		let shim = concat!(env!("CARGO_MANIFEST_DIR"), "/ios/commands");
 		let out = dir.join("program");
 		let status = Command::new("cc")
-			.args(["-dynamiclib", "-w", "-include"])
+			.args(["-dynamiclib", "-w", "-DPOOPTERM_DEV_TTY", "-include"])
 			.arg(format!("{shim}/poopterm_cmd.h"))
 			.arg("-o")
 			.arg(&out)
@@ -483,7 +502,7 @@ fn a_library_without_an_entry_is_refused() {
 }
 
 /// A terminal for tests: keeps the settings it is given.
-struct Keeper(Mutex<libc::termios>);
+struct Keeper(Mutex<libc::termios>, Mutex<Vec<bool>>);
 
 impl Device for Keeper {
 	fn settings(&self) -> libc::termios {
@@ -491,6 +510,12 @@ impl Device for Keeper {
 	}
 	fn set_settings(&self, settings: &libc::termios, _flush: bool) {
 		*self.0.lock().unwrap() = *settings;
+		// Whether echo was on each time the settings were set.
+		self
+			.1
+			.lock()
+			.unwrap()
+			.push(settings.c_lflag & libc::ECHO != 0);
 	}
 	fn size(&self) -> (u16, u16) {
 		(100, 30)
@@ -517,7 +542,7 @@ fn run_on(args: &[&str], device: &dyn Device, keys: &[u8]) -> (i32, String) {
 		tty: Some((80, 24)),
 		device: Some(device),
 		keyboard: true,
-		keys: None,
+		keys: Some(input.as_fd()),
 	};
 	let status = call(&library, &strings(&argv), &[], &stdio).unwrap();
 	drop(out_writer);
@@ -528,8 +553,37 @@ fn run_on(args: &[&str], device: &dyn Device, keys: &[u8]) -> (i32, String) {
 
 #[test]
 #[ignore = "run by each_in_a_process_of_their_own"]
+fn getpass_asks_on_the_device_with_echo_off_and_puts_it_back() {
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()), Mutex::default());
+	let (status, out) = run_on(&["getpass"], &keeper, b"hunter2\n");
+	assert_eq!((status, out.as_str()), (0, "pw: \n[hunter2][echo 1]"));
+	assert_eq!(
+		*keeper.1.lock().unwrap(),
+		[false, true],
+		"off for the typing, on after"
+	);
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn dev_tty_is_the_devices_keyboard_to_read_and_its_screen_to_write() {
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()), Mutex::default());
+	let (_, out) = run_on(&["devtty"], &keeper, b"typed line\n");
+	assert_eq!(out, "(to the screen)[typed line]");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
+fn dev_tty_fails_where_there_is_no_terminal() {
+	let (status, out, _) = run_with(&["devtty"], &[], b"", None);
+	assert_eq!(status, 1);
+	assert!(out.starts_with("[no keyboard: "), "{out}");
+}
+
+#[test]
+#[ignore = "run by each_in_a_process_of_their_own"]
 fn each_standard_descriptor_says_whether_it_is_the_terminal() {
-	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()));
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()), Mutex::default());
 	assert_eq!(run_on(&["isatty"], &keeper, b"").1, "111");
 	assert_eq!(
 		run_with(&["isatty"], &[], b"", Some((80, 24))).1,
@@ -542,7 +596,7 @@ fn each_standard_descriptor_says_whether_it_is_the_terminal() {
 #[test]
 #[ignore = "run by each_in_a_process_of_their_own"]
 fn a_program_reads_and_sets_the_devices_settings_and_live_size() {
-	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()));
+	let keeper = Keeper(Mutex::new(crate::sys::termios::fresh()), Mutex::default());
 	let (status, out) = run_on(&["raw"], &keeper, b"q");
 	assert_eq!((status, out.as_str()), (0, "[1][0][0][100x30][1:113]"));
 	let left = keeper.settings();
