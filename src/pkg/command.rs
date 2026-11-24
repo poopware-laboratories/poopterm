@@ -23,7 +23,7 @@ usage: pkg <command> [name...]
   source [URL]     show or set where packages come from
 
 Bundled commands work without JIT. On an iPhone or iPad, downloaded packages
-need JIT: install StikDebug, then run `jit enable` after each launch.
+need JIT: launch Poopterm from StikDebug's app list, then run `jit enable`.
 ";
 
 const NO_SOURCE: &str = "pkg: no package source; set one with pkg source URL\n";

@@ -28,10 +28,8 @@ pub(crate) enum Strategy {
 	Unavailable(&'static str),
 }
 
-pub(crate) const NEEDS_JIT: &str =
-	"unsigned code needs JIT: install StikDebug, then run `jit enable`";
-pub(crate) const NEEDS_SCRIPT: &str =
-	"JIT on iOS 26 and later needs StikDebug's universal script: run `jit enable`";
+pub(crate) const NEEDS_JIT: &str = "unsigned code needs JIT: launch Poopterm from StikDebug's app list (it lists apps signed with get-task-allow)";
+pub(crate) const NEEDS_SCRIPT: &str = "JIT is on, but iOS 26 and later also need a region StikDebug's universal script prepares: choose that script for Poopterm in StikDebug, relaunch from there, then run `jit enable`";
 
 /// The strategy for a device (`ios`: a real iPhone or iPad, not the
 /// simulator) on system version `major`, with a debugger attached or not
@@ -72,9 +70,6 @@ struct State {
 	arena: Option<Arena>,
 	/// Libraries loaded, by path, with the file's time and size then.
 	loaded: HashMap<PathBuf, (Option<SystemTime>, u64, Arc<loader::Loaded>)>,
-	/// The app asked StikDebug for the script, so its breakpoints are
-	/// answered.
-	asked_for_script: bool,
 }
 
 fn state() -> MutexGuard<'static, State> {
@@ -208,12 +203,12 @@ fn enable(region: usize, stop: &dyn Fn() -> bool) -> (String, i32) {
 			return ("jit: the app has no bundle identifier\n".to_owned(), 1);
 		};
 		open_url(&stikdebug_url(&bundle, std::process::id(), txm));
-		state().asked_for_script = txm;
 		let start = Instant::now();
 		while !crate::sys::jit::debugged() {
 			if stop() || start.elapsed() > Duration::from_secs(120) {
 				return (
-					"jit: StikDebug did not attach; is it installed and paired?\n".to_owned(),
+					"jit: StikDebug did not attach; launch Poopterm from StikDebug's app list instead\n"
+						.to_owned(),
 					1,
 				);
 			}
@@ -223,16 +218,6 @@ fn enable(region: usize, stop: &dyn Fn() -> bool) -> (String, i32) {
 	if !txm {
 		state().arena = Some(Arena::plain(4 << 30));
 		return ("JIT: on\n".to_owned(), 0);
-	}
-	if !state().asked_for_script {
-		// Attached without our request, maybe without the script: a
-		// breakpoint it does not answer would end the app.
-		return (
-			format!(
-				"jit: a debugger is attached, but not through `jit enable`; {NEEDS_SCRIPT} after restarting Poopterm\n"
-			),
-			1,
-		);
 	}
 	match prepare(region) {
 		Ok(arena) => {
@@ -249,8 +234,9 @@ fn enable(region: usize, stop: &dyn Fn() -> bool) -> (String, i32) {
 /// Asks the attached debugger's script for the region, then lets it go.
 #[cfg(all(target_os = "ios", target_arch = "aarch64"))]
 fn prepare(region: usize) -> Result<Arena, String> {
-	// SAFETY: StikDebug attached at our request with its universal script
-	// (`asked_for_script`), which answers both breakpoints.
+	// SAFETY: the user ran `jit enable` with StikDebug attached (launched
+	// from its menu, or through our link) and its universal script chosen
+	// for this app, which answers both breakpoints.
 	let start = unsafe { crate::sys::jit::prepare_region(region) };
 	// SAFETY: as above.
 	unsafe { crate::sys::jit::detach_debugger() };

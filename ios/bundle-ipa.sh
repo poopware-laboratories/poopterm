@@ -77,6 +77,6 @@ python3 -I "$here/merge_plist.py" "$here/Info.plist" "$out/icon/partial.plist" "
 for framework in "$app"/Frameworks/*.framework; do
 	codesign --force --sign - "$framework" 2>/dev/null
 done
-codesign --force --sign - "$app" 2>/dev/null
+codesign --force --sign - --entitlements "$here/Poopterm.entitlements" "$app" 2>/dev/null
 (cd "$out" && COPYFILE_DISABLE=1 zip -qr -X Poopterm.ipa Payload)
 echo "built $out/Poopterm.ipa: $(find "$app/Frameworks" -name '*.framework' -type d | wc -l | tr -d ' ') command frameworks, $(du -h "$out/Poopterm.ipa" | cut -f1)"

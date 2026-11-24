@@ -107,3 +107,10 @@ fn open_uses_dyld_first_and_our_loader_when_forced() {
 	let missing = path.with_file_name("nothing.dylib");
 	assert!(open(&missing, false).is_err());
 }
+
+#[test]
+fn the_messages_say_to_launch_from_stikdebug_and_choose_its_script() {
+	assert!(NEEDS_JIT.contains("launch Poopterm from StikDebug"));
+	assert!(NEEDS_SCRIPT.contains("universal script"));
+	assert!(NEEDS_SCRIPT.contains("jit enable"));
+}
