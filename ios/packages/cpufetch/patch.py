@@ -1,6 +1,6 @@
 """Teaches cpufetch (in a copy of its sources) the Apple chips its tables
 do not know: instead of refusing to run, it shows the chip by the name
-apple_chip.m finds, with the core counts sysctl gives and what it cannot
+apple_chip.c finds, with the core counts sysctl gives and what it cannot
 know left unknown. Each replaced text must be found exactly once.
 
     python3 -I patch.py <copy of cpufetch/src>
@@ -65,7 +65,7 @@ struct uarch* poop_unknown_uarch(struct cpuInfo* cpu) {
   return arch;
 }
 """)
-# Its SoC: Apple's, by the name apple_chip.m finds.
+# Its SoC: Apple's, by the name apple_chip.c finds.
 replace("arm/soc.c", """  else {
     printBugCheckRelease("Found invalid cpu_family: 0x%.8X", cpu_family);
     soc->soc_vendor = SOC_VENDOR_UNKNOWN;

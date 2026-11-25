@@ -325,8 +325,10 @@ impl Shell {
 			}
 			"help" => {
 				let list = COMMANDS.join(" ");
-				let text =
-					format!("Built-in commands: {list}\nEvery other command is a program on $PATH.\n");
+				let text = format!(
+					"Built-in commands: {list}\nEvery other command is a program on $PATH.\n{}",
+					super::MORE_PROGRAMS
+				);
 				out.extend(text.into_bytes());
 				0
 			}
@@ -427,6 +429,10 @@ impl Shell {
 			ran
 				.output
 				.extend(format!("poopsh: {name}: command not found\n").into_bytes());
+			if crate::pkg::command::installable(&crate::pkg::root(&self.support), name) {
+				let hint = format!("poopsh: `pkg install {name}` adds it\n");
+				ran.output.extend(hint.into_bytes());
+			}
 			return 127;
 		};
 		let run = native::Run {

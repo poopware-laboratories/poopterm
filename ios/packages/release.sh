@@ -29,6 +29,8 @@ mkdir -p "$out"
 echo "# Poopterm packages for $platform" >"$out/$platform-index"
 grep -v '^#' "$built/index" | while read -r name version hash size archive summary; do
 	[ -n "$name" ] || continue
+	# The base packages ship with the app; the release holds the others.
+	grep -qx "$name" "$built/downloads" || continue
 	cp "$built/$archive" "$out/$platform-$archive"
 	echo "$name $version $hash $size $platform-$archive $summary" >>"$out/$platform-index"
 done

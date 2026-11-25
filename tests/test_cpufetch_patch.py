@@ -79,7 +79,7 @@ class CpufetchPatchTest(unittest.TestCase):
             self.assertIn("soc->soc_vendor = SOC_VENDOR_APPLE;", soc)
             self.assertIn("soc->raw_name = poop_apple_chip_name();", soc)
             self.assertNotIn("SOC_VENDOR_UNKNOWN", soc)
-            chip = (ROOT / "ios" / "packages" / "cpufetch" / "apple_chip.m").read_text()
+            chip = (ROOT / "ios" / "packages" / "cpufetch" / "apple_chip.c").read_text()
             self.assertIn("char *poop_apple_chip_name(void)", chip)
 
     def test_the_uarch_is_unknown_but_apples(self):

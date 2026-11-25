@@ -208,6 +208,7 @@ fn real_commands_alone() {
 	toys::ncdu_browses_and_quits();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
+	toys::downloads_run_through_our_own_loader();
 }
 
 /// The commands as a device without dyld's blessing runs them: loaded by

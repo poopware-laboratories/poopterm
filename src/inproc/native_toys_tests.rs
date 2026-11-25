@@ -306,3 +306,15 @@ pub(super) fn ncdu_browses_and_quits() {
 	);
 	assert!(shown.contains("after ncdu\r\n"), "q quit it");
 }
+
+/// What a phone runs them with: not in the IPA, so not signed with it,
+/// they are loaded by our own loader (`jit::loader`) once JIT is on.
+pub(super) fn downloads_run_through_our_own_loader() {
+	crate::inproc::native::FORCE_LOADER.store(true, std::sync::atomic::Ordering::Relaxed);
+	figlet_draws_with_the_fonts_beside_it();
+	lolcat_colours_only_when_asked_or_on_a_terminal();
+	cpufetch_names_a_chip_its_tables_do_not_know();
+	nyancat_draws_the_frames_it_is_asked_for();
+	ncdu_exports_the_sizes_of_a_folder();
+	cmatrix_rains_until_q();
+}

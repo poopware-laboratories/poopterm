@@ -31,6 +31,13 @@ use std::{
 use line::{Discipline, Event};
 use shell::Shell;
 
+/// How to get the programs the app does not carry, shown when a shell
+/// starts and by `help`.
+pub(crate) const MORE_PROGRAMS: &str = "\
+More programs: `pkg list` shows them and `pkg install NAME` adds one.
+On an iPhone or iPad they need JIT: open Poopterm from StikDebug, then `jit enable`.
+";
+
 /// The two ends a session uses: where it writes input, and where it reads
 /// output, and the window size programs are told. The shell runs until
 /// `exit`, or until the input end is closed.
@@ -255,7 +262,8 @@ pub(crate) fn run(
 		.spawn(move || read_keys(input, &reader, &keys));
 	let mut discipline = Discipline::default();
 	let show = |bytes: &[u8]| terminal.write_raw(&line::output(bytes)).is_ok();
-	let welcome = "Poopterm in-process shell. Type `help` for its built-in commands.\n";
+	let welcome =
+		format!("Poopterm in-process shell. Type `help` for its built-in commands.\n{MORE_PROGRAMS}");
 	if !show(welcome.as_bytes()) || !show(shell.prompt().as_bytes()) {
 		return;
 	}

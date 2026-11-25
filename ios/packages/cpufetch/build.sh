@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds cpufetch (https://github.com/Dr-Noob/cpufetch, GPL-2.0) as a
 # Poopterm command library: its ARM sources, which read an Apple chip
-# through sysctl, taught by patch.py and apple_chip.m the chips its tables
+# through sysctl, taught by patch.py and apple_chip.c the chips its tables
 # do not know (every iPhone and iPad, and Macs after the M3).
 #
 #   ios/packages/cpufetch/build.sh <iphonesimulator|iphoneos|macosx> <output>
@@ -22,8 +22,8 @@ arm="midr uarch soc udev sve"
 files=$(for f in $common; do echo "$source/common/$f.c"; done; for f in $arm; do echo "$source/arm/$f.c"; done)
 # shellcheck disable=SC2086
 "$here/../cc.sh" "$1" "$2" -DARCH_ARM -std=c99 -Wno-unused-parameter \
-	-DGIT_FULL_VERSION='"v1.06"' -fobjc-arc $files "$here/apple_chip.m" \
-	-framework Metal -framework Foundation
+	-DGIT_FULL_VERSION='"v1.06"' $files "$here/apple_chip.c" \
+	-framework Metal -lobjc
 license="$(dirname "$2")/../share/doc/cpufetch"
 mkdir -p "$license"
 cp "$original/../LICENSE" "$license/LICENSE"

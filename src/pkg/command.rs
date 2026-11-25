@@ -85,6 +85,15 @@ pub(crate) fn run(
 	(pkg.out, status)
 }
 
+/// Whether the list of packages fetched last under `root` has one named
+/// `name`, for the shell to suggest when a command is not found.
+pub(crate) fn installable(root: &Path, name: &str) -> bool {
+	fs::read_to_string(root.join("index"))
+		.ok()
+		.and_then(|text| parse(&text).ok())
+		.is_some_and(|packages| packages.iter().any(|package| package.name == name))
+}
+
 fn usage(out: &mut String) -> i32 {
 	out.push_str(USAGE);
 	2

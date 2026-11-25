@@ -59,6 +59,8 @@ for license in awk:awk/src/LICENSE less:less/less/LICENSE diffutils:gnudiff/diff
 	cp "$ports/${license#*:}" "$app/licenses/${license%%:*}/"
 done
 for package in target/ios-packages/work-iphoneos/*/; do
+	# Only the base packages: the others come from `pkg install`.
+	grep -qx "$(basename "$package")" target/ios-packages/iphoneos/base || continue
 	# Not `name`: embed_command sets that for each command, and a package
 	# with several (ssh, dropbearkey) would lose its own.
 	package_name=$(basename "$package")

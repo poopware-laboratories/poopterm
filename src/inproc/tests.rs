@@ -287,6 +287,66 @@ fn the_device_shows_a_prompt_answers_lines_and_ends_on_exit() {
 }
 
 #[test]
+fn a_new_shell_and_help_say_how_to_get_more_programs() {
+	let (device, _) = shell();
+	let screen = Screen::default();
+	run(
+		device,
+		Arc::new(Size::new(80, 24)),
+		&b"exit\r"[..],
+		screen.clone(),
+	);
+	let shown = screen.shown();
+	let notice = super::MORE_PROGRAMS.replace('\n', "\r\n");
+	assert!(
+		shown.starts_with(&format!(
+			"Poopterm in-process shell. Type `help` for its built-in commands.\r\n{notice}"
+		)),
+		"before the first prompt: {shown:?}"
+	);
+	assert!(super::MORE_PROGRAMS.contains("pkg install NAME"));
+	assert!(
+		super::MORE_PROGRAMS.contains("jit enable"),
+		"a phone needs JIT for them"
+	);
+	let (mut sh, _) = shell();
+	assert!(ran(&mut sh, "help").ends_with(super::MORE_PROGRAMS));
+}
+
+#[test]
+fn a_missing_command_a_package_provides_suggests_installing_it() {
+	let (mut sh, _) = shell();
+	assert_eq!(
+		ran(&mut sh, "cmatrix"),
+		"poopsh: cmatrix: command not found\n",
+		"no list fetched yet: no suggestion"
+	);
+	let root = crate::pkg::root(&sh.support);
+	fs::create_dir_all(&root).unwrap();
+	let hash = "ab".repeat(32);
+	fs::write(
+		root.join("index"),
+		format!("# packages\ncmatrix 2.0 {hash} 10 ios-cmatrix-2.0.tar.gz Falling characters\n"),
+	)
+	.unwrap();
+	assert_eq!(
+		ran(&mut sh, "cmatrix; echo $?"),
+		"poopsh: cmatrix: command not found\npoopsh: `pkg install cmatrix` adds it\n127\n"
+	);
+	assert_eq!(
+		ran(&mut sh, "nope"),
+		"poopsh: nope: command not found\n",
+		"only names the list has"
+	);
+	fs::write(root.join("index"), "not an index\n").unwrap();
+	assert_eq!(
+		ran(&mut sh, "cmatrix"),
+		"poopsh: cmatrix: command not found\n",
+		"a list it cannot read suggests nothing"
+	);
+}
+
+#[test]
 fn the_device_ends_on_end_of_file_or_a_closed_input() {
 	for input in [&b"\x04ignored\r"[..], &b"echo partial"[..]] {
 		let (shell, _) = shell();

@@ -27,8 +27,16 @@ cp target/aarch64-apple-ios-sim/debug/poopterm "$app/Poopterm"
 chmod +x "$app/Poopterm"
 # Packages built for the simulator (ios/packages/build.sh iphonesimulator)
 # go in too, as the IPA carries its own.
+base=target/ios-packages/iphonesimulator/base
 for command in target/ios-commands/iphonesimulator/* target/ios-packages/work-iphonesimulator/*/bin/*; do
 	[ -f "$command" ] || continue
+	# Only the base packages: the others come from `pkg install`.
+	case $command in
+	*/work-iphonesimulator/*)
+		package=$(basename "$(dirname "$(dirname "$command")")")
+		[ -f "$base" ] && ! grep -qx "$package" "$base" && continue
+		;;
+	esac
 	name=$(basename "$command")
 	framework="$app/Frameworks/$name.framework"
 	mkdir -p "$framework"
@@ -51,6 +59,8 @@ done
 # (Poopterm.app/<folder>, DATA_DIRS in src/inproc).
 for data in target/ios-packages/work-iphonesimulator/*/share/*/; do
 	[ -d "$data" ] && [ "$(basename "$data")" != doc ] || continue
+	package=$(basename "$(dirname "$(dirname "$data")")")
+	[ -f "$base" ] && ! grep -qx "$package" "$base" && continue
 	rm -rf "$app/$(basename "$data")"
 	cp -R "$data" "$app/$(basename "$data")"
 done

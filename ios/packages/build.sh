@@ -45,6 +45,16 @@ nyancat|1.5.2|port|Nyan Cat, animated in the terminal
 ncdu|1.22|port|See what fills the disk, folder by folder
 "
 
+# Packages the IPA leaves out: `pkg install` gets them from the packages
+# release (ios/packages/release.sh), the rest ship with every IPA. The
+# list of those is written to <sdk>/base, for ios/bundle-ipa.sh.
+downloads="cpufetch cmatrix sl figlet lolcat nyancat ncdu"
+echo "$packages" | while IFS='|' read -r name _; do
+	[ -n "$name" ] || continue
+	printf ' %s ' "$downloads" | grep -q " $name " || echo "$name"
+done >"$out/base"
+printf '%s\n' $downloads >"$out/downloads"
+
 wanted=${*:-}
 index="$out/index.new"
 echo "# Poopterm packages for $sdk" >"$index"
