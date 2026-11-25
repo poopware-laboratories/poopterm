@@ -215,7 +215,7 @@ pub(super) fn ncdu_exports_the_sizes_of_a_folder() {
 }
 
 /// The terminal descriptions the app carries, as `TERMINFO` points at them.
-fn terminfo(name: &str) -> PathBuf {
+pub(super) fn terminfo(name: &str) -> PathBuf {
 	let dir = scratch(&format!("terminfo-{name}")).join("db");
 	let made = std::process::Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/ios/terminfo.sh"))
 		.arg(&dir)

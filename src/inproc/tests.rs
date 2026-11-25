@@ -1,7 +1,7 @@
 //! The in-process device: the line discipline's editing keys, the shell's
 //! words and built-ins, and the device loop end to end through pipes.
 use super::{
-	DATA_DIRS, Size, command_path, data_dir,
+	DATA_DIRS, Size, command_path, data_dir, data_value,
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
@@ -793,13 +793,34 @@ fn tcc_finds_its_folder_in_the_app_then_among_installed_packages() {
 }
 
 #[test]
+fn magic_names_the_database_and_the_others_their_folder() {
+	let dir = Path::new("/App.app/file");
+	let (_, (_, marker), names_file) = DATA_DIRS[2];
+	assert_eq!(
+		data_value(dir, marker, names_file),
+		"/App.app/file/magic.mgc"
+	);
+	let (_, (_, marker), names_file) = DATA_DIRS[1];
+	assert_eq!(
+		data_value(Path::new("/App.app/figlet"), marker, names_file),
+		"/App.app/figlet"
+	);
+	assert!(
+		DATA_DIRS
+			.iter()
+			.all(|(_, (_, marker), names_file)| !names_file || marker.contains('.')),
+		"a variable that names a file names one"
+	);
+}
+
+#[test]
 fn figlet_finds_its_fonts_where_tcc_finds_its_headers() {
 	let dir = std::env::temp_dir().join(format!("poopterm-figletdir-{}", std::process::id()));
 	let _ = fs::remove_dir_all(&dir);
 	let (app, support) = (dir.join("App.app"), dir.join("support"));
 	let fonts = DATA_DIRS
 		.iter()
-		.find(|(variable, _)| *variable == "FIGLET_FONTDIR")
+		.find(|(variable, ..)| *variable == "FIGLET_FONTDIR")
 		.expect("the shell sets FIGLET_FONTDIR")
 		.1;
 	fs::create_dir_all(app.join("figlet")).unwrap();
@@ -828,8 +849,8 @@ fn figlet_finds_its_fonts_where_tcc_finds_its_headers() {
 		"the user's stays"
 	);
 	assert_eq!(
-		DATA_DIRS.map(|(variable, _)| variable),
-		["TCCDIR", "FIGLET_FONTDIR"]
+		DATA_DIRS.map(|(variable, ..)| variable),
+		["TCCDIR", "FIGLET_FONTDIR", "MAGIC", "VIMRUNTIME"]
 	);
 	let _ = fs::remove_dir_all(&dir);
 }

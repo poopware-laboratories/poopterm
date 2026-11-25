@@ -12,6 +12,8 @@ use std::{
 use super::{MAX_OUTPUT, Run, drain, find, run};
 use crate::inproc::shell::Shell;
 
+#[path = "native_tools_tests.rs"]
+mod tools;
 #[path = "native_toys_tests.rs"]
 mod toys;
 
@@ -198,6 +200,11 @@ fn real_commands_alone() {
 	zip_and_unzip_agree_with_the_systems();
 	tcc_compiles_and_runs_c_in_memory();
 	make_runs_recipes_through_the_shell();
+	tools::xz_compresses_what_python_reads_and_reads_it_back();
+	tools::zstd_compresses_what_python_reads_and_reads_it_back();
+	tools::file_names_kinds_as_the_systems_does();
+	tools::nnn_lists_a_folder_and_quits();
+	tools::vim_edits_and_saves_a_file_on_the_device();
 	toys::figlet_draws_with_the_fonts_beside_it();
 	toys::lolcat_colours_only_when_asked_or_on_a_terminal();
 	toys::cpufetch_names_a_chip_its_tables_do_not_know();

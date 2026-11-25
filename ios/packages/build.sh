@@ -36,6 +36,11 @@ zip|3.0|port|Make zip archives
 unzip|6.0|port|Extract and list zip archives (unzip, zipinfo)
 tcc|0.9.28rc|port|C compiler that runs programs in memory (tcc -run file.c)
 make|4.4.1|port|Build programs from a Makefile
+xz|5.8.1|port|xz and lzma compression (xz, -d to decompress)
+zstd|1.5.7|port|Zstandard compression, fast at every level
+file|5.46|port|Tell what kind of data a file holds
+nnn|5.1|port|A fast file manager for the terminal
+vim|9.1.1000|port|The Vim text editor
 cpufetch|1.06|port|Show the CPU beside its maker's logo
 cmatrix|2.0|port|Falling characters, as in the films
 sl|5.02|port|A steam locomotive for those who mistype ls

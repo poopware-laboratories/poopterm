@@ -128,13 +128,29 @@ pub(crate) fn data_dir(
 }
 
 /// The folders bundled programs read their data from: the variable each
-/// reads, and the folder and a file in it that `data_dir` looks for.
-pub(crate) const DATA_DIRS: [(&str, (&str, &str)); 2] = [
+/// reads, the folder and a file in it that `data_dir` looks for, and
+/// whether the variable names that file rather than the folder.
+pub(crate) const DATA_DIRS: [(&str, (&str, &str), bool); 4] = [
 	// tcc's headers and runtime sources.
-	("TCCDIR", ("tcc", "include")),
+	("TCCDIR", ("tcc", "include"), false),
 	// FIGlet's fonts.
-	("FIGLET_FONTDIR", ("figlet", "standard.flf")),
+	("FIGLET_FONTDIR", ("figlet", "standard.flf"), false),
+	// file's compiled magic database.
+	("MAGIC", ("file", "magic.mgc"), true),
+	// Vim's runtime files: syntax highlighting, file types, indenting.
+	("VIMRUNTIME", ("vim", "defaults.vim"), false),
 ];
+
+/// What a `DATA_DIRS` variable is set to, for the folder found: the folder,
+/// or the file in it the program reads.
+pub(crate) fn data_value(dir: &Path, marker: &str, names_file: bool) -> String {
+	let value = if names_file {
+		dir.join(marker)
+	} else {
+		dir.to_path_buf()
+	};
+	value.display().to_string()
+}
 
 /// Where the shell looks for programs: `POOPTERM_COMMANDS` when set, else
 /// the app's `Frameworks` directory, then packages installed under `home`.
@@ -178,13 +194,12 @@ pub(crate) fn login_shell(cwd: PathBuf, home: PathBuf, support: PathBuf) -> Shel
 	let mut shell = Shell::new(home.clone());
 	shell.cwd = start_directory(cwd, &home);
 	shell.env.insert("PATH".to_owned(), path);
-	for (variable, folder) in DATA_DIRS {
+	for (variable, folder, names_file) in DATA_DIRS {
 		let chosen = std::env::var(variable).ok();
 		let exe_dir = exe.as_deref().and_then(Path::parent);
 		if let Some(dir) = data_dir(exe_dir, &support, folder, chosen.as_deref()) {
-			shell
-				.env
-				.insert(variable.to_owned(), dir.display().to_string());
+			let value = data_value(&dir, folder.1, names_file);
+			shell.env.insert(variable.to_owned(), value);
 		}
 	}
 	shell.support = support;
