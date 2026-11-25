@@ -11,7 +11,9 @@ SCRIPT = ROOT / "ios" / "terminfo.sh"
 HOST = Path("/usr/share/terminfo")
 
 
-@unittest.skipUnless(HOST.is_dir(), "needs the build machine's terminfo")
+# The app is built on a Mac, whose database names its directories by hex
+# code; Linux's lays them out by letter, elsewhere.
+@unittest.skipUnless((HOST / "78" / "xterm-256color").is_file(), "needs a Mac's terminfo")
 class TerminfoBundleTest(unittest.TestCase):
     def run_script(self, out, **env):
         return subprocess.run(

@@ -1,5 +1,6 @@
 //! Downloads: files read from disk, the system's HTTP stack answering a
 //! server on this machine, and the URLs and sizes refused.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::{
 	io::{Read, Write},
 	net::TcpListener,
@@ -30,6 +31,7 @@ fn urls_from_anywhere_but_https_files_or_this_machine_are_refused() {
 }
 
 /// Serves `status` and `body` to one request on a port of this machine.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn serve_once(status: &'static str, body: &'static [u8]) -> String {
 	let listener = TcpListener::bind("127.0.0.1:0").unwrap();
 	let port = listener.local_addr().unwrap().port();

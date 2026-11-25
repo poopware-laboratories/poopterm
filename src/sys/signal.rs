@@ -53,24 +53,29 @@ pub(crate) fn caught(signal: libc::c_int) -> bool {
 	handler != libc::SIG_DFL && handler != libc::SIG_IGN
 }
 
-/// A thread of this process, to signal.
+/// A thread of this process, to signal. The handle is kept as a number:
+/// `pthread_t` is a pointer on some systems (musl), which would stop a
+/// `Thread` from moving between threads, and it is only ever handed back
+/// to `pthread_kill`.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Thread(libc::pthread_t);
+pub(crate) struct Thread(usize);
 
 impl Thread {
 	/// The calling thread.
 	pub(crate) fn current() -> Self {
 		// SAFETY: takes nothing and returns the calling thread's handle.
-		Self(unsafe { libc::pthread_self() })
+		let handle = unsafe { libc::pthread_self() };
+		Self(handle as usize)
 	}
 
 	/// Sends `signal` to the thread, if the process catches it: one at its
 	/// default would end the whole app. Whether it was sent.
 	pub(crate) fn signal(self, signal: libc::c_int) -> bool {
+		let handle = self.0 as libc::pthread_t;
 		// SAFETY: the handle is a live thread's: a `Thread` is taken by the
 		// thread running a program and signalled only while it runs one
 		// (`inproc::terminal`), and the signal is caught, never default.
-		caught(signal) && unsafe { libc::pthread_kill(self.0, signal) } == 0
+		caught(signal) && unsafe { libc::pthread_kill(handle, signal) } == 0
 	}
 }
 

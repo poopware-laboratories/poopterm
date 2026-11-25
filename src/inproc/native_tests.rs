@@ -214,12 +214,15 @@ fn real_commands_alone() {
 	toys::cmatrix_rains_until_q();
 	toys::ncdu_browses_and_quits();
 	// Last: from here on every command goes through our own loader.
+	#[cfg(target_vendor = "apple")]
 	real_commands_run_through_our_own_loader();
+	#[cfg(target_vendor = "apple")]
 	toys::downloads_run_through_our_own_loader();
 }
 
 /// The commands as a device without dyld's blessing runs them: loaded by
 /// our loader (`jit::loader`), each run with its globals as loaded.
+#[cfg(target_vendor = "apple")]
 fn real_commands_run_through_our_own_loader() {
 	let Some((mut sh, home)) = real_shell("loader") else {
 		return;
@@ -537,9 +540,15 @@ fn tcc_compiles_and_runs_c_in_memory() {
 		"{missing}"
 	);
 
-	// The prepared-region way: code in the region, data in its view.
+	#[cfg(target_vendor = "apple")]
+	tcc_runs_in_the_prepared_region(&mut sh);
+}
+
+/// The prepared-region way: code in the region, data in its view.
+#[cfg(target_vendor = "apple")]
+fn tcc_runs_in_the_prepared_region(sh: &mut Shell) {
 	let (start, len) = crate::jit::tests::install_test_region(1 << 20);
-	let shown = ran(&mut sh, "tcc -run hello.c; echo status $?");
+	let shown = ran(sh, "tcc -run hello.c; echo status $?");
 	crate::jit::tests::remove_test_region();
 	assert!(shown.contains("counter=42"), "{shown}");
 	let address = |label: &str| {

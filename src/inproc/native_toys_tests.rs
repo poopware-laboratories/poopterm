@@ -309,6 +309,7 @@ pub(super) fn ncdu_browses_and_quits() {
 
 /// What a phone runs them with: not in the IPA, so not signed with it,
 /// they are loaded by our own loader (`jit::loader`) once JIT is on.
+#[cfg(target_vendor = "apple")]
 pub(super) fn downloads_run_through_our_own_loader() {
 	crate::inproc::native::FORCE_LOADER.store(true, std::sync::atomic::Ordering::Relaxed);
 	figlet_draws_with_the_fonts_beside_it();

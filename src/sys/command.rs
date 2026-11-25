@@ -11,7 +11,7 @@ use std::{
 	os::fd::{AsRawFd, BorrowedFd},
 };
 
-#[cfg(test)]
+#[cfg(all(test, target_vendor = "apple"))]
 use super::dl::Library;
 
 /// `struct poopterm_tty` of `poopterm_cmd.h`.
@@ -121,7 +121,7 @@ impl Stdio<'_> {
 
 /// Runs the command in `library` with `argv` and `env` (`NAME=value`) and
 /// returns its exit status, or None if the library has no entry.
-#[cfg(test)]
+#[cfg(all(test, target_vendor = "apple"))]
 pub(crate) fn call(
 	library: &Library,
 	argv: &[CString],

@@ -33,6 +33,7 @@ impl Library {
 
 /// The address of `name` in any library loaded, as dyld's flat lookup
 /// finds it: for code we load ourselves (`jit::loader`).
+#[cfg(target_vendor = "apple")]
 pub(crate) fn any_symbol(name: &CStr) -> Option<NonNull<c_void>> {
 	// SAFETY: RTLD_DEFAULT searches every loaded image; `name` is a C string.
 	NonNull::new(unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) })
