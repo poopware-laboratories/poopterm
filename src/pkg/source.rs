@@ -1,11 +1,14 @@
-//! Where packages come from unless the user says otherwise: the `packages`
-//! release of Poopterm's own repository on GitHub, one index per platform
-//! (`ios-index`, `android-aarch64-index`, ...) beside the archives it
-//! lists, so the iOS and Android ports share one place to publish to.
+//! Where packages come from unless the user says otherwise: Poopterm's own
+//! repository on GitHub, where the `packages-index` branch holds one index
+//! per platform (`ios-index`, `android-aarch64-index`, ...), so the iOS and
+//! Android ports share one place to publish to. Each index names its
+//! archives by URL, in the release they were uploaded to: releases there
+//! are immutable, so every upload is a release of its own
+//! (`ios/packages/release.sh`), and only the indexes change.
 
-/// The release every platform's packages are published to.
+/// The branch every platform's index is published on, as files.
 pub(crate) const REPOSITORY: &str =
-	"https://github.com/poopware-laboratories/poopterm/releases/download/packages/";
+	"https://raw.githubusercontent.com/poopware-laboratories/poopterm/packages-index/";
 
 /// The platform packages are built for, as their file names start: the
 /// one this build runs on, if packages are made for it.

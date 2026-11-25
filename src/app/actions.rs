@@ -82,18 +82,13 @@ impl App {
 	pub(super) fn write_input(&self, bytes: &[u8]) {
 		// pr-check: window glue: writes to the sessions the tested targets name
 		let focused = self.sessions[self.active].id;
-		let panes: Vec<u64> = self
-			.tab_places(self.active)
-			.iter()
-			.map(|place| place.id)
-			.collect();
+		let places = self.tab_places(self.active);
+		let panes: Vec<u64> = places.iter().map(|place| place.id).collect();
 		let targets = input_targets(focused, &panes, self.broadcast);
-		for session in self
+		let chosen = self
 			.all_sessions()
-			.filter(|session| targets.contains(&session.id))
-		{
-			session.write(bytes);
-		}
+			.filter(|session| targets.contains(&session.id));
+		chosen.for_each(|session| session.write(bytes));
 		// pr-check: end window glue
 	}
 }

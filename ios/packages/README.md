@@ -111,32 +111,30 @@ iPhone that is not jailbroken.
 
 ## Publishing packages
 
-`pkg` looks for packages in the `packages` release of Poopterm's own
+`pkg` reads its index from the `packages-index` branch of Poopterm's own
 repository unless told otherwise (`src/pkg/source.rs`):
 
 ```
-https://github.com/poopware-laboratories/poopterm/releases/download/packages/<platform>-index
+https://raw.githubusercontent.com/poopware-laboratories/poopterm/packages-index/<platform>-index
 ```
 
-One release holds every platform's packages side by side, each file named
-after its platform (`ios`, `ios-simulator`, `macos`, and for the Android
-port `android-aarch64` and `android-x86_64`): `ios-index` lists
-`ios-jq-1.7.1.tar.gz`, and so on. To publish the iPhone's:
+There is one index per platform: `ios`, `ios-simulator` and `macos`, and
+for the Android port `android-aarch64` and `android-x86_64`. Releases in
+the repository are immutable, so the archives of each upload go in a
+release of their own (`packages-ios-20261124-221500`), and the index names
+each archive by its URL there. Only the small index files change on the
+branch. Packages listed in `downloads` in `ios/packages/build.sh` are
+published. The others ship with every IPA. To publish the iPhone's:
 
 ```sh
 ios/packages/build.sh iphoneos
-ios/packages/release.sh iphoneos      # stages target/packages-release/ios/
-gh release create packages --repo poopware-laboratories/poopterm \
-	--title "Packages" --notes "Packages for pkg" --prerelease   # once
-gh release upload packages target/packages-release/ios/*.tar.gz --clobber \
-	--repo poopware-laboratories/poopterm
-gh release upload packages target/packages-release/ios/ios-index --clobber \
-	--repo poopware-laboratories/poopterm
+ios/packages/release.sh iphoneos      # stages them, prints the commands
 ```
 
-The release's tag is not a version (those start with `v`), so the weekly
-releases ignore it. The index goes last, so a phone never sees a package
-before its archive.
+Run the `gh release` commands it prints (create a draft, upload, then
+publish), then commit `ios-index` to the `packages-index` branch. A phone
+sees the new packages only once the index is pushed, after every archive
+it names is there.
 
 To use another source, or go back:
 

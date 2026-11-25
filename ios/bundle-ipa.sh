@@ -4,9 +4,9 @@
 #
 #   ios/bundle-ipa.sh            # target/ios/Poopterm.ipa
 #
-# The app carries its bundled command frameworks (ios/commands) and every
-# package of ios/packages, so they work from the first launch, signed with the app;
-# packages installed later with `pkg` need the JIT a debugger gives. Its
+# The app carries its bundled command frameworks (ios/commands) and the base
+# packages of ios/packages, so they work from the first launch, signed with
+# the app; packages installed later with `pkg` need the JIT a debugger gives. Its
 # icon is assets/icon.icon, compiled by actool, light and dark; each port's
 # license sits in Poopterm.app/licenses/<package>.
 set -eu

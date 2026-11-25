@@ -20,7 +20,8 @@
 Poopterm handles real-world output at 67–280 MB/s end to end (126 MB/s
 overall, images included) on a low-power laptop CPU, within 10% of what
 the kernel's PTY itself delivers on 13 of 17 workloads; see
-[performance](docs/performance.md). It runs on Linux, macOS and FreeBSD.
+[performance](docs/performance.md). It runs on Linux, macOS and FreeBSD,
+and on [iPhone and iPad](#iphone-and-ipad) as a sideloaded app.
 Terminal compatibility is growing and is not yet a complete xterm
 implementation; see [protocols and compatibility](docs/protocols.md).
 
@@ -135,6 +136,35 @@ that the release workflow built them from the tagged commit:
 ```sh
 gh attestation verify poopterm_26.11.0-1_amd64.deb --repo poopware-laboratories/poopterm
 ```
+
+## iPhone and iPad
+
+iOS lets an app run no other program, so on an iPhone or iPad Poopterm
+brings its own: a built-in shell, `poopsh`, runs about 140 command-line
+programs compiled into the app as libraries, one at a time, with pipes,
+redirects and `^C`. The same terminal draws them, with Metal.
+
+| | |
+|---|---|
+| **Included** | Apple's open-source commands (`ls`, `grep`, `sed`, `awk`, `find`, `tar`, `less`, `diff`...), plus `vim`, `nano`, `git`, `curl`, `ssh`, `jq`, `sqlite3`, `lua`, `make`, `tcc` (a C compiler that runs programs in memory), `xz`, `zstd`, `zip`, `file`, `nnn`, `tree` and `fastfetch` |
+| **More programs** | `pkg list`, then `pkg install NAME`. They come from this repository (`cmatrix`, `cpufetch`, `figlet`, `ncdu`...) and need JIT on a device: open Poopterm from [StikDebug](https://github.com/StikDebug/StikDebug), then run `jit enable` |
+| **ssh in** | `sshd start` serves the device on port 2222 while Poopterm is open: `ssh -p 2222 mobile@<address it prints>` |
+| **Files** | Home is the app's Documents folder, shown in the Files app |
+| **iPad** | Several windows, Stage Manager, and a hardware keyboard |
+
+There is no App Store build and no prebuilt IPA yet. To build one on a Mac
+with Xcode:
+
+```sh
+ios/bundle-ipa.sh        # target/ios/Poopterm.ipa
+```
+
+Then sign and install it with a sideloading tool (AltStore, SideStore,
+Sideloadly) or Xcode. The ported programs' sources go in
+`target/ios-ports/` first, as [ios/packages/README.md](ios/packages/README.md)
+describes, along with how to port more. `ios/bundle-sim.sh` builds for the
+simulator. The design, and what iOS allows, is in
+[docs/proposals/ios.md](docs/proposals/ios.md).
 
 ## Build from source
 

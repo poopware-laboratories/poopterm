@@ -122,7 +122,7 @@ fn a_source_set_once_is_remembered_and_shown() {
 }
 
 const OWN: &str =
-	"https://github.com/poopware-laboratories/poopterm/releases/download/packages/ios-index";
+	"https://raw.githubusercontent.com/poopware-laboratories/poopterm/packages-index/ios-index";
 
 /// A world whose platform has Poopterm's own packages (`OWN`), and a
 /// server with one package there and another at `SOURCE`.

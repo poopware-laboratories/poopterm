@@ -26,21 +26,26 @@ fn platforms_no_packages_are_built_for_have_none() {
 }
 
 #[test]
-fn the_index_is_in_the_packages_release_of_poopterms_repository() {
+fn the_index_is_on_the_packages_index_branch_of_poopterms_repository() {
 	assert_eq!(
 		index_for("ios"),
-		"https://github.com/poopware-laboratories/poopterm/releases/download/packages/ios-index"
+		"https://raw.githubusercontent.com/poopware-laboratories/poopterm/packages-index/ios-index"
 	);
 	assert!(allowed(&index_for("android-aarch64")), "over https");
 	assert!(REPOSITORY.ends_with('/'));
 }
 
 #[test]
-fn archives_are_found_beside_the_index_in_the_same_release() {
-	// build_release.sh names each archive after its platform, as the index.
+fn archives_are_named_by_url_in_the_release_they_were_uploaded_to() {
+	// release.sh writes each archive's full URL into the index, since the
+	// branch holds no archives.
+	let archive = "https://github.com/poopware-laboratories/poopterm/releases/download/\
+	               packages-ios-20261124/jq-1.7.1.tar.gz";
+	assert_eq!(archive_url(&index_for("ios"), archive), archive);
 	assert_eq!(
-		archive_url(&index_for("ios"), "ios-jq-1.7.1.tar.gz"),
-		format!("{REPOSITORY}ios-jq-1.7.1.tar.gz")
+		archive_url(&index_for("ios"), "jq-1.7.1.tar.gz"),
+		format!("{REPOSITORY}jq-1.7.1.tar.gz"),
+		"a bare name would be beside the index, on the branch"
 	);
 }
 
