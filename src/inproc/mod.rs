@@ -99,24 +99,35 @@ pub(crate) fn terminfo_dir(exe_dir: Option<&Path>, chosen: Option<&str>) -> Opti
 	dir.is_dir().then_some(dir)
 }
 
-/// The folder tcc finds its headers and runtime sources in: the app's own
-/// `tcc` folder, else the one the tcc package installs under `support`;
-/// none when neither exists, or when the user chose one (`chosen`).
-pub(crate) fn tcc_dir(
+/// The folder a program finds its data in (`name`, holding `marker`): the
+/// app's own `name` folder, else the one its package installs under
+/// `support`'s `share`; none when neither exists, or when the user chose
+/// one (`chosen`, the program's variable).
+pub(crate) fn data_dir(
 	exe_dir: Option<&Path>,
 	support: &Path,
+	(name, marker): (&str, &str),
 	chosen: Option<&str>,
 ) -> Option<PathBuf> {
 	if chosen.is_some_and(|dir| !dir.is_empty()) {
 		return None;
 	}
-	let bundled = exe_dir.map(|dir| dir.join("tcc"));
-	let installed = support.join("Library/poopterm/packages/share/tcc");
+	let bundled = exe_dir.map(|dir| dir.join(name));
+	let installed = support.join("Library/poopterm/packages/share").join(name);
 	bundled
 		.into_iter()
 		.chain([installed])
-		.find(|dir| dir.join("include").is_dir())
+		.find(|dir| dir.join(marker).exists())
 }
+
+/// The folders bundled programs read their data from: the variable each
+/// reads, and the folder and a file in it that `data_dir` looks for.
+pub(crate) const DATA_DIRS: [(&str, (&str, &str)); 2] = [
+	// tcc's headers and runtime sources.
+	("TCCDIR", ("tcc", "include")),
+	// FIGlet's fonts.
+	("FIGLET_FONTDIR", ("figlet", "standard.flf")),
+];
 
 /// Where the shell looks for programs: `POOPTERM_COMMANDS` when set, else
 /// the app's `Frameworks` directory, then packages installed under `home`.
@@ -147,7 +158,7 @@ pub(crate) fn start_directory(cwd: PathBuf, home: &Path) -> PathBuf {
 
 /// A shell as a login gives it: in `cwd` (or `home`, see
 /// `start_directory`), with `$PATH` to the commands and the folders the
-/// bundled programs look in (`TCCDIR`, `TERMINFO`), `support` holding the
+/// bundled programs look in (`DATA_DIRS`, `TERMINFO`), `support` holding the
 /// packages.
 pub(crate) fn login_shell(cwd: PathBuf, home: PathBuf, support: PathBuf) -> Shell {
 	let exe = std::env::current_exe().ok();
@@ -160,15 +171,14 @@ pub(crate) fn login_shell(cwd: PathBuf, home: PathBuf, support: PathBuf) -> Shel
 	let mut shell = Shell::new(home.clone());
 	shell.cwd = start_directory(cwd, &home);
 	shell.env.insert("PATH".to_owned(), path);
-	let chosen_tcc = std::env::var("TCCDIR").ok();
-	if let Some(dir) = tcc_dir(
-		exe.as_deref().and_then(Path::parent),
-		&support,
-		chosen_tcc.as_deref(),
-	) {
-		shell
-			.env
-			.insert("TCCDIR".to_owned(), dir.display().to_string());
+	for (variable, folder) in DATA_DIRS {
+		let chosen = std::env::var(variable).ok();
+		let exe_dir = exe.as_deref().and_then(Path::parent);
+		if let Some(dir) = data_dir(exe_dir, &support, folder, chosen.as_deref()) {
+			shell
+				.env
+				.insert(variable.to_owned(), dir.display().to_string());
+		}
 	}
 	shell.support = support;
 	let chosen_terminfo = std::env::var("TERMINFO").ok();

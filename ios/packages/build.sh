@@ -36,6 +36,13 @@ zip|3.0|port|Make zip archives
 unzip|6.0|port|Extract and list zip archives (unzip, zipinfo)
 tcc|0.9.28rc|port|C compiler that runs programs in memory (tcc -run file.c)
 make|4.4.1|port|Build programs from a Makefile
+cpufetch|1.06|port|Show the CPU beside its maker's logo
+cmatrix|2.0|port|Falling characters, as in the films
+sl|5.02|port|A steam locomotive for those who mistype ls
+figlet|2.2.5|port|Large letters made of ordinary ones
+lolcat|1.5|port|Rainbow-coloured cat
+nyancat|1.5.2|port|Nyan Cat, animated in the terminal
+ncdu|1.22|port|See what fills the disk, folder by folder
 "
 
 wanted=${*:-}

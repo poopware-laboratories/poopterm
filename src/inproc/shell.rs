@@ -400,7 +400,9 @@ impl Shell {
 				let root = crate::pkg::root(&self.support);
 				let source = self.env.get("POOPTERM_PKG_SOURCE").map(String::as_str);
 				let fetch = |url: &str| crate::pkg::fetch::fetch(url, crate::pkg::DOWNLOAD_LIMIT);
-				let (text, status) = crate::pkg::command::run(args, &root, source, &fetch);
+				let default = crate::pkg::source::default();
+				let (text, status) =
+					crate::pkg::command::run(args, &root, source, default.as_deref(), &fetch);
 				out.extend(text.into_bytes());
 				status
 			}

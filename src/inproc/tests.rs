@@ -1,16 +1,16 @@
 //! The in-process device: the line discipline's editing keys, the shell's
 //! words and built-ins, and the device loop end to end through pipes.
 use super::{
-	Size, command_path,
+	DATA_DIRS, Size, command_path, data_dir,
 	line::{Discipline, Event, MAX_LINE, output},
 	run,
 	shell::{Shell, Word, segments, split},
-	start_directory, tcc_dir, terminfo_dir,
+	start_directory, terminfo_dir,
 };
 use std::{
 	fs,
 	io::Write,
-	path::PathBuf,
+	path::{Path, PathBuf},
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
@@ -437,9 +437,12 @@ fn pkg_is_a_built_in_that_installs_under_the_users_library() {
 	let usage = ran(&mut sh, "pkg");
 	assert!(usage.contains("install NAME"), "{usage}");
 	assert_eq!(sh.status, 0);
-	let none = ran(&mut sh, "pkg update");
-	assert!(none.contains("pkg source"), "{none}");
-	assert_eq!(sh.status, 1);
+	// Before one is set, Poopterm's own for this platform (none fetched).
+	let own = ran(&mut sh, "pkg source");
+	match crate::pkg::source::default() {
+		Some(default) => assert_eq!(own, format!("{default} (the default)\n")),
+		None => assert!(own.contains("pkg source URL"), "{own}"),
+	}
 	let repo = home.join("repo");
 	let set = ran(
 		&mut sh,
@@ -678,6 +681,12 @@ fn packages_live_under_support_while_home_is_the_users() {
 	assert!(installed.starts_with(&support) && !installed.starts_with(sh.home.join("Library")));
 }
 
+/// Where tcc's folder is, as the shell looks for `TCCDIR`.
+fn tcc(exe_dir: Option<&Path>, support: &Path, chosen: Option<&str>) -> Option<PathBuf> {
+	assert_eq!(DATA_DIRS[0].0, "TCCDIR");
+	data_dir(exe_dir, support, DATA_DIRS[0].1, chosen)
+}
+
 #[test]
 fn tcc_finds_its_folder_in_the_app_then_among_installed_packages() {
 	let dir = std::env::temp_dir().join(format!("poopterm-tccdir-{}", std::process::id()));
@@ -685,40 +694,82 @@ fn tcc_finds_its_folder_in_the_app_then_among_installed_packages() {
 	let (app, support) = (dir.join("App.app"), dir.join("support"));
 	fs::create_dir_all(&app).unwrap();
 	fs::create_dir_all(&support).unwrap();
-	assert_eq!(tcc_dir(Some(&app), &support, None), None, "none anywhere");
+	assert_eq!(tcc(Some(&app), &support, None), None, "none anywhere");
 	let installed = support.join("Library/poopterm/packages/share/tcc");
 	fs::create_dir_all(installed.join("include")).unwrap();
 	assert_eq!(
-		tcc_dir(Some(&app), &support, None),
+		tcc(Some(&app), &support, None),
 		Some(installed.clone()),
 		"the package's"
 	);
 	fs::create_dir_all(app.join("tcc/include")).unwrap();
 	assert_eq!(
-		tcc_dir(Some(&app), &support, None),
+		tcc(Some(&app), &support, None),
 		Some(app.join("tcc")),
 		"the app's comes first"
 	);
 	assert_eq!(
-		tcc_dir(None, &support, None),
+		tcc(None, &support, None),
 		Some(installed),
 		"no app folder to look in"
 	);
 	assert_eq!(
-		tcc_dir(Some(&app), &support, Some("/mine")),
+		tcc(Some(&app), &support, Some("/mine")),
 		None,
 		"the user's stays"
 	);
 	assert_eq!(
-		tcc_dir(Some(&app), &support, Some("")),
+		tcc(Some(&app), &support, Some("")),
 		Some(app.join("tcc")),
 		"empty is unset"
 	);
 	fs::create_dir_all(dir.join("App2.app/tcc")).unwrap();
 	assert_eq!(
-		tcc_dir(Some(&dir.join("App2.app")), &dir.join("none"), None),
+		tcc(Some(&dir.join("App2.app")), &dir.join("none"), None),
 		None,
 		"a folder without include/ is not it"
+	);
+	let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn figlet_finds_its_fonts_where_tcc_finds_its_headers() {
+	let dir = std::env::temp_dir().join(format!("poopterm-figletdir-{}", std::process::id()));
+	let _ = fs::remove_dir_all(&dir);
+	let (app, support) = (dir.join("App.app"), dir.join("support"));
+	let fonts = DATA_DIRS
+		.iter()
+		.find(|(variable, _)| *variable == "FIGLET_FONTDIR")
+		.expect("the shell sets FIGLET_FONTDIR")
+		.1;
+	fs::create_dir_all(app.join("figlet")).unwrap();
+	assert_eq!(
+		data_dir(Some(&app), &support, fonts, None),
+		None,
+		"a folder without the standard font is not it"
+	);
+	let installed = support.join("Library/poopterm/packages/share/figlet");
+	fs::create_dir_all(&installed).unwrap();
+	fs::write(installed.join("standard.flf"), "flf2a").unwrap();
+	assert_eq!(
+		data_dir(Some(&app), &support, fonts, None),
+		Some(installed),
+		"the package's"
+	);
+	fs::write(app.join("figlet/standard.flf"), "flf2a").unwrap();
+	assert_eq!(
+		data_dir(Some(&app), &support, fonts, None),
+		Some(app.join("figlet")),
+		"the app's comes first"
+	);
+	assert_eq!(
+		data_dir(Some(&app), &support, fonts, Some("/my/fonts")),
+		None,
+		"the user's stays"
+	);
+	assert_eq!(
+		DATA_DIRS.map(|(variable, _)| variable),
+		["TCCDIR", "FIGLET_FONTDIR"]
 	);
 	let _ = fs::remove_dir_all(&dir);
 }

@@ -15,6 +15,8 @@ struct World {
 	root: PathBuf,
 	files: BTreeMap<String, Vec<u8>>,
 	asked: RefCell<Vec<String>>,
+	/// Poopterm's own source for the platform, if it has one.
+	default: Option<String>,
 }
 
 impl World {
@@ -25,6 +27,7 @@ impl World {
 			root,
 			files: BTreeMap::new(),
 			asked: RefCell::new(Vec::new()),
+			default: None,
 		}
 	}
 
@@ -67,7 +70,7 @@ impl World {
 				.cloned()
 				.ok_or_else(|| format!("{url}: not found"))
 		};
-		run(&args, &self.root, source, &fetch)
+		run(&args, &self.root, source, self.default.as_deref(), &fetch)
 	}
 }
 
@@ -116,6 +119,88 @@ fn a_source_set_once_is_remembered_and_shown() {
 	);
 	let (out, status) = world.pkg_from(&["update"], None);
 	assert_eq!((status, out.as_str()), (0, "1 package available\n"));
+}
+
+const OWN: &str =
+	"https://github.com/poopware-laboratories/poopterm/releases/download/packages/ios-index";
+
+/// A world whose platform has Poopterm's own packages (`OWN`), and a
+/// server with one package there and another at `SOURCE`.
+fn with_a_default(name: &str) -> World {
+	let mut world = World::new(name);
+	world.publish("jot", "1", b"jot", "Numbers");
+	world.files.insert(OWN.to_owned(), b"# none yet\n".to_vec());
+	world.default = Some(OWN.to_owned());
+	world
+}
+
+#[test]
+fn without_a_source_set_pkg_uses_poopterms_own() {
+	let world = with_a_default("default");
+	assert_eq!(
+		world.pkg_from(&["source"], None),
+		(format!("{OWN} (the default)\n"), 0)
+	);
+	let (out, status) = world.pkg_from(&["update"], None);
+	assert_eq!((status, out.as_str()), (0, "0 packages available\n"));
+	assert_eq!(*world.asked.borrow(), [OWN]);
+}
+
+#[test]
+fn a_source_set_or_given_wins_over_the_default() {
+	let world = with_a_default("override");
+	assert_eq!(world.pkg_from(&["source", SOURCE], None).1, 0);
+	assert_eq!(
+		world.pkg_from(&["source"], None),
+		(format!("{SOURCE}\n"), 0)
+	);
+	assert_eq!(world.pkg_from(&["update"], None).0, "1 package available\n");
+	world.asked.borrow_mut().clear();
+	let env = "https://elsewhere.example/index";
+	assert_eq!(
+		world.pkg_from(&["source"], Some(env)),
+		(format!("{env}\n"), 0)
+	);
+	world.pkg_from(&["update"], Some(env));
+	assert_eq!(
+		*world.asked.borrow(),
+		[env],
+		"the environment's comes first"
+	);
+}
+
+#[test]
+fn source_default_forgets_the_one_set() {
+	let world = with_a_default("reset");
+	world.pkg_from(&["source", SOURCE], None);
+	assert_eq!(
+		world.pkg_from(&["source", "default"], None),
+		(format!("packages now come from {OWN}\n"), 0)
+	);
+	assert!(!world.root.join("source").exists());
+	assert_eq!(
+		world.pkg_from(&["source"], None),
+		(format!("{OWN} (the default)\n"), 0)
+	);
+	assert_eq!(
+		world.pkg_from(&["source", "default"], None).1,
+		0,
+		"already the default"
+	);
+}
+
+#[test]
+fn source_default_needs_a_platform_with_packages() {
+	let world = World::new("nodefault");
+	world.pkg_from(&["source", SOURCE], None);
+	let (out, status) = world.pkg_from(&["source", "default"], None);
+	assert_eq!(status, 1);
+	assert!(out.contains("no packages of Poopterm's own"), "{out}");
+	assert_eq!(
+		world.pkg_from(&["source"], None),
+		(format!("{SOURCE}\n"), 0),
+		"the one set stays"
+	);
 }
 
 #[test]

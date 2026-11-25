@@ -111,17 +111,41 @@ iPhone that is not jailbroken.
 
 ## Publishing packages
 
-`ios/packages/build.sh iphoneos` writes `target/ios-packages/iphoneos/`:
-an `index` (name, version, SHA-256, size and summary per line) and one
-`<name>-<version>.tar.gz` per package. Serve that directory over HTTPS
-(GitHub Pages works) and point Poopterm at it:
+`pkg` looks for packages in the `packages` release of Poopterm's own
+repository unless told otherwise (`src/pkg/source.rs`):
 
-```sh
-pkg source https://example.github.io/poopterm-packages/
-pkg update
-pkg install jq
+```
+https://github.com/poopware-laboratories/poopterm/releases/download/packages/<platform>-index
 ```
 
-`pkg` checks each archive's SHA-256 against the index before unpacking,
-and upgrades a package when its checksum changes, even at the same version.
-Keep the downloaded packages' licenses in the archive (`share/doc/<name>/`).
+One release holds every platform's packages side by side, each file named
+after its platform (`ios`, `ios-simulator`, `macos`, and for the Android
+port `android-aarch64` and `android-x86_64`): `ios-index` lists
+`ios-jq-1.7.1.tar.gz`, and so on. To publish the iPhone's:
+
+```sh
+ios/packages/build.sh iphoneos
+ios/packages/release.sh iphoneos      # stages target/packages-release/ios/
+gh release create packages --repo poopware-laboratories/poopterm \
+	--title "Packages" --notes "Packages for pkg" --prerelease   # once
+gh release upload packages target/packages-release/ios/*.tar.gz --clobber \
+	--repo poopware-laboratories/poopterm
+gh release upload packages target/packages-release/ios/ios-index --clobber \
+	--repo poopware-laboratories/poopterm
+```
+
+The release's tag is not a version (those start with `v`), so the weekly
+releases ignore it. The index goes last, so a phone never sees a package
+before its archive.
+
+To use another source, or go back:
+
+```sh
+pkg source https://example.github.io/poopterm-packages/ios-index
+pkg source default
+```
+
+`POOPTERM_PKG_SOURCE` in the environment overrides both. `pkg` checks
+each archive's SHA-256 against the index before unpacking, and upgrades a
+package when its checksum changes, even at the same version. Keep the
+downloaded packages' licenses in the archive (`share/doc/<name>/`).

@@ -10,6 +10,7 @@ mod download;
 pub(crate) mod fetch;
 mod index;
 mod sha256;
+pub(crate) mod source;
 mod store;
 mod tar;
 
@@ -29,6 +30,8 @@ mod fetch_tests;
 mod index_tests;
 #[cfg(test)]
 mod sha256_tests;
+#[cfg(test)]
+mod source_tests;
 #[cfg(test)]
 mod store_tests;
 #[cfg(test)]

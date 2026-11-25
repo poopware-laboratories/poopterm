@@ -21,6 +21,7 @@ usage: pkg <command> [name...]
   search WORD      packages whose name or summary has WORD
   update           fetch the list of packages again
   source [URL]     show or set where packages come from
+  source default   go back to Poopterm's own packages
 
 Bundled commands work without JIT. On an iPhone or iPad, downloaded packages
 need JIT: launch Poopterm from StikDebug's app list, then run `jit enable`.
@@ -29,20 +30,24 @@ need JIT: launch Poopterm from StikDebug's app list, then run `jit enable`.
 const NO_SOURCE: &str = "pkg: no package source; set one with pkg source URL\n";
 
 /// Runs `pkg` with `args` on the packages under `root`; `source`, from the
-/// environment, overrides the one saved there.
+/// environment, overrides the one saved there, which overrides `default`
+/// (Poopterm's own packages for this platform, `pkg::source`).
 pub(crate) fn run(
 	args: &[String],
 	root: &Path,
 	source: Option<&str>,
+	default: Option<&str>,
 	fetch: Fetch,
 ) -> (String, i32) {
 	let saved = fs::read_to_string(root.join("source")).ok();
 	let source = source
 		.map(str::to_owned)
-		.or(saved.map(|text| text.trim().to_owned()));
+		.or(saved.map(|text| text.trim().to_owned()))
+		.or(default.map(str::to_owned));
 	let mut pkg = Pkg {
 		root,
 		source,
+		default,
 		fetch,
 		out: String::new(),
 	};
@@ -88,6 +93,7 @@ fn usage(out: &mut String) -> i32 {
 struct Pkg<'a> {
 	root: &'a Path,
 	source: Option<String>,
+	default: Option<&'a str>,
 	fetch: Fetch<'a>,
 	out: String,
 }
@@ -106,7 +112,12 @@ impl Pkg<'_> {
 		let Some(url) = url else {
 			return match self.source.clone() {
 				Some(source) => {
-					self.out.push_str(&format!("{source}\n"));
+					let note = if self.default == Some(source.as_str()) {
+						" (the default)"
+					} else {
+						""
+					};
+					self.out.push_str(&format!("{source}{note}\n"));
 					0
 				}
 				None => {
@@ -115,6 +126,9 @@ impl Pkg<'_> {
 				}
 			};
 		};
+		if url == "default" {
+			return self.reset_source();
+		}
 		if !allowed(url) {
 			return self.fail(format!(
 				"{url}: packages come only over https, from files, or from this machine"
@@ -130,6 +144,22 @@ impl Pkg<'_> {
 				0
 			}
 			Err(error) => self.fail(error),
+		}
+	}
+
+	/// Forgets the source the user set, for the default.
+	fn reset_source(&mut self) -> i32 {
+		let Some(default) = self.default else {
+			return self.fail("this platform has no packages of Poopterm's own");
+		};
+		match fs::remove_file(self.root.join("source")) {
+			Err(error) if error.kind() != std::io::ErrorKind::NotFound => self.fail(error),
+			_ => {
+				self
+					.out
+					.push_str(&format!("packages now come from {default}\n"));
+				0
+			}
 		}
 	}
 

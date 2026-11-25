@@ -12,6 +12,9 @@ use std::{
 use super::{MAX_OUTPUT, Run, drain, find, run};
 use crate::inproc::shell::Shell;
 
+#[path = "native_toys_tests.rs"]
+mod toys;
+
 fn scratch(name: &str) -> PathBuf {
 	let dir = std::env::temp_dir().join(format!(
 		"poopterm-native-{name}-{}-{:?}",
@@ -195,6 +198,14 @@ fn real_commands_alone() {
 	zip_and_unzip_agree_with_the_systems();
 	tcc_compiles_and_runs_c_in_memory();
 	make_runs_recipes_through_the_shell();
+	toys::figlet_draws_with_the_fonts_beside_it();
+	toys::lolcat_colours_only_when_asked_or_on_a_terminal();
+	toys::cpufetch_names_a_chip_its_tables_do_not_know();
+	toys::nyancat_draws_the_frames_it_is_asked_for();
+	toys::ncdu_exports_the_sizes_of_a_folder();
+	toys::sl_drives_across_and_gives_the_prompt_back();
+	toys::cmatrix_rains_until_q();
+	toys::ncdu_browses_and_quits();
 	// Last: from here on every command goes through our own loader.
 	real_commands_run_through_our_own_loader();
 }
