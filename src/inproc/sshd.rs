@@ -5,7 +5,7 @@
 //! The server runs only while the app does, and one connection at a time.
 use std::{
 	collections::{HashMap, VecDeque},
-	net::{IpAddr, TcpListener, UdpSocket},
+	net::{IpAddr, TcpListener, TcpStream, UdpSocket},
 	os::fd::OwnedFd,
 	path::{Path, PathBuf},
 	sync::{
@@ -14,7 +14,7 @@ use std::{
 		mpsc,
 	},
 	thread,
-	time::Duration,
+	time::{Duration, SystemTime},
 };
 
 use super::{Size, native, spawn_with};
@@ -248,6 +248,69 @@ impl Sessions for Hooks {
 	}
 }
 
+/// A turn of the accept loop longer than this: the app was suspended.
+const SUSPENDED_AFTER: Duration = Duration::from_secs(3);
+
+/// Whether the listening socket must be opened again: iOS takes the
+/// sockets of a suspended app, which then refuses connections, so after a
+/// `gap` that long, or an `error` other than there being nothing to accept.
+fn reopen(gap: Duration, error: &std::io::Error) -> bool {
+	use std::io::ErrorKind::{Interrupted, WouldBlock};
+	gap > SUSPENDED_AFTER || !matches!(error.kind(), WouldBlock | Interrupted)
+}
+
+/// A listener on `port` of every interface, which never blocks.
+fn listen(port: u16) -> std::io::Result<TcpListener> {
+	let listener = TcpListener::bind(("0.0.0.0", port))?;
+	listener.set_nonblocking(true)?;
+	Ok(listener)
+}
+
+/// Sends each connection on until `stop`, opening the socket again when
+/// `reopen` says so; `clock` is the wall clock, which runs while the app
+/// does not.
+fn accept_connections(
+	listener: TcpListener,
+	port: u16,
+	stop: &AtomicBool,
+	connections: &mpsc::Sender<TcpStream>,
+	log: &Log,
+	clock: impl Fn() -> SystemTime,
+) {
+	let mut listener = Some(listener);
+	let mut last = clock();
+	while !stop.load(Ordering::SeqCst) {
+		let now = clock();
+		let gap = now.duration_since(last).unwrap_or_default();
+		last = now;
+		let Some(open) = &listener else {
+			listener = listen(port).ok();
+			if listener.is_some() {
+				log.push(&format!("listening again on port {port}"));
+			} else {
+				thread::sleep(Duration::from_secs(1));
+			}
+			last = clock();
+			continue;
+		};
+		let error = match open.accept() {
+			Ok((stream, _)) => {
+				if connections.send(stream).is_err() {
+					return;
+				}
+				continue;
+			}
+			Err(error) => error,
+		};
+		if reopen(gap, &error) {
+			// Closed first, so the port is free to bind.
+			listener = None;
+		} else {
+			thread::sleep(Duration::from_millis(100));
+		}
+	}
+}
+
 /// A server that listens.
 struct Running {
 	port: u16,
@@ -360,13 +423,10 @@ fn start(
 			return fail(format!("could not make a host key: {}", text.trim()));
 		}
 	}
-	let listener = match TcpListener::bind(("0.0.0.0", port)) {
+	let listener = match listen(port) {
 		Ok(listener) => listener,
 		Err(error) => return fail(format!("cannot listen on port {port}: {error}")),
 	};
-	if listener.set_nonblocking(true).is_err() {
-		return fail("cannot listen without blocking".to_owned());
-	}
 	let password = if keys_only {
 		String::new()
 	} else {
@@ -382,20 +442,11 @@ fn start(
 		next: AtomicI64::new(0),
 	};
 	let (connections, accepted) = mpsc::channel();
-	let flag = stop.clone();
+	let (flag, lines) = (stop.clone(), log.clone());
 	let acceptor = thread::Builder::new()
 		.name("sshd-accept".to_owned())
 		.spawn(move || {
-			while !flag.load(Ordering::SeqCst) {
-				match listener.accept() {
-					Ok((stream, _)) => {
-						if connections.send(stream).is_err() {
-							return;
-						}
-					}
-					Err(_) => thread::sleep(Duration::from_millis(100)),
-				}
-			}
+			accept_connections(listener, port, &flag, &connections, &lines, SystemTime::now);
 		});
 	if acceptor.is_err() {
 		return fail("cannot start its thread".to_owned());

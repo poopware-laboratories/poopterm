@@ -1,3 +1,5 @@
+use std::net::TcpStream;
+
 use super::*;
 
 fn args(words: &[&str]) -> Vec<String> {
@@ -124,4 +126,73 @@ fn a_stopped_server_reports_so_and_cannot_be_stopped_twice() {
 		&env,
 	);
 	assert_eq!(status, 2, "{text}");
+}
+
+#[test]
+fn a_gap_or_a_broken_socket_means_the_listener_is_opened_again() {
+	let waiting = std::io::Error::from(std::io::ErrorKind::WouldBlock);
+	let interrupted = std::io::Error::from(std::io::ErrorKind::Interrupted);
+	let broken = std::io::Error::from_raw_os_error(libc::EBADF);
+	let aborted = std::io::Error::from(std::io::ErrorKind::ConnectionAborted);
+	let short = Duration::from_millis(100);
+	assert!(!reopen(short, &waiting), "nothing to accept yet");
+	assert!(!reopen(short, &interrupted));
+	assert!(reopen(short, &broken));
+	assert!(reopen(short, &aborted));
+	assert!(
+		!reopen(SUSPENDED_AFTER, &waiting),
+		"a slow turn is not a suspension"
+	);
+	assert!(
+		reopen(SUSPENDED_AFTER + short, &waiting),
+		"the app was suspended"
+	);
+}
+
+/// A client's connection reaches the loop's channel.
+fn reaches(port: u16, accepted: &mpsc::Receiver<TcpStream>) -> bool {
+	let deadline = std::time::Instant::now() + Duration::from_secs(10);
+	while std::time::Instant::now() < deadline {
+		if TcpStream::connect(("127.0.0.1", port)).is_ok()
+			&& accepted.recv_timeout(Duration::from_secs(1)).is_ok()
+		{
+			return true;
+		}
+		thread::sleep(Duration::from_millis(20));
+	}
+	false
+}
+
+#[test]
+fn connections_arrive_before_and_after_the_app_was_suspended() {
+	let listener = listen(0).unwrap();
+	let port = listener.local_addr().unwrap().port();
+	let stop = Arc::new(AtomicBool::new(false));
+	let log = Arc::new(Log::default());
+	// A clock the test moves an hour ahead, as a suspension would.
+	let ahead = Arc::new(AtomicBool::new(false));
+	let (connections, accepted) = mpsc::channel();
+	let (flag, lines, jumped) = (stop.clone(), log.clone(), ahead.clone());
+	let loop_thread = thread::spawn(move || {
+		let clock = move || {
+			let hour = Duration::from_secs(3600 * u64::from(jumped.load(Ordering::SeqCst)));
+			SystemTime::now() + hour
+		};
+		accept_connections(listener, port, &flag, &connections, &lines, clock);
+	});
+	assert!(reaches(port, &accepted));
+	assert_eq!(log.text(), "");
+	ahead.store(true, Ordering::SeqCst);
+	let deadline = std::time::Instant::now() + Duration::from_secs(10);
+	while log.text().is_empty() && std::time::Instant::now() < deadline {
+		thread::sleep(Duration::from_millis(20));
+	}
+	assert_eq!(log.text(), format!("listening again on port {port}\n"));
+	assert!(reaches(port, &accepted), "the new socket accepts");
+	stop.store(true, Ordering::SeqCst);
+	loop_thread.join().unwrap();
+	assert!(
+		TcpStream::connect(("127.0.0.1", port)).is_err(),
+		"closed once stopped"
+	);
 }
