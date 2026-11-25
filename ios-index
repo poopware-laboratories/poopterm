@@ -1,0 +1,8 @@
+# Poopterm packages for ios, from the release packages-ios-20261125-014450
+cpufetch 1.06 b3ddc9f6fe0aca900bd77c0a619677e5a1fa473e7869c496ce766471b7ea9cf1 49877 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/cpufetch-1.06.tar.gz Show the CPU beside its maker's logo
+cmatrix 2.0 4988fbd1d5c572e9c811104f581683fa56c6ced7541dbaa66755aecd8ee800f8 123740 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/cmatrix-2.0.tar.gz Falling characters, as in the films
+sl 5.02 b8fb6a7b059e96217dc5d9e77b016ff321226ca41f1a404673f709d07b2a6314 109831 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/sl-5.02.tar.gz A steam locomotive for those who mistype ls
+figlet 2.2.5 fa177ce950a9f0a5b54402545a1ff60f52834d40462393061d277058f018c547 135493 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/figlet-2.2.5.tar.gz Large letters made of ordinary ones
+lolcat 1.5 1e4d6cb30930e6fa6f736c09e00d1fa1daf2d3f775fcaa42d4892514b3edbb2e 12034 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/lolcat-1.5.tar.gz Rainbow-coloured cat
+nyancat 1.5.2 391be4b7340cef34e25893f7a389071a0d25d4b02f77e036aaa7e7898ac56d67 16368 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/nyancat-1.5.2.tar.gz Nyan Cat, animated in the terminal
+ncdu 1.22 eb7f61a454fba209e985396d2c09e09b94c17b63bbb795d6b80577ead6728300 137887 https://github.com/poopware-laboratories/poopterm/releases/download/packages-ios-20261125-014450/ncdu-1.22.tar.gz See what fills the disk, folder by folder
