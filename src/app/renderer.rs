@@ -2,7 +2,7 @@
 //! (Vulkan on Linux and FreeBSD, Metal on macOS), else the software
 //! backend, whose frames our own presenter shows on Wayland and softbuffer
 //! elsewhere.
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 use super::gpu::Gpu;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use super::wayland;
@@ -22,7 +22,7 @@ use std::num::NonZeroU32;
 
 pub(super) enum Renderer {
 	Software(Software),
-	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 	Gpu(Box<Gpu>),
 }
 
@@ -188,7 +188,7 @@ impl Renderer {
 		let gpu_here = cfg!(any(
 			target_os = "linux",
 			target_os = "freebsd",
-			target_os = "macos"
+			target_vendor = "apple"
 		));
 		let failure = gpu_failure.map(|(_, error)| error.as_str());
 		Ok((selected.value, started(selected.backend, failure, gpu_here)))
@@ -199,7 +199,7 @@ impl Renderer {
 	pub(super) fn gpu_time(&self) -> Option<std::time::Duration> {
 		match self {
 			Self::Software(_) => None,
-			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 			Self::Gpu(gpu) => gpu.gpu_time(),
 		}
 	}
@@ -210,19 +210,19 @@ impl Renderer {
 	pub(super) fn facts(&self) -> Option<crate::gpu::facts::GpuFacts> {
 		match self {
 			Self::Software(_) => None,
-			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 			Self::Gpu(gpu) => Some(gpu.facts()),
 		}
 	}
 	// pr-check: end window glue
 
 	// pr-check: window glue: the GPU draws in a real window's surface
-	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 	fn gpu(window: &Arc<Window>, preference: RendererPreference) -> Result<Self, String> {
 		Gpu::new(window, preference).map(|gpu| Self::Gpu(Box::new(gpu)))
 	}
 
-	#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "macos")))]
+	#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple")))]
 	fn gpu(_: &Arc<Window>, _: RendererPreference) -> Result<Self, String> {
 		Err("not available on this system yet".to_owned())
 	}
@@ -230,7 +230,7 @@ impl Renderer {
 
 	/// The software renderer, for a window whose GPU failed with `error`.
 	// pr-check: window glue: hands a real window from its failed GPU to softbuffer
-	#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+	#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 	pub(super) fn after_gpu(gpu: Box<Gpu>, error: &str) -> Result<Self, String> {
 		let window = gpu.window().clone();
 		// Its swapchain goes before software presents in the window.
@@ -248,7 +248,7 @@ impl Renderer {
 	pub(super) fn after_presenter(self, error: &str) -> Result<Self, String> {
 		match self {
 			Self::Software(software) => software.fallback(error).map(Self::Software),
-			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 			gpu @ Self::Gpu(_) => Ok(gpu),
 		}
 	}
@@ -262,7 +262,7 @@ impl Renderer {
 			Self::Gpu(_) => {}
 			// Metal's layer takes the scale with the size, as a move to
 			// another display changes both.
-			#[cfg(target_os = "macos")]
+			#[cfg(target_vendor = "apple")]
 			Self::Gpu(gpu) => gpu.follow_scale(),
 		}
 	}
@@ -279,7 +279,7 @@ impl Renderer {
 		match self {
 			Self::Software(software) => software.present(pixels, width, bands, damage_only),
 			// The GPU shows its frames as it draws them.
-			#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+			#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 			Self::Gpu(_) => Shown::Done,
 		}
 	}

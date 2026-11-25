@@ -9,6 +9,7 @@ use self::{
 
 mod adler;
 mod bits;
+pub(crate) mod gzip;
 mod huffman;
 
 /// Decompresses a zlib stream into at most `limit` bytes, checking its
@@ -378,6 +379,8 @@ mod adler_tests;
 mod bits_tests;
 #[cfg(test)]
 mod blocks_tests;
+#[cfg(test)]
+mod gzip_tests;
 #[cfg(test)]
 mod header_tests;
 #[cfg(test)]

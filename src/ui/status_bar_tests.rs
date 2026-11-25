@@ -16,6 +16,7 @@ fn input(shell: &ShellIntegration) -> StatusInput<'_> {
 		shell,
 		size: (80, 24),
 		theme: "poop",
+		broadcast: false,
 	}
 }
 
@@ -75,6 +76,7 @@ fn control_characters_never_reach_the_bar() {
 		place: Some("ro\not"),
 		cwd: "di\r\x1br",
 		theme: "po\top",
+		broadcast: false,
 		..input(&shell)
 	};
 	let (left, right) = status_text(&input);
@@ -102,6 +104,7 @@ fn the_right_shows_the_grid_size_and_theme() {
 	let input = StatusInput {
 		size: (132, 43),
 		theme: "catppuccin-latte",
+		broadcast: false,
 		..input(&shell)
 	};
 	assert_eq!(
@@ -232,4 +235,105 @@ fn a_directory_alone_loses_its_control_characters_too() {
 		..input(&shell)
 	};
 	assert_eq!(status_text(&input).0, "]8;;evilsrc");
+}
+
+#[test]
+fn broadcasting_is_said_first_on_the_right_and_nowhere_else() {
+	let shell = ShellIntegration::default();
+	let quiet = status_text(&input(&shell));
+	let loud = status_text(&StatusInput {
+		broadcast: true,
+		..input(&shell)
+	});
+	assert_eq!(loud.0, quiet.0, "the left is unchanged");
+	assert_eq!(
+		loud.1,
+		format!("broadcasting to all panes{SEPARATOR}{}", quiet.1)
+	);
+	assert!(!quiet.1.contains("broadcasting"));
+}
+
+#[test]
+fn the_bar_sits_above_the_bottom_inset_between_the_side_insets() {
+	use super::status_bar::status_rect;
+	assert_eq!(status_rect((800, 600), 26, 0, 0, (0, 0)), (0, 574, 800, 26));
+	assert_eq!(
+		status_rect((800, 600), 26, 1, 0, (0, 0)),
+		(0, 573, 800, 26),
+		"above the border"
+	);
+	// A phone on its side: 2622×1206 at 3×, the keyboard 1008 pixels tall.
+	assert_eq!(
+		status_rect((2622, 1206), 78, 0, 1008, (186, 186)),
+		(186, 120, 2250, 78)
+	);
+}
+
+#[test]
+fn a_window_too_small_for_its_insets_gives_the_bar_no_room() {
+	use super::status_bar::status_rect;
+	assert_eq!(status_rect((100, 50), 26, 0, 80, (60, 60)), (60, 0, 0, 26));
+}
+
+mod cwd_names {
+	use crate::ui::status_bar::cwd_label;
+	use std::path::Path;
+
+	const HOME: &str = "/var/mobile/Containers/Data/Application/09523DB6-6F8F-4A1F-A45C-FD8104F9AD1E";
+
+	#[test]
+	fn the_home_directory_is_a_tilde_not_its_name() {
+		assert_eq!(cwd_label(Path::new(HOME), Some(Path::new(HOME))), "~");
+		let slash = format!("{HOME}/");
+		assert_eq!(
+			cwd_label(Path::new(&slash), Some(Path::new(HOME))),
+			"~",
+			"a trailing slash is the same place"
+		);
+	}
+
+	#[test]
+	fn elsewhere_is_named_by_its_last_component() {
+		let docs = format!("{HOME}/Documents");
+		assert_eq!(
+			cwd_label(Path::new(&docs), Some(Path::new(HOME))),
+			"Documents"
+		);
+		assert_eq!(
+			cwd_label(Path::new("/usr/bin"), Some(Path::new(HOME))),
+			"bin"
+		);
+		assert_eq!(
+			cwd_label(Path::new("/var/mobile"), Some(Path::new(HOME))),
+			"mobile",
+			"above home is not home"
+		);
+	}
+
+	#[test]
+	fn the_root_is_a_slash() {
+		assert_eq!(cwd_label(Path::new("/"), Some(Path::new(HOME))), "/");
+		assert_eq!(cwd_label(Path::new("/"), None), "/");
+	}
+
+	#[test]
+	fn without_a_home_nothing_is_named_tilde_but_an_empty_path() {
+		assert_eq!(cwd_label(Path::new("/Users/me"), None), "me");
+		assert_eq!(
+			cwd_label(Path::new("/Users/me"), Some(Path::new(""))),
+			"me",
+			"an empty HOME is no home"
+		);
+		assert_eq!(
+			cwd_label(Path::new(""), None),
+			"~",
+			"as before: no directory yet"
+		);
+	}
+
+	#[test]
+	fn a_home_of_the_root_names_the_root_tilde() {
+		assert_eq!(cwd_label(Path::new("/"), Some(Path::new("/"))), "~");
+		assert_eq!(cwd_label(Path::new("/tmp"), Some(Path::new("/"))), "tmp");
+	}
 }

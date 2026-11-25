@@ -13,6 +13,15 @@ const ARRAY: usize = 3;
 /// `MTLStorageModeManaged`: the CPU writes and reads it, on Intel GPUs
 /// through copies Metal makes, on Apple's in the memory both share.
 const MANAGED: usize = 1;
+/// `MTLStorageModeShared`: memory the CPU and GPU share, as on every iOS
+/// device, which has no managed textures.
+const SHARED: usize = 0;
+/// The storage mode of textures here.
+pub(crate) const STORAGE: usize = if cfg!(target_os = "ios") {
+	SHARED
+} else {
+	MANAGED
+};
 
 /// What a texture is for: `MTLTextureUsageShaderRead`, and
 /// `MTLTextureUsageRenderTarget` with it.
@@ -105,7 +114,7 @@ impl Texture {
 			let _: () = descriptor.send(c"setWidth:", (width,));
 			let _: () = descriptor.send(c"setHeight:", (height,));
 			let _: () = descriptor.send(c"setArrayLength:", (layers,));
-			let _: () = descriptor.send(c"setStorageMode:", (MANAGED,));
+			let _: () = descriptor.send(c"setStorageMode:", (STORAGE,));
 			let _: () = descriptor.send(c"setUsage:", (usage as usize,));
 			let made: Raw = device
 				.device

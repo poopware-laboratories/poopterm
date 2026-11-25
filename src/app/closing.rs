@@ -3,7 +3,6 @@
 //! `ui::close_prompt`; these methods hand it the live sessions and keys.
 use super::*;
 use crate::ui::close_prompt::{Answer, CloseTarget, answer, close_request, ends};
-use winit::event::KeyEvent;
 
 impl App {
 	/// Closes `target` at once, or asks first when a program runs there.
@@ -48,13 +47,13 @@ impl App {
 
 	/// Answers an open close prompt with `event`'s key; false when none is
 	/// open, so the key goes on.
-	pub(super) fn answer_close(&mut self, event: &KeyEvent, event_loop: &ActiveEventLoop) -> bool {
+	pub(super) fn answer_close(&mut self, key: &Key, event_loop: &ActiveEventLoop) -> bool {
 		// pr-check: window glue: hands a real key to the tested answer
 		let Some(target) = self.closing.as_ref().map(|request| request.target) else {
 			return false;
 		};
-		let chord = (self.shortcuts.close_tab).matches(&event.logical_key, self.mods);
-		match answer(&event.logical_key, chord) {
+		let chord = (self.shortcuts.close_tab).matches(key, self.mods);
+		match answer(key, chord) {
 			Answer::Wait => return true,
 			Answer::Close => self.close_now(target, event_loop),
 			Answer::Keep => {}

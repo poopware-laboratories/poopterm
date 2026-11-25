@@ -13,8 +13,9 @@ use crate::{
 	},
 };
 
-/// Commands offered by the command palette, in display order.
-pub(crate) const PALETTE_COMMANDS: [&str; 7] = [
+/// Commands offered by the command palette, in display order; every
+/// shortcut action follows them ([`palette_commands`]).
+pub(crate) const PALETTE_COMMANDS: [&str; 9] = [
 	"New tab",
 	"Settings",
 	"About poopterm",
@@ -22,26 +23,41 @@ pub(crate) const PALETTE_COMMANDS: [&str; 7] = [
 	"Copy last command output",
 	"Close tab",
 	"Rename active tab",
+	"Save scrollback to file",
+	"Broadcast input to all panes",
 ];
 
-/// The commands whose name holds `query`, ignoring case; Enter runs the
-/// first.
-pub(crate) fn palette_matches(query: &str) -> Vec<&'static str> {
-	let query = query.to_lowercase();
-	let matching = PALETTE_COMMANDS.into_iter();
-	matching
-		.filter(|command| command.to_lowercase().contains(&query))
-		.collect()
+/// Everything the palette offers: its own commands, then each shortcut
+/// action not among them, but the palette itself.
+pub(crate) fn palette_commands() -> Vec<&'static str> {
+	let actions = ShortcutAction::ALL
+		.into_iter()
+		.filter(|&a| a != ShortcutAction::CommandPalette);
+	let labels = actions
+		.map(ShortcutAction::label)
+		.filter(|label| !PALETTE_COMMANDS.contains(label));
+	PALETTE_COMMANDS.into_iter().chain(labels).collect()
 }
 
-/// The shortcut action `command` has a key for, if any.
+/// The commands whose name holds `query`, ignoring case, the one named
+/// exactly and those it starts first; Enter runs the first.
+pub(crate) fn palette_matches(query: &str) -> Vec<&'static str> {
+	let query = query.to_lowercase();
+	let mut matching: Vec<&str> = (palette_commands().into_iter())
+		.filter(|command| command.to_lowercase().contains(&query))
+		.collect();
+	// The command named exactly first, then those it starts, so typing
+	// `Copy` runs Copy and not "Copy last command output".
+	matching.sort_by_key(|command| {
+		let name = command.to_lowercase();
+		(name != query, !name.starts_with(&query))
+	});
+	matching
+}
+
+/// The shortcut action `command` names, which has a key, if any.
 pub(crate) fn command_action(command: &str) -> Option<ShortcutAction> {
-	match command {
-		"New tab" => Some(ShortcutAction::NewTab),
-		"Cycle theme" => Some(ShortcutAction::CycleTheme),
-		"Close tab" => Some(ShortcutAction::CloseTab),
-		_ => None,
-	}
+	(ShortcutAction::ALL.into_iter()).find(|action| action.label() == command)
 }
 
 /// Each command's chord as the platform writes it, from the bindings in
@@ -213,6 +229,22 @@ pub(crate) fn command_palette<'a>(
 		note: note.map(|note| (row(0), note)),
 		buttons: Vec::new(),
 	}
+}
+
+/// The command row tapped in a palette, excluding its field, note and gaps.
+pub(crate) fn palette_row_at(
+	place: Place,
+	(query, renaming): (&str, bool),
+	closing: bool,
+	point: (f64, f64),
+	theme: &Theme,
+) -> Option<usize> {
+	(!closing)
+		.then(|| {
+			command_palette(place, (query, renaming), 1.0, theme)
+				.row_at((point.0.max(0.0) as usize, point.1.max(0.0) as usize))
+		})
+		.flatten()
 }
 
 /// The row after stepping `delta` from `current` among `count` rows,

@@ -98,6 +98,18 @@ fn the_wallpaper_buttons_share_a_row_and_a_height() {
 }
 
 #[test]
+fn the_ios_wallpaper_button_names_the_photo_library() {
+	assert_eq!(
+		super::settings_view::wallpaper_picker_label(true),
+		"Photos…"
+	);
+	assert_eq!(
+		super::settings_view::wallpaper_picker_label(false),
+		"Choose image…"
+	);
+}
+
+#[test]
 fn clicking_the_wallpaper_buttons_where_they_are_drawn_opens_and_clears() {
 	let drawn = main_buttons(1, MIN_SIZE);
 	let rects: Vec<_> = drawn

@@ -8,7 +8,7 @@ use winit::event::{ElementState, MouseButton};
 
 impl App {
 	pub(super) fn is_over_vertical_sidebar(&self, x: f64) -> bool {
-		x < self.sidebar_width() as f64
+		x < self.sidebar_extent() as f64
 	}
 
 	pub(super) fn handle_vertical_tab_wheel(&mut self, x: f64, y: f64, scroll_up: bool) -> bool {

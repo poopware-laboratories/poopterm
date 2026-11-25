@@ -5,11 +5,7 @@ use std::time::Instant;
 #[cfg(target_os = "macos")]
 use winit::platform::macos::WindowAttributesExtMacOS;
 use winit::{
-	application::ApplicationHandler,
-	dpi::{LogicalSize, PhysicalSize},
-	event::Ime,
-	event_loop::ControlFlow,
-	window::WindowId,
+	application::ApplicationHandler, event::Ime, event_loop::ControlFlow, window::WindowId,
 };
 
 impl ApplicationHandler<UserEvent> for App {
@@ -18,10 +14,12 @@ impl ApplicationHandler<UserEvent> for App {
 			return;
 		}
 
-		let attrs = crate::platform::identify(Window::default_attributes())
-			.with_title("💩 poopterm")
-			.with_inner_size(LogicalSize::new(900.0, 560.0))
-			.with_min_inner_size(LogicalSize::new(480.0, 240.0));
+		let attrs = crate::platform::identify(Window::default_attributes()).with_title("💩 poopterm");
+		// A desktop window starts at a size; on iOS it fills the screen.
+		#[cfg(not(target_os = "ios"))]
+		let attrs = attrs
+			.with_inner_size(winit::dpi::LogicalSize::new(900.0, 560.0))
+			.with_min_inner_size(winit::dpi::LogicalSize::new(480.0, 240.0));
 
 		// On macOS, keep the native frame so the traffic lights exist,
 		// but make the title bar transparent and hide the title text.
@@ -55,8 +53,16 @@ impl ApplicationHandler<UserEvent> for App {
 		self.window = Some(window);
 		// pr-check: window glue: runs once the real window exists
 		self.apply_scale();
+		let appearance = self
+			.window
+			.as_ref()
+			.and_then(|w| w.theme())
+			.map(crate::theme_follow::of_window);
+		self.follow_appearance(appearance);
 		#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 		self.start_decorations();
+		#[cfg(target_os = "ios")]
+		crate::ios_window::attach(self.window.as_ref().unwrap(), self.proxy.clone());
 		// pr-check: end window glue
 		// pr-check: window glue: AppKit has built the app menu once the app launched
 		#[cfg(target_os = "macos")]
@@ -67,9 +73,15 @@ impl ApplicationHandler<UserEvent> for App {
 			});
 		}
 		// pr-check: end window glue
-		let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
-		let size = PhysicalSize::new(width as u32, height as u32);
-		let _ = self.window.as_ref().unwrap().request_inner_size(size);
+		// A desktop window fits the first grid; on iOS the screen is the size.
+		#[cfg(not(target_os = "ios"))]
+		{
+			let (width, height) = self.layout().window_size((cols, rows), (self.cw, self.ch));
+			let size = winit::dpi::PhysicalSize::new(width as u32, height as u32);
+			let _ = self.window.as_ref().unwrap().request_inner_size(size);
+		}
+		#[cfg(target_os = "ios")]
+		let _ = (cols, rows);
 		self.update_window_title();
 		if let Some(millihertz) = window_refresh_millihertz(self.window.as_deref()) {
 			self.pacer.set_interval(std::time::Duration::from_micros(
@@ -116,10 +128,15 @@ impl ApplicationHandler<UserEvent> for App {
 				self.request_redraw();
 			}
 			WindowEvent::Occluded(occluded) => self.occluded = occluded,
+			// pr-check: window glue: winit sends this when the desktop's appearance changes
+			WindowEvent::ThemeChanged(theme) => {
+				self.follow_appearance(Some(crate::theme_follow::of_window(theme)))
+			}
+			// pr-check: end window glue
 			WindowEvent::MouseWheel { delta, .. } => self.handle_mouse_wheel(delta),
 			WindowEvent::Ime(Ime::Commit(text)) => {
-				let bytes = text.into_bytes();
-				self.active_session().write(&bytes);
+				let bytes = crate::input::commit::commit_bytes(&text);
+				self.write_input(&bytes);
 			}
 			WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
 				if let Some(recorder) = &mut self.frame_stats {
@@ -131,6 +148,7 @@ impl ApplicationHandler<UserEvent> for App {
 			WindowEvent::MouseInput { state, button, .. } => {
 				self.handle_mouse_input(event_loop, state, button)
 			}
+			WindowEvent::Touch(touch) => self.handle_touch(event_loop, touch),
 			WindowEvent::Resized(size) => self.resize(size.width, size.height),
 			// pr-check: window glue: winit sends this when the window moves to another output or its scale changes
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -190,6 +208,18 @@ impl ApplicationHandler<UserEvent> for App {
 			// pr-check: window glue: only a real app menu sends this
 			#[cfg(target_os = "macos")]
 			UserEvent::About => self.open_about(event_loop),
+			// pr-check: end window glue
+			// pr-check: window glue: only UIKit's keyboard notifications send this
+			#[cfg(target_os = "ios")]
+			UserEvent::Keyboard => self.resize(self.width, self.height),
+			// pr-check: end window glue
+			// pr-check: window glue: only a hardware keyboard's presses on iOS send this
+			#[cfg(target_os = "ios")]
+			UserEvent::HardwareKey(key, mods) => self.press_hardware_key(event_loop, key, mods),
+			#[cfg(target_os = "ios")]
+			UserEvent::WallpaperImported(path) => self.wallpaper_imported(path),
+			#[cfg(target_os = "ios")]
+			UserEvent::WallpaperPickerCancelled => self.wallpaper_picker_cancelled(),
 			// pr-check: end window glue
 			UserEvent::Notification(key, event) => self.notification_event(key, event),
 			#[cfg(any(target_os = "linux", target_os = "freebsd"))]

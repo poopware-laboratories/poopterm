@@ -368,3 +368,10 @@ fn a_texture_metal_made_is_taken_at_the_size_it_says() {
 		assert_eq!(taken.texture, made.texture);
 	}
 }
+
+#[test]
+fn textures_are_managed_on_the_mac_and_shared_on_ios() {
+	// iOS has no managed storage; a Mac with an Intel GPU needs it.
+	let expected = if cfg!(target_os = "ios") { 0 } else { 1 };
+	assert_eq!(super::STORAGE, expected);
+}

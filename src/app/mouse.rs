@@ -18,6 +18,53 @@ use crate::ui::{
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta};
 
 impl App {
+	/// A touch: a tap clicks, a drag scrolls (`input::touch`).
+	pub(super) fn handle_touch(&mut self, event_loop: &ActiveEventLoop, touch: winit::event::Touch) {
+		use crate::input::touch::{Action, phase};
+		// A tap outside a sheet (Settings on a phone) closes it, as there
+		// is no window button to.
+		if cfg!(target_os = "ios") && self.settings_window.is_some() {
+			if self
+				.touches
+				.event(phase(touch.phase), touch.id, (0.0, 0.0))
+				.is_some()
+			{
+				self.close_settings_window();
+			}
+			return;
+		}
+		let at = (touch.location.x, touch.location.y);
+		let action = self.touches.event(phase(touch.phase), touch.id, at);
+		// A tap on the key bar is its key's, not the terminal's.
+		if let Some(Action::Click(x, y)) = action
+			&& let Some(key) = self.bar_key_at((x, y))
+		{
+			return self.press_bar_key(event_loop, key);
+		}
+		// pr-check: window glue: a terminal tap restores the keyboard after it was dismissed
+		#[cfg(target_os = "ios")]
+		if let Some(Action::Click(x, y)) = action
+			&& self.point_at(x, y).is_some()
+			&& let Some(window) = &self.window
+		{
+			window.set_ime_allowed(true);
+		}
+		// pr-check: end window glue
+		// pr-check: window glue: replays a tap or drag as the mouse events a window sends
+		match action {
+			Some(Action::Click(x, y)) => {
+				self.handle_cursor_moved(PhysicalPosition::new(x, y));
+				self.handle_mouse_input(event_loop, ElementState::Pressed, MouseButton::Left);
+				self.handle_mouse_input(event_loop, ElementState::Released, MouseButton::Left);
+			}
+			Some(Action::Scroll(dy)) => {
+				self.handle_mouse_wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, dy)))
+			}
+			None => {}
+		}
+		// pr-check: end window glue
+	}
+
 	/// Where the active terminal's grid sits in the window, without the
 	/// terminal's own size and scrolling, so it is found without its lock.
 	pub(super) fn grid_place(&self) -> GridPlace {
@@ -144,7 +191,7 @@ impl App {
 		match clipboard_read() {
 			Ok(text) => {
 				let bytes = paste_bytes(&text, self.active_term().bracketed_paste);
-				self.active_session().write(&bytes);
+				self.write_input(&bytes);
 			}
 			Err(error) => crate::warnings::warning!("clipboard paste failed: {error}"),
 		}
@@ -354,6 +401,17 @@ impl App {
 			_ => return,
 		};
 		self.held_button = (state == ElementState::Pressed).then_some(code);
+		// pr-check: window glue: routes a tap through the tested palette row hit target
+		if state == ElementState::Pressed
+			&& button == MouseButton::Left
+			&& self.command_palette
+			&& let Some(index) = self.palette_row_at((x, y))
+		{
+			self.command_selected = index;
+			self.activate_palette_command(event_loop);
+			return;
+		}
+		// pr-check: end window glue
 		// pr-check: window glue: a press on the search box goes to its tested buttons
 		if state == ElementState::Pressed && button == MouseButton::Left && self.press_search() {
 			return;
@@ -417,5 +475,35 @@ impl App {
 				}
 			}
 		}
+	}
+
+	/// The command palette row at the point, if it is open and not a prompt.
+	fn palette_row_at(&self, point: (f64, f64)) -> Option<usize> {
+		crate::ui::overlays::palette_row_at(
+			crate::ui::overlays::Place {
+				window: (self.width as usize, self.height as usize),
+				top: self.top,
+				scale: self.scale(),
+			},
+			(&self.command_query, self.renaming_tab),
+			self.closing.is_some(),
+			point,
+			&self.theme,
+		)
+	}
+
+	/// The key of the bar above the on-screen keyboard at `point`, while
+	/// the bar shows.
+	fn bar_key_at(&self, (x, y): (f64, f64)) -> Option<crate::ui::key_bar::BarKey> {
+		use crate::ui::key_bar::{key_at, key_rects, shown, strip};
+		if !shown(cfg!(target_os = "ios"), self.safe.1, self.home) || x < 0.0 || y < 0.0 {
+			return None;
+		}
+		let size = (self.width as usize, self.height as usize);
+		let (sx, sy, sw, _) = strip(size, self.safe.1, self.sides, self.scale());
+		key_at(
+			(x as usize, y as usize),
+			&key_rects((sx, sy), sw, self.scale()),
+		)
 	}
 }

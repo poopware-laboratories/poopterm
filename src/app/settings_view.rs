@@ -6,8 +6,9 @@ use super::{
 	settings_diagnostics::compose_diagnostics,
 	settings_focus::{draw_ring, focus_order},
 	settings_hit::{SettingsPage, font_list_rows},
-	settings_nav::{NAV_WIDTH, compose_nav, window_target},
+	settings_nav::{NAV_WIDTH, compose_nav},
 	settings_pen::Pen,
+	settings_shape::{Shape, clamp_scroll, compose_top},
 };
 use crate::input::shortcuts::ShortcutAction;
 use crate::render::{
@@ -114,6 +115,10 @@ fn theme_label(kind: ThemeKind) -> String {
 	}
 }
 
+pub(super) fn wallpaper_picker_label(ios: bool) -> &'static str {
+	if ios { "Photos…" } else { "Choose image…" }
+}
+
 impl App {
 	pub(super) fn draw_settings(&mut self) {
 		let scale = self
@@ -142,12 +147,17 @@ impl App {
 			height.saturating_sub(4 * scale),
 			self.theme.bg,
 		);
-		// The page is drawn as if it stood alone, then moved right of the sidebar.
-		let nav = NAV_WIDTH * scale;
-		let mut page = Scene::new(width.saturating_sub(nav), height);
-		self.compose_page(&mut page, scale);
-		self.compose_sidebar(p, scale);
-		p.commands.extend(page.shifted(nav).commands);
+		// The page is drawn as if it stood alone, then moved beside or under the list.
+		// A page taller than the room for it shows the band it is scrolled to.
+		let shape = self.settings_shape();
+		let (px, py, pw, ph) = shape.page((width, height), scale);
+		let extent = shape.extent(ph, scale);
+		let scroll = clamp_scroll(self.settings_scroll, ph, extent);
+		let mut page = Scene::new(pw, extent);
+		self.compose_page(&mut page, scale, (px as f64, py as f64 - scroll as f64));
+		self.compose_list(p, scale, shape);
+		p.commands
+			.extend(page.band(scroll, ph).moved((px, py)).commands);
 		// The focused control gets a ring in the accent, last so nothing covers it.
 		let focused = self
 			.settings_focus
@@ -161,9 +171,16 @@ impl App {
 	/// The focusable rectangles of `scene`, drawn at `scale`, in Tab order.
 	fn settings_focus_order(&self, scene: &Scene, scale: usize) -> Vec<Rect> {
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let page = self.settings_editor.page;
-		focus_order(scene, NAV_WIDTH * scale, |point| {
-			window_target(point, size, scale, page).is_some()
+		let (page, scroll) = (self.settings_editor.page, self.settings_scroll);
+		let shape = self.settings_shape();
+		// Across the top, the list comes first by position alone.
+		let nav = if shape == Shape::Side {
+			NAV_WIDTH * scale
+		} else {
+			0
+		};
+		focus_order(scene, nav, |point| {
+			shape.target(point, size, scale, (page, scroll)).is_some()
 		})
 	}
 
@@ -179,7 +196,9 @@ impl App {
 		self.settings_focus_order(&scene, scale)
 	}
 
-	fn compose_sidebar(&mut self, p: &mut Scene, scale: usize) {
+	/// The list of pages, at the left or across the top as `shape` says.
+	fn compose_list(&mut self, p: &mut Scene, scale: usize, shape: Shape) {
+		let style = self.button_style(scale);
 		let px = 18.0 * scale as f32;
 		let ascent = (self.ui_fonts.primary())
 			.horizontal_line_metrics(px)
@@ -193,10 +212,20 @@ impl App {
 			scale,
 		};
 		let (active, cursor) = (self.settings_editor.page, self.settings_cursor_pos);
-		compose_nav(&mut pen, p, (active, cursor), (&colors, self.theme.fg));
+		if shape == Shape::Side {
+			return compose_nav(&mut pen, p, (active, cursor), (&colors, self.theme.fg));
+		}
+		compose_top(
+			&mut pen,
+			p,
+			shape,
+			(active, cursor),
+			(&colors, self.theme.fg, style),
+		);
 	}
 
-	fn compose_page(&mut self, p: &mut Scene, scale: usize) {
+	/// The open page, as if it stood alone; it goes at `origin` in the window.
+	fn compose_page(&mut self, p: &mut Scene, scale: usize, origin: (f64, f64)) {
 		let px = 18.0 * scale as f32;
 		let ascent = self
 			.ui_fonts
@@ -204,10 +233,9 @@ impl App {
 			.horizontal_line_metrics(px)
 			.map_or(self.ascent, |metrics| metrics.ascent.round() as i32);
 		let style = self.button_style(scale);
-		// The page's own origin is the sidebar's right edge.
 		let cursor = (
-			self.settings_cursor_pos.0 - (NAV_WIDTH * scale) as f64,
-			self.settings_cursor_pos.1,
+			self.settings_cursor_pos.0 - origin.0,
+			self.settings_cursor_pos.1 - origin.1,
 		);
 		let hovered = |x: usize, y: usize, w: usize, h: usize| {
 			cursor.0 >= x as f64
@@ -273,7 +301,7 @@ impl App {
 				} else {
 					"Monospace fonts installed on this system."
 				};
-				pen.text(p, x, 68, hint, 0.72);
+				pen.hint(p, hint);
 				let selected = fonts.selected();
 				for row in 0..visible {
 					let Some(entry) = fonts.entry_at(row) else {
@@ -322,12 +350,9 @@ pub(super) fn compose_layout_settings(
 ) {
 	let x = 24 * pen.scale;
 	pen.text(p, x, 28, "Layout", 1.0);
-	pen.text(
+	pen.hint(
 		p,
-		x,
-		68,
 		"Tabs, toolbar buttons, the bottom bar, and the window frame.",
-		0.72,
 	);
 	let prefs = editor.preferences;
 	for (row, label, enabled) in [
@@ -379,7 +404,7 @@ pub(super) fn compose_shortcuts(
 ) {
 	let x = 24 * pen.scale;
 	pen.text(p, x, 28, title, 1.0);
-	pen.text(p, x, 68, hint, 0.72);
+	pen.hint(p, hint);
 	for &(action, row) in rows {
 		let recording = editor.recording_shortcut == Some(action);
 		let label = match recording {
@@ -406,7 +431,7 @@ pub(super) fn compose_main_settings(
 
 	let button_w = 48 * s;
 	let theme_y = THEME_ROW * s;
-	for (bx, label) in [(x, "‹"), (x + content_w - button_w, "›")] {
+	for (bx, label) in [(x, "‹"), (x + content_w.saturating_sub(button_w), "›")] {
 		p.button((bx, theme_y, button_w, ROW_HEIGHT * s), style, false);
 		pen.text(p, bx + 18 * s, THEME_ROW + 7, label, 1.0);
 	}
@@ -420,11 +445,12 @@ pub(super) fn compose_main_settings(
 		&theme_label(editor.theme),
 		0.82,
 	);
-	pen.text(p, x, THEME_CREDIT_ROW, &editor.theme.credit().line(), 0.62);
+	let credit = pen.fit(&editor.theme.credit().line(), content_w, 0.62);
+	pen.text(p, x, THEME_CREDIT_ROW, &credit, 0.62);
 
 	pen.text(p, x, MAIN.wallpaper_label, "Background wallpaper", 0.76);
 	for (bx, bw, label) in [
-		(x, 152 * s, "Choose image…"),
+		(x, 152 * s, wallpaper_picker_label(cfg!(target_os = "ios"))),
 		(x + 164 * s, 96 * s, "Clear"),
 	] {
 		p.button((bx, WALLPAPER_ROW * s, bw, 32 * s), style, false);
@@ -435,11 +461,13 @@ pub(super) fn compose_main_settings(
 		.as_ref()
 		.and_then(|path| path.file_name())
 		.and_then(|name| name.to_str())
-		.unwrap_or("No image selected")
+		.unwrap_or("No wallpaper selected")
 		.chars()
 		.take(32)
 		.collect();
-	pen.text(p, x + 272 * s, WALLPAPER_ROW + 6, &wallpaper_name, 0.66);
+	let name_x = x + 272 * s;
+	let wallpaper_name = pen.fit(&wallpaper_name, width.saturating_sub(name_x + 24 * s), 0.66);
+	pen.text(p, name_x, WALLPAPER_ROW + 6, &wallpaper_name, 0.66);
 
 	let prefs = editor.preferences;
 	let mut steppers = vec![

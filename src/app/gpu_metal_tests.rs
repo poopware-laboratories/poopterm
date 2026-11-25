@@ -2,7 +2,7 @@
 //! windows it draws in, that any Metal failure abandons the GPU, and
 //! frames and Settings scenes drawn by a real GPU on a layer no view hosts,
 //! through resizes and changes of scale.
-use super::{Gpu, Next, TURNED_OFF, allows_metal, next, ns_view};
+use super::{Gpu, Next, TURNED_OFF, allows_metal, host_view, next};
 use crate::{
 	config::RendererPreference,
 	gpu::mtl::{
@@ -64,9 +64,11 @@ fn metal_by_default_still_needs_a_view_to_draw_in() {
 fn an_appkit_window_is_drawn_in_through_its_view_and_no_other_kind() {
 	let view = NonNull::new(0x7000 as *mut c_void).unwrap();
 	let appkit = RawWindowHandle::AppKit(AppKitWindowHandle::new(view));
-	assert_eq!(ns_view(appkit), Some(view));
+	assert_eq!(host_view(appkit), Some(view));
+	let uikit = RawWindowHandle::UiKit(winit::raw_window_handle::UiKitWindowHandle::new(view));
+	assert_eq!(host_view(uikit), Some(view), "a UIKit window too (iOS)");
 	let xcb = RawWindowHandle::Xcb(XcbWindowHandle::new(NonZeroU32::new(9).unwrap()));
-	assert_eq!(ns_view(xcb), None);
+	assert_eq!(host_view(xcb), None);
 	// SAFETY: no view to use.
 	let refused = unsafe { Gpu::open((), None, RendererPreference::Gpu) };
 	assert_eq!(

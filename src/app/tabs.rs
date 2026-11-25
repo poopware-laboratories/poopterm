@@ -17,7 +17,7 @@ impl App {
 		if self.preferences.show_tabs && self.preferences.vertical_tabs {
 			return self.vertical_tab_layout().tab_start_y;
 		}
-		tab_bar_top(self.titlebar_height, self.tab_height)
+		self.safe.0 + tab_bar_top(self.titlebar_height, self.tab_height)
 	}
 
 	/// Where the window buttons sit in the header.
@@ -32,8 +32,12 @@ impl App {
 			self.sessions.len(),
 			self.scale(),
 			TabStripOptions {
-				left_reserve: self.tab_left_reserve().max(controls.left_reserve),
-				right_reserve: controls.right_reserve,
+				// A phone on its side keeps the tabs clear of its sensor housing,
+				// an iPad window clear of its controls.
+				left_reserve: self.tab_left_reserve().max(controls.left_reserve)
+					+ self.sides.0
+					+ self.corner,
+				right_reserve: controls.right_reserve + self.sides.1,
 				scroll: self.tab_scroll,
 				show_plus: self.preferences.show_new_tab_button,
 				show_settings: self.preferences.show_settings_button,
@@ -44,7 +48,7 @@ impl App {
 	}
 
 	pub(super) fn vertical_tab_layout(&self) -> VerticalTabLayout {
-		vertical_tab_layout(
+		crate::ui::tabs::inset_vertical_tab_layout(
 			self.height as usize,
 			self.sessions.len(),
 			self.scale(),
@@ -53,9 +57,14 @@ impl App {
 				status_height: self.status_height + self.border,
 				scroll: self.tab_scroll,
 				active_tab: self.active,
-				compact_tabs: self.preferences.compact_tabs,
+				compact_tabs: self.sidebar_is_rail(),
 				show_plus: self.preferences.show_new_tab_button,
 				show_settings: self.preferences.show_settings_button,
+			},
+			crate::ui::tabs::SidebarInsets {
+				top: self.safe.0,
+				bottom: self.bottom_inset(),
+				left: self.sides.0,
 			},
 		)
 	}

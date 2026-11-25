@@ -12,7 +12,14 @@ impl Term {
 		let cols = cols.max(1);
 		let rows = rows.max(1);
 		let blank = self.blank();
-		let old_cols = self.cols;
+		let (old_cols, old_rows) = (self.cols, self.rows);
+		// The whole screen scrolls when lines go to history.
+		self.scroll_top = 0;
+		self.scroll_bottom = old_rows.saturating_sub(1);
+		self.reset_lr_margins();
+		if rows < old_rows {
+			self.keep_cursor_line(rows);
+		}
 		self.grid.resize(cols, rows, blank);
 		self.tab_stops.resize_with(cols, || false);
 		for (col, val) in self.tab_stops.iter_mut().enumerate().skip(old_cols) {
@@ -34,6 +41,9 @@ impl Term {
 		self.cy = self.cy.min(rows - 1);
 		if let Some(modes) = &mut self.primary_modes {
 			modes.3 = false;
+		}
+		if rows > old_rows {
+			self.take_back_history(old_rows);
 		}
 		self.repair_wide_rows(0, rows);
 	}

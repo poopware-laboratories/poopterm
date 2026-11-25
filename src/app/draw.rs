@@ -19,7 +19,7 @@ use crate::{
 	ui::{
 		close_prompt::close_prompt,
 		overlays::{Place, command_palette, search_box, search_buttons, shortcut_hints},
-		status_bar::{StatusInput, status_bar},
+		status_bar::{StatusInput, status_bar, status_rect},
 	},
 };
 
@@ -81,7 +81,7 @@ impl App {
 		}
 		// pr-check: end window glue
 		let key = self.draw_key();
-		#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+		#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 		if let renderer::Renderer::Gpu(gpu) = renderer {
 			let showing = Instant::now();
 			self.renderer = self.draw_on_gpu(gpu, key, size);
@@ -202,12 +202,41 @@ impl App {
 			self.draw_command_palette(p, scale, ui);
 		}
 		self.draw_status_bar(p, scale, ui);
+		self.draw_key_bar(p, scale, ui);
+	}
+
+	/// The keys above a phone's on-screen keyboard, while it is up (iOS):
+	/// Ctrl lit while it holds.
+	pub(super) fn draw_key_bar(&mut self, p: &mut impl Pen, scale: usize, ui: UiFont) {
+		use crate::ui::key_bar::{KEYS, key_rects, shown, strip};
+		if !shown(cfg!(target_os = "ios"), self.safe.1, self.home) {
+			return;
+		}
+		let (x, y, w, h) = strip(p.size(), self.safe.1, self.sides, scale);
+		let style = self.button_style(scale);
+		let (chrome, fg) = (
+			crate::ui::chrome_colors::chrome_colors(&self.theme).chrome,
+			self.theme.fg,
+		);
+		let ctrl = self.key_bar.ctrl();
+		// pr-check: window glue: paints the tested key bar layout into the real frame
+		paint(p, &mut self.ui_fonts, |s, fonts| {
+			s.rect(x, y, w, h, chrome);
+			for (rect, key) in key_rects((x, y), w, scale) {
+				let lit = ctrl && key == crate::ui::key_bar::BarKey::Ctrl;
+				s.button(rect, style, lit);
+				let label = KEYS.iter().find(|(k, _)| *k == key).map_or("", |(_, l)| l);
+				let center = (rect.0 + rect.2 / 2, rect.1 + rect.3 / 2);
+				crate::render::header::centered_text(s, fonts, label, center, ui.px * 0.8, fg);
+			}
+		});
+		// pr-check: end window glue
 	}
 
 	/// The space around the grid, inside the border and between the chrome,
 	/// that edge cell backgrounds extend into.
 	pub(super) fn padding_area(&self, width: usize, height: usize) -> crate::graphics::Rect {
-		let x = self.border + self.sidebar_width();
+		let x = self.border + self.sidebar_extent();
 		let y = self.padding_top;
 		let bottom = height.saturating_sub(self.status_height + self.border);
 		crate::graphics::Rect {
@@ -301,9 +330,17 @@ impl App {
 			return;
 		}
 		let (width, height) = p.size();
-		let y = height.saturating_sub(self.status_height + self.border);
+		let (border, bottom) = (self.border, self.bottom_inset());
+		let rect = status_rect(
+			(width, height),
+			self.status_height,
+			border,
+			bottom,
+			self.sides,
+		);
 		let term = self.sessions[self.active].term();
-		let cwd = term.cwd.file_name().and_then(|name| name.to_str());
+		let home = crate::config::home_dir();
+		let cwd = crate::ui::status_bar::cwd_label(&term.cwd, home.as_deref());
 		// Say when the user acts as someone else or somewhere else.
 		let place = term.contexts.label().or_else(|| {
 			let local = crate::term::iterm::hostname();
@@ -313,12 +350,12 @@ impl App {
 		let input = StatusInput {
 			link: self.hovered_link.as_deref(),
 			place: place.as_deref(),
-			cwd: cwd.unwrap_or("~"),
+			cwd,
 			shell: &term.shell,
 			size: (term.cols, term.rows),
 			theme: self.theme.kind.name(),
+			broadcast: self.broadcast,
 		};
-		let rect = (0, y, width, self.status_height);
 		let bar = status_bar(&input, rect, (scale, ui.px * 0.76), &self.theme);
 		drop(term);
 		paint(p, &mut self.ui_fonts, |s, f| draw_status_bar(s, f, &bar));

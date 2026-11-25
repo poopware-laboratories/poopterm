@@ -33,6 +33,73 @@ unsafe extern "C" {
 	fn objc_allocateClassPair(superclass: Raw, name: *const c_char, extra: usize) -> Raw;
 	fn objc_registerClassPair(class: Raw);
 	fn class_addMethod(class: Raw, name: Sel, imp: *const c_void, types: *const c_char) -> Bool;
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's scene delegate uses it")
+	)]
+	fn objc_getProtocol(name: *const c_char) -> Raw;
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's scene delegate uses it")
+	)]
+	fn class_addProtocol(class: Raw, protocol: Raw) -> Bool;
+	/// Declared without a type, as `objc_msgSend`.
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's key presses use it")
+	)]
+	fn objc_msgSendSuper();
+	#[cfg_attr(
+		not(target_os = "ios"),
+		expect(dead_code, reason = "iOS's key presses use it")
+	)]
+	fn class_getSuperclass(class: Raw) -> Raw;
+}
+
+/// `struct objc_super`: the receiver, and the class whose methods answer.
+#[repr(C)]
+struct Super {
+	receiver: Raw,
+	class: Raw,
+}
+
+/// Sends `receiver`, an instance of class `name`, the message `selector`
+/// with two object arguments, as `name`'s superclass answers it: the
+/// method a method added to `name` replaces.
+///
+/// # Safety
+///
+/// `receiver` is a live instance of `name`, whose superclass has a method
+/// `selector` taking two objects and returning nothing.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's key presses use it")
+)]
+pub(crate) unsafe fn send_super(
+	receiver: Raw,
+	name: &'static CStr,
+	selector: &CStr,
+	(a, b): (Raw, Raw),
+) {
+	let Ok(class) = class(name) else {
+		return;
+	};
+	// SAFETY: the class exists; its superclass is a class or nil.
+	let parent = unsafe { class_getSuperclass(class.raw()) };
+	if parent.is_null() {
+		return;
+	}
+	let to = Super {
+		receiver,
+		class: parent,
+	};
+	type Typed = unsafe extern "C" fn(*const Super, Sel, Raw, Raw);
+	// SAFETY: `objc_msgSendSuper` jumps to the superclass's implementation
+	// with the arguments as passed, so called as the method's C type it is
+	// that method; both are function pointers of one size.
+	let send = unsafe { std::mem::transmute::<unsafe extern "C" fn(), Typed>(objc_msgSendSuper) };
+	// SAFETY: as the caller vouches; `to` lives through the call.
+	unsafe { send(&to, sel(selector), a, b) };
 }
 
 /// An action method's implementation: the receiver, the selector, and the
@@ -59,6 +126,10 @@ pub(crate) struct Sel(*const c_void);
 
 impl Sel {
 	/// No selector, as an item without an action has.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "iOS has no menu items")
+	)]
 	pub(crate) const NULL: Self = Self(ptr::null());
 }
 
@@ -137,6 +208,96 @@ pub(crate) fn action_class(
 		objc_registerClassPair(made);
 	}
 	class(name)
+}
+
+/// A method for [`subclass`]: its selector, its implementation, an
+/// `extern "C"` function taking the receiver and selector first, and its
+/// type encoding.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's scene delegate uses it")
+)]
+pub(crate) struct Method {
+	pub(crate) selector: &'static CStr,
+	pub(crate) imp: *const c_void,
+	pub(crate) types: &'static CStr,
+}
+
+/// A new class named `name`, descending from `superclass` and adopting
+/// `protocol` when the runtime has it, whose instances answer `methods`;
+/// the class already named `name` if there is one, taken to be this one
+/// made earlier.
+///
+/// # Safety
+///
+/// Each method's `imp` is an `extern "C"` function of the type its
+/// `types` encodes.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's scene delegate uses it")
+)]
+pub(crate) unsafe fn subclass(
+	name: &'static CStr,
+	superclass: &'static CStr,
+	protocol: &CStr,
+	methods: &[Method],
+) -> Result<Class, Missing> {
+	let superclass = class(superclass)?;
+	// SAFETY: the superclass is a class and `name` a C string; the runtime
+	// returns a new, unregistered class, or nil if the name is taken.
+	let made = unsafe { objc_allocateClassPair(superclass.raw(), name.as_ptr(), 0) };
+	if made.is_null() {
+		return class(name);
+	}
+	// SAFETY: `made` is unregistered, so protocols and methods may be
+	// added: the protocol is nil-checked, and each method's types encode
+	// its implementation's, as the caller vouches. Registering it then
+	// makes it usable.
+	unsafe {
+		let adopted = objc_getProtocol(protocol.as_ptr());
+		if !adopted.is_null() {
+			class_addProtocol(made, adopted);
+		}
+		for method in methods {
+			class_addMethod(
+				made,
+				sel(method.selector),
+				method.imp,
+				method.types.as_ptr(),
+			);
+		}
+		objc_registerClassPair(made);
+	}
+	class(name)
+}
+
+/// Gives the existing class `name` `methods` it does not answer yet; those
+/// it already has are kept.
+///
+/// # Safety
+///
+/// Each method's `imp` is an `extern "C"` function of the type its
+/// `types` encodes.
+#[cfg_attr(
+	not(target_os = "ios"),
+	expect(dead_code, reason = "iOS's keyboard uses it")
+)]
+pub(crate) unsafe fn add_methods(name: &'static CStr, methods: &[Method]) -> Result<(), Missing> {
+	let class = class(name)?;
+	for method in methods {
+		// SAFETY: the class exists; each method's types encode its
+		// implementation's, as the caller vouches. The runtime adds a
+		// method the class lacks and refuses one it has.
+		unsafe {
+			class_addMethod(
+				class.raw(),
+				sel(method.selector),
+				method.imp,
+				method.types.as_ptr(),
+			)
+		};
+	}
+	Ok(())
 }
 
 /// The arguments of a message, after its receiver and selector.

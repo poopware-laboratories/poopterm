@@ -291,3 +291,29 @@ fn a_window_without_a_view_tells_no_view_anything() {
 	let Some(_window) = window() else { return };
 	assert_eq!(HOSTED.with(|hosted| hosted.borrow().len()), 0);
 }
+
+#[test]
+fn a_framed_layer_covers_the_view_in_points() {
+	let drawables = super::Size {
+		width: 2622.0,
+		height: 1206.0,
+	};
+	let rect = super::frame(drawables, 3.0);
+	assert_eq!((rect.origin.width, rect.origin.height), (0.0, 0.0));
+	assert_eq!((rect.size.width, rect.size.height), (874.0, 402.0));
+	let half = super::frame(drawables, 2.0);
+	assert_eq!((half.size.width, half.size.height), (1311.0, 603.0));
+}
+
+#[test]
+fn only_uikit_frames_its_layer() {
+	assert_eq!(super::FRAMED, cfg!(target_os = "ios"));
+}
+
+#[test]
+fn the_frame_follows_the_scale_resized_settles_on() {
+	// A scale out of reason becomes 1, so the frame is the drawables'.
+	let (drawables, scale) = super::resized(None, [800, 600], f64::NAN).unwrap();
+	let rect = super::frame(drawables, scale);
+	assert_eq!((rect.size.width, rect.size.height), (800.0, 600.0));
+}

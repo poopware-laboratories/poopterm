@@ -21,6 +21,8 @@ pub(crate) struct StatusInput<'a> {
 	/// Columns and rows.
 	pub size: (usize, usize),
 	pub theme: &'a str,
+	/// Whether typing goes to every pane of the tab.
+	pub broadcast: bool,
 }
 
 /// The most characters of a running command line shown.
@@ -28,6 +30,21 @@ const COMMAND_CHARS: usize = 32;
 
 /// Gaps between the right-hand items.
 pub(crate) const SEPARATOR: &str = "  ·  ";
+
+/// The name the status bar gives the working directory `cwd`: `~` for the
+/// home directory (on iOS an app container named by a UUID), `/` for the
+/// root, else its last component.
+pub(crate) fn cwd_label<'a>(cwd: &'a std::path::Path, home: Option<&std::path::Path>) -> &'a str {
+	let home = home.filter(|home| !home.as_os_str().is_empty());
+	if home.is_some_and(|home| cwd.components().eq(home.components())) {
+		return "~";
+	}
+	match cwd.file_name() {
+		Some(name) => name.to_str().unwrap_or("?"),
+		None if cwd.has_root() => "/",
+		None => "~",
+	}
+}
 
 fn printable(text: &str) -> String {
 	text.chars().filter(|ch| !ch.is_control()).collect()
@@ -54,11 +71,28 @@ pub(crate) fn status_text(input: &StatusInput) -> (String, String) {
 	};
 	let (cols, rows) = input.size;
 	let mut right = format!("{cols} × {rows}{SEPARATOR}{}", printable(input.theme));
+	if input.broadcast {
+		right = format!("broadcasting to all panes{SEPARATOR}{right}");
+	}
 	if let Some(command) = command {
 		right.push_str(SEPARATOR);
 		right.push_str(&command);
 	}
 	(left, right)
+}
+
+/// Where the bar goes in a window `(width, height)` large: `bar` pixels
+/// tall, above the window's `border` and the system's `bottom` inset (the
+/// home indicator or the keyboard), between its side insets.
+pub(crate) fn status_rect(
+	(width, height): (usize, usize),
+	bar: usize,
+	border: usize,
+	bottom: usize,
+	(left, right): (usize, usize),
+) -> Rect {
+	let y = height.saturating_sub(bar + border + bottom);
+	(left, y, width.saturating_sub(left + right), bar)
 }
 
 /// The bar across `rect`, its text at `px`.

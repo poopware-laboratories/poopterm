@@ -1,17 +1,18 @@
 //! Application state and the winit event loop.
+mod actions;
 mod canvas;
 mod closing;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod decorations;
 mod draw;
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 mod draw_gpu;
 mod draw_panes;
 mod draw_tabs;
 mod draw_vertical_tabs;
 mod frame_pacer;
 mod frame_stats;
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_vendor = "apple"))]
 mod gpu;
 mod handler;
 mod hints;
@@ -48,6 +49,8 @@ mod settings_fonts;
 mod settings_header_tests;
 mod settings_hit;
 mod settings_keys;
+#[cfg(test)]
+mod settings_narrow_tests;
 pub(super) mod settings_nav;
 #[cfg(test)]
 mod settings_nav_tests;
@@ -57,7 +60,14 @@ mod settings_pen;
 #[cfg(test)]
 mod settings_pen_tests;
 #[cfg(test)]
+mod settings_phone_tests;
+#[cfg(test)]
 mod settings_rows_tests;
+#[cfg(test)]
+mod settings_scroll_tests;
+mod settings_shape;
+#[cfg(test)]
+mod settings_shape_tests;
 mod settings_view;
 mod tabs;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -96,7 +106,7 @@ use crate::{
 		selection::{CellPoint, GridGeometry, Selection},
 		tabs::{
 			TabLayout, TabStripOptions, VerticalTabLayout, VerticalTabOptions, compact_sidebar_width,
-			sidebar_width, tab_layout_with_compaction, vertical_tab_layout,
+			sidebar_width, tab_layout_with_compaction,
 		},
 		window_controls::{ButtonLayout, Placement, place},
 		window_pointer::Presses,
@@ -127,6 +137,15 @@ pub(crate) struct App {
 	/// The first pixel row of the padding above the grid, under the chrome.
 	padding_top: usize,
 	titlebar_height: usize,
+	/// Top and bottom pixels the system keeps (iOS); see `Chrome::safe`.
+	safe: (usize, usize),
+	/// Left and right pixels the system keeps (iOS, on its side).
+	sides: (usize, usize),
+	/// Pixels an iPad window's controls take at the top left (iPadOS 26).
+	corner: usize,
+	/// The home indicator's pixels at the bottom (iOS), which `safe` leaves
+	/// out while the keyboard reaches higher.
+	home: usize,
 	tab_height: usize,
 	status_height: usize,
 	border: usize,
@@ -174,6 +193,15 @@ pub(crate) struct App {
 	settings_mods: Modifiers,
 	shortcuts: Shortcuts,
 	cursor_pos: (f64, f64),
+	/// The finger being followed, on touch screens.
+	touches: crate::input::touch::Touches,
+	/// The finger being followed in the Settings window.
+	settings_touches: crate::input::touch::Touches,
+	/// How far the Settings page is scrolled down, in pixels, where the
+	/// window is shorter than the page (a phone on its side).
+	settings_scroll: usize,
+	/// The keys above a phone's on-screen keyboard, and whether Ctrl holds.
+	key_bar: crate::ui::key_bar::KeyBar,
 	held_button: Option<MouseButtonCode>,
 	/// `TERM` and terminfo path for new shells.
 	term_env: crate::terminfo::TermEnv,
@@ -226,6 +254,10 @@ pub(crate) struct App {
 	/// The Settings control the keyboard has focused, in Tab order.
 	settings_focus: Option<usize>,
 	renaming_tab: bool,
+	/// Whether typing goes to every pane of the active tab.
+	broadcast: bool,
+	/// Light or dark, as the desktop last said; `None` until it has.
+	appearance: Option<crate::theme_follow::Appearance>,
 	/// Quick select's labels while they are shown.
 	hint_mode: Option<crate::ui::hint_mode::HintMode>,
 	/// A close waiting for the user to say yes, shown in the palette's place.
@@ -250,14 +282,27 @@ impl App {
 		if let Err(error) = save_config_theme(kind) {
 			crate::warnings::warning!("could not save theme config: {error}");
 		}
-		self.theme = Theme::load();
+		self.show_theme(Theme::load_for(self.appearance));
+	}
+
+	/// Shows the theme for the desktop's new `appearance`.
+	pub(super) fn follow_appearance(&mut self, appearance: Option<crate::theme_follow::Appearance>) {
+		// pr-check: window glue: shows what the tested choice picks for the desktop
+		self.appearance = appearance;
+		self.show_theme(Theme::load_for(appearance));
+		// pr-check: end window glue
+	}
+
+	/// Draws every terminal and the window in `theme`.
+	fn show_theme(&mut self, theme: Theme) {
+		// pr-check: window glue: hands the loaded theme to every terminal and the window
+		self.theme = theme;
 		for session in self.all_sessions() {
 			session.term().set_theme(self.theme);
 		}
 		self.canvas.invalidate();
-		if let Some(window) = &self.window {
-			window.request_redraw();
-		}
+		self.request_redraw();
+		// pr-check: end window glue
 	}
 
 	pub(super) fn request_redraw(&self) {
@@ -284,10 +329,11 @@ impl App {
 		let factor = self.factor();
 		// pr-check: window glue: copies the sizes ui::scale computed into App
 		self.sized_for = factor;
-		let chrome = chrome(
+		let mut chrome = chrome(
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
+		(chrome.safe, chrome.sides) = ((self.safe.0, self.bottom_inset()), self.sides);
 		(self.border, self.titlebar_height, self.tab_height) =
 			(chrome.border, chrome.titlebar_height, chrome.tab_height);
 		self.set_font_px(font_px(self.font_points, factor));
@@ -297,12 +343,21 @@ impl App {
 		// pr-check: end window glue
 	}
 
+	/// Pixels at the bottom kept from the grid and status bar: the
+	/// system's (home indicator, keyboard) and the key bar above the
+	/// keyboard while it shows.
+	pub(super) fn bottom_inset(&self) -> usize {
+		let ios = cfg!(target_os = "ios");
+		crate::ui::key_bar::bottom_with_bar(ios, self.safe.1, self.home, self.scale())
+	}
+
 	/// The grid's place in the window with the current chrome and settings.
 	pub(super) fn layout(&self) -> Layout {
-		let chrome = chrome(
+		let mut chrome = chrome(
 			self.chrome_factor(),
 			has_titlebar(self.window_frame, cfg!(target_os = "macos")),
 		);
+		(chrome.safe, chrome.sides) = ((self.safe.0, self.bottom_inset()), self.sides);
 		layout(
 			&chrome,
 			self.scale(),
@@ -314,7 +369,7 @@ impl App {
 	/// Width of the vertical tab sidebar, or 0 when it is not shown.
 	pub(super) fn sidebar_width(&self) -> usize {
 		if self.preferences.show_tabs && self.preferences.vertical_tabs {
-			if self.preferences.compact_tabs {
+			if self.sidebar_is_rail() {
 				compact_sidebar_width(self.scale())
 			} else {
 				sidebar_width(self.scale())
@@ -324,8 +379,20 @@ impl App {
 		}
 	}
 
+	/// Whether the vertical tabs show as the icon rail (`ui::tabs::sidebar_is_rail`).
+	pub(super) fn sidebar_is_rail(&self) -> bool {
+		let compact = self.preferences.compact_tabs;
+		crate::ui::tabs::sidebar_is_rail(compact, self.width as usize, self.scale())
+	}
+
+	/// From the window's left edge to the sidebar's right one, the system's
+	/// left inset included (a phone on its side); 0 without a sidebar.
+	pub(super) fn sidebar_extent(&self) -> usize {
+		crate::ui::layout::sidebar_extent(self.sidebar_width(), self.sides.0)
+	}
+
 	pub(super) fn grid_left(&self) -> usize {
-		self.margin + self.sidebar_width()
+		self.margin + self.sidebar_width() + self.sides.0
 	}
 
 	/// Tells a terminal about the window showing it and the user's settings.
@@ -339,10 +406,25 @@ impl App {
 	}
 
 	pub(super) fn resize(&mut self, w: u32, h: u32) {
+		if !crate::ui::layout::drawable((w, h)) {
+			return;
+		}
 		// Also reached after font, wallpaper and settings changes.
 		self.canvas.invalidate();
 		self.width = w.max(1);
 		self.height = h.max(1);
+		// pr-check: window glue: the system's insets as the real window reports them
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			let insets = crate::ios_window::insets(window, self.factor());
+			self.home = insets.home;
+			if (insets.safe, insets.sides, insets.corner) != (self.safe, self.sides, self.corner) {
+				(self.safe, self.sides, self.corner) = (insets.safe, insets.sides, insets.corner);
+				self.apply_scale();
+				self.redraw_settings();
+			}
+		}
+		// pr-check: end window glue
 		self.ensure_active_tab_visible();
 		self.fit_panes();
 
@@ -359,6 +441,8 @@ impl App {
 pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 	let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
 	let proxy = event_loop.create_proxy();
+	#[cfg(target_os = "ios")]
+	crate::ios_photos::register(proxy.clone());
 
 	let theme = Theme::load();
 	let settings_editor = SettingsEditor::load();
@@ -413,6 +497,10 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		top: 8,
 		padding_top: 0,
 		titlebar_height: 0,
+		safe: (0, 0),
+		sides: (0, 0),
+		corner: 0,
+		home: 0,
 		tab_height: 46,
 		status_height: 26,
 		border: 1,
@@ -446,6 +534,10 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		settings_mods: Modifiers::default(),
 		shortcuts: Shortcuts::load(),
 		cursor_pos: (0.0, 0.0),
+		touches: Default::default(),
+		settings_touches: Default::default(),
+		settings_scroll: 0,
+		key_bar: Default::default(),
 		held_button: None,
 		term_env,
 		scroll: ScrollAccumulator::default(),
@@ -477,10 +569,15 @@ pub(crate) fn run() -> Result<(), Box<dyn Error>> {
 		command_selected: 0,
 		settings_focus: None,
 		renaming_tab: false,
+		broadcast: false,
+		appearance: None,
 		hint_mode: None,
 		closing: None,
 	};
 
+	// iOS 27 needs the scene delegate UIKit will ask for as it starts.
+	#[cfg(target_os = "ios")]
+	crate::ios_scene::register();
 	event_loop.run_app(&mut app)?;
 	Ok(())
 }

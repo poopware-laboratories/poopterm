@@ -59,6 +59,13 @@ pub(crate) fn sane(mut settings: libc::termios) -> libc::termios {
 	settings
 }
 
+/// A login terminal's settings, made from nothing: for the in-process
+/// device (`inproc::terminal`), whose settings no kernel keeps.
+pub(crate) fn fresh() -> libc::termios {
+	// SAFETY: all zeroes is a valid `termios`: every flag off, no characters.
+	sane(unsafe { std::mem::zeroed() })
+}
+
 /// The settings of the terminal `fd` is a side of.
 pub(crate) fn get(fd: &impl AsFd) -> io::Result<libc::termios> {
 	let mut settings = std::mem::MaybeUninit::uninit();

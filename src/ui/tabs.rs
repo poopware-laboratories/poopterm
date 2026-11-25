@@ -41,7 +41,11 @@ impl TabLayout {
 
 /// Geometry for tabs arranged in a left sidebar.
 pub(crate) struct VerticalTabLayout {
+	/// From the window's left edge to the grid's, the inset included.
 	pub(crate) sidebar_width: usize,
+	/// Where its content starts: past what the system keeps at the left
+	/// (a phone on its side), which the sidebar's background still fills.
+	pub(crate) left: usize,
 	pub(crate) tab_start_y: usize,
 	pub(crate) tab_width: usize,
 	pub(crate) row_height: usize,
@@ -82,6 +86,13 @@ impl VerticalTabLayout {
 /// Width of the vertical tab sidebar, in pixels.
 pub(crate) fn sidebar_width(scale: usize) -> usize {
 	184 * scale.max(1)
+}
+
+/// Whether vertical tabs show as the narrow icon rail: when asked, or when
+/// the full sidebar would take more than a third of a `width`-pixel window
+/// (a phone held upright).
+pub(crate) fn sidebar_is_rail(compact: bool, width: usize, scale: usize) -> bool {
+	compact || width < 3 * sidebar_width(scale)
 }
 
 /// Width of the icon rail used by compact vertical tabs, in pixels.
@@ -316,6 +327,7 @@ pub(crate) fn vertical_tab_layout(
 	let settings_y = if show_settings { button_y } else { None };
 	VerticalTabLayout {
 		sidebar_width,
+		left: 0,
 		tab_start_y,
 		tab_width: sidebar_width.saturating_sub(12 * scale),
 		row_height,
@@ -334,6 +346,40 @@ pub(crate) fn vertical_tab_layout(
 		scale,
 	}
 }
+
+/// What the system keeps around the sidebar (iOS): the status bar and
+/// sensor housing above, the home indicator and key bar below, a phone on
+/// its side's sensor housing at the left. All 0 on desktops.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SidebarInsets {
+	pub(crate) top: usize,
+	pub(crate) bottom: usize,
+	pub(crate) left: usize,
+}
+
+/// `vertical_tab_layout` clear of the system's `insets`: tabs start below
+/// the top one, buttons sit above the bottom one, and the content moves
+/// right of the left one while the background reaches the window's edge.
+pub(crate) fn inset_vertical_tab_layout(
+	height: usize,
+	count: usize,
+	scale: usize,
+	mut options: VerticalTabOptions,
+	insets: SidebarInsets,
+) -> VerticalTabLayout {
+	options.top_reserve += insets.top;
+	options.status_height += insets.bottom;
+	let mut layout = vertical_tab_layout(height, count, scale, options);
+	layout.left = insets.left;
+	layout.sidebar_width += insets.left;
+	layout.plus_x += insets.left;
+	layout.settings_x += insets.left;
+	layout
+}
+
+#[cfg(test)]
+#[path = "tabs_inset_tests.rs"]
+mod inset_tests;
 
 #[cfg(test)]
 mod tests {

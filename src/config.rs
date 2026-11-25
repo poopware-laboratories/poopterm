@@ -64,6 +64,10 @@ pub struct Preferences {
 	pub reduce_motion: bool,
 	pub(crate) renderer: RendererPreference,
 	/// Who draws the title bar on Linux and FreeBSD.
+	#[cfg_attr(
+		all(target_os = "ios", not(test)),
+		expect(dead_code, reason = "iOS draws no title bar")
+	)]
 	pub(crate) decorations: DecorationPreference,
 	/// Whether the window keeps its frame or is just a square.
 	pub(crate) window_frame: WindowFrame,
@@ -204,31 +208,61 @@ pub fn updated(text: &str, values: &[(&str, String)]) -> String {
 
 pub fn save(path: &Path, values: &[(&str, String)]) -> io::Result<()> {
 	if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-		fs::create_dir_all(parent)?;
+		fs::create_dir_all(parent).map_err(|error| at_path("create directory", parent, error))?;
 	}
 	let previous = match fs::read_to_string(path) {
 		Ok(text) => text,
 		Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
-		Err(error) => return Err(error),
+		Err(error) => return Err(at_path("read", path, error)),
 	};
 	let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-	fs::write(&temporary, updated(&previous, values))?;
-	fs::rename(&temporary, path)
+	fs::write(&temporary, updated(&previous, values))
+		.map_err(|error| at_path("write temporary file", &temporary, error))?;
+	fs::rename(&temporary, path).map_err(|error| at_path("replace", path, error))
+}
+
+fn at_path(operation: &str, path: &Path, error: io::Error) -> io::Error {
+	io::Error::new(
+		error.kind(),
+		format!("could not {operation} {}: {error}", path.display()),
+	)
 }
 
 /// Config file location: `$POOPTERM_CONFIG`, then `$XDG_CONFIG_HOME/poopterm`,
 /// then the platform default.
 pub fn config_path() -> PathBuf {
-	if let Some(path) = env::var_os("POOPTERM_CONFIG") {
-		return PathBuf::from(path);
+	let override_path = env::var_os("POOPTERM_CONFIG").map(PathBuf::from);
+	let home = home_dir();
+	if let Some(path) = config_override(override_path, home.as_deref(), cfg!(target_os = "ios")) {
+		return path;
+	}
+	if cfg!(target_os = "ios") {
+		return home
+			.map(|home| ios_config_path(&home))
+			.unwrap_or_else(|| PathBuf::from("./poopterm/config.toml"));
 	}
 	user_dir("XDG_CONFIG_HOME", ".config")
 		.unwrap_or_else(|| PathBuf::from("./poopterm"))
 		.join("config.toml")
 }
 
+fn ios_support_dir(home: &Path) -> PathBuf {
+	home.join("Library/Application Support")
+}
+
+fn ios_config_path(home: &Path) -> PathBuf {
+	ios_support_dir(home).join("Poopterm/config.toml")
+}
+
+fn ios_user_dir(home: &Path, xdg: Option<PathBuf>) -> PathBuf {
+	xdg
+		.map(|path| path.join("poopterm"))
+		.unwrap_or_else(|| ios_support_dir(home).join("Poopterm"))
+}
+
 /// Per-user data directory for generated files: `$XDG_DATA_HOME/poopterm`
-/// (default `~/.local/share/poopterm`), or `~/Library/Application Support/poopterm` on macOS.
+/// (default `~/.local/share/poopterm`), or the app's `Library/Application Support/Poopterm`
+/// directory on Apple mobile platforms and macOS.
 pub fn data_dir() -> Option<PathBuf> {
 	user_dir("XDG_DATA_HOME", ".local/share")
 }
@@ -247,16 +281,86 @@ pub fn cache_dir() -> Option<PathBuf> {
 	user_dir("XDG_CACHE_HOME", ".cache")
 }
 
+/// The writable home directory for this process. iOS gets it from Foundation
+/// because the environment's `HOME` is not a reliable sandbox path there.
+pub(crate) fn home_dir() -> Option<PathBuf> {
+	let environment = env::var_os("HOME").map(PathBuf::from);
+	#[cfg(target_os = "ios")]
+	let sandbox = crate::ios_paths::home_dir();
+	#[cfg(not(target_os = "ios"))]
+	let sandbox = None;
+	preferred_home(environment, sandbox, cfg!(target_os = "ios"))
+}
+
+/// The directory a shell calls `~`. On iOS that is the app's Documents
+/// folder, made when missing: the one place the Files app shows and the
+/// user's files live, and the sandbox lets the app write. Elsewhere it is
+/// the home directory.
+pub(crate) fn shell_home() -> Option<PathBuf> {
+	let home = home_dir()?;
+	let shell = shell_home_of(&home, cfg!(target_os = "ios"));
+	if shell != home {
+		let _ = std::fs::create_dir_all(&shell);
+	}
+	Some(shell)
+}
+
+pub(crate) fn shell_home_of(home: &Path, ios: bool) -> PathBuf {
+	if ios {
+		home.join("Documents")
+	} else {
+		home.to_path_buf()
+	}
+}
+
+pub(crate) fn preferred_home(
+	environment: Option<PathBuf>,
+	sandbox: Option<PathBuf>,
+	ios: bool,
+) -> Option<PathBuf> {
+	if ios {
+		sandbox.or(environment)
+	} else {
+		environment
+	}
+}
+
 /// `poopterm` inside an XDG base directory. On macOS, an unset variable
-/// means Application Support instead of `default`.
+/// means Application Support instead of `default`; iOS always uses its sandboxed
+/// Application Support directory unless a sandbox-local XDG path is set.
 fn user_dir(variable: &str, default: &str) -> Option<PathBuf> {
-	let home = env::var_os("HOME").map(PathBuf::from);
+	let home = home_dir();
+	if cfg!(target_os = "ios") {
+		let home = home?;
+		let xdg = env::var_os(variable)
+			.map(PathBuf::from)
+			.and_then(|path| sandbox_path(&home, &path));
+		return Some(ios_user_dir(&home, xdg));
+	}
 	let default = if cfg!(target_os = "macos") {
 		"Library/Application Support"
 	} else {
 		default
 	};
 	Some(xdg_base(env::var_os(variable), home.as_deref(), default)?.join("poopterm"))
+}
+
+fn config_override(value: Option<PathBuf>, home: Option<&Path>, ios: bool) -> Option<PathBuf> {
+	let path = value?;
+	if ios {
+		sandbox_path(home?, &path)
+	} else {
+		Some(path)
+	}
+}
+
+fn sandbox_path(home: &Path, path: &Path) -> Option<PathBuf> {
+	(path.is_absolute()
+		&& path.starts_with(home)
+		&& !path
+			.components()
+			.any(|component| component == std::path::Component::ParentDir))
+	.then(|| path.to_owned())
 }
 
 /// An XDG base directory: `value` if absolute (the spec says to ignore empty
@@ -276,10 +380,6 @@ pub fn read_config_value(key: &str) -> Option<String> {
 	value(&fs::read_to_string(config_path()).ok()?, key)
 }
 
-pub fn read_config_theme() -> Option<ThemeKind> {
-	ThemeKind::parse(&read_config_value("theme")?)
-}
-
 pub fn save_config_theme(kind: ThemeKind) -> io::Result<()> {
 	save(&config_path(), &[("theme", format!("\"{}\"", kind.name()))])
 }
@@ -297,6 +397,137 @@ pub fn quote_config_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn the_shell_calls_documents_home_on_ios_and_the_home_elsewhere() {
+		let home = Path::new("/var/mobile/Containers/Data/Application/ABC");
+		assert_eq!(shell_home_of(home, true), home.join("Documents"));
+		assert_eq!(shell_home_of(home, false), home);
+		assert!(
+			!shell_home_of(home, true).starts_with(home.join("Library")),
+			"not where settings and packages are kept"
+		);
+	}
+
+	#[cfg(not(target_os = "ios"))]
+	#[test]
+	fn off_ios_the_shell_home_is_the_home_and_nothing_is_made() {
+		assert_eq!(shell_home(), home_dir());
+	}
+
+	#[test]
+	fn ios_prefers_foundations_container_home_over_environment_home() {
+		assert_eq!(
+			preferred_home(
+				Some(PathBuf::from("/var/mobile")),
+				Some(PathBuf::from("/sandbox/app")),
+				true,
+			),
+			Some(PathBuf::from("/sandbox/app"))
+		);
+	}
+
+	#[test]
+	fn ios_uses_environment_home_only_when_foundation_has_none() {
+		assert_eq!(
+			preferred_home(Some(PathBuf::from("/sandbox")), None, true),
+			Some(PathBuf::from("/sandbox"))
+		);
+		assert_eq!(preferred_home(None, None, true), None);
+	}
+
+	#[test]
+	fn desktop_keeps_using_the_home_environment() {
+		assert_eq!(
+			preferred_home(
+				Some(PathBuf::from("/home/user")),
+				Some(PathBuf::from("/sandbox")),
+				false,
+			),
+			Some(PathBuf::from("/home/user"))
+		);
+	}
+
+	#[test]
+	fn ios_only_uses_config_overrides_inside_its_container() {
+		let home = Path::new("/sandbox/app");
+		assert_eq!(
+			config_override(Some(home.join("config.toml")), Some(home), true),
+			Some(home.join("config.toml"))
+		);
+		for path in [
+			PathBuf::from("/var/mobile/config.toml"),
+			PathBuf::from("relative.toml"),
+			home.join("../other/config.toml"),
+		] {
+			assert_eq!(config_override(Some(path), Some(home), true), None);
+		}
+	}
+
+	#[test]
+	fn ios_only_uses_xdg_directories_inside_its_container() {
+		let home = Path::new("/sandbox/app");
+		assert_eq!(
+			sandbox_path(home, Path::new("/sandbox/app/custom")),
+			Some(PathBuf::from("/sandbox/app/custom"))
+		);
+		for path in [
+			Path::new("/var/mobile/.config"),
+			Path::new("relative"),
+			Path::new("/sandbox/app/../other"),
+		] {
+			assert_eq!(sandbox_path(home, path), None, "{path:?}");
+		}
+	}
+
+	#[test]
+	fn ios_defaults_to_the_container_application_support_directory() {
+		let home = Path::new("/sandbox/app");
+		assert_eq!(
+			ios_config_path(home),
+			PathBuf::from("/sandbox/app/Library/Application Support/Poopterm/config.toml")
+		);
+		assert_eq!(
+			ios_user_dir(home, None),
+			PathBuf::from("/sandbox/app/Library/Application Support/Poopterm")
+		);
+		assert_eq!(
+			ios_user_dir(home, Some(PathBuf::from("/sandbox/app/custom"))),
+			PathBuf::from("/sandbox/app/custom/poopterm")
+		);
+	}
+
+	#[test]
+	fn save_errors_name_the_operation_and_path() {
+		let error = at_path(
+			"replace",
+			Path::new("/container/Library/Application Support/Poopterm/config.toml"),
+			io::Error::from(io::ErrorKind::PermissionDenied),
+		);
+		assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+		assert!(error.to_string().contains("could not replace"));
+		assert!(
+			error
+				.to_string()
+				.contains("/container/Library/Application Support/Poopterm/config.toml")
+		);
+	}
+
+	#[test]
+	fn save_replaces_the_file_and_preserves_unknown_settings() {
+		let scratch = crate::scratch_tests::Scratch::new("config", "save");
+		let path = scratch.join("Library/Application Support/Poopterm/config.toml");
+		save(
+			&path,
+			&[("custom", "\"kept\"".into()), ("theme", "\"dark\"".into())],
+		)
+		.unwrap();
+		save(&path, &[("theme", "\"light\"".into())]).unwrap();
+		let saved = fs::read_to_string(path).unwrap();
+		assert!(saved.contains("custom = \"kept\""));
+		assert!(saved.contains("theme = \"light\""));
+		assert!(!saved.contains("theme = \"dark\""));
+	}
 	#[test]
 	fn comments_quotes_duplicates_and_unknown_keys() {
 		let text = "# User config\nfont_size = 12\nfont_size = 20 # comment\ncustom = \"a#b\"\n";

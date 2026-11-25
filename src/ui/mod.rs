@@ -2,6 +2,7 @@
 pub(crate) mod about;
 #[cfg(test)]
 mod about_tests;
+pub(crate) mod broadcast;
 pub(crate) mod chrome_colors;
 #[cfg(test)]
 mod chrome_colors_tests;
@@ -16,8 +17,8 @@ mod close_prompt_tests;
 pub(crate) mod contrast;
 pub(crate) mod copy;
 #[cfg_attr(
-	target_os = "macos",
-	allow(dead_code, reason = "macOS keeps its own title bar")
+	target_vendor = "apple",
+	allow(dead_code, reason = "macOS keeps its own title bar; iOS has none")
 )]
 pub(crate) mod decorations;
 #[cfg(test)]
@@ -38,6 +39,9 @@ mod diagnostics_tests;
 pub(crate) mod drag;
 #[cfg(test)]
 mod drag_tests;
+pub(crate) mod export;
+#[cfg(test)]
+mod export_tests;
 pub(crate) mod font_size;
 #[cfg(test)]
 mod font_size_tests;
@@ -67,6 +71,12 @@ mod hints_tests;
 pub(crate) mod hover;
 #[cfg(test)]
 mod hover_tests;
+pub(crate) mod insets;
+#[cfg_attr(
+	not(any(target_os = "ios", test)),
+	expect(dead_code, reason = "only iOS shows the key bar")
+)]
+pub(crate) mod key_bar;
 pub(crate) mod layout;
 pub(crate) mod links;
 #[cfg(all(test, unix))]
@@ -125,8 +135,8 @@ mod ui_font_drawn_tests;
 #[cfg(test)]
 mod ui_font_tests;
 #[cfg_attr(
-	target_os = "macos",
-	allow(dead_code, reason = "macOS keeps its own window buttons")
+	target_vendor = "apple",
+	allow(dead_code, reason = "macOS keeps its own window buttons; iOS has none")
 )]
 pub(crate) mod window_controls;
 #[cfg(test)]

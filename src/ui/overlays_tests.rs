@@ -4,8 +4,9 @@ use super::{
 	contrast::{TEXT, ratio},
 	header::{TabPalette, header_colors},
 	overlays::{
-		PALETTE_COMMANDS, Place, command_action, command_palette, palette_matches, search_box,
-		search_buttons, selected_command, shortcut_hints, stays_open, step_selection,
+		PALETTE_COMMANDS, Place, command_action, command_palette, palette_commands, palette_matches,
+		palette_row_at, search_box, search_buttons, selected_command, shortcut_hints, stays_open,
+		step_selection,
 	},
 	search_controls::{SearchControl, geometry},
 };
@@ -49,17 +50,123 @@ fn texts<'a>(popover: &Popover<'a>) -> Vec<&'a str> {
 
 #[test]
 fn an_empty_query_matches_every_command_in_order() {
-	assert_eq!(palette_matches(""), PALETTE_COMMANDS);
+	assert_eq!(palette_matches(""), palette_commands());
+}
+
+/// The palette's own commands, then the other shortcut actions.
+const EVERY: [&str; 28] = [
+	"New tab",
+	"Settings",
+	"About poopterm",
+	"Cycle theme",
+	"Copy last command output",
+	"Close tab",
+	"Rename active tab",
+	"Save scrollback to file",
+	"Broadcast input to all panes",
+	"Search",
+	"Previous prompt",
+	"Next prompt",
+	"Zoom in",
+	"Zoom out",
+	"Reset zoom",
+	"Split right",
+	"Split down",
+	"Focus pane left",
+	"Focus pane right",
+	"Focus pane above",
+	"Focus pane below",
+	"Next pane",
+	"Previous pane",
+	"Copy",
+	"Paste",
+	"Previous tab",
+	"Next tab",
+	"Quick select",
+];
+
+#[test]
+fn the_palette_offers_its_commands_then_every_shortcut_action_once() {
+	assert_eq!(palette_commands(), EVERY);
+	for action in ShortcutAction::ALL {
+		let listed = EVERY.iter().filter(|&&c| c == action.label()).count();
+		let expected = usize::from(action != ShortcutAction::CommandPalette);
+		assert_eq!(listed, expected, "{action:?}");
+		assert_eq!(command_action(action.label()), Some(action));
+	}
+	assert_eq!(command_action("Settings"), None, "no shortcut for it");
+}
+
+#[test]
+fn a_name_typed_whole_or_as_a_start_comes_first() {
+	assert_eq!(
+		palette_matches("copy"),
+		["Copy", "Copy last command output"]
+	);
+	assert_eq!(
+		palette_matches("next"),
+		["Next prompt", "Next pane", "Next tab"]
+	);
+	// No name is or starts with "pane": matches keep the palette's order.
+	let pane = [
+		"Broadcast input to all panes",
+		"Focus pane left",
+		"Focus pane right",
+		"Focus pane above",
+		"Focus pane below",
+		"Next pane",
+		"Previous pane",
+	];
+	assert_eq!(palette_matches("pane"), pane);
+	assert_eq!(
+		palette_matches("Zoom"),
+		["Zoom in", "Zoom out", "Reset zoom"]
+	);
+}
+
+#[test]
+fn palette_taps_hit_only_visible_rows_and_respect_the_current_query() {
+	let place = place((390, 844), 1);
+	let theme = theme();
+	let palette = command_palette(place, ("settings", false), 14.0, &theme);
+	let row = palette.rows.first().unwrap().rect;
+	let center = (row.0 + row.2 / 2, row.1 + row.3 / 2);
+	let center = (center.0 as f64, center.1 as f64);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), false, center, &theme),
+		Some(0)
+	);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), true, center, &theme),
+		None
+	);
+	assert_eq!(
+		palette_row_at(place, ("settings", false), false, (0.0, 0.0), &theme),
+		None
+	);
+	assert_eq!(
+		palette_row_at(place, ("no match", false), false, center, &theme),
+		None
+	);
 }
 
 #[test]
 fn commands_match_anywhere_in_their_name_ignoring_case() {
 	assert_eq!(
 		palette_matches("tab"),
-		["New tab", "Close tab", "Rename active tab"]
+		[
+			"New tab",
+			"Close tab",
+			"Rename active tab",
+			"Previous tab",
+			"Next tab"
+		]
 	);
 	assert_eq!(palette_matches("SETT"), ["Settings"]);
-	assert_eq!(palette_matches("t p"), ["About poopterm"]);
+	assert_eq!(
+		palette_matches("t p"),
+		["About poopterm", "Next prompt", "Next pane"]
+	);
 	assert_eq!(palette_matches("zzz"), Vec::<&str>::new());
 }
 
@@ -135,12 +242,13 @@ fn the_palette_floats_centered_under_the_tabs() {
 #[test]
 fn the_palette_lists_every_matching_command_in_rows_below_the_field() {
 	let popover = palette("", false);
-	assert_eq!(texts(&popover), PALETTE_COMMANDS);
+	// As many as fit above the window's bottom: 14 of 28 at 600 pixels.
+	assert_eq!(texts(&popover), EVERY[..14]);
 	for (index, row) in popover.rows.iter().enumerate() {
 		assert_eq!(row.rect, (248, 114 + 32 * index, 504, 32), "row {index}");
 	}
 	// The field, the rows, and the inset below them.
-	assert_eq!(popover.rect.3, 46 + 7 * 32 + 8);
+	assert_eq!(popover.rect.3, 46 + 14 * 32 + 8);
 	assert!(popover.note.is_none());
 }
 
@@ -160,9 +268,15 @@ fn the_palette_shrinks_to_its_matches() {
 	let popover = palette("tab", false);
 	assert_eq!(
 		texts(&popover),
-		["New tab", "Close tab", "Rename active tab"]
+		[
+			"New tab",
+			"Close tab",
+			"Rename active tab",
+			"Previous tab",
+			"Next tab"
+		]
 	);
-	assert_eq!(popover.rect.3, 46 + 3 * 32 + 8);
+	assert_eq!(popover.rect.3, 46 + 5 * 32 + 8);
 	assert_eq!(popover.field.text, "tab");
 }
 
@@ -192,7 +306,7 @@ fn renaming_a_tab_shows_its_name_and_what_the_keys_do() {
 fn a_short_window_lists_only_the_rows_that_fit() {
 	// From 68 down: the field takes 46, then rows of 32 and an inset of 8.
 	for (height, rows) in [
-		(600, 7),
+		(600, 14),
 		(300, 5),
 		(250, 4),
 		(249, 3),
@@ -212,7 +326,7 @@ fn a_short_window_lists_only_the_rows_that_fit() {
 #[test]
 fn the_palette_doubles_at_twice_the_scale() {
 	let popover = command_palette(place((2000, 1200), 2), ("", false), 28.0, &theme());
-	assert_eq!(popover.rect, (480, 136, 1040, 2 * (46 + 7 * 32 + 8)));
+	assert_eq!(popover.rect, (480, 136, 1040, 2 * (46 + 14 * 32 + 8)));
 	assert_eq!(popover.rows[1].rect, (496, 136 + 92 + 64, 1008, 64));
 }
 
@@ -298,18 +412,24 @@ fn spaces_in_a_query_match_like_any_other_character() {
 	assert_eq!(palette_matches("w t"), ["New tab"]);
 	assert_eq!(
 		palette_matches(" tab"),
-		["New tab", "Close tab", "Rename active tab"]
+		[
+			"New tab",
+			"Close tab",
+			"Rename active tab",
+			"Previous tab",
+			"Next tab"
+		]
 	);
 	assert!(palette_matches("tab ").is_empty());
-	assert!(palette_matches(" ").len() == 6, "all but Settings");
+	assert_eq!(palette_matches(" ").len(), 24, "all but the one-word names");
 }
 
 #[test]
 fn typing_a_whole_command_name_selects_that_command() {
-	for command in PALETTE_COMMANDS {
+	for command in EVERY {
 		for query in [command.to_owned(), command.to_uppercase()] {
 			let popover = palette(&query, false);
-			assert_eq!(texts(&popover), [command], "{query:?}");
+			assert_eq!(texts(&popover)[0], command, "{query:?}");
 			assert!(popover.rows[0].selected, "{query:?}");
 		}
 	}
@@ -342,7 +462,7 @@ fn both_popovers_float_a_fixed_distance_below_the_top_of_the_terminal() {
 #[test]
 fn the_palette_triples_at_three_times_the_scale() {
 	let popover = command_palette(place((3000, 1800), 3), ("tab", false), 42.0, &theme());
-	assert_eq!(popover.rect, (720, 132 + 72, 1560, 3 * (46 + 3 * 32 + 8)));
+	assert_eq!(popover.rect, (720, 132 + 72, 1560, 3 * (46 + 5 * 32 + 8)));
 	assert_eq!(popover.field.rect, (744, 228, 1512, 102));
 	assert_eq!(popover.rows[2].rect, (744, 204 + 138 + 192, 1512, 96));
 }
@@ -466,7 +586,11 @@ fn rows_get_their_hints_and_the_rest_stay_bare() {
 		.filter(|row| row.hint.is_some())
 		.map(|row| row.text)
 		.collect();
-	assert_eq!(hinted, ["New tab", "Cycle theme", "Close tab"]);
+	// Every row with a shortcut, of those that fit: all but the palette's
+	// own commands that have none.
+	let mut expected = vec!["New tab", "Cycle theme", "Close tab"];
+	expected.extend(&EVERY[9..14]);
+	assert_eq!(hinted, expected);
 }
 
 #[test]
@@ -492,7 +616,9 @@ fn hints_follow_the_rows_a_query_leaves() {
 		[
 			("New tab", true),
 			("Close tab", true),
-			("Rename active tab", false)
+			("Rename active tab", false),
+			("Previous tab", true),
+			("Next tab", true)
 		]
 	);
 }

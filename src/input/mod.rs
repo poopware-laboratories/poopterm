@@ -1,7 +1,13 @@
-//! Keyboard and mouse encoding for the PTY, plus configurable shortcuts.
+//! Keyboard, mouse and touch input for the PTY, plus configurable shortcuts.
 pub(crate) mod click;
 #[cfg(test)]
 mod clipboard_shortcuts_tests;
+pub(crate) mod commit;
+#[cfg_attr(
+	not(any(target_os = "ios", test)),
+	expect(dead_code, reason = "only iOS reads hardware key presses")
+)]
+pub(crate) mod hardware_keys;
 pub(crate) mod keyboard_modes;
 #[cfg(test)]
 mod keyboard_modes_tests;
@@ -21,3 +27,9 @@ pub(crate) mod scroll;
 #[cfg(test)]
 mod shortcut_actions_tests;
 pub(crate) mod shortcuts;
+pub(crate) mod touch;
+#[cfg_attr(
+	not(any(target_os = "ios", test)),
+	expect(dead_code, reason = "only iOS's keyboard asks")
+)]
+pub(crate) mod typing;

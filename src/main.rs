@@ -41,12 +41,29 @@ mod gif;
 mod gpu;
 mod graphics;
 mod inflate;
+mod inproc;
 mod input;
+#[cfg(target_os = "ios")]
+mod ios_jit;
+#[cfg(target_os = "ios")]
+mod ios_keyboard;
+#[cfg(target_os = "ios")]
+mod ios_paths;
+#[cfg(target_os = "ios")]
+mod ios_photos;
+#[cfg(target_os = "ios")]
+mod ios_scene;
+#[cfg(target_os = "ios")]
+mod ios_window;
+// Our own loader: copying code into executable memory and calling it.
+#[cfg(target_vendor = "apple")]
+#[allow(unsafe_code)]
+mod jit;
 mod mapped;
 mod notifier;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[cfg_attr(
-	not(test),
+	all(not(test), target_os = "macos"),
 	expect(
 		dead_code,
 		reason = "the Metal renderer draws windows with it next (#26)"
@@ -54,10 +71,11 @@ mod notifier;
 )]
 mod objc;
 mod parser;
+mod pkg;
 mod platform;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(target_vendor = "apple"))]
 mod portal;
-#[cfg(all(test, not(target_os = "macos")))]
+#[cfg(all(test, not(target_vendor = "apple")))]
 mod portal_tests;
 #[cfg_attr(
 	not(test),
@@ -66,6 +84,9 @@ mod portal_tests;
 mod present;
 mod pty;
 mod render;
+mod scene_pairing;
+#[cfg(test)]
+mod scene_pairing_tests;
 #[cfg(test)]
 mod scratch_tests;
 mod session_store;
@@ -79,6 +100,9 @@ mod terminfo;
 mod terminfo_caps;
 mod theme;
 mod theme_credits;
+mod theme_follow;
+#[cfg(test)]
+mod theme_follow_tests;
 mod theme_more;
 #[cfg(test)]
 mod theme_palette_tests;

@@ -67,9 +67,9 @@ pub(crate) fn open(size: WindowSize) -> io::Result<Pair> {
 fn open_once(size: WindowSize) -> io::Result<Pair> {
 	// macOS fails allocations made from several threads at once (errno -6,
 	// seen in CI), so it makes them one at a time.
-	#[cfg(target_os = "macos")]
+	#[cfg(target_vendor = "apple")]
 	static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
-	#[cfg(target_os = "macos")]
+	#[cfg(target_vendor = "apple")]
 	let _turn = ONE_AT_A_TIME
 		.lock()
 		.unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -104,13 +104,13 @@ fn open_once(size: WindowSize) -> io::Result<Pair> {
 	})
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 unsafe extern "C" {
 	/// libSystem's reentrant `ptsname` (macOS 10.13.4 and later), which the
 	/// libc crate does not declare.
 	fn ptsname_r(fd: libc::c_int, buf: *mut libc::c_char, len: libc::size_t) -> libc::c_int;
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(target_vendor = "apple"))]
 use libc::ptsname_r;
 
 /// Where the slave of `master` lives, from the reentrant `ptsname_r`:

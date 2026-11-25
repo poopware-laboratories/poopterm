@@ -59,6 +59,18 @@ pub(crate) enum UserEvent {
 	/// The app menu's About item was chosen.
 	#[cfg(target_os = "macos")]
 	About,
+	/// The on-screen keyboard moved (`ios_keyboard`).
+	#[cfg(target_os = "ios")]
+	Keyboard,
+	/// A hardware keyboard's key, with the modifiers held (`ios_keyboard`).
+	#[cfg(target_os = "ios")]
+	HardwareKey(winit::keyboard::Key, crate::input::keys::Modifiers),
+	/// A photo copied from Photos into the app's private directory.
+	#[cfg(target_os = "ios")]
+	WallpaperImported(Result<std::path::PathBuf, String>),
+	/// The user closed Photos without selecting an image.
+	#[cfg(target_os = "ios")]
+	WallpaperPickerCancelled,
 }
 
 pub(crate) struct Session {
@@ -71,6 +83,8 @@ pub(crate) struct Session {
 	master: OwnedFd,
 	/// The size `master` was last given.
 	size: size::SentSize,
+	/// The in-process device's size, which no `ioctl` reaches.
+	device_size: Option<Arc<crate::inproc::Size>>,
 	writer: PtyWriter,
 	output: Arc<OutputQueue>,
 	/// The shell, until the session ends and hands it to the reaper.
@@ -120,6 +134,10 @@ impl Session {
 	/// Tells the PTY, and so the shell, its size in cells of `cell` pixels
 	/// (width, height), when that changed since it was last told.
 	pub(crate) fn resize(&self, grid: (usize, usize), cell: (usize, usize)) {
+		if let Some(size) = &self.device_size {
+			size.set(grid.0, grid.1);
+			return;
+		}
 		let _ = self.size.set(&self.master, grid, cell);
 	}
 
@@ -177,17 +195,31 @@ pub(crate) fn spawn_session(
 	let cwd = if cwd.is_dir() { cwd } else { default_cwd() };
 	// The cells' pixels come with the first resize.
 	let window = WindowSize::of(cols, rows, (0, 0));
-	let pair = device::open(window)?;
-	let shell = login_shell::login_shell();
-	let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
-	// The shell holds the slave now; ours would keep the PTY open after it
-	// exits, and the reader would never see the end.
-	drop(pair.slave);
-	#[cfg(target_os = "linux")]
-	crate::cgroup::place(child.id());
-
-	let reader = File::from(pair.master.try_clone()?);
-	let writer = PtyWriter::spawn(Box::new(File::from(pair.master.try_clone()?)));
+	let mut device_size = None;
+	let (master, reader, input, child) = if in_process() {
+		// No program may run: a built-in shell in this process stands in.
+		let support = crate::config::home_dir().unwrap_or_else(|| cwd.clone());
+		let home = crate::config::shell_home().unwrap_or_else(|| support.clone());
+		let device = crate::inproc::spawn(id, cwd.clone(), home, support, (cols, rows))?;
+		device_size = Some(device.size.clone());
+		let master = OwnedFd::from(device.output.try_clone()?);
+		let reader: Box<dyn std::io::Read + Send> = Box::new(device.output);
+		let input: Box<dyn std::io::Write + Send> = Box::new(device.input);
+		(master, reader, input, None)
+	} else {
+		let pair = device::open(window)?;
+		let shell = login_shell::login_shell();
+		let child = spawn::spawn(&shell_command(&shell, term_env, &cwd), &pair.slave)?;
+		// The shell holds the slave now; ours would keep the PTY open after
+		// it exits, and the reader would never see the end.
+		drop(pair.slave);
+		#[cfg(target_os = "linux")]
+		crate::cgroup::place(child.id());
+		let reader: Box<dyn std::io::Read + Send> = Box::new(File::from(pair.master.try_clone()?));
+		let input: Box<dyn std::io::Write + Send> = Box::new(File::from(pair.master.try_clone()?));
+		(pair.master, reader, input, Some(child))
+	};
+	let writer = PtyWriter::spawn(input);
 	let output = Arc::new(OutputQueue::new(OUTPUT_LIMIT));
 	let mut term = Term::new(cols, rows, theme, cwd);
 	term.scrollback_limit = Preferences::load().scrollback_lines;
@@ -223,13 +255,20 @@ pub(crate) fn spawn_session(
 		flags,
 		seen: Seen::default(),
 		custom_title: None,
-		master: pair.master,
+		master,
 		size: size::SentSize::new(window),
+		device_size,
 		writer,
 		output,
-		child: Some(child),
+		child,
 		activity: false,
 	})
+}
+
+/// Whether tabs run the in-process shell: always on iOS, where no other
+/// program may run, and on request (`POOPTERM_IN_PROCESS`) elsewhere.
+pub(crate) fn in_process() -> bool {
+	cfg!(target_os = "ios") || std::env::var_os("POOPTERM_IN_PROCESS").is_some()
 }
 
 /// How a tab starts `shell` in `cwd`: with its integration arguments, and

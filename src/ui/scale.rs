@@ -48,6 +48,12 @@ pub(crate) struct Chrome {
 	/// holds the tab strip.
 	pub(crate) titlebar_height: usize,
 	pub(crate) tab_height: usize,
+	/// What the system keeps for itself at the top and bottom (iOS's
+	/// status bar, sensor housing and home indicator); 0 on desktops.
+	pub(crate) safe: (usize, usize),
+	/// What it keeps at the left and right (a phone on its side); 0 on
+	/// desktops.
+	pub(crate) sides: (usize, usize),
 }
 
 pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
@@ -59,6 +65,8 @@ pub(crate) fn chrome(factor: f64, macos: bool) -> Chrome {
 		border: 0,
 		titlebar_height: titlebar * scale,
 		tab_height: tab * scale,
+		safe: (0, 0),
+		sides: (0, 0),
 	}
 }
 
@@ -137,6 +145,8 @@ mod tests {
 				border: 0,
 				titlebar_height: 0,
 				tab_height: 40,
+				safe: (0, 0),
+				sides: (0, 0),
 			}
 		);
 	}
@@ -151,6 +161,8 @@ mod tests {
 				border: 0,
 				titlebar_height: 40,
 				tab_height: 40,
+				safe: (0, 0),
+				sides: (0, 0),
 			}
 		);
 	}

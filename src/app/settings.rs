@@ -2,7 +2,8 @@
 use super::{
 	settings_fonts::FontPicker,
 	settings_hit::{SettingsPage, SettingsTarget, font_list_rows},
-	settings_nav::{NAV_WIDTH, window_target},
+	settings_nav::NAV_WIDTH,
+	settings_shape::{Shape, scrolled, shape},
 	settings_view::*,
 	*,
 };
@@ -126,6 +127,12 @@ impl App {
 			window.focus_window();
 			return;
 		}
+		// pr-check: window glue: clears the terminal keyboard out of Settings
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			window.set_ime_allowed(false);
+		}
+		// pr-check: end window glue
 		self.settings_editor = SettingsEditor::load();
 		let attributes = crate::platform::identify(Window::default_attributes())
 			.with_title("Poopterm Settings")
@@ -137,11 +144,18 @@ impl App {
 				(MIN_SIZE.0 + NAV_WIDTH) as f64,
 				MIN_SIZE.1 as f64,
 			));
+		// pr-check: window glue: on a phone Settings covers the screen and lays out round its insets
+		#[cfg(target_os = "ios")]
+		let attributes =
+			attributes.with_inner_size(winit::dpi::PhysicalSize::new(self.width, self.height));
+		// pr-check: end window glue
 		let window = Arc::new(
 			event_loop
 				.create_window(attributes)
 				.expect("failed to create settings window"),
 		);
+		#[cfg(target_os = "ios")]
+		crate::ios_scene::adopt(&window);
 		let renderer = renderer::Renderer::new(window.clone(), self.preferences.renderer);
 		let (mut surface, _) = renderer.expect("settings surface");
 		let size = window.inner_size();
@@ -168,6 +182,13 @@ impl App {
 	pub(super) fn close_settings_window(&mut self) {
 		self.settings_window = None;
 		self.settings_surface = None;
+		// pr-check: window glue: the terminal takes the keyboard back on a phone
+		#[cfg(target_os = "ios")]
+		if let Some(window) = &self.window {
+			window.focus_window();
+			window.set_ime_allowed(true);
+		}
+		// pr-check: end window glue
 	}
 
 	pub(super) fn redraw_settings(&self) {
@@ -291,6 +312,22 @@ impl App {
 				button: MouseButton::Left,
 				..
 			} => self.settings_click(),
+			WindowEvent::Touch(touch) => {
+				use crate::input::touch::{Action, phase};
+				let at = (touch.location.x, touch.location.y);
+				let action = self
+					.settings_touches
+					.event(phase(touch.phase), touch.id, at);
+				match action {
+					Some(Action::Click(x, y)) => {
+						self.settings_cursor_pos = (x, y);
+						self.settings_click();
+					}
+					// A finger moving up shows more of the page below.
+					Some(Action::Scroll(pixels)) => self.scroll_settings(-pixels),
+					None => {}
+				}
+			}
 			WindowEvent::MouseWheel { delta, .. } if self.settings_editor.page == SettingsPage::Fonts => {
 				let scale = self.settings_scale();
 				let lines = match delta {
@@ -302,6 +339,13 @@ impl App {
 				let visible = font_list_rows(self.settings_height as usize, scale);
 				self.settings_editor.fonts.scroll_by(lines, visible);
 				self.redraw_settings();
+			}
+			WindowEvent::MouseWheel { delta, .. } => {
+				let pixels = match delta {
+					MouseScrollDelta::LineDelta(_, y) => -f64::from(y) * 40.0 * self.settings_scale() as f64,
+					MouseScrollDelta::PixelDelta(position) => -position.y,
+				};
+				self.scroll_settings(pixels);
 			}
 			WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
 				self.settings_key(&event)
@@ -318,6 +362,36 @@ impl App {
 			WindowEvent::RedrawRequested => self.draw_settings(),
 			_ => {}
 		}
+	}
+
+	/// Scrolls the Settings page `pixels` further down (up when negative),
+	/// as far as it goes.
+	fn scroll_settings(&mut self, pixels: f64) {
+		let scale = self.settings_scale();
+		let size = (self.settings_width as usize, self.settings_height as usize);
+		let shape = self.settings_shape();
+		let visible = shape.page(size, scale).3;
+		let extent = shape.extent(visible, scale);
+		let scroll = scrolled(self.settings_scroll, pixels, visible, extent);
+		if scroll != self.settings_scroll {
+			self.settings_scroll = scroll;
+			self.redraw_settings();
+		}
+	}
+
+	/// How the Settings window is shared between its list and its page,
+	/// clear of what the system keeps of the screen.
+	pub(super) fn settings_shape(&self) -> Shape {
+		let width = self.settings_width as usize;
+		// iOS gives the window no close button; Done is ours to draw.
+		let closable = !cfg!(target_os = "ios");
+		shape(
+			width,
+			self.settings_scale(),
+			(self.safe.0, self.safe.1),
+			closable,
+		)
+		.beside(self.sides)
 	}
 
 	pub(super) fn settings_scale(&self) -> usize {
@@ -341,9 +415,11 @@ impl App {
 	pub(super) fn settings_press(&mut self, point: (usize, usize)) {
 		let scale = self.settings_scale();
 		let size = (self.settings_width as usize, self.settings_height as usize);
-		let target = window_target(point, size, scale, self.settings_editor.page);
+		let page = (self.settings_editor.page, self.settings_scroll);
+		let target = (self.settings_shape()).target(point, size, scale, page);
 		if matches!(target, Some(SettingsTarget::Open(_))) {
-			self.settings_focus = None;
+			// Another page starts at its top.
+			(self.settings_focus, self.settings_scroll) = (None, 0);
 		}
 		// pr-check: window glue: puts the report on the real clipboard
 		if target == Some(SettingsTarget::CopyReport) {
@@ -366,6 +442,7 @@ impl App {
 				editor.status = format!("Press a key chord for {}. Esc cancels.", action.label());
 			}
 			Some(SettingsTarget::Save) => return self.save_settings_config(),
+			Some(SettingsTarget::Done) => return self.close_settings_window(),
 			Some(SettingsTarget::ChooseWallpaper) => self.choose_wallpaper(),
 			Some(SettingsTarget::ClearWallpaper) => {
 				editor.wallpaper_path = None;
@@ -411,7 +488,7 @@ impl App {
 		let variable = std::env::var(backend::VARIABLE).ok();
 		let preference = backend::preference(self.preferences.renderer, variable.as_deref());
 		let gpu = self.renderer.as_ref().and_then(renderer::Renderer::facts);
-		let home = std::env::var_os("HOME").map(PathBuf::from);
+		let home = crate::config::home_dir();
 		let (drawing, frames) = (self.drawing.clone(), self.recent_frames.counts());
 		let recent = crate::warnings::recent();
 		gather(drawing, frames, preference, gpu.as_ref(), recent, home)
@@ -419,23 +496,58 @@ impl App {
 	// pr-check: end window glue
 
 	fn choose_wallpaper(&mut self) {
-		let picked = self.settings_window.as_ref().and_then(|window| {
-			rfd::FileDialog::new()
-				.set_title("Choose a terminal wallpaper")
-				.add_filter("Wallpaper images", &["png", "jpg", "jpeg", "webp"])
-				.set_parent(window.as_ref())
-				.pick_file()
-		});
-		let Some(path) = picked else {
-			return;
-		};
-		let editor = &mut self.settings_editor;
-		match Wallpaper::load(&path) {
-			Ok(_) => {
-				editor.wallpaper_path = Some(path);
-				editor.status = "Wallpaper selected. Click Save to apply.".into();
-			}
-			Err(error) => editor.status = format!("Could not use wallpaper: {error}"),
+		#[cfg(target_os = "ios")]
+		{
+			let result = self
+				.settings_window
+				.as_ref()
+				.ok_or_else(|| "Settings window is closed".to_owned())
+				.and_then(|window| crate::ios_photos::choose(window));
+			self.settings_editor.status = match result {
+				Ok(()) => "Choose a photo from your library…".into(),
+				Err(error) => format!("Could not open Photos: {error}"),
+			};
+			self.redraw_settings();
 		}
+		#[cfg(not(target_os = "ios"))]
+		{
+			let picked = self.settings_window.as_ref().and_then(|window| {
+				rfd::FileDialog::new()
+					.set_title("Choose a terminal wallpaper")
+					.add_filter("Wallpaper images", &["png", "jpg", "jpeg", "webp"])
+					.set_parent(window.as_ref())
+					.pick_file()
+			});
+			let Some(path) = picked else {
+				return;
+			};
+			let editor = &mut self.settings_editor;
+			match Wallpaper::load(&path) {
+				Ok(_) => {
+					editor.wallpaper_path = Some(path);
+					editor.status = "Wallpaper selected. Click Save to apply.".into();
+				}
+				Err(error) => editor.status = format!("Could not use wallpaper: {error}"),
+			}
+		}
+	}
+
+	#[cfg(target_os = "ios")]
+	pub(super) fn wallpaper_imported(&mut self, imported: Result<PathBuf, String>) {
+		self.settings_editor.status =
+			match imported.and_then(|path| Wallpaper::load(&path).map(|_| path)) {
+				Ok(path) => {
+					self.settings_editor.wallpaper_path = Some(path);
+					"Photo selected. Tap Save to apply.".into()
+				}
+				Err(error) => format!("Could not use wallpaper: {error}"),
+			};
+		self.redraw_settings();
+	}
+
+	#[cfg(target_os = "ios")]
+	pub(super) fn wallpaper_picker_cancelled(&mut self) {
+		self.settings_editor.status = "No photo selected.".into();
+		self.redraw_settings();
 	}
 }

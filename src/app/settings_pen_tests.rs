@@ -26,6 +26,15 @@ pub(super) fn record(
 	scale: usize,
 	draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle),
 ) -> Vec<Command> {
+	record_in((900, 600), scale, draw)
+}
+
+/// What `draw` records on a page `size` logical pixels large at `scale`.
+pub(super) fn record_in(
+	(width, height): (usize, usize),
+	scale: usize,
+	draw: impl FnOnce(&mut Pen, &mut Scene, ButtonStyle),
+) -> Vec<Command> {
 	let mut fonts = FontSet::new(Font::from_bytes(BUNDLED, 0).unwrap(), Vec::new());
 	let mut pen = Pen {
 		fonts: &mut fonts,
@@ -34,7 +43,7 @@ pub(super) fn record(
 		color: 0xeeeeee,
 		scale,
 	};
-	let mut scene = Scene::new(900 * scale, 600 * scale);
+	let mut scene = Scene::new(width * scale, height * scale);
 	draw(&mut pen, &mut scene, ButtonStyle { scale, ..STYLE });
 	scene.commands
 }

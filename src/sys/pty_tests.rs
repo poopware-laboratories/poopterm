@@ -211,7 +211,7 @@ fn dropped_pairs_give_their_descriptors_back() {
 #[test]
 fn something_that_is_not_a_terminal_has_no_size() {
 	// A regular file: devices such as /dev/null answer ENODEV on macOS.
-	let file = File::open("Cargo.toml").unwrap();
+	let file = File::open(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
 	let error = set_size(&file, cells(80, 24)).unwrap_err();
 	assert_eq!(error.raw_os_error(), Some(libc::ENOTTY));
 	assert_eq!(size(&file).unwrap_err().raw_os_error(), Some(libc::ENOTTY));

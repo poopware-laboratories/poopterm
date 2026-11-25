@@ -232,6 +232,7 @@ fn the_status_bar_draws_only_inside_its_strip() {
 				shell: &shell,
 				size: (80, 24),
 				theme: theme.kind.name(),
+				broadcast: false,
 			};
 			let rect = (0, 300, width, 26 * scale);
 			let model = status_bar(&input, rect, (scale, 12.0 * scale as f32), &theme);

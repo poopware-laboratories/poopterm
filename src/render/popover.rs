@@ -47,6 +47,17 @@ pub(crate) struct Popover<'a> {
 	pub buttons: Vec<PopoverButton<'a>>,
 }
 
+impl Popover<'_> {
+	/// The row hit by a point, if any; field taps and gaps are not rows.
+	pub(crate) fn row_at(&self, (x, y): (usize, usize)) -> Option<usize> {
+		self.rows.iter().position(|row| {
+			let (left, top, width, height) = row.rect;
+			(left..left.saturating_add(width)).contains(&x)
+				&& (top..top.saturating_add(height)).contains(&y)
+		})
+	}
+}
+
 /// Inside a field or row, the room left of the text.
 const PADDING: usize = 12;
 
