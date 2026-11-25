@@ -37,14 +37,20 @@ fn every_length_around_a_block_boundary_matches_shasum() {
 	}
 }
 
+/// The system's SHA-256 of `data`: macOS and most Linuxes have `shasum`,
+/// FreeBSD and Alpine `sha256sum`.
 fn shasum(data: &[u8]) -> String {
 	use std::io::Write;
-	let mut child = std::process::Command::new("shasum")
-		.args(["-a", "256"])
-		.stdin(std::process::Stdio::piped())
-		.stdout(std::process::Stdio::piped())
-		.spawn()
-		.expect("shasum");
+	let spawn = |name: &str, args: &[&str]| {
+		std::process::Command::new(name)
+			.args(args)
+			.stdin(std::process::Stdio::piped())
+			.stdout(std::process::Stdio::piped())
+			.spawn()
+	};
+	let mut child = spawn("shasum", &["-a", "256"])
+		.or_else(|_| spawn("sha256sum", &[]))
+		.expect("shasum or sha256sum");
 	child.stdin.take().unwrap().write_all(data).unwrap();
 	let out = child.wait_with_output().unwrap();
 	String::from_utf8(out.stdout).unwrap()[..64].to_owned()

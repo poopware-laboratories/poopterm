@@ -10,14 +10,31 @@ use std::{
 
 use super::*;
 
+/// What `signal` does now: `SIG_DFL`, `SIG_IGN` or a handler.
+fn handler(signal: libc::c_int) -> libc::sighandler_t {
+	let mut current = std::mem::MaybeUninit::<libc::sigaction>::uninit();
+	// SAFETY: with a null new action, `sigaction` only writes the current one
+	// into `current`, which has room for it.
+	let read = unsafe { libc::sigaction(signal, std::ptr::null(), current.as_mut_ptr()) };
+	assert_eq!(read, 0);
+	// SAFETY: filled by the successful call above.
+	unsafe { current.assume_init() }.sa_sigaction
+}
+
 #[test]
-fn quieting_catches_every_job_signal_so_none_can_end_the_app() {
+fn quieting_leaves_no_job_signal_able_to_end_the_app() {
 	quiet_job_signals();
 	for signal in QUIETED {
-		assert!(caught(signal), "signal {signal} still at its default");
+		// One the test runner was started ignoring (a CI shell without job
+		// control) stays ignored, which ends nothing either.
+		assert_ne!(handler(signal), libc::SIG_DFL, "signal {signal}");
 	}
 	quiet_job_signals();
-	assert!(caught(libc::SIGINT), "quieting twice keeps the handler");
+	assert_ne!(
+		handler(libc::SIGINT),
+		libc::SIG_DFL,
+		"quieting twice keeps what was there"
+	);
 }
 
 #[test]

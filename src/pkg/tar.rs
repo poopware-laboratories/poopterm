@@ -1,5 +1,5 @@
 //! A reader for the tar archives packages come in (POSIX ustar, with pax
-//! long names), strict about what a package may hold: regular files and
+//! long names or GNU's, as Linux's tar writes them), strict about what a package may hold: regular files and
 //! directories only, at relative paths that stay inside the package.
 
 /// What an entry is.
@@ -50,6 +50,10 @@ pub(crate) fn entries(archive: &[u8]) -> Result<Vec<Entry<'_>>, String> {
 				continue;
 			}
 			b'g' => continue,
+			b'L' => {
+				long_path = Some(field(data)?.to_owned());
+				continue;
+			}
 			b'0' | 0 => {
 				let mode = octal(&header[100..108]).unwrap_or(0);
 				Kind::File {
@@ -81,7 +85,8 @@ pub(crate) fn entries(archive: &[u8]) -> Result<Vec<Entry<'_>>, String> {
 /// The header's name, its ustar prefix joined in front.
 fn name(header: &[u8; BLOCK]) -> Result<String, String> {
 	let (name, prefix) = (field(&header[..100])?, field(&header[345..500])?);
-	let ustar = &header[257..262] == b"ustar";
+	// POSIX's magic, not GNU's "ustar ", whose prefix bytes hold other things.
+	let ustar = &header[257..263] == b"ustar\0";
 	Ok(if ustar && !prefix.is_empty() {
 		format!("{prefix}/{name}")
 	} else {

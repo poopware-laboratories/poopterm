@@ -110,6 +110,51 @@ fn global_pax_headers_are_skipped() {
 	assert_eq!(got[0].path, "a");
 }
 
+/// GNU tar's and busybox's long names: an `L` entry whose data, ended by a
+/// NUL, names the entry after it.
+#[test]
+fn a_gnu_long_name_names_the_next_entry_only() {
+	let long = format!("share/{}/notes", "n".repeat(150));
+	let named = format!("{long}\0");
+	let bytes = archive(&[
+		("././@LongLink", b'L', named.as_bytes(), 0o644),
+		("share/cut", b'0', b"notes", 0o644),
+		("after", b'0', b"a", 0o644),
+	]);
+	let got = entries(&bytes).unwrap();
+	assert_eq!(got.len(), 2);
+	assert_eq!(file(&got[0]), (long.as_str(), &b"notes"[..], false));
+	assert_eq!(got[1].path, "after", "used once");
+}
+
+#[test]
+fn a_gnu_long_name_is_held_to_the_same_rules() {
+	for (name, why) in [("/etc/passwd", "absolute"), ("a/../../b", "climbs out")] {
+		let named = format!("{name}\0");
+		let bytes = archive(&[
+			("././@LongLink", b'L', named.as_bytes(), 0o644),
+			("harmless", b'0', b"x", 0o644),
+		]);
+		let error = entries(&bytes).unwrap_err();
+		assert!(error.contains(why), "{name}: {error}");
+	}
+	let bytes = archive(&[("././@LongLink", b'L', b"\xff\xfe\0", 0o644)]);
+	assert!(entries(&bytes).unwrap_err().contains("not UTF-8"));
+}
+
+#[test]
+fn a_gnu_header_has_no_name_prefix() {
+	// GNU's magic is "ustar  \0", and the prefix's bytes hold times there.
+	let mut bytes = header("notes", b'0', 0, 0o644);
+	bytes[257..265].copy_from_slice(b"ustar  \0");
+	bytes[345..356].copy_from_slice(b"14000000000");
+	bytes[148..156].fill(b' ');
+	let sum: u32 = bytes.iter().map(|&byte| u32::from(byte)).sum();
+	bytes[148..155].copy_from_slice(format!("{sum:06o}\0").as_bytes());
+	bytes.extend([0u8; 1024]);
+	assert_eq!(entries(&bytes).unwrap()[0].path, "notes");
+}
+
 #[test]
 fn what_the_systems_tar_writes_reads_back() {
 	let dir = std::env::temp_dir().join(format!("poopterm-tar-{}", std::process::id()));
@@ -157,7 +202,7 @@ fn paths_that_climb_out_or_start_at_the_root_are_refused() {
 
 #[test]
 fn links_devices_and_unknown_kinds_are_refused() {
-	for kind in *b"123467LKZ" {
+	for kind in *b"123467KZ" {
 		let bytes = archive(&[("thing", kind, b"", 0o644)]);
 		let error = entries(&bytes).unwrap_err();
 		assert!(error.contains("thing"), "{} {error}", kind as char);
