@@ -24,7 +24,7 @@ mimalloc = { version = "^0.1", default-features = false }
 
 # File dialogs: desktop platforms only; iOS has no such dialogs.
 [target.'cfg(not(target_os = "ios"))'.dependencies]
-rfd = { version = "^0.17", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "^0.18", default-features = false, features = ["xdg-portal"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
